@@ -24,8 +24,8 @@ enum SubscriptionTier: String, Codable, CaseIterable {
     var price: String {
         switch self {
         case .free: return "$0"
-        case .pro: return "$9.99/mo"
-        case .power: return "$19.99/mo"
+        case .pro: return "$4.99/mo"
+        case .power: return "$9.99/mo"
         }
     }
 }

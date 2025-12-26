@@ -7,20 +7,37 @@
 
 import SwiftUI
 
+// Enum for available waveform types
+enum WaveformType: CaseIterable {
+    case bars
+    case circular
+    case linear
+    case mirrored
+    case blob
+    case soundBars
+    case spectrum
+}
+
 struct RecordingView: View {
     @Binding var isPresented: Bool
     @EnvironmentObject var settings: SharedSettings
+    @Environment(\.colorScheme) var colorScheme
 
     @State private var recordingState: RecordingState = .idle
     @State private var recordingDuration: TimeInterval = 0
     @State private var timer: Timer?
     @State private var cardScale: CGFloat = 0.8
     @State private var cardOpacity: Double = 0
+    @State private var selectedWaveform: WaveformType = .bars
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
 
     var body: some View {
         ZStack {
             // Blurred background
-            AppTheme.darkBase.opacity(0.95)
+            backgroundColor.opacity(0.95)
                 .ignoresSafeArea()
                 .onTapGesture {
                     if recordingState == .recording {
@@ -33,6 +50,8 @@ struct RecordingView: View {
                 state: recordingState,
                 duration: recordingDuration,
                 mode: settings.selectedMode,
+                waveformType: selectedWaveform,
+                colorScheme: colorScheme,
                 onTap: handleCardTap,
                 onCancel: cancelRecording
             )
@@ -40,6 +59,8 @@ struct RecordingView: View {
             .opacity(cardOpacity)
         }
         .onAppear {
+            // Randomly select a waveform type
+            selectedWaveform = WaveformType.allCases.randomElement() ?? .bars
             showCard()
             startRecording()
         }
@@ -164,8 +185,18 @@ struct RecordingCard: View {
     let state: RecordingState
     let duration: TimeInterval
     let mode: FormattingMode
+    let waveformType: WaveformType
+    let colorScheme: ColorScheme
     let onTap: () -> Void
     let onCancel: () -> Void
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    private var cardShadow: Color {
+        colorScheme == .dark ? .clear : .black.opacity(0.15)
+    }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -176,7 +207,7 @@ struct RecordingCard: View {
             ZStack {
                 switch state {
                 case .idle, .recording:
-                    WaveformView(isActive: state == .recording)
+                    waveformForType(waveformType, isActive: state == .recording)
                         .frame(height: 60)
 
                 case .processing, .formatting:
@@ -231,10 +262,12 @@ struct RecordingCard: View {
         .padding(.vertical, 32)
         .padding(.horizontal, 24)
         .frame(width: 280)
-        .glassBackground(cornerRadius: AppTheme.cornerRadiusXL)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusXL, style: .continuous))
+        .shadow(color: cardShadow, radius: 20, y: 10)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cornerRadiusXL, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                .stroke(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05), lineWidth: 1)
         )
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
@@ -260,9 +293,42 @@ struct RecordingCard: View {
         let tenths = Int((duration.truncatingRemainder(dividingBy: 1)) * 10)
         return String(format: "%d:%02d.%d", minutes, seconds, tenths)
     }
+
+    @ViewBuilder
+    private func waveformForType(_ type: WaveformType, isActive: Bool) -> some View {
+        switch type {
+        case .bars:
+            WaveformView(isActive: isActive)
+        case .circular:
+            CircularWaveformView(isActive: isActive)
+                .frame(width: 60, height: 60)
+        case .linear:
+            LinearWaveView()
+                .frame(width: 200)
+        case .mirrored:
+            MirroredBarWaveformView(isActive: isActive)
+                .frame(width: 200)
+        case .blob:
+            BlobWaveformView(isActive: isActive)
+                .frame(width: 80, height: 60)
+        case .soundBars:
+            SoundBarsWaveformView(barCount: 7, isActive: isActive)
+                .frame(width: 80)
+        case .spectrum:
+            SpectrumWaveformView(isActive: isActive)
+                .frame(width: 200)
+        }
+    }
 }
 
-#Preview {
+#Preview("Dark") {
     RecordingView(isPresented: .constant(true))
         .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    RecordingView(isPresented: .constant(true))
+        .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.light)
 }
