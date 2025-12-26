@@ -11,8 +11,10 @@ struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
     @State private var showPaywall = false
-    @State private var showAPIKeyEditor = false
-    @State private var editingProvider: STTProvider?
+    @State private var showProviderEditor = false
+    @State private var showAddProvider = false
+    @State private var editingProviderConfig: STTProviderConfig?
+    @State private var isAddingNewProvider = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -39,27 +41,68 @@ struct SettingsView: View {
 
                     // Provider Section
                     Section {
-                        ForEach(STTProvider.allCases) { provider in
-                            ProviderRow(
-                                provider: provider,
-                                isSelected: settings.selectedProvider == provider,
-                                hasAPIKey: settings.hasValidAPIKey(for: provider),
-                                isPro: provider.isPro,
-                                currentTier: settings.subscriptionTier
+                        // Configured providers
+                        ForEach(settings.configuredSTTProviders) { config in
+                            ConfiguredProviderRow(
+                                config: config,
+                                isSelected: settings.selectedProvider == config.provider,
+                                colorScheme: colorScheme
                             ) {
-                                if provider.isPro && settings.subscriptionTier == .free {
+                                settings.selectedProvider = config.provider
+                            } onEdit: {
+                                editingProviderConfig = config
+                                isAddingNewProvider = false
+                                showProviderEditor = true
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Add Provider button
+                        if !settings.availableProvidersToAdd.isEmpty {
+                            Button(action: {
+                                if settings.subscriptionTier == .free {
                                     showPaywall = true
                                 } else {
-                                    settings.selectedProvider = provider
+                                    showAddProvider = true
                                 }
-                            } onEditKey: {
-                                editingProvider = provider
-                                showAPIKeyEditor = true
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(AppTheme.accent)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text("Add Provider")
+                                                .font(.callout.weight(.medium))
+                                                .foregroundStyle(.primary)
+
+                                            Text("PRO")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.purple)
+                                                .clipShape(Capsule())
+                                        }
+
+                                        Text("Use multiple transcription services")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    if settings.subscriptionTier == .free {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
                             }
+                            .listRowBackground(rowBackground)
                         }
-                        .listRowBackground(rowBackground)
                     } header: {
-                        Text("Transcription Provider")
+                        Text("Transcription Providers")
                     }
 
                     // Templates Section
@@ -189,10 +232,37 @@ struct SettingsView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
-            .sheet(isPresented: $showAPIKeyEditor) {
-                if let provider = editingProvider {
-                    APIKeyEditorView(provider: provider)
+            .sheet(isPresented: $showProviderEditor) {
+                if let config = editingProviderConfig {
+                    ProviderEditorSheet(
+                        config: config,
+                        isEditing: !isAddingNewProvider,
+                        onSave: { updatedConfig in
+                            if isAddingNewProvider {
+                                settings.addSTTProvider(updatedConfig)
+                            } else {
+                                settings.updateSTTProvider(updatedConfig)
+                            }
+                        },
+                        onDelete: isAddingNewProvider ? nil : {
+                            settings.removeSTTProvider(config.provider)
+                        }
+                    )
                 }
+            }
+            .sheet(isPresented: $showAddProvider) {
+                AddProviderSheet(
+                    availableProviders: settings.availableProvidersToAdd,
+                    onSelect: { provider in
+                        showAddProvider = false
+                        // Small delay to allow sheet dismiss animation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            editingProviderConfig = STTProviderConfig(provider: provider)
+                            isAddingNewProvider = true
+                            showProviderEditor = true
+                        }
+                    }
+                )
             }
         }
     }
@@ -250,9 +320,16 @@ struct SubscriptionCard: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    Text(tier.displayName)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.primary)
+                    HStack(spacing: 8) {
+                        Text(tier.displayName)
+                            .font(.title2.weight(.bold))
+                            .foregroundStyle(.primary)
+
+                        if tier != .free {
+                            Image(systemName: "checkmark.seal.fill")
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                    }
                 }
 
                 Spacer()
@@ -270,11 +347,34 @@ struct SubscriptionCard: View {
                             .background(AppTheme.accentGradient)
                             .clipShape(Capsule())
                     }
+                } else if tier == .pro {
+                    Button(action: {
+                        HapticManager.lightTap()
+                        onUpgrade()
+                    }) {
+                        Text("Go Power")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.accent)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(AppTheme.accent.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
                 }
             }
 
-            if tier != .power {
+            // Different messages based on tier
+            switch tier {
+            case .free:
                 Text("Unlock unlimited transcriptions, multiple providers, and more!")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            case .pro:
+                Text("Unlimited transcriptions & multiple providers unlocked!")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            case .power:
+                Text("All features unlocked. Thank you for your support!")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -364,6 +464,367 @@ struct ProviderRow: View {
                 onSelect()
             }
         }
+    }
+}
+
+// MARK: - Configured Provider Row
+struct ConfiguredProviderRow: View {
+    let config: STTProviderConfig
+    let isSelected: Bool
+    let colorScheme: ColorScheme
+    let onSelect: () -> Void
+    let onEdit: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Selection indicator - tappable to select
+            Button(action: {
+                HapticManager.selection()
+                onSelect()
+            }) {
+                ZStack {
+                    Circle()
+                        .stroke(isSelected ? AppTheme.accent : Color.secondary.opacity(0.5), lineWidth: 2)
+                        .frame(width: 22, height: 22)
+
+                    if isSelected {
+                        Circle()
+                            .fill(AppTheme.accent)
+                            .frame(width: 12, height: 12)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+
+            // Provider icon
+            Image(systemName: config.provider.icon)
+                .font(.title3)
+                .foregroundStyle(AppTheme.accent)
+                .frame(width: 32, height: 32)
+                .background(AppTheme.accent.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+            // Provider info - tappable to edit
+            Button(action: {
+                HapticManager.lightTap()
+                onEdit()
+            }) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(config.provider.displayName)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        HStack(spacing: 6) {
+                            Text(config.model)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            if config.provider.requiresAPIKey {
+                                Circle()
+                                    .fill(config.apiKey.isEmpty ? .orange : .green)
+                                    .frame(width: 6, height: 6)
+                            }
+                        }
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+}
+
+// MARK: - Add Provider Sheet
+struct AddProviderSheet: View {
+    let availableProviders: [STTProvider]
+    let onSelect: (STTProvider) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    Section {
+                        ForEach(availableProviders) { provider in
+                            Button(action: {
+                                HapticManager.selection()
+                                onSelect(provider)
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: provider.icon)
+                                        .font(.title3)
+                                        .foregroundStyle(AppTheme.accent)
+                                        .frame(width: 40, height: 40)
+                                        .background(AppTheme.accent.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(provider.displayName)
+                                            .font(.callout.weight(.medium))
+                                            .foregroundStyle(.primary)
+
+                                        Text(provider.description)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(AppTheme.accent)
+                                }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+                    } header: {
+                        Text("Available Providers")
+                    } footer: {
+                        Text("Add a transcription provider to use with SwiftSpeak. Each provider requires an API key.")
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Add Provider")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Provider Editor Sheet
+struct ProviderEditorSheet: View {
+    let config: STTProviderConfig
+    let isEditing: Bool
+    let onSave: (STTProviderConfig) -> Void
+    let onDelete: (() -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    @State private var apiKey: String = ""
+    @State private var selectedModel: String = ""
+    @State private var endpoint: String = ""
+    @State private var showDeleteConfirmation = false
+    @State private var showInstructions = false
+
+    init(config: STTProviderConfig, isEditing: Bool, onSave: @escaping (STTProviderConfig) -> Void, onDelete: (() -> Void)? = nil) {
+        self.config = config
+        self.isEditing = isEditing
+        self.onSave = onSave
+        self.onDelete = onDelete
+    }
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    private var canSave: Bool {
+        if config.provider.requiresAPIKey {
+            return !apiKey.isEmpty
+        } else {
+            // Ollama needs endpoint
+            return !endpoint.isEmpty
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    // Provider Info Header
+                    Section {
+                        HStack(spacing: 16) {
+                            Image(systemName: config.provider.icon)
+                                .font(.title)
+                                .foregroundStyle(AppTheme.accent)
+                                .frame(width: 56, height: 56)
+                                .background(AppTheme.accent.opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(config.provider.displayName)
+                                    .font(.title3.weight(.semibold))
+
+                                Text(config.provider.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+                    }
+
+                    // API Key or Endpoint Section
+                    Section {
+                        if config.provider.requiresAPIKey {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("API Key")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                SecureField("Enter your API key", text: $apiKey)
+                                    .textContentType(.password)
+                                    .autocorrectionDisabled()
+                            }
+                            .listRowBackground(rowBackground)
+                        } else {
+                            // Ollama endpoint
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Server Address")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                TextField("http://localhost:11434", text: $endpoint)
+                                    .textContentType(.URL)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+                    } header: {
+                        Text("Configuration")
+                    }
+
+                    // Model Selection
+                    Section {
+                        Picker("Model", selection: $selectedModel) {
+                            ForEach(config.provider.availableModels, id: \.self) { model in
+                                Text(model).tag(model)
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Model")
+                    } footer: {
+                        Text("Select the transcription model to use with this provider.")
+                    }
+
+                    // Setup Instructions
+                    Section {
+                        DisclosureGroup("How to get your API key", isExpanded: $showInstructions) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(config.provider.setupInstructions)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                if let helpURL = config.provider.apiKeyHelpURL {
+                                    Button(action: {
+                                        UIApplication.shared.open(helpURL)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "arrow.up.right.square")
+                                            Text("Open \(config.provider.shortName) Dashboard")
+                                        }
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(AppTheme.accent)
+                                    }
+                                    .padding(.top, 4)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .listRowBackground(rowBackground)
+                    }
+
+                    // Delete Section (only for existing providers, not OpenAI default)
+                    if isEditing && config.provider != .openAI && onDelete != nil {
+                        Section {
+                            Button(role: .destructive, action: {
+                                showDeleteConfirmation = true
+                            }) {
+                                HStack {
+                                    Spacer()
+                                    Text("Remove Provider")
+                                    Spacer()
+                                }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle(isEditing ? "Edit Provider" : "Add Provider")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        saveProvider()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!canSave)
+                }
+            }
+            .onAppear {
+                loadConfig()
+            }
+            .alert("Remove Provider?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Remove", role: .destructive) {
+                    onDelete?()
+                    dismiss()
+                }
+            } message: {
+                Text("This will remove \(config.provider.displayName) from your configured providers.")
+            }
+        }
+    }
+
+    private func loadConfig() {
+        apiKey = config.apiKey
+        selectedModel = config.model
+        endpoint = config.endpoint ?? "http://localhost:11434"
+    }
+
+    private func saveProvider() {
+        var updatedConfig = config
+        updatedConfig.apiKey = apiKey
+        updatedConfig.model = selectedModel
+        if config.provider == .ollama {
+            updatedConfig.endpoint = endpoint
+        }
+
+        onSave(updatedConfig)
+        dismiss()
     }
 }
 
@@ -588,14 +1049,94 @@ struct APIKeyEditorView: View {
     }
 }
 
-#Preview("Dark") {
-    SettingsView()
-        .environmentObject(SharedSettings.shared)
-        .preferredColorScheme(.dark)
+// MARK: - Preview Helper
+struct SettingsPreviewWrapper: View {
+    let tier: SubscriptionTier
+    let colorScheme: ColorScheme
+
+    @StateObject private var settings = SharedSettings.shared
+
+    var body: some View {
+        SettingsView()
+            .environmentObject(settings)
+            .preferredColorScheme(colorScheme)
+            .onAppear {
+                settings.subscriptionTier = tier
+                // Add multiple providers for Pro/Power previews
+                if tier != .free {
+                    if settings.configuredSTTProviders.count == 1 {
+                        settings.addSTTProvider(STTProviderConfig(provider: .elevenLabs, apiKey: "el_xxx", model: "scribe_v1"))
+                        settings.addSTTProvider(STTProviderConfig(provider: .deepgram, apiKey: "dg_xxx", model: "nova-2"))
+                    }
+                }
+            }
+    }
 }
 
-#Preview("Light") {
-    SettingsView()
-        .environmentObject(SharedSettings.shared)
-        .preferredColorScheme(.light)
+#Preview("Free - Dark") {
+    SettingsPreviewWrapper(tier: .free, colorScheme: .dark)
+}
+
+#Preview("Free - Light") {
+    SettingsPreviewWrapper(tier: .free, colorScheme: .light)
+}
+
+#Preview("Pro - Dark") {
+    SettingsPreviewWrapper(tier: .pro, colorScheme: .dark)
+}
+
+#Preview("Pro - Light") {
+    SettingsPreviewWrapper(tier: .pro, colorScheme: .light)
+}
+
+#Preview("Power - Dark") {
+    SettingsPreviewWrapper(tier: .power, colorScheme: .dark)
+}
+
+#Preview("Power - Light") {
+    SettingsPreviewWrapper(tier: .power, colorScheme: .light)
+}
+
+// MARK: - Provider Sheet Previews
+#Preview("Add Provider Sheet") {
+    AddProviderSheet(
+        availableProviders: [.elevenLabs, .deepgram, .ollama],
+        onSelect: { _ in }
+    )
+}
+
+#Preview("Provider Editor - OpenAI") {
+    ProviderEditorSheet(
+        config: STTProviderConfig(provider: .openAI, apiKey: "sk-xxx", model: "whisper-1"),
+        isEditing: true,
+        onSave: { _ in },
+        onDelete: nil
+    )
+}
+
+#Preview("Provider Editor - ElevenLabs (New)") {
+    ProviderEditorSheet(
+        config: STTProviderConfig(provider: .elevenLabs),
+        isEditing: false,
+        onSave: { _ in },
+        onDelete: nil
+    )
+}
+
+#Preview("Provider Editor - Deepgram") {
+    ProviderEditorSheet(
+        config: STTProviderConfig(provider: .deepgram, apiKey: "dg_xxx", model: "nova-2"),
+        isEditing: true,
+        onSave: { _ in },
+        onDelete: { }
+    )
+}
+
+#Preview("Provider Editor - Ollama") {
+    ProviderEditorSheet(
+        config: STTProviderConfig(provider: .ollama, endpoint: "http://localhost:11434"),
+        isEditing: true,
+        onSave: { _ in },
+        onDelete: { }
+    )
 }

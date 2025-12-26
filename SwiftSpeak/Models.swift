@@ -82,6 +82,103 @@ enum STTProvider: String, Codable, CaseIterable, Identifiable {
         case .ollama: return "Ollama"
         }
     }
+
+    var availableModels: [String] {
+        switch self {
+        case .openAI:
+            return ["whisper-1"]
+        case .elevenLabs:
+            return ["scribe_v1"]
+        case .deepgram:
+            return ["nova-2", "nova", "enhanced", "base"]
+        case .ollama:
+            return ["whisper", "whisper-large", "whisper-medium", "whisper-small"]
+        }
+    }
+
+    var defaultModel: String {
+        switch self {
+        case .openAI: return "whisper-1"
+        case .elevenLabs: return "scribe_v1"
+        case .deepgram: return "nova-2"
+        case .ollama: return "whisper"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .openAI: return "Fast and accurate transcription via OpenAI API"
+        case .elevenLabs: return "2.5 hours/month free tier included"
+        case .deepgram: return "Fastest transcription, competitive pricing"
+        case .ollama: return "Local transcription, no cloud required"
+        }
+    }
+
+    var apiKeyHelpURL: URL? {
+        switch self {
+        case .openAI:
+            return URL(string: "https://platform.openai.com/api-keys")
+        case .elevenLabs:
+            return URL(string: "https://elevenlabs.io/app/settings/api-keys")
+        case .deepgram:
+            return URL(string: "https://console.deepgram.com/project/api-keys")
+        case .ollama:
+            return nil // Local, no API key needed
+        }
+    }
+
+    var setupInstructions: String {
+        switch self {
+        case .openAI:
+            return """
+            1. Go to platform.openai.com
+            2. Sign in or create an account
+            3. Navigate to API Keys section
+            4. Click "Create new secret key"
+            5. Copy and paste the key here
+            """
+        case .elevenLabs:
+            return """
+            1. Go to elevenlabs.io
+            2. Sign in or create an account
+            3. Click your profile icon
+            4. Go to Settings → API Keys
+            5. Copy your API key
+            """
+        case .deepgram:
+            return """
+            1. Go to console.deepgram.com
+            2. Sign in or create an account
+            3. Create a new project
+            4. Go to API Keys section
+            5. Create and copy your key
+            """
+        case .ollama:
+            return """
+            1. Install Ollama on your Mac
+            2. Run: ollama pull whisper
+            3. Start Ollama server
+            4. Enter the server address below
+               (default: http://localhost:11434)
+            """
+        }
+    }
+}
+
+// MARK: - STT Provider Configuration
+struct STTProviderConfig: Codable, Identifiable, Equatable {
+    var id: String { provider.rawValue }
+    var provider: STTProvider
+    var apiKey: String
+    var model: String
+    var endpoint: String? // For Ollama
+
+    init(provider: STTProvider, apiKey: String = "", model: String? = nil, endpoint: String? = nil) {
+        self.provider = provider
+        self.apiKey = apiKey
+        self.model = model ?? provider.defaultModel
+        self.endpoint = endpoint
+    }
 }
 
 // MARK: - LLM Provider

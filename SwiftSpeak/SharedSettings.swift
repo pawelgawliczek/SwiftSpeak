@@ -26,6 +26,12 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    @Published var configuredSTTProviders: [STTProviderConfig] = [] {
+        didSet {
+            saveConfiguredProviders()
+        }
+    }
+
     @Published var selectedMode: FormattingMode = .raw {
         didSet {
             defaults?.set(selectedMode.rawValue, forKey: Constants.Keys.selectedMode)
@@ -156,6 +162,60 @@ class SharedSettings: ObservableObject {
            let tier = SubscriptionTier(rawValue: tierRaw) {
             subscriptionTier = tier
         }
+
+        // Load configured STT providers
+        loadConfiguredProviders()
+    }
+
+    // MARK: - STT Provider Management
+    private func loadConfiguredProviders() {
+        if let data = defaults?.data(forKey: Constants.Keys.configuredSTTProviders),
+           let providers = try? JSONDecoder().decode([STTProviderConfig].self, from: data) {
+            configuredSTTProviders = providers
+        } else {
+            // Default: OpenAI Whisper with any existing API key
+            let defaultConfig = STTProviderConfig(
+                provider: .openAI,
+                apiKey: openAIAPIKey ?? "",
+                model: STTProvider.openAI.defaultModel
+            )
+            configuredSTTProviders = [defaultConfig]
+        }
+    }
+
+    private func saveConfiguredProviders() {
+        if let data = try? JSONEncoder().encode(configuredSTTProviders) {
+            defaults?.set(data, forKey: Constants.Keys.configuredSTTProviders)
+        }
+    }
+
+    func addSTTProvider(_ config: STTProviderConfig) {
+        // Don't add duplicates
+        guard !configuredSTTProviders.contains(where: { $0.provider == config.provider }) else { return }
+        configuredSTTProviders.append(config)
+    }
+
+    func updateSTTProvider(_ config: STTProviderConfig) {
+        if let index = configuredSTTProviders.firstIndex(where: { $0.provider == config.provider }) {
+            configuredSTTProviders[index] = config
+        }
+    }
+
+    func removeSTTProvider(_ provider: STTProvider) {
+        configuredSTTProviders.removeAll { $0.provider == provider }
+        // If we removed the selected provider, select the first available
+        if selectedProvider == provider, let first = configuredSTTProviders.first {
+            selectedProvider = first.provider
+        }
+    }
+
+    func getSTTProviderConfig(for provider: STTProvider) -> STTProviderConfig? {
+        configuredSTTProviders.first { $0.provider == provider }
+    }
+
+    var availableProvidersToAdd: [STTProvider] {
+        let configuredProviderTypes = Set(configuredSTTProviders.map { $0.provider })
+        return STTProvider.allCases.filter { !configuredProviderTypes.contains($0) }
     }
 
     // MARK: - Helper Methods

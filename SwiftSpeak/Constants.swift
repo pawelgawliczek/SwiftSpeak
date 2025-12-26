@@ -18,6 +18,7 @@ enum Constants {
     enum Keys {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let selectedProvider = "selectedProvider"
+        static let configuredSTTProviders = "configuredSTTProviders"
         static let openAIAPIKey = "openAIAPIKey"
         static let anthropicAPIKey = "anthropicAPIKey"
         static let elevenLabsAPIKey = "elevenLabsAPIKey"
