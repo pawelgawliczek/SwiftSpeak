@@ -168,9 +168,9 @@ struct PowerModeCard: View {
                 // Icon
                 Image(systemName: powerMode.icon)
                     .font(.title2)
-                    .foregroundStyle(AppTheme.powerGradient)
+                    .foregroundStyle(powerMode.iconColor.gradient)
                     .frame(width: 44, height: 44)
-                    .background(AppTheme.powerAccent.opacity(0.15))
+                    .background(powerMode.iconBackgroundColor.color.opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
                 // Content
@@ -207,7 +207,7 @@ struct PowerModeCard: View {
                 // Play button indicator
                 Image(systemName: "play.fill")
                     .font(.body)
-                    .foregroundStyle(AppTheme.powerAccent)
+                    .foregroundStyle(powerMode.iconColor.color)
             }
             .padding(14)
             .background(Color.primary.opacity(0.05))

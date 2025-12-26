@@ -16,6 +16,8 @@ struct PowerModeEditorView: View {
     // Form state
     @State private var name: String = ""
     @State private var icon: String = "bolt.fill"
+    @State private var iconColor: PowerModeColorPreset = .orange
+    @State private var iconBackgroundColor: PowerModeColorPreset = .orange
     @State private var instruction: String = ""
     @State private var outputFormat: String = ""
     @State private var enabledCapabilities: Set<PowerModeCapability> = []
@@ -39,6 +41,8 @@ struct PowerModeEditorView: View {
         if let mode = powerMode {
             _name = State(initialValue: mode.name)
             _icon = State(initialValue: mode.icon)
+            _iconColor = State(initialValue: mode.iconColor)
+            _iconBackgroundColor = State(initialValue: mode.iconBackgroundColor)
             _instruction = State(initialValue: mode.instruction)
             _outputFormat = State(initialValue: mode.outputFormat)
             _enabledCapabilities = State(initialValue: mode.enabledCapabilities)
@@ -87,7 +91,7 @@ struct PowerModeEditorView: View {
     // MARK: - Icon and Name Section
 
     private var iconAndNameSection: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 20) {
             // Icon button
             Button(action: {
                 HapticManager.selection()
@@ -96,16 +100,37 @@ struct PowerModeEditorView: View {
                 VStack(spacing: 8) {
                     Image(systemName: icon)
                         .font(.system(size: 40))
-                        .foregroundStyle(AppTheme.powerGradient)
+                        .foregroundStyle(iconColor.gradient)
                         .frame(width: 80, height: 80)
-                        .background(AppTheme.powerAccent.opacity(0.15))
+                        .background(iconBackgroundColor.color.opacity(0.15))
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
 
-                    Text("Tap to change")
+                    Text("Tap to change icon")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
+
+            // Color pickers
+            VStack(spacing: 12) {
+                // Icon color picker
+                ColorPickerRow(
+                    label: "Icon Color",
+                    selectedColor: $iconColor
+                )
+
+                Divider()
+                    .padding(.horizontal, 8)
+
+                // Background color picker
+                ColorPickerRow(
+                    label: "Background",
+                    selectedColor: $iconBackgroundColor
+                )
+            }
+            .padding(12)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
             // Name field
             TextField("Mode Name", text: $name)
@@ -207,6 +232,8 @@ struct PowerModeEditorView: View {
             id: powerMode?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespaces),
             icon: icon,
+            iconColor: iconColor,
+            iconBackgroundColor: iconBackgroundColor,
             instruction: instruction.trimmingCharacters(in: .whitespaces),
             outputFormat: outputFormat.trimmingCharacters(in: .whitespaces),
             enabledCapabilities: enabledCapabilities,
@@ -217,6 +244,49 @@ struct PowerModeEditorView: View {
         HapticManager.success()
         onSave(savedMode)
         dismiss()
+    }
+}
+
+// MARK: - Color Picker Row
+
+struct ColorPickerRow: View {
+    let label: String
+    @Binding var selectedColor: PowerModeColorPreset
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(PowerModeColorPreset.allCases) { colorPreset in
+                        Button(action: {
+                            HapticManager.selection()
+                            selectedColor = colorPreset
+                        }) {
+                            Circle()
+                                .fill(colorPreset.gradient)
+                                .frame(width: 32, height: 32)
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(selectedColor == colorPreset ? Color.white : Color.clear, lineWidth: 2)
+                                )
+                                .overlay(
+                                    Circle()
+                                        .strokeBorder(selectedColor == colorPreset ? colorPreset.color : Color.clear, lineWidth: 4)
+                                        .scaleEffect(1.25)
+                                )
+                                .scaleEffect(selectedColor == colorPreset ? 1.1 : 1.0)
+                                .animation(AppTheme.quickSpring, value: selectedColor)
+                        }
+                    }
+                }
+                .padding(.horizontal, 4)
+                .padding(.vertical, 4)
+            }
+        }
     }
 }
 

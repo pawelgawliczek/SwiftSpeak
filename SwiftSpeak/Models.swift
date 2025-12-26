@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftUI
 
 // MARK: - Subscription Tier
 enum SubscriptionTier: String, Codable, CaseIterable {
@@ -454,11 +455,63 @@ enum PowerModeCapability: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Power Mode Color Preset
+enum PowerModeColorPreset: String, Codable, CaseIterable, Identifiable {
+    case orange = "orange"
+    case blue = "blue"
+    case purple = "purple"
+    case pink = "pink"
+    case green = "green"
+    case red = "red"
+    case teal = "teal"
+    case indigo = "indigo"
+    case yellow = "yellow"
+    case mint = "mint"
+
+    var id: String { rawValue }
+
+    var color: Color {
+        switch self {
+        case .orange: return .orange
+        case .blue: return .blue
+        case .purple: return .purple
+        case .pink: return .pink
+        case .green: return .green
+        case .red: return .red
+        case .teal: return .teal
+        case .indigo: return .indigo
+        case .yellow: return .yellow
+        case .mint: return .mint
+        }
+    }
+
+    var gradient: LinearGradient {
+        switch self {
+        case .orange: return LinearGradient(colors: [.orange, .yellow], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .blue: return LinearGradient(colors: [.blue, .cyan], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .purple: return LinearGradient(colors: [.purple, .pink], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .pink: return LinearGradient(colors: [.pink, .red.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .green: return LinearGradient(colors: [.green, .mint], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .red: return LinearGradient(colors: [.red, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .teal: return LinearGradient(colors: [.teal, .blue], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .indigo: return LinearGradient(colors: [.indigo, .purple], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .yellow: return LinearGradient(colors: [.yellow, .orange], startPoint: .topLeading, endPoint: .bottomTrailing)
+        case .mint: return LinearGradient(colors: [.mint, .green], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+
+    var displayName: String {
+        rawValue.capitalized
+    }
+}
+
 // MARK: - Power Mode
 struct PowerMode: Codable, Identifiable, Equatable {
     let id: UUID
     var name: String
     var icon: String
+    var iconColor: PowerModeColorPreset
+    var iconBackgroundColor: PowerModeColorPreset
     var instruction: String
     var outputFormat: String
     var enabledCapabilities: Set<PowerModeCapability>
@@ -470,6 +523,8 @@ struct PowerMode: Codable, Identifiable, Equatable {
         id: UUID = UUID(),
         name: String,
         icon: String = "bolt.fill",
+        iconColor: PowerModeColorPreset = .orange,
+        iconBackgroundColor: PowerModeColorPreset = .orange,
         instruction: String = "",
         outputFormat: String = "",
         enabledCapabilities: Set<PowerModeCapability> = [],
@@ -480,6 +535,8 @@ struct PowerMode: Codable, Identifiable, Equatable {
         self.id = id
         self.name = name
         self.icon = icon
+        self.iconColor = iconColor
+        self.iconBackgroundColor = iconBackgroundColor
         self.instruction = instruction
         self.outputFormat = outputFormat
         self.enabledCapabilities = enabledCapabilities
@@ -493,6 +550,8 @@ struct PowerMode: Codable, Identifiable, Equatable {
         PowerMode(
             name: "Research Assistant",
             icon: "magnifyingglass.circle.fill",
+            iconColor: .blue,
+            iconBackgroundColor: .blue,
             instruction: """
             You are a research assistant. Help me find accurate, up-to-date information on the topic I describe.
             Cite sources when possible. Be thorough but concise.
@@ -504,6 +563,8 @@ struct PowerMode: Codable, Identifiable, Equatable {
         PowerMode(
             name: "Email Composer",
             icon: "envelope.fill",
+            iconColor: .purple,
+            iconBackgroundColor: .purple,
             instruction: """
             You are an email writing assistant. Help me compose professional emails based on my voice input.
             Understand the context and tone I want to convey. Ask clarifying questions if needed.
@@ -514,6 +575,8 @@ struct PowerMode: Codable, Identifiable, Equatable {
         PowerMode(
             name: "Daily Planner",
             icon: "calendar",
+            iconColor: .green,
+            iconBackgroundColor: .green,
             instruction: """
             You are a daily planning assistant. Help me organize my day based on what I tell you.
             Consider priorities, time constraints, and suggest optimal scheduling.
@@ -524,6 +587,8 @@ struct PowerMode: Codable, Identifiable, Equatable {
         PowerMode(
             name: "Idea Expander",
             icon: "lightbulb.fill",
+            iconColor: .yellow,
+            iconBackgroundColor: .yellow,
             instruction: """
             You are a creative brainstorming partner. Take my initial idea and help expand it.
             Explore different angles, potential challenges, and opportunities.
