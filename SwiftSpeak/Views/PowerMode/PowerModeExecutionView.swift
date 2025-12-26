@@ -187,10 +187,13 @@ struct PowerModeExecutionView: View {
 
     private var idleView: some View {
         VStack(spacing: 24) {
-            // Mode icon and name
+            // Mode icon and name - uses custom colors
             Image(systemName: powerMode.icon)
                 .font(.system(size: 48))
-                .foregroundStyle(AppTheme.powerGradient)
+                .foregroundStyle(powerMode.iconColor.gradient)
+                .frame(width: 80, height: 80)
+                .background(powerMode.iconBackgroundColor.color.opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
 
             Text(powerMode.name)
                 .font(.title2.weight(.semibold))
