@@ -330,12 +330,15 @@ struct DefaultsSettingsSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
 
+    @State private var showProviderPicker = false
+    @State private var showLanguagePicker = false
+
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
     }
 
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    private var currentModel: String {
+        settings.getSTTProviderConfig(for: settings.selectedProvider)?.model ?? settings.selectedProvider.defaultModel
     }
 
     var body: some View {
@@ -343,89 +346,61 @@ struct DefaultsSettingsSheet: View {
             ZStack {
                 backgroundColor.ignoresSafeArea()
 
-                List {
-                    // Transcription Provider
-                    Section {
-                        HStack {
-                            Label {
-                                Text("Provider")
-                            } icon: {
-                                Image(systemName: settings.selectedProvider.icon)
-                                    .foregroundStyle(AppTheme.accent)
-                            }
-
-                            Spacer()
-
-                            Text(settings.selectedProvider.displayName)
-                                .foregroundStyle(.secondary)
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Transcription Section
+                        SettingsSection(title: "TRANSCRIPTION", icon: "waveform", iconColor: AppTheme.accent) {
+                            SettingsInfoRow(
+                                label: "Provider",
+                                value: settings.selectedProvider.displayName,
+                                detail: currentModel
+                            )
                         }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Transcription")
-                    }
 
-                    // Translation Settings
-                    Section {
-                        // Target Language
-                        NavigationLink {
-                            LanguagePickerView(selectedLanguage: $settings.selectedTargetLanguage)
-                        } label: {
-                            HStack {
-                                Label {
-                                    Text("Target Language")
-                                } icon: {
-                                    Text(settings.selectedTargetLanguage.flag)
+                        // Translation Section
+                        SettingsSection(title: "TRANSLATION", icon: "globe", iconColor: .pink) {
+                            VStack(spacing: 12) {
+                                Button(action: {
+                                    HapticManager.lightTap()
+                                    showLanguagePicker = true
+                                }) {
+                                    SettingsInfoRow(
+                                        label: "Language",
+                                        value: settings.selectedTargetLanguage.displayName,
+                                        detail: settings.selectedTargetLanguage.flag,
+                                        showChevron: true
+                                    )
                                 }
+                                .buttonStyle(.plain)
 
-                                Spacer()
+                                Divider()
+                                    .padding(.horizontal, 8)
 
-                                Text(settings.selectedTargetLanguage.displayName)
+                                SettingsModelPicker(
+                                    label: "AI Model",
+                                    selection: $settings.selectedTranslationProvider
+                                )
+                            }
+                        }
+
+                        // Formatting Section
+                        SettingsSection(title: "FORMATTING", icon: "text.badge.star", iconColor: .orange) {
+                            VStack(spacing: 8) {
+                                SettingsModelPicker(
+                                    label: "AI Model",
+                                    selection: $settings.selectedModeProvider
+                                )
+
+                                Text("Used for Email, Formal, and Casual modes")
+                                    .font(.caption)
                                     .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 8)
                             }
                         }
-                        .listRowBackground(rowBackground)
-
-                        // Translation LLM
-                        Picker(selection: $settings.selectedTranslationProvider) {
-                            ForEach(LLMProvider.allCases) { provider in
-                                Text(provider.displayName).tag(provider)
-                            }
-                        } label: {
-                            Label {
-                                Text("AI Model")
-                            } icon: {
-                                Image(systemName: "sparkles")
-                                    .foregroundStyle(.purple)
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Translation")
                     }
-
-                    // Mode Settings
-                    Section {
-                        Picker(selection: $settings.selectedModeProvider) {
-                            ForEach(LLMProvider.allCases) { provider in
-                                Text(provider.displayName).tag(provider)
-                            }
-                        } label: {
-                            Label {
-                                Text("AI Model")
-                            } icon: {
-                                Image(systemName: "text.badge.star")
-                                    .foregroundStyle(.orange)
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Formatting Mode")
-                    } footer: {
-                        Text("Used when applying Email, Formal, or Casual formatting to your transcription.")
-                    }
+                    .padding(20)
                 }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
             }
             .navigationTitle("Defaults")
             .navigationBarTitleDisplayMode(.inline)
@@ -436,6 +411,136 @@ struct DefaultsSettingsSheet: View {
                     }
                     .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $showLanguagePicker) {
+                LanguagePickerSheet(selectedLanguage: $settings.selectedTargetLanguage)
+                    .presentationDetents([.medium, .large])
+            }
+        }
+    }
+}
+
+// MARK: - Settings Section
+struct SettingsSection<Content: View>: View {
+    let title: String
+    let icon: String
+    let iconColor: Color
+    @ViewBuilder let content: Content
+    @Environment(\.colorScheme) var colorScheme
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(iconColor)
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .tracking(1)
+            }
+            .padding(.leading, 4)
+
+            // Content Card
+            VStack(spacing: 0) {
+                content
+            }
+            .padding(16)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+}
+
+// MARK: - Settings Info Row
+struct SettingsInfoRow: View {
+    let label: String
+    let value: String
+    var detail: String? = nil
+    var showChevron: Bool = false
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                if let detail = detail {
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                }
+
+                Text(value)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                if showChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Settings Model Picker
+struct SettingsModelPicker: View {
+    let label: String
+    @Binding var selection: LLMProvider
+    @Environment(\.colorScheme) var colorScheme
+
+    private var pickerBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+    }
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Menu {
+                ForEach(LLMProvider.allCases) { provider in
+                    Button(action: {
+                        HapticManager.selection()
+                        selection = provider
+                    }) {
+                        HStack {
+                            Text(provider.displayName)
+                            if selection == provider {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: selection.icon)
+                        .font(.caption)
+                    Text(selection.shortName)
+                        .font(.subheadline.weight(.medium))
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(pickerBackground)
+                .clipShape(Capsule())
             }
         }
     }
