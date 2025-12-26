@@ -9,9 +9,16 @@ import SwiftUI
 
 struct HistoryView: View {
     @EnvironmentObject var settings: SharedSettings
+    @Environment(\.colorScheme) var colorScheme
     @State private var searchText = ""
     @State private var selectedRecord: TranscriptionRecord?
     @State private var showDeleteConfirmation = false
+    @State private var isSelecting = false
+    @State private var selectedRecords: Set<UUID> = []
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
 
     var filteredHistory: [TranscriptionRecord] {
         if searchText.isEmpty {
@@ -26,60 +33,164 @@ struct HistoryView: View {
         NavigationStack {
             ZStack {
                 // Background
-                AppTheme.darkBase.ignoresSafeArea()
+                backgroundColor.ignoresSafeArea()
 
                 if settings.transcriptionHistory.isEmpty {
                     EmptyHistoryView()
                 } else {
                     List {
                         ForEach(filteredHistory) { record in
-                            HistoryRowView(record: record)
-                                .listRowBackground(Color.white.opacity(0.05))
-                                .listRowSeparator(.hidden)
-                                .onTapGesture {
-                                    HapticManager.lightTap()
-                                    selectedRecord = record
+                            HStack(spacing: 12) {
+                                // Selection checkbox
+                                if isSelecting {
+                                    Image(systemName: selectedRecords.contains(record.id) ? "checkmark.circle.fill" : "circle")
+                                        .font(.title3)
+                                        .foregroundStyle(selectedRecords.contains(record.id) ? AppTheme.accent : .secondary)
+                                        .onTapGesture {
+                                            HapticManager.lightTap()
+                                            toggleSelection(record.id)
+                                        }
                                 }
+
+                                HistoryRowView(record: record, colorScheme: colorScheme)
+                                    .onTapGesture {
+                                        if isSelecting {
+                                            HapticManager.lightTap()
+                                            toggleSelection(record.id)
+                                        } else {
+                                            HapticManager.lightTap()
+                                            selectedRecord = record
+                                        }
+                                    }
+                            }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
                         }
                         .onDelete(perform: deleteRecords)
                     }
                     .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
                     .searchable(text: $searchText, prompt: "Search transcriptions")
+                }
+
+                // Bottom action bar when selecting
+                if isSelecting && !selectedRecords.isEmpty {
+                    VStack {
+                        Spacer()
+
+                        HStack(spacing: 16) {
+                            Button(action: {
+                                HapticManager.lightTap()
+                                selectedRecords = Set(filteredHistory.map { $0.id })
+                            }) {
+                                Text("Select All")
+                                    .font(.footnote.weight(.medium))
+                                    .foregroundStyle(AppTheme.accent)
+                            }
+
+                            Spacer()
+
+                            Text("\(selectedRecords.count) selected")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            Button(action: {
+                                HapticManager.mediumTap()
+                                showDeleteConfirmation = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "trash")
+                                    Text("Delete")
+                                }
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background(Color.red)
+                                .clipShape(Capsule())
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial)
+                    }
                 }
             }
             .navigationTitle("History")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 if !settings.transcriptionHistory.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .topBarLeading) {
                         Button(action: {
                             HapticManager.lightTap()
-                            showDeleteConfirmation = true
+                            withAnimation {
+                                isSelecting.toggle()
+                                if !isSelecting {
+                                    selectedRecords.removeAll()
+                                }
+                            }
                         }) {
-                            Image(systemName: "trash")
-                                .foregroundStyle(.red)
+                            Text(isSelecting ? "Cancel" : "Select")
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button(action: {
+                                HapticManager.lightTap()
+                                showDeleteConfirmation = true
+                            }) {
+                                Label("Clear All History", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .foregroundStyle(AppTheme.accent)
                         }
                     }
                 }
             }
             .sheet(item: $selectedRecord) { record in
                 HistoryDetailView(record: record)
+                    .environmentObject(settings)
             }
-            .alert("Clear History", isPresented: $showDeleteConfirmation) {
+            .alert(isSelecting ? "Delete Selected" : "Clear History", isPresented: $showDeleteConfirmation) {
                 Button("Cancel", role: .cancel) { }
-                Button("Clear All", role: .destructive) {
-                    settings.clearHistory()
+                Button(isSelecting ? "Delete \(selectedRecords.count)" : "Clear All", role: .destructive) {
+                    if isSelecting {
+                        deleteSelectedRecords()
+                    } else {
+                        settings.clearHistory()
+                    }
                 }
             } message: {
-                Text("This will permanently delete all transcription history.")
+                Text(isSelecting
+                     ? "This will permanently delete \(selectedRecords.count) transcription\(selectedRecords.count == 1 ? "" : "s")."
+                     : "This will permanently delete all transcription history.")
             }
         }
     }
 
+    private func toggleSelection(_ id: UUID) {
+        if selectedRecords.contains(id) {
+            selectedRecords.remove(id)
+        } else {
+            selectedRecords.insert(id)
+        }
+    }
+
     private func deleteRecords(at offsets: IndexSet) {
-        var history = settings.transcriptionHistory
-        history.remove(atOffsets: offsets)
-        settings.transcriptionHistory = history
+        let recordsToDelete = offsets.map { filteredHistory[$0].id }
+        settings.transcriptionHistory.removeAll { recordsToDelete.contains($0.id) }
+    }
+
+    private func deleteSelectedRecords() {
+        HapticManager.success()
+        settings.transcriptionHistory.removeAll { selectedRecords.contains($0.id) }
+        selectedRecords.removeAll()
+        isSelecting = false
     }
 }
 
@@ -109,6 +220,11 @@ struct EmptyHistoryView: View {
 // MARK: - History Row View
 struct HistoryRowView: View {
     let record: TranscriptionRecord
+    let colorScheme: ColorScheme
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -124,7 +240,7 @@ struct HistoryRowView: View {
                 .foregroundStyle(AppTheme.accent)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
-                .background(AppTheme.accent.opacity(0.2))
+                .background(AppTheme.accent.opacity(0.15))
                 .clipShape(Capsule())
 
                 if record.translated {
@@ -137,7 +253,7 @@ struct HistoryRowView: View {
                     .foregroundStyle(.purple)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.purple.opacity(0.2))
+                    .background(Color.purple.opacity(0.15))
                     .clipShape(Capsule())
                 }
 
@@ -176,8 +292,9 @@ struct HistoryRowView: View {
             }
         }
         .padding(16)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
         .padding(.vertical, 4)
     }
 
@@ -201,12 +318,24 @@ struct HistoryRowView: View {
 struct HistoryDetailView: View {
     let record: TranscriptionRecord
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+    @EnvironmentObject var settings: SharedSettings
     @State private var copied = false
+    @State private var isReprocessing = false
+    @State private var selectedMode: FormattingMode?
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
 
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBase.ignoresSafeArea()
+                backgroundColor.ignoresSafeArea()
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -222,8 +351,9 @@ struct HistoryDetailView: View {
                             }
                         }
                         .padding(16)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
 
                         // Text content
                         VStack(alignment: .leading, spacing: 12) {
@@ -237,8 +367,58 @@ struct HistoryDetailView: View {
                                 .textSelection(.enabled)
                         }
                         .padding(16)
-                        .background(Color.white.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
+
+                        // Reprocess with different mode
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Reprocess with Different Mode")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.secondary)
+
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                                ForEach(FormattingMode.allCases.filter { $0 != record.mode }) { mode in
+                                    Button(action: {
+                                        reprocessWithMode(mode)
+                                    }) {
+                                        HStack(spacing: 8) {
+                                            Image(systemName: mode.icon)
+                                                .font(.caption)
+                                            Text(mode.displayName)
+                                                .font(.footnote.weight(.medium))
+                                        }
+                                        .foregroundStyle(selectedMode == mode ? .white : AppTheme.accent)
+                                        .frame(maxWidth: .infinity)
+                                        .frame(minHeight: 40)
+                                        .background(
+                                            selectedMode == mode
+                                                ? AppTheme.accent
+                                                : AppTheme.accent.opacity(0.15)
+                                        )
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .disabled(isReprocessing)
+                                }
+                            }
+
+                            if isReprocessing {
+                                HStack {
+                                    ProgressView()
+                                        .scaleEffect(0.8)
+                                    Text("Reprocessing...")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.top, 8)
+                            }
+                        }
+                        .padding(16)
+                        .background(cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
 
                         // Copy button
                         Button(action: copyText) {
@@ -246,20 +426,15 @@ struct HistoryDetailView: View {
                                 Image(systemName: copied ? "checkmark" : "doc.on.doc")
                                 Text(copied ? "Copied!" : "Copy to Clipboard")
                             }
-                            .font(.callout.weight(.medium))
+                            .font(.body.weight(.semibold))
                             .foregroundStyle(.white)
                             .frame(maxWidth: .infinity)
-                            .frame(minHeight: 44)
-                            .padding(.vertical, 6)
-                            .background(
-                                LinearGradient(
-                                    colors: copied ? [.green, .green] : [AppTheme.accent, AppTheme.accentSecondary],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                            .frame(minHeight: 50)
+                            .background(copied ? Color.green : AppTheme.accent)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(color: (copied ? Color.green : AppTheme.accent).opacity(0.3), radius: 8, y: 4)
                         }
+                        .buttonStyle(.plain)
                     }
                     .padding(24)
                 }
@@ -276,6 +451,36 @@ struct HistoryDetailView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+    }
+
+    private func reprocessWithMode(_ mode: FormattingMode) {
+        HapticManager.mediumTap()
+        selectedMode = mode
+        isReprocessing = true
+
+        // Simulate reprocessing delay (in real app, this would call the formatting API)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Create new record with the new mode
+            let newRecord = TranscriptionRecord(
+                text: record.text, // In real app, this would be reformatted text from API
+                mode: mode,
+                provider: record.provider,
+                duration: record.duration,
+                translated: record.translated,
+                targetLanguage: record.targetLanguage
+            )
+
+            // Add to history
+            settings.transcriptionHistory.insert(newRecord, at: 0)
+
+            HapticManager.success()
+            isReprocessing = false
+
+            // Dismiss after short delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                dismiss()
+            }
+        }
     }
 
     private var formattedFullDate: String {
@@ -333,7 +538,71 @@ struct MetadataRow: View {
     }
 }
 
-#Preview {
+// MARK: - Preview Helpers
+extension TranscriptionRecord {
+    static var sampleData: [TranscriptionRecord] {
+        [
+            TranscriptionRecord(
+                text: "Hello, this is a test transcription. I'm speaking naturally and the app is converting my speech to text in real time.",
+                mode: .raw,
+                provider: .openAI,
+                duration: 12.5
+            ),
+            TranscriptionRecord(
+                text: "Dear Mr. Johnson, I hope this email finds you well. I wanted to follow up on our meeting last week regarding the Q4 roadmap.",
+                mode: .email,
+                provider: .openAI,
+                duration: 25.3
+            ),
+            TranscriptionRecord(
+                text: "Hola, esto es una prueba de traducción al español.",
+                mode: .raw,
+                provider: .openAI,
+                duration: 8.2,
+                translated: true,
+                targetLanguage: .spanish
+            ),
+            TranscriptionRecord(
+                text: "Quick voice memo: Remember to call the doctor tomorrow at 3pm and pick up groceries on the way home.",
+                mode: .casual,
+                provider: .openAI,
+                duration: 6.1
+            ),
+            TranscriptionRecord(
+                text: "The committee hereby resolves to adopt the proposed amendments to the bylaws, effective immediately upon ratification.",
+                mode: .formal,
+                provider: .openAI,
+                duration: 15.7
+            )
+        ]
+    }
+}
+
+// MARK: - Previews
+#Preview("Empty - Dark") {
     HistoryView()
         .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Empty - Light") {
+    HistoryView()
+        .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.light)
+}
+
+#Preview("With Data - Dark") {
+    let settings = SharedSettings.shared
+    settings.transcriptionHistory = TranscriptionRecord.sampleData
+    return HistoryView()
+        .environmentObject(settings)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("With Data - Light") {
+    let settings = SharedSettings.shared
+    settings.transcriptionHistory = TranscriptionRecord.sampleData
+    return HistoryView()
+        .environmentObject(settings)
+        .preferredColorScheme(.light)
 }
