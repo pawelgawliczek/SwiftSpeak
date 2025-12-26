@@ -543,8 +543,8 @@ struct ProviderRow: View {
     }
 }
 
-// MARK: - Configured Provider Row
-struct ConfiguredProviderRow: View {
+// MARK: - Configured STT Provider Row
+struct ConfiguredSTTProviderRow: View {
     let config: STTProviderConfig
     let isSelected: Bool
     let colorScheme: ColorScheme
@@ -616,8 +616,79 @@ struct ConfiguredProviderRow: View {
     }
 }
 
-// MARK: - Add Provider Sheet
-struct AddProviderSheet: View {
+// MARK: - Configured LLM Provider Row
+struct ConfiguredLLMProviderRow: View {
+    let config: LLMProviderConfig
+    let colorScheme: ColorScheme
+    let onEdit: () -> Void
+
+    var body: some View {
+        Button(action: {
+            HapticManager.lightTap()
+            onEdit()
+        }) {
+            HStack(spacing: 12) {
+                // Provider icon
+                Image(systemName: config.provider.icon)
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+                    .frame(width: 32, height: 32)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                // Provider info
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(config.provider.displayName)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    HStack(spacing: 6) {
+                        Text(config.model)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if config.provider.requiresAPIKey {
+                            Circle()
+                                .fill(config.apiKey.isEmpty ? .orange : .green)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+
+                    // Usage categories
+                    HStack(spacing: 4) {
+                        ForEach(Array(config.usageCategories).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { category in
+                            Text(category.displayName)
+                                .font(.caption2)
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(categoryColor(for: category))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func categoryColor(for category: ProviderUsageCategory) -> Color {
+        switch category {
+        case .transcription: return .blue
+        case .translation: return .purple
+        case .powerMode: return .orange
+        }
+    }
+}
+
+// MARK: - Add STT Provider Sheet
+struct AddSTTProviderSheet: View {
     let availableProviders: [STTProvider]
     let onSelect: (STTProvider) -> Void
     @Environment(\.dismiss) private var dismiss
@@ -692,8 +763,84 @@ struct AddProviderSheet: View {
     }
 }
 
-// MARK: - Provider Editor Sheet
-struct ProviderEditorSheet: View {
+// MARK: - Add LLM Provider Sheet
+struct AddLLMProviderSheet: View {
+    let availableProviders: [LLMProvider]
+    let onSelect: (LLMProvider) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    Section {
+                        ForEach(availableProviders) { provider in
+                            Button(action: {
+                                HapticManager.selection()
+                                onSelect(provider)
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: provider.icon)
+                                        .font(.title3)
+                                        .foregroundStyle(.orange)
+                                        .frame(width: 40, height: 40)
+                                        .background(Color.orange.opacity(0.15))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(provider.displayName)
+                                            .font(.callout.weight(.medium))
+                                            .foregroundStyle(.primary)
+
+                                        Text(provider.description)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+                    } header: {
+                        Text("Available AI Models")
+                    } footer: {
+                        Text("Add an AI model for translation and Power Mode features. You can enable specific categories when configuring the model.")
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Add AI Model")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
+// MARK: - STT Provider Editor Sheet
+struct STTProviderEditorSheet: View {
     let config: STTProviderConfig
     let isEditing: Bool
     let onSave: (STTProviderConfig) -> Void
@@ -895,6 +1042,271 @@ struct ProviderEditorSheet: View {
         var updatedConfig = config
         updatedConfig.apiKey = apiKey
         updatedConfig.model = selectedModel
+        if config.provider == .ollama {
+            updatedConfig.endpoint = endpoint
+        }
+
+        onSave(updatedConfig)
+        dismiss()
+    }
+}
+
+// MARK: - LLM Provider Editor Sheet
+struct LLMProviderEditorSheet: View {
+    let config: LLMProviderConfig
+    let isEditing: Bool
+    let onSave: (LLMProviderConfig) -> Void
+    let onDelete: (() -> Void)?
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    @State private var apiKey: String = ""
+    @State private var selectedModel: String = ""
+    @State private var endpoint: String = ""
+    @State private var usageCategories: Set<ProviderUsageCategory> = []
+    @State private var showDeleteConfirmation = false
+    @State private var showInstructions = false
+
+    init(config: LLMProviderConfig, isEditing: Bool, onSave: @escaping (LLMProviderConfig) -> Void, onDelete: (() -> Void)? = nil) {
+        self.config = config
+        self.isEditing = isEditing
+        self.onSave = onSave
+        self.onDelete = onDelete
+    }
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    private var canSave: Bool {
+        let hasCredentials: Bool
+        if config.provider.requiresAPIKey {
+            hasCredentials = !apiKey.isEmpty
+        } else {
+            hasCredentials = !endpoint.isEmpty
+        }
+        return hasCredentials && !usageCategories.isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    // Provider Info Header
+                    Section {
+                        HStack(spacing: 16) {
+                            Image(systemName: config.provider.icon)
+                                .font(.title)
+                                .foregroundStyle(.orange)
+                                .frame(width: 56, height: 56)
+                                .background(Color.orange.opacity(0.15))
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(config.provider.displayName)
+                                    .font(.title3.weight(.semibold))
+
+                                Text(config.provider.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+                    }
+
+                    // API Key or Endpoint Section
+                    Section {
+                        if config.provider.requiresAPIKey {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("API Key")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                SecureField("Enter your API key", text: $apiKey)
+                                    .textContentType(.password)
+                                    .autocorrectionDisabled()
+                            }
+                            .listRowBackground(rowBackground)
+                        } else {
+                            // Ollama endpoint
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Server Address")
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                TextField("http://localhost:11434", text: $endpoint)
+                                    .textContentType(.URL)
+                                    .autocapitalization(.none)
+                                    .autocorrectionDisabled()
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+                    } header: {
+                        Text("Configuration")
+                    }
+
+                    // Model Selection
+                    Section {
+                        Picker("Model", selection: $selectedModel) {
+                            ForEach(config.provider.availableModels, id: \.self) { model in
+                                Text(model).tag(model)
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Model")
+                    }
+
+                    // Usage Categories Section
+                    Section {
+                        ForEach(ProviderUsageCategory.allCases) { category in
+                            Button(action: {
+                                HapticManager.selection()
+                                if usageCategories.contains(category) {
+                                    usageCategories.remove(category)
+                                } else {
+                                    usageCategories.insert(category)
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: category.icon)
+                                        .font(.body)
+                                        .foregroundStyle(categoryColor(for: category))
+                                        .frame(width: 24)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(category.displayName)
+                                            .font(.callout.weight(.medium))
+                                            .foregroundStyle(.primary)
+
+                                        Text(category.description)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: usageCategories.contains(category) ? "checkmark.circle.fill" : "circle")
+                                        .font(.title3)
+                                        .foregroundStyle(usageCategories.contains(category) ? categoryColor(for: category) : Color.secondary.opacity(0.3))
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .listRowBackground(rowBackground)
+                        }
+                    } header: {
+                        Text("Use For")
+                    } footer: {
+                        Text("Select which features should use this AI model. At least one category is required.")
+                    }
+
+                    // Setup Instructions
+                    Section {
+                        DisclosureGroup("How to get your API key", isExpanded: $showInstructions) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text(config.provider.setupInstructions)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+
+                                if let helpURL = config.provider.apiKeyHelpURL {
+                                    Button(action: {
+                                        UIApplication.shared.open(helpURL)
+                                    }) {
+                                        HStack {
+                                            Image(systemName: "arrow.up.right.square")
+                                            Text("Open \(config.provider.shortName) Dashboard")
+                                        }
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.orange)
+                                    }
+                                    .padding(.top, 4)
+                                }
+                            }
+                            .padding(.vertical, 8)
+                        }
+                        .listRowBackground(rowBackground)
+                    }
+
+                    // Delete Section (only for existing providers, not OpenAI default)
+                    if isEditing && config.provider != .openAI && onDelete != nil {
+                        Section {
+                            Button(role: .destructive, action: {
+                                showDeleteConfirmation = true
+                            }) {
+                                HStack {
+                                    Spacer()
+                                    Text("Remove AI Model")
+                                    Spacer()
+                                }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle(isEditing ? "Edit AI Model" : "Add AI Model")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") {
+                        saveProvider()
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(!canSave)
+                }
+            }
+            .onAppear {
+                loadConfig()
+            }
+            .alert("Remove AI Model?", isPresented: $showDeleteConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Remove", role: .destructive) {
+                    onDelete?()
+                    dismiss()
+                }
+            } message: {
+                Text("This will remove \(config.provider.displayName) from your configured AI models.")
+            }
+        }
+    }
+
+    private func categoryColor(for category: ProviderUsageCategory) -> Color {
+        switch category {
+        case .transcription: return .blue
+        case .translation: return .purple
+        case .powerMode: return .orange
+        }
+    }
+
+    private func loadConfig() {
+        apiKey = config.apiKey
+        selectedModel = config.model
+        endpoint = config.endpoint ?? "http://localhost:11434"
+        usageCategories = config.usageCategories
+    }
+
+    private func saveProvider() {
+        var updatedConfig = config
+        updatedConfig.apiKey = apiKey
+        updatedConfig.model = selectedModel
+        updatedConfig.usageCategories = usageCategories
         if config.provider == .ollama {
             updatedConfig.endpoint = endpoint
         }
@@ -1143,16 +1555,16 @@ struct SettingsPreviewWrapper: View {
     SettingsPreviewWrapper(tier: .power, colorScheme: .light)
 }
 
-// MARK: - Provider Sheet Previews
-#Preview("Add Provider Sheet") {
-    AddProviderSheet(
+// MARK: - STT Provider Sheet Previews
+#Preview("Add STT Provider Sheet") {
+    AddSTTProviderSheet(
         availableProviders: [.elevenLabs, .deepgram, .ollama],
         onSelect: { _ in }
     )
 }
 
-#Preview("Provider Editor - OpenAI") {
-    ProviderEditorSheet(
+#Preview("STT Provider Editor - OpenAI") {
+    STTProviderEditorSheet(
         config: STTProviderConfig(provider: .openAI, apiKey: "sk-xxx", model: "whisper-1"),
         isEditing: true,
         onSave: { _ in },
@@ -1160,8 +1572,8 @@ struct SettingsPreviewWrapper: View {
     )
 }
 
-#Preview("Provider Editor - ElevenLabs (New)") {
-    ProviderEditorSheet(
+#Preview("STT Provider Editor - ElevenLabs (New)") {
+    STTProviderEditorSheet(
         config: STTProviderConfig(provider: .elevenLabs),
         isEditing: false,
         onSave: { _ in },
@@ -1169,8 +1581,8 @@ struct SettingsPreviewWrapper: View {
     )
 }
 
-#Preview("Provider Editor - Deepgram") {
-    ProviderEditorSheet(
+#Preview("STT Provider Editor - Deepgram") {
+    STTProviderEditorSheet(
         config: STTProviderConfig(provider: .deepgram, apiKey: "dg_xxx", model: "nova-2"),
         isEditing: true,
         onSave: { _ in },
@@ -1178,11 +1590,37 @@ struct SettingsPreviewWrapper: View {
     )
 }
 
-#Preview("Provider Editor - Ollama") {
-    ProviderEditorSheet(
+#Preview("STT Provider Editor - Ollama") {
+    STTProviderEditorSheet(
         config: STTProviderConfig(provider: .ollama, endpoint: "http://localhost:11434"),
         isEditing: true,
         onSave: { _ in },
         onDelete: { }
+    )
+}
+
+// MARK: - LLM Provider Sheet Previews
+#Preview("Add LLM Provider Sheet") {
+    AddLLMProviderSheet(
+        availableProviders: [.anthropic, .google, .ollama],
+        onSelect: { _ in }
+    )
+}
+
+#Preview("LLM Provider Editor - OpenAI") {
+    LLMProviderEditorSheet(
+        config: LLMProviderConfig(provider: .openAI, apiKey: "sk-xxx", usageCategories: [.translation, .powerMode]),
+        isEditing: true,
+        onSave: { _ in },
+        onDelete: nil
+    )
+}
+
+#Preview("LLM Provider Editor - Anthropic (New)") {
+    LLMProviderEditorSheet(
+        config: LLMProviderConfig(provider: .anthropic),
+        isEditing: false,
+        onSave: { _ in },
+        onDelete: nil
     )
 }

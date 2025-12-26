@@ -253,7 +253,7 @@ struct HomeView: View {
                     .presentationDetents([.medium])
             }
             .sheet(isPresented: $showProviderSetup) {
-                ProviderEditorSheet(
+                STTProviderEditorSheet(
                     config: settings.getSTTProviderConfig(for: settings.selectedProvider) ?? STTProviderConfig(provider: settings.selectedProvider),
                     isEditing: true,
                     onSave: { updatedConfig in
