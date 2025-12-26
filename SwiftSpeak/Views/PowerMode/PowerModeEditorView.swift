@@ -83,7 +83,11 @@ struct PowerModeEditorView: View {
                 }
             }
             .sheet(isPresented: $showingIconPicker) {
-                IconPicker(selectedIcon: $icon)
+                IconPicker(
+                    selectedIcon: $icon,
+                    iconColor: $iconColor,
+                    iconBackgroundColor: $iconBackgroundColor
+                )
             }
         }
     }
@@ -105,32 +109,11 @@ struct PowerModeEditorView: View {
                         .background(iconBackgroundColor.color.opacity(0.15))
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
 
-                    Text("Tap to change icon")
+                    Text("Tap to change icon & colors")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
-
-            // Color pickers
-            VStack(spacing: 12) {
-                // Icon color picker
-                ColorPickerRow(
-                    label: "Icon Color",
-                    selectedColor: $iconColor
-                )
-
-                Divider()
-                    .padding(.horizontal, 8)
-
-                // Background color picker
-                ColorPickerRow(
-                    label: "Background",
-                    selectedColor: $iconBackgroundColor
-                )
-            }
-            .padding(12)
-            .background(Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
             // Name field
             TextField("Mode Name", text: $name)

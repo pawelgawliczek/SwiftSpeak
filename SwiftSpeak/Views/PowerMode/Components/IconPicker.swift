@@ -9,6 +9,8 @@ import SwiftUI
 
 struct IconPicker: View {
     @Binding var selectedIcon: String
+    @Binding var iconColor: PowerModeColorPreset
+    @Binding var iconBackgroundColor: PowerModeColorPreset
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
 
@@ -74,6 +76,37 @@ struct IconPicker: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
+                    // Icon preview with colors
+                    VStack(spacing: 16) {
+                        // Large icon preview
+                        Image(systemName: selectedIcon)
+                            .font(.system(size: 48))
+                            .foregroundStyle(iconColor.gradient)
+                            .frame(width: 100, height: 100)
+                            .background(iconBackgroundColor.color.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+
+                        // Color pickers
+                        VStack(spacing: 12) {
+                            ColorPickerRow(
+                                label: "Icon Color",
+                                selectedColor: $iconColor
+                            )
+
+                            Divider()
+                                .padding(.horizontal, 8)
+
+                            ColorPickerRow(
+                                label: "Background",
+                                selectedColor: $iconBackgroundColor
+                            )
+                        }
+                        .padding(12)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    }
+                    .padding(.horizontal, 16)
+
                     // Search bar
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
@@ -161,6 +194,10 @@ private struct IconPickerButton: View {
 // MARK: - Preview
 
 #Preview {
-    IconPicker(selectedIcon: .constant("bolt.fill"))
-        .preferredColorScheme(.dark)
+    IconPicker(
+        selectedIcon: .constant("bolt.fill"),
+        iconColor: .constant(.orange),
+        iconBackgroundColor: .constant(.orange)
+    )
+    .preferredColorScheme(.dark)
 }

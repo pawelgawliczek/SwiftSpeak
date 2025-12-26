@@ -350,11 +350,18 @@ struct DefaultsSettingsSheet: View {
                     VStack(spacing: 24) {
                         // Transcription Section
                         SettingsSection(title: "TRANSCRIPTION", icon: "waveform", iconColor: AppTheme.accent) {
-                            SettingsInfoRow(
-                                label: "Provider",
-                                value: settings.selectedProvider.displayName,
-                                detail: currentModel
-                            )
+                            Button(action: {
+                                HapticManager.lightTap()
+                                showProviderPicker = true
+                            }) {
+                                SettingsInfoRow(
+                                    label: "Provider",
+                                    value: settings.selectedProvider.displayName,
+                                    detail: currentModel,
+                                    showChevron: true
+                                )
+                            }
+                            .buttonStyle(.plain)
                         }
 
                         // Translation Section
@@ -383,15 +390,15 @@ struct DefaultsSettingsSheet: View {
                             }
                         }
 
-                        // Formatting Section
-                        SettingsSection(title: "FORMATTING", icon: "text.badge.star", iconColor: .orange) {
+                        // Mode Section
+                        SettingsSection(title: "MODE", icon: "text.badge.star", iconColor: .orange) {
                             VStack(spacing: 8) {
                                 SettingsModelPicker(
                                     label: "AI Model",
                                     selection: $settings.selectedModeProvider
                                 )
 
-                                Text("Used for Email, Formal, and Casual modes")
+                                Text("Used for Email, Formal, Casual, and custom modes")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -411,6 +418,13 @@ struct DefaultsSettingsSheet: View {
                     }
                     .fontWeight(.semibold)
                 }
+            }
+            .sheet(isPresented: $showProviderPicker) {
+                ProviderPickerSheet(
+                    selectedProvider: $settings.selectedProvider,
+                    providers: settings.configuredSTTProviders
+                )
+                .presentationDetents([.medium])
             }
             .sheet(isPresented: $showLanguagePicker) {
                 LanguagePickerSheet(selectedLanguage: $settings.selectedTargetLanguage)

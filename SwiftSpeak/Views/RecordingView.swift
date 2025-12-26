@@ -355,31 +355,31 @@ struct RecordingCard: View {
         case .recording:
             if isTranslationEnabled && mode != .raw {
                 // Translate button + Mode selected
-                return "Transcribing & Translating\nwith \(mode.displayName) formatting"
+                return "Transcribing & Translating\nwith \(mode.displayName) mode"
             } else if isTranslationEnabled {
                 // Translate button + Raw mode
                 return "Transcribing & Translating"
             } else if mode != .raw {
                 // Transcribe button + Mode selected
-                return "Transcribing\nwith \(mode.displayName) formatting"
+                return "Transcribing\nwith \(mode.displayName) mode"
             } else {
                 // Transcribe button + Raw mode
                 return "Transcribing"
             }
         case .processing:
             if isTranslationEnabled && mode != .raw {
-                return "Processing transcription,\ntranslation & formatting..."
+                return "Processing transcription,\ntranslation & \(mode.displayName) mode..."
             } else if isTranslationEnabled {
                 return "Processing transcription\n& translation..."
             } else if mode != .raw {
-                return "Processing transcription\n& formatting..."
+                return "Processing transcription\n& \(mode.displayName) mode..."
             }
             return "Processing transcription..."
         case .formatting:
             if isTranslationEnabled {
-                return "Applying formatting & translation..."
+                return "Applying \(mode.displayName) mode & translation..."
             }
-            return "Applying formatting..."
+            return "Applying \(mode.displayName) mode..."
         case .complete:
             return "Done!"
         case .error(let message):
