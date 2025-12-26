@@ -44,6 +44,18 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    @Published var selectedModeProvider: LLMProvider = .openAI {
+        didSet {
+            defaults?.set(selectedModeProvider.rawValue, forKey: Constants.Keys.selectedModeProvider)
+        }
+    }
+
+    @Published var selectedTranslationProvider: LLMProvider = .openAI {
+        didSet {
+            defaults?.set(selectedTranslationProvider.rawValue, forKey: Constants.Keys.selectedTranslationProvider)
+        }
+    }
+
     @Published var subscriptionTier: SubscriptionTier = .free {
         didSet {
             defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
@@ -126,6 +138,18 @@ class SharedSettings: ObservableObject {
 
         // Load translation enabled
         isTranslationEnabled = defaults?.bool(forKey: Constants.Keys.isTranslationEnabled) ?? false
+
+        // Load mode provider
+        if let modeProviderRaw = defaults?.string(forKey: Constants.Keys.selectedModeProvider),
+           let modeProvider = LLMProvider(rawValue: modeProviderRaw) {
+            selectedModeProvider = modeProvider
+        }
+
+        // Load translation provider
+        if let translationProviderRaw = defaults?.string(forKey: Constants.Keys.selectedTranslationProvider),
+           let translationProvider = LLMProvider(rawValue: translationProviderRaw) {
+            selectedTranslationProvider = translationProvider
+        }
 
         // Load subscription tier
         if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier),

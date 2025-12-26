@@ -52,6 +52,9 @@ struct RecordingView: View {
                 mode: settings.selectedMode,
                 isTranslationEnabled: settings.isTranslationEnabled,
                 targetLanguage: settings.selectedTargetLanguage,
+                sttProvider: settings.selectedProvider,
+                modeProvider: settings.selectedModeProvider,
+                translationProvider: settings.selectedTranslationProvider,
                 waveformType: selectedWaveform,
                 colorScheme: colorScheme,
                 onTap: handleCardTap,
@@ -189,6 +192,9 @@ struct RecordingCard: View {
     let mode: FormattingMode
     let isTranslationEnabled: Bool
     let targetLanguage: Language
+    let sttProvider: STTProvider
+    let modeProvider: LLMProvider
+    let translationProvider: LLMProvider
     let waveformType: WaveformType
     let colorScheme: ColorScheme
     let onTap: () -> Void
@@ -282,6 +288,28 @@ struct RecordingCard: View {
                 Text("Tap to finish")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+
+            // Provider info (small gray text)
+            if case .recording = state {
+                VStack(spacing: 2) {
+                    Text("Transcription: \(sttProvider.shortName)")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+
+                    if mode != .raw {
+                        Text("Mode: \(modeProvider.shortName)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    if isTranslationEnabled {
+                        Text("Translation: \(translationProvider.shortName)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.top, 4)
             }
         }
         .padding(.vertical, 32)

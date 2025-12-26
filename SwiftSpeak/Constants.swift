@@ -26,6 +26,8 @@ enum Constants {
         static let selectedMode = "selectedMode"
         static let selectedTargetLanguage = "selectedTargetLanguage"
         static let isTranslationEnabled = "isTranslationEnabled"
+        static let selectedModeProvider = "selectedModeProvider"
+        static let selectedTranslationProvider = "selectedTranslationProvider"
         static let lastTranscription = "lastTranscription"
         static let transcriptionHistory = "transcriptionHistory"
         static let subscriptionTier = "subscriptionTier"

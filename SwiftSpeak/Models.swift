@@ -73,6 +73,52 @@ enum STTProvider: String, Codable, CaseIterable, Identifiable {
     var isPro: Bool {
         self != .openAI
     }
+
+    var shortName: String {
+        switch self {
+        case .openAI: return "OpenAI"
+        case .elevenLabs: return "ElevenLabs"
+        case .deepgram: return "Deepgram"
+        case .ollama: return "Ollama"
+        }
+    }
+}
+
+// MARK: - LLM Provider
+enum LLMProvider: String, Codable, CaseIterable, Identifiable {
+    case openAI = "openai"
+    case anthropic = "anthropic"
+    case ollama = "ollama"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .openAI: return "OpenAI GPT"
+        case .anthropic: return "Anthropic Claude"
+        case .ollama: return "Ollama (Local)"
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .openAI: return "GPT"
+        case .anthropic: return "Claude"
+        case .ollama: return "Ollama"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .openAI: return "brain"
+        case .anthropic: return "sparkles"
+        case .ollama: return "desktopcomputer"
+        }
+    }
+
+    var requiresAPIKey: Bool {
+        self != .ollama
+    }
 }
 
 // MARK: - Formatting Mode
