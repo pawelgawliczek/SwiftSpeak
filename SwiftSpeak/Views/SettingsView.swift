@@ -11,7 +11,6 @@ struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
     @State private var showPaywall = false
-    @State private var showProviderEditor = false
     @State private var showAddProvider = false
     @State private var editingProviderConfig: STTProviderConfig?
     @State private var isAddingNewProvider = false
@@ -50,9 +49,8 @@ struct SettingsView: View {
                             ) {
                                 settings.selectedProvider = config.provider
                             } onEdit: {
-                                editingProviderConfig = config
                                 isAddingNewProvider = false
-                                showProviderEditor = true
+                                editingProviderConfig = config
                             }
                             .listRowBackground(rowBackground)
                         }
@@ -232,23 +230,21 @@ struct SettingsView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
-            .sheet(isPresented: $showProviderEditor) {
-                if let config = editingProviderConfig {
-                    ProviderEditorSheet(
-                        config: config,
-                        isEditing: !isAddingNewProvider,
-                        onSave: { updatedConfig in
-                            if isAddingNewProvider {
-                                settings.addSTTProvider(updatedConfig)
-                            } else {
-                                settings.updateSTTProvider(updatedConfig)
-                            }
-                        },
-                        onDelete: isAddingNewProvider ? nil : {
-                            settings.removeSTTProvider(config.provider)
+            .sheet(item: $editingProviderConfig) { config in
+                ProviderEditorSheet(
+                    config: config,
+                    isEditing: !isAddingNewProvider,
+                    onSave: { updatedConfig in
+                        if isAddingNewProvider {
+                            settings.addSTTProvider(updatedConfig)
+                        } else {
+                            settings.updateSTTProvider(updatedConfig)
                         }
-                    )
-                }
+                    },
+                    onDelete: isAddingNewProvider ? nil : {
+                        settings.removeSTTProvider(config.provider)
+                    }
+                )
             }
             .sheet(isPresented: $showAddProvider) {
                 AddProviderSheet(
@@ -257,9 +253,8 @@ struct SettingsView: View {
                         showAddProvider = false
                         // Small delay to allow sheet dismiss animation
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            editingProviderConfig = STTProviderConfig(provider: provider)
                             isAddingNewProvider = true
-                            showProviderEditor = true
+                            editingProviderConfig = STTProviderConfig(provider: provider)
                         }
                     }
                 )
