@@ -9,12 +9,35 @@
 
 import SwiftUI
 
+// MARK: - Billing Period
+enum BillingPeriod: String, CaseIterable {
+    case monthly
+    case yearly
+    case lifetime
+
+    var displayName: String {
+        switch self {
+        case .monthly: return "Monthly"
+        case .yearly: return "Yearly"
+        case .lifetime: return "Lifetime"
+        }
+    }
+
+    var badge: String? {
+        switch self {
+        case .yearly: return "Save 28%"
+        case .lifetime: return "Best Deal"
+        case .monthly: return nil
+        }
+    }
+}
+
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @StateObject private var settings = SharedSettings.shared
     @State private var selectedTier: SubscriptionTier = .pro
-    @State private var isYearly = true
+    @State private var billingPeriod: BillingPeriod = .yearly
     @State private var isPurchasing = false
     @State private var showSuccess = false
 
@@ -67,15 +90,29 @@ struct PaywallView: View {
                     }
 
                     // Billing toggle
-                    BillingToggle(isYearly: $isYearly, colorScheme: colorScheme)
+                    BillingToggle(billingPeriod: $billingPeriod, colorScheme: colorScheme)
                         .padding(.top, 8)
+
+                    // Value messaging
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.fill")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                        Text("Save 40-70% vs Wispr Flow & Otter.ai")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 16)
+                    .background(Color.orange.opacity(0.1))
+                    .clipShape(Capsule())
 
                     // Tier cards
                     VStack(spacing: 16) {
                         TierCard(
                             tier: .pro,
                             isSelected: selectedTier == .pro,
-                            isYearly: isYearly,
+                            billingPeriod: billingPeriod,
                             colorScheme: colorScheme,
                             onSelect: { selectedTier = .pro }
                         )
@@ -83,7 +120,7 @@ struct PaywallView: View {
                         TierCard(
                             tier: .power,
                             isSelected: selectedTier == .power,
-                            isYearly: isYearly,
+                            billingPeriod: billingPeriod,
                             colorScheme: colorScheme,
                             onSelect: { selectedTier = .power }
                         )
@@ -124,10 +161,14 @@ struct PaywallView: View {
                             .font(.subheadline)
                             .foregroundStyle(.primary)
 
-                        if isYearly {
-                            Text("Save \(savingsPercent)% with yearly billing")
+                        if billingPeriod == .yearly {
+                            Text("Save 28% with yearly billing")
                                 .font(.caption)
                                 .foregroundStyle(.green)
+                        } else if billingPeriod == .lifetime {
+                            Text("One-time purchase • Use forever")
+                                .font(.caption)
+                                .foregroundStyle(.purple)
                         }
                     }
 
@@ -172,14 +213,15 @@ struct PaywallView: View {
     }
 
     private var priceText: String {
-        let price = selectedTier == .pro ?
-            (isYearly ? "$39.99/year" : "$4.99/month") :
-            (isYearly ? "$79.99/year" : "$9.99/month")
-        return price
-    }
-
-    private var savingsPercent: Int {
-        selectedTier == .pro ? 33 : 33
+        switch (selectedTier, billingPeriod) {
+        case (.pro, .monthly): return "$6.99/month"
+        case (.pro, .yearly): return "$59.99/year"
+        case (.pro, .lifetime): return "$99 one-time"
+        case (.power, .monthly): return "$12.99/month"
+        case (.power, .yearly): return "$99.99/year"
+        case (.power, .lifetime): return "$199 one-time"
+        default: return ""
+        }
     }
 
     private func purchase() {
@@ -204,30 +246,27 @@ struct PaywallView: View {
 
 // MARK: - Billing Toggle
 struct BillingToggle: View {
-    @Binding var isYearly: Bool
+    @Binding var billingPeriod: BillingPeriod
     let colorScheme: ColorScheme
 
     private var toggleBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05)
     }
 
-    private var selectedBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.2) : Color.white
-    }
-
     var body: some View {
         HStack(spacing: 0) {
-            ToggleButton(title: "Monthly", isSelected: !isYearly, colorScheme: colorScheme) {
-                HapticManager.selection()
-                withAnimation(AppTheme.quickSpring) {
-                    isYearly = false
-                }
-            }
-
-            ToggleButton(title: "Yearly", isSelected: isYearly, badge: "Save 33%", colorScheme: colorScheme) {
-                HapticManager.selection()
-                withAnimation(AppTheme.quickSpring) {
-                    isYearly = true
+            ForEach(BillingPeriod.allCases, id: \.self) { period in
+                ToggleButton(
+                    title: period.displayName,
+                    isSelected: billingPeriod == period,
+                    badge: period.badge,
+                    badgeColor: period == .lifetime ? .purple : .green,
+                    colorScheme: colorScheme
+                ) {
+                    HapticManager.selection()
+                    withAnimation(AppTheme.quickSpring) {
+                        billingPeriod = period
+                    }
                 }
             }
         }
@@ -242,6 +281,7 @@ struct ToggleButton: View {
     let title: String
     let isSelected: Bool
     var badge: String? = nil
+    var badgeColor: Color = .green
     let colorScheme: ColorScheme
     let action: () -> Void
 
@@ -251,23 +291,23 @@ struct ToggleButton: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 Text(title)
                     .font(.subheadline.weight(.medium))
 
                 if let badge = badge, isSelected {
                     Text(badge)
-                        .font(.caption2.weight(.bold))
+                        .font(.system(size: 9, weight: .bold))
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
+                        .padding(.horizontal, 5)
                         .padding(.vertical, 2)
-                        .background(Color.green)
+                        .background(badgeColor)
                         .clipShape(Capsule())
                 }
             }
             .foregroundStyle(isSelected ? .primary : .secondary)
             .padding(.vertical, 10)
-            .padding(.horizontal, 20)
+            .padding(.horizontal, 12)
             .background(isSelected ? selectedBackground : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .shadow(color: isSelected && colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 4, y: 2)
@@ -279,7 +319,7 @@ struct ToggleButton: View {
 struct TierCard: View {
     let tier: SubscriptionTier
     let isSelected: Bool
-    let isYearly: Bool
+    let billingPeriod: BillingPeriod
     let colorScheme: ColorScheme
     let onSelect: () -> Void
 
@@ -302,7 +342,7 @@ struct TierCard: View {
                                 .foregroundStyle(.primary)
 
                             if tier == .power {
-                                Text("BEST VALUE")
+                                Text("MOST POPULAR")
                                     .font(.caption2.weight(.bold))
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 8)
@@ -350,6 +390,17 @@ struct TierCard: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // Comparison note for lifetime
+                if billingPeriod == .lifetime {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.right")
+                            .font(.caption2)
+                        Text("Break-even in ~\(tier == .pro ? "14" : "15") months")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.green)
+                }
+
                 // Key features
                 VStack(alignment: .leading, spacing: 8) {
                     ForEach(keyFeatures, id: \.self) { feature in
@@ -383,22 +434,30 @@ struct TierCard: View {
 
     private var tierDescription: String {
         switch tier {
-        case .pro: return "For power users"
-        case .power: return "For professionals"
+        case .pro: return "For everyday users"
+        case .power: return "For power users & professionals"
         default: return ""
         }
     }
 
     private var priceAmount: String {
-        switch tier {
-        case .pro: return isYearly ? "$3.33" : "$4.99"
-        case .power: return isYearly ? "$6.67" : "$9.99"
+        switch (tier, billingPeriod) {
+        case (.pro, .monthly): return "$6.99"
+        case (.pro, .yearly): return "$5.00"
+        case (.pro, .lifetime): return "$99"
+        case (.power, .monthly): return "$12.99"
+        case (.power, .yearly): return "$8.33"
+        case (.power, .lifetime): return "$199"
         default: return "$0"
         }
     }
 
     private var pricePeriod: String {
-        isYearly ? "/mo (billed yearly)" : "/month"
+        switch billingPeriod {
+        case .monthly: return "/month"
+        case .yearly: return "/mo (billed $\(tier == .pro ? "59.99" : "99.99")/yr)"
+        case .lifetime: return "one-time"
+        }
     }
 
     private var keyFeatures: [String] {
@@ -406,15 +465,17 @@ struct TierCard: View {
         case .pro:
             return [
                 "Unlimited transcriptions",
-                "Multiple transcript providers",
+                "Multiple AI providers",
                 "Translation feature",
-                "Custom templates"
+                "Custom templates",
+                "No minute caps"
             ]
         case .power:
             return [
                 "Everything in Pro",
                 "Power Modes (AI agents)",
-                "Web search tool",
+                "Web search & code execution",
+                "Local AI (Ollama, LM Studio, OpenAI-compatible)",
                 "Full-screen workspace"
             ]
         default:
@@ -439,12 +500,13 @@ struct FeaturesComparison: View {
                 .foregroundStyle(.primary)
 
             VStack(spacing: 12) {
-                FeatureRow(feature: "Transcriptions/day", free: "10", pro: "Unlimited", power: "Unlimited")
-                FeatureRow(feature: "Transcript Providers", free: "1", pro: "4+", power: "4+")
+                FeatureRow(feature: "Transcriptions/day", free: "10", pro: "∞", power: "∞")
+                FeatureRow(feature: "AI Providers", free: "1", pro: "5+", power: "5+")
                 FeatureRow(feature: "Translation", free: false, pro: true, power: true)
                 FeatureRow(feature: "Custom Templates", free: false, pro: true, power: true)
+                FeatureRow(feature: "Local AI (Ollama/LM Studio)", free: false, pro: false, power: true)
                 FeatureRow(feature: "Power Modes", free: false, pro: false, power: true)
-                FeatureRow(feature: "AI Tools", free: false, pro: false, power: true)
+                FeatureRow(feature: "Web Search & Tools", free: false, pro: false, power: true)
             }
         }
         .padding(20)

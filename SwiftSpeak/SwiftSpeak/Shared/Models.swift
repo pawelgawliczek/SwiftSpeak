@@ -33,6 +33,132 @@ enum SubscriptionTier: String, Codable, CaseIterable {
     }
 }
 
+// MARK: - Local Provider Type
+/// Different types of local/self-hosted AI providers
+enum LocalProviderType: String, Codable, CaseIterable, Identifiable {
+    case ollama = "ollama"
+    case lmStudio = "lm_studio"
+    case openAICompatible = "openai_compatible"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .ollama: return "Ollama"
+        case .lmStudio: return "LM Studio"
+        case .openAICompatible: return "Other OpenAI-compatible"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .ollama: return "terminal.fill"
+        case .lmStudio: return "desktopcomputer"
+        case .openAICompatible: return "server.rack"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .ollama: return "Ollama local AI server"
+        case .lmStudio: return "LM Studio OpenAI-compatible server"
+        case .openAICompatible: return "Any OpenAI-compatible API server"
+        }
+    }
+
+    var defaultEndpoint: String {
+        switch self {
+        case .ollama: return "http://localhost:11434"
+        case .lmStudio: return "http://localhost:1234"
+        case .openAICompatible: return "http://localhost:8080"
+        }
+    }
+
+    var placeholderEndpoint: String {
+        switch self {
+        case .ollama: return "http://192.168.1.50:11434"
+        case .lmStudio: return "http://192.168.1.60:1234"
+        case .openAICompatible: return "http://your-server:port"
+        }
+    }
+
+    /// API endpoints differ between Ollama native API and OpenAI-compatible APIs
+    var modelsEndpoint: String {
+        switch self {
+        case .ollama: return "/api/tags"
+        case .lmStudio, .openAICompatible: return "/v1/models"
+        }
+    }
+
+    var chatEndpoint: String {
+        switch self {
+        case .ollama: return "/api/chat"
+        case .lmStudio, .openAICompatible: return "/v1/chat/completions"
+        }
+    }
+
+    var generateEndpoint: String {
+        switch self {
+        case .ollama: return "/api/generate"
+        case .lmStudio, .openAICompatible: return "/v1/completions"
+        }
+    }
+}
+
+// MARK: - Local Provider Configuration
+/// Configuration for local/self-hosted AI providers
+struct LocalProviderConfig: Codable, Equatable {
+    var type: LocalProviderType
+    var baseURL: String
+    var authToken: String?
+    var defaultModel: String?
+    var streamingEnabled: Bool
+    var timeoutSeconds: Int
+
+    init(
+        type: LocalProviderType = .ollama,
+        baseURL: String = "",
+        authToken: String? = nil,
+        defaultModel: String? = nil,
+        streamingEnabled: Bool = true,
+        timeoutSeconds: Int = 10
+    ) {
+        self.type = type
+        self.baseURL = baseURL.isEmpty ? type.defaultEndpoint : baseURL
+        self.authToken = authToken
+        self.defaultModel = defaultModel
+        self.streamingEnabled = streamingEnabled
+        self.timeoutSeconds = timeoutSeconds
+    }
+
+    /// Available timeout options
+    static let timeoutOptions: [Int] = [5, 10, 20, 30, 60]
+
+    /// Whether authentication is configured
+    var hasAuthentication: Bool {
+        authToken?.isEmpty == false
+    }
+}
+
+// MARK: - Connection Test Result
+/// Result of testing connection to a local provider
+struct LocalProviderConnectionResult: Equatable {
+    let success: Bool
+    let latencyMs: Int?
+    let availableModels: [String]
+    let errorMessage: String?
+
+    static let pending = LocalProviderConnectionResult(success: false, latencyMs: nil, availableModels: [], errorMessage: nil)
+
+    static func success(latencyMs: Int, models: [String]) -> LocalProviderConnectionResult {
+        LocalProviderConnectionResult(success: true, latencyMs: latencyMs, availableModels: models, errorMessage: nil)
+    }
+
+    static func failure(_ message: String) -> LocalProviderConnectionResult {
+        LocalProviderConnectionResult(success: false, latencyMs: nil, availableModels: [], errorMessage: message)
+    }
+}
+
 // MARK: - Unified AI Provider
 /// A unified provider enum that covers all AI providers for transcription, translation, and power modes
 enum AIProvider: String, Codable, CaseIterable, Identifiable {
@@ -41,7 +167,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case google = "google"
     case elevenLabs = "elevenlabs"
     case deepgram = "deepgram"
-    case ollama = "ollama"
+    case local = "local"  // Renamed from ollama to support multiple local provider types
 
     var id: String { rawValue }
 
@@ -52,7 +178,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return "Google Gemini"
         case .elevenLabs: return "ElevenLabs"
         case .deepgram: return "Deepgram"
-        case .ollama: return "Ollama (Local)"
+        case .local: return "Local AI"
         }
     }
 
@@ -63,7 +189,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return "Gemini"
         case .elevenLabs: return "ElevenLabs"
         case .deepgram: return "Deepgram"
-        case .ollama: return "Ollama"
+        case .local: return "Local"
         }
     }
 
@@ -74,7 +200,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return "globe"
         case .elevenLabs: return "waveform"
         case .deepgram: return "mic.fill"
-        case .ollama: return "desktopcomputer"
+        case .local: return "desktopcomputer"
         }
     }
 
@@ -85,33 +211,39 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return "Multimodal AI with fast responses"
         case .elevenLabs: return "Speech recognition with free tier (2.5 hrs/month)"
         case .deepgram: return "Fast transcription with competitive pricing"
-        case .ollama: return "Local AI, completely private, no cloud"
+        case .local: return "Local AI (Ollama, LM Studio, or OpenAI-compatible)"
         }
     }
 
+    /// Whether this provider requires an API key (cloud providers)
     var requiresAPIKey: Bool {
-        self != .ollama
+        self != .local
+    }
+
+    /// Whether this is a local/self-hosted provider
+    var isLocalProvider: Bool {
+        self == .local
     }
 
     // MARK: - Capability Support
 
     var supportsTranscription: Bool {
         switch self {
-        case .openAI, .elevenLabs, .deepgram, .ollama: return true
+        case .openAI, .elevenLabs, .deepgram, .local: return true
         case .anthropic, .google: return false
         }
     }
 
     var supportsTranslation: Bool {
         switch self {
-        case .openAI, .anthropic, .google, .ollama: return true
+        case .openAI, .anthropic, .google, .local: return true
         case .elevenLabs, .deepgram: return false
         }
     }
 
     var supportsPowerMode: Bool {
         switch self {
-        case .openAI, .anthropic, .google, .ollama: return true
+        case .openAI, .anthropic, .google, .local: return true
         case .elevenLabs, .deepgram: return false
         }
     }
@@ -126,12 +258,13 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
     // MARK: - STT Models (for transcription)
 
+    /// Default STT models - for local providers, these are fetched dynamically
     var availableSTTModels: [String] {
         switch self {
         case .openAI: return ["whisper-1"]
         case .elevenLabs: return ["scribe_v1"]
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]
-        case .ollama: return ["whisper", "whisper-large", "whisper-medium", "whisper-small"]
+        case .local: return [] // Models are fetched dynamically from the local server
         case .anthropic, .google: return []
         }
     }
@@ -141,19 +274,20 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .openAI: return "whisper-1"
         case .elevenLabs: return "scribe_v1"
         case .deepgram: return "nova-2"
-        case .ollama: return "whisper"
+        case .local: return nil // Must be selected after connecting
         case .anthropic, .google: return nil
         }
     }
 
     // MARK: - LLM Models (for translation/power mode)
 
+    /// Default LLM models - for local providers, these are fetched dynamically
     var availableLLMModels: [String] {
         switch self {
         case .openAI: return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
         case .anthropic: return ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
         case .google: return ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"]
-        case .ollama: return ["llama3.2", "mistral", "codellama", "gemma2"]
+        case .local: return [] // Models are fetched dynamically from the local server
         case .elevenLabs, .deepgram: return []
         }
     }
@@ -163,7 +297,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .openAI: return "gpt-4o-mini"
         case .anthropic: return "claude-3-5-sonnet-latest"
         case .google: return "gemini-2.0-flash-exp"
-        case .ollama: return "llama3.2"
+        case .local: return nil // Must be selected after connecting
         case .elevenLabs, .deepgram: return nil
         }
     }
@@ -177,7 +311,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return URL(string: "https://aistudio.google.com/app/apikey")
         case .elevenLabs: return URL(string: "https://elevenlabs.io/app/settings/api-keys")
         case .deepgram: return URL(string: "https://console.deepgram.com/project/api-keys")
-        case .ollama: return nil
+        case .local: return URL(string: "https://ollama.ai") // Default to Ollama docs
         }
     }
 
@@ -223,14 +357,23 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
             4. Go to API Keys section
             5. Create and copy your key
             """
-        case .ollama:
+        case .local:
             return """
-            1. Install Ollama on your Mac
-            2. For transcription: ollama pull whisper
-            3. For AI processing: ollama pull llama3.2
-            4. Start Ollama server
-            5. Enter the server address below
-               (default: http://localhost:11434)
+            Choose your local AI server type:
+
+            Ollama:
+            1. Install Ollama (ollama.ai)
+            2. Pull models: ollama pull llama3.2
+            3. Server runs on http://localhost:11434
+
+            LM Studio:
+            1. Download LM Studio
+            2. Download a model from the app
+            3. Start the local server
+            4. Server runs on http://localhost:1234
+
+            Other OpenAI-compatible:
+            Enter your server's URL and optional API token.
             """
         }
     }
@@ -240,14 +383,14 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .openAI: return 0.006
         case .elevenLabs: return 0.0
         case .deepgram: return 0.0043
-        case .anthropic, .google, .ollama: return 0.0
+        case .anthropic, .google, .local: return 0.0
         }
     }
 
     /// Whether this provider requires Power subscription tier
     var requiresPowerTier: Bool {
         switch self {
-        case .ollama: return true
+        case .local: return true
         case .openAI, .anthropic, .google, .elevenLabs, .deepgram: return false
         }
     }
@@ -263,13 +406,19 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
     var id: String { provider.rawValue }
     var provider: AIProvider
     var apiKey: String
-    var endpoint: String?       // For Ollama
+    var endpoint: String?       // Legacy - kept for backward compatibility
     var usageCategories: Set<ProviderUsageCategory>
 
     // Model per capability - allows different models for each use case
     var transcriptionModel: String?    // STT model (e.g., whisper-1)
     var translationModel: String?      // LLM model for translation (e.g., gpt-4o-mini)
     var powerModeModel: String?        // LLM model for power mode (e.g., gpt-4o)
+
+    // Local provider configuration (only used when provider == .local)
+    var localConfig: LocalProviderConfig?
+
+    // Cached models from last successful connection test (for local providers)
+    var cachedModels: [String]?
 
     init(
         provider: AIProvider,
@@ -278,7 +427,9 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
         usageCategories: Set<ProviderUsageCategory>? = nil,
         transcriptionModel: String? = nil,
         translationModel: String? = nil,
-        powerModeModel: String? = nil
+        powerModeModel: String? = nil,
+        localConfig: LocalProviderConfig? = nil,
+        cachedModels: [String]? = nil
     ) {
         self.provider = provider
         self.apiKey = apiKey
@@ -289,6 +440,36 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
         self.transcriptionModel = transcriptionModel ?? provider.defaultSTTModel
         self.translationModel = translationModel ?? provider.defaultLLMModel
         self.powerModeModel = powerModeModel ?? provider.defaultLLMModel
+        // Local config - create default if this is a local provider
+        if provider.isLocalProvider {
+            self.localConfig = localConfig ?? LocalProviderConfig()
+        } else {
+            self.localConfig = localConfig
+        }
+        self.cachedModels = cachedModels
+    }
+
+    /// Get the effective base URL for local providers
+    var effectiveBaseURL: String? {
+        if provider.isLocalProvider {
+            return localConfig?.baseURL ?? endpoint
+        }
+        return nil
+    }
+
+    /// Get the effective auth token for local providers
+    var effectiveAuthToken: String? {
+        if provider.isLocalProvider {
+            return localConfig?.authToken
+        }
+        return nil
+    }
+
+    /// Check if this local provider is configured
+    var isLocalProviderConfigured: Bool {
+        guard provider.isLocalProvider else { return true }
+        guard let localConfig = localConfig else { return false }
+        return !localConfig.baseURL.isEmpty
     }
 
     var isConfiguredForTranscription: Bool {
@@ -313,7 +494,23 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
     }
 
     /// Get available models for a specific category
+    /// For local providers, uses cached models if available
     func availableModels(for category: ProviderUsageCategory) -> [String] {
+        // For local providers, use cached models if available
+        if provider.isLocalProvider, let cached = cachedModels, !cached.isEmpty {
+            switch category {
+            case .transcription:
+                // Filter whisper models for STT
+                let whisperModels = cached.filter { $0.lowercased().contains("whisper") }
+                return whisperModels.isEmpty ? cached : whisperModels
+            case .translation, .powerMode:
+                // Filter out whisper models for LLM
+                let llmModels = cached.filter { !$0.lowercased().contains("whisper") }
+                return llmModels.isEmpty ? cached : llmModels
+            }
+        }
+
+        // Default models from provider
         switch category {
         case .transcription: return provider.availableSTTModels
         case .translation, .powerMode: return provider.availableLLMModels

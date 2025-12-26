@@ -13,7 +13,10 @@ A custom iOS keyboard app for voice transcription, translation, and AI formattin
 ## Business Model (V1: Bring Your Own Key)
 
 Users provide their own API keys. Subscription unlocks features.
-Supports cloud APIs (OpenAI, Anthropic, Google) AND local LLMs (Ollama).
+Supports cloud APIs (OpenAI, Anthropic, Google) AND local LLMs (Ollama, LM Studio, OpenAI-compatible).
+
+**Key Value Proposition:** Users pay for app features (subscription) + their own API costs (BYOK).
+This is **40-70% cheaper** than hosted competitors like Wispr Flow or Otter.ai.
 
 ### Free Tier - $0
 - Basic transcription only
@@ -21,14 +24,13 @@ Supports cloud APIs (OpenAI, Anthropic, Google) AND local LLMs (Ollama).
 - 3 predefined templates (Email, Formal, Casual)
 - Limited to X transcriptions/day
 
-### Pro Tier - $4.99/month, $39.99/year (save 33%)
+### Pro Tier - $6.99/month, $59.99/year, $99 lifetime
 - **Unlimited transcriptions**
 - Multiple providers (OpenAI, ElevenLabs, Deepgram)
 - Translation feature
 - Unlimited custom templates
-- Local LLM support (Ollama)
 
-### Power Tier - $9.99/month, $79.99/year (save 33%)
+### Power Tier - $12.99/month, $99.99/year, $199 lifetime
 - Everything in Pro
 - **Power Modes** - Voice-activated AI agents with capabilities
 - AI can ask clarifying questions (quick-tap UI)
@@ -37,6 +39,98 @@ Supports cloud APIs (OpenAI, Anthropic, Google) AND local LLMs (Ollama).
 - Code execution capability
 - Full-screen workspace with refinement mode
 - Version history navigation
+- **Local AI Support** - Ollama, LM Studio, and any OpenAI-compatible server
+
+---
+
+## Competitive Analysis & Pricing Strategy
+
+### Why BYOK Model Works
+
+Users pay OpenAI directly for API usage:
+- Whisper transcription: $0.006/min ($0.36/hour)
+- GPT-4o-mini formatting: ~$0.0001/request
+
+**Typical monthly API costs for users:**
+
+| Usage Level | Transcriptions | API Cost |
+|-------------|----------------|----------|
+| Light | 50 × 30sec | ~$0.15 |
+| Moderate | 150 × 30sec | ~$0.45 |
+| Heavy | 400 × 1min | ~$1.20 |
+| Power User | 500+ × 1min | ~$3.00 |
+
+### Total Cost vs Competitors
+
+**Moderate user (150 transcriptions/month):**
+
+| App | Monthly Cost | SwiftSpeak Saves |
+|-----|--------------|------------------|
+| **SwiftSpeak Pro** | **$7.44** ($6.99 + $0.45 API) | — |
+| **SwiftSpeak Power** | **$13.44** ($12.99 + $0.45 API) | — |
+| Otter.ai Pro | $8.33-16.99 | 11-56% |
+| Wispr Flow | $12-15 | 38-50% |
+| Otter.ai Business | $20-30 | 63-75% |
+
+**Heavy user (400 transcriptions/month):**
+
+| App | Monthly Cost | SwiftSpeak Saves |
+|-----|--------------|------------------|
+| **SwiftSpeak Pro** | **$8.19** ($6.99 + $1.20 API) | — |
+| **SwiftSpeak Power** | **$14.19** ($12.99 + $1.20 API) | — |
+| Otter.ai Pro | $16.99 | 52% |
+| Wispr Flow | $12-15 | 5-32% (Pro tier) |
+| Otter.ai Business | $20-30 | 53-73% |
+
+### Competitive Positioning
+
+```
+Price Scale (Monthly)
+$0        $5        $10        $15        $20        $25        $30
+|---------|---------|---------|---------|---------|---------|
+   Whisper    SwiftSpeak   SwiftSpeak    Wispr      Otter
+   Memos      Pro          Power         Flow       Business
+   $4.99      $6.99        $12.99        $12-15     $20-30
+```
+
+### Feature Comparison
+
+| Feature | SwiftSpeak Pro ($6.99) | Wispr Flow ($12-15) | Otter.ai Pro ($8.33) |
+|---------|------------------------|---------------------|----------------------|
+| iOS Keyboard | ✅ | ✅ | ❌ |
+| Unlimited transcriptions | ✅ | ✅ | ❌ (1,200 min cap) |
+| AI formatting modes | ✅ | ✅ | ❌ |
+| Translation | ✅ | ✅ | ❌ |
+| Multi-provider choice | ✅ | ❌ | ❌ |
+| Local LLM (Ollama) | ✅ | ❌ | ❌ |
+| Transparent API costs | ✅ | ❌ | ❌ |
+| Lifetime option | ✅ $99 | ❌ | ❌ |
+
+| Feature | SwiftSpeak Power ($12.99) | Wispr Flow ($12-15) |
+|---------|---------------------------|---------------------|
+| Voice AI agents | ✅ | ❌ |
+| Web search capability | ✅ | ❌ |
+| Code execution | ✅ | ❌ |
+| Custom Power Modes | ✅ | ❌ |
+| Lifetime option | ✅ $199 | ❌ |
+
+### Lifetime Value Proposition
+
+| App | Lifetime Price | Break-even vs Monthly |
+|-----|----------------|----------------------|
+| **SwiftSpeak Pro** | **$99** | 14 months |
+| **SwiftSpeak Power** | **$199** | 15 months |
+| Superwhisper | $249 | — |
+| Wispr Flow | ❌ None | — |
+| Otter.ai | ❌ None | — |
+
+### Key Marketing Messages
+
+1. **"Wispr Flow features at half the price"** - Power tier matches Wispr at $12.99 but adds AI agents
+2. **"No minute caps, ever"** - Unlike Otter (1,200 min) or Whisper Memos (15 min limit)
+3. **"Pay once, use forever"** - $99/$199 lifetime attracts subscription-averse users
+4. **"Your keys, your control"** - Transparency, no vendor lock-in, Ollama for $0 costs
+5. **"See exactly what you pay"** - No hidden markups on API usage
 
 ---
 
@@ -103,7 +197,7 @@ No backend required (except optional community sharing later).
 │   │  - google      (LLM only)                            │  │
 │   │  - elevenLabs  (STT only)                            │  │
 │   │  - deepgram    (STT only)                            │  │
-│   │  - ollama      (STT + LLM, local)                    │  │
+│   │  - local       (STT + LLM, Ollama/LM Studio/OpenAI)  │  │
 │   │                                                      │  │
 │   │  AIProviderConfig - Different model per capability   │  │
 │   │  - transcriptionModel: "whisper-1"                   │  │
@@ -130,36 +224,63 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case google = "google"
     case elevenLabs = "elevenlabs"
     case deepgram = "deepgram"
-    case ollama = "ollama"
+    case local = "local"  // Ollama, LM Studio, or OpenAI-compatible
 
     var displayName: String { ... }
     var shortName: String { ... }
     var icon: String { ... }
     var description: String { ... }
-    var requiresAPIKey: Bool { ... }  // false for Ollama
+    var requiresAPIKey: Bool { ... }     // false for local providers
+    var isLocalProvider: Bool { ... }    // true for .local
     var costPerMinute: Double { ... }
     var apiKeyHelpURL: URL? { ... }
     var setupInstructions: String { ... }
 
     // Capability support
-    var supportsTranscription: Bool { ... }  // OpenAI, ElevenLabs, Deepgram, Ollama
-    var supportsTranslation: Bool { ... }    // OpenAI, Anthropic, Google, Ollama
-    var supportsPowerMode: Bool { ... }      // OpenAI, Anthropic, Google, Ollama
+    var supportsTranscription: Bool { ... }  // OpenAI, ElevenLabs, Deepgram, Local
+    var supportsTranslation: Bool { ... }    // OpenAI, Anthropic, Google, Local
+    var supportsPowerMode: Bool { ... }      // OpenAI, Anthropic, Google, Local
     var supportedCategories: Set<ProviderUsageCategory> { ... }
 
-    // Available models per type
+    // Available models per type (for local providers, fetched dynamically)
     var availableSTTModels: [String] { ... }   // e.g., ["whisper-1"]
     var availableLLMModels: [String] { ... }   // e.g., ["gpt-4o", "gpt-4o-mini"]
     var defaultSTTModel: String? { ... }
     var defaultLLMModel: String? { ... }
 }
 
+// Local Provider Types - supports multiple local AI server types
+enum LocalProviderType: String, Codable, CaseIterable, Identifiable {
+    case ollama = "ollama"           // Ollama native API
+    case lmStudio = "lm_studio"      // LM Studio (OpenAI-compatible)
+    case openAICompatible = "openai_compatible"  // Any OpenAI-compatible server
+
+    var displayName: String { ... }  // "Ollama", "LM Studio", etc.
+    var icon: String { ... }
+    var description: String { ... }
+    var defaultEndpoint: String { ... }  // http://localhost:11434, etc.
+    var modelsEndpoint: String { ... }   // /api/tags or /v1/models
+    var chatEndpoint: String { ... }     // /api/chat or /v1/chat/completions
+}
+
+// Local Provider Configuration
+struct LocalProviderConfig: Codable, Equatable {
+    var type: LocalProviderType           // Ollama, LM Studio, or OpenAI-compatible
+    var baseURL: String                   // Server URL (e.g., http://192.168.1.50:11434)
+    var authToken: String?                // Optional API token for secured servers
+    var defaultModel: String?             // Default model for this provider
+    var streamingEnabled: Bool            // Enable streaming responses
+    var timeoutSeconds: Int               // Request timeout (5, 10, 20, 30, 60)
+}
+
 // Provider Configuration - one API key, different model per capability
 struct AIProviderConfig: Codable, Identifiable, Equatable {
     var provider: AIProvider
     var apiKey: String
-    var endpoint: String?                           // For Ollama only
+    var endpoint: String?                           // Legacy, for backward compatibility
     var usageCategories: Set<ProviderUsageCategory> // Which capabilities are enabled
+    var localConfig: LocalProviderConfig?           // For local providers only
+    var cachedModels: [String]?                     // Models from last connection test
 
     // MODEL PER CAPABILITY - allows different models for each use case
     var transcriptionModel: String?    // STT model (e.g., "whisper-1")
@@ -169,6 +290,7 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
     var isConfiguredForTranscription: Bool { ... }
     var isConfiguredForTranslation: Bool { ... }
     var isConfiguredForPowerMode: Bool { ... }
+    var isLocalProviderConfigured: Bool { ... }     // For local providers
 
     func model(for category: ProviderUsageCategory) -> String? { ... }
     var modelSummary: String { ... }
@@ -214,7 +336,22 @@ AIProviderConfig(
 | Google Gemini | ❌ | ✅ | ✅ | gemini-2.0-flash-exp, gemini-1.5-pro, gemini-1.5-flash |
 | ElevenLabs | ✅ | ❌ | ❌ | scribe_v1 (2.5 hrs/month free) |
 | Deepgram | ✅ | ❌ | ❌ | nova-2, nova, enhanced, base |
-| Ollama | ✅ | ✅ | ✅ | STT: whisper / LLM: llama3.2, mistral, codellama |
+| **Local AI** | ✅ | ✅ | ✅ | Models fetched dynamically from server |
+
+### Local AI Provider Types (Power Tier Only)
+
+| Type | Description | Default Endpoint | API Format |
+|------|-------------|------------------|------------|
+| **Ollama** | Popular local LLM server | http://localhost:11434 | Ollama native (/api/tags, /api/chat) |
+| **LM Studio** | Desktop app with local models | http://localhost:1234 | OpenAI-compatible (/v1/models, /v1/chat/completions) |
+| **Other OpenAI-compatible** | Any server with OpenAI API | http://localhost:8080 | OpenAI-compatible (/v1/models, /v1/chat/completions) |
+
+**Local Provider Features:**
+- **Test Connection**: Validates server connectivity and fetches available models
+- **Model Auto-Discovery**: Models are loaded dynamically after successful connection
+- **Optional Authentication**: Bearer token auth for secured servers
+- **Streaming Support**: Enable/disable streaming responses
+- **Configurable Timeout**: 5s, 10s, 20s, 30s, or 60s request timeout
 
 ### Settings UI: Provider Editor
 
@@ -255,6 +392,60 @@ When editing a provider, users see:
 - Select different model for each enabled capability
 - "Refresh Models" fetches latest models from provider API
 - Provider-specific setup instructions and help links
+
+### Settings UI: Local Provider Editor
+
+When editing a local AI provider, users see:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  [🖥️]  Local AI                                         │
+│  Local AI (Ollama, LM Studio, or OpenAI-compatible)    │
+├─────────────────────────────────────────────────────────┤
+│  SERVER CONFIGURATION                                   │
+│                                                         │
+│  Provider Type                                          │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ 🖥️ Ollama                                     ▼   │  │
+│  └───────────────────────────────────────────────────┘  │
+│                                                         │
+│  Server URL                                             │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ http://192.168.1.50:11434                         │  │
+│  └───────────────────────────────────────────────────┘  │
+│  Examples: 192.168.1.50:11434, hostname.local:1234     │
+│                                                         │
+│  Use API Token                                   ○──   │
+│  Optional authentication for secured servers           │
+├─────────────────────────────────────────────────────────┤
+│  CONNECTION                                             │
+│                                                         │
+│  [🌐 Test Connection]                    ✅ 42 ms      │
+│                                                         │
+│  ✓ 12 models available                                 │
+│  llama3.2, mistral, codellama, whisper...              │
+├─────────────────────────────────────────────────────────┤
+│  ▶ Advanced Options                                     │
+│  ┌───────────────────────────────────────────────────┐  │
+│  │ Enable Streaming                            ──○   │  │
+│  │ Stream responses in real-time                     │  │
+│  │                                                   │  │
+│  │ Request Timeout                                   │  │
+│  │ [ 5s ][ 10s ][ 20s ][ 30s ][ 60s ]               │  │
+│  └───────────────────────────────────────────────────┘  │
+├─────────────────────────────────────────────────────────┤
+│  CAPABILITIES & MODELS                                  │
+│  (same as cloud providers, models from Test Connection) │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Local Provider Configuration Fields:**
+1. **Provider Type** (required): Ollama, LM Studio, or Other OpenAI-compatible
+2. **Server URL** (required): IP:port, hostname.local:port, or VPN IP
+3. **API Token** (optional): Bearer token for authenticated servers
+4. **Test Connection**: Fetches models, measures latency, validates auth
+5. **Streaming Mode** (advanced): Enable/disable streaming responses
+6. **Timeout** (advanced): Request timeout in seconds
 
 ---
 
@@ -775,18 +966,27 @@ The unified provider editor allows:
 - **Capability toggles** - Enable/disable transcription, translation, power mode independently
 - **Model per capability** - Select different model for each enabled capability
 - **Refresh Models** - Fetch latest available models from provider API
-- **Endpoint configuration** - For Ollama local server
 - **Setup instructions** - Provider-specific help with links to API key pages
+
+### Local AI Provider Editor:
+For local AI providers (Power Tier only):
+- **Provider type selection** - Ollama, LM Studio, or Other OpenAI-compatible
+- **Server URL configuration** - IP:port, hostname.local, or VPN IP
+- **Optional API token** - Bearer token authentication for secured servers
+- **Test Connection** - Validates connection, fetches available models, measures latency
+- **Streaming toggle** - Enable/disable streaming responses (Advanced)
+- **Timeout selection** - 5s, 10s, 20s, 30s, or 60s request timeout (Advanced)
 
 ---
 
 ## Paywall View (As Implemented)
 
-- Toggle between Monthly/Yearly billing
-- Pro tier card ($4.99/mo or $39.99/yr)
-- Power tier card ($9.99/mo or $79.99/yr)
+- Toggle between Monthly/Yearly/Lifetime billing
+- Pro tier card ($6.99/mo, $59.99/yr, or $99 lifetime)
+- Power tier card ($12.99/mo, $99.99/yr, or $199 lifetime)
 - Features comparison section
 - Success overlay animation after purchase
+- **Value messaging**: "Save 40-70% vs Wispr Flow"
 
 ---
 
@@ -827,7 +1027,12 @@ All screens functional with mock data, full navigation, polished animations.
 2. [ ] Deepgram STT integration
 3. [ ] Anthropic Claude LLM integration
 4. [ ] Google Gemini LLM integration
-5. [ ] Ollama (local) integration
+5. [x] Local AI integration (Ollama, LM Studio, OpenAI-compatible) - **UI COMPLETE**
+   - Provider type selection (Ollama, LM Studio, OpenAI-compatible)
+   - Server URL configuration
+   - Optional API token authentication
+   - Test Connection with model discovery
+   - Streaming and timeout options
 6. [ ] Provider switching logic
 
 ### Phase 4: Power Mode Backend
@@ -936,9 +1141,12 @@ Typical 30-second dictation: ~$0.003 + $0.0002 = **$0.0032**
 
 | Model | Purpose |
 |-------|---------|
-| `AIProvider` | Unified enum: openAI, anthropic, google, elevenLabs, deepgram, ollama |
-| `AIProviderConfig` | API key + enabled capabilities + model per capability |
+| `AIProvider` | Unified enum: openAI, anthropic, google, elevenLabs, deepgram, local |
+| `AIProviderConfig` | API key + enabled capabilities + model per capability + localConfig |
 | `ProviderUsageCategory` | transcription, translation, powerMode |
+| `LocalProviderType` | ollama, lmStudio, openAICompatible |
+| `LocalProviderConfig` | type, baseURL, authToken, streamingEnabled, timeoutSeconds |
+| `LocalProviderConnectionResult` | Connection test result with latency and models |
 
 ### Power Mode Models
 

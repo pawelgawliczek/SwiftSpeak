@@ -171,7 +171,10 @@ SwiftSpeak/
     └── Constants.swift                  # API endpoints, keys
 ```
 
-## Business Model (For Paywall UI)
+## Business Model (BYOK - Bring Your Own Key)
+
+**Value Proposition:** Users pay for app features (subscription) + their own API costs.
+This is **40-70% cheaper** than hosted competitors like Wispr Flow ($12-15/mo) or Otter.ai ($8-30/mo).
 
 ### Free Tier - $0
 - Basic transcription only
@@ -179,19 +182,25 @@ SwiftSpeak/
 - 3 predefined templates (Email, Formal, Casual)
 - Limited transcriptions/day
 
-### Pro Tier - $9.99/month
+### Pro Tier - $6.99/month, $59.99/year, $99 lifetime
 - Unlimited transcriptions
 - Multiple providers (OpenAI, Anthropic, ElevenLabs, Deepgram)
 - Translation feature
 - Unlimited custom templates
 - Local LLM support (Ollama)
 
-### Power Tier - $19.99/month
+### Power Tier - $12.99/month, $99.99/year, $199 lifetime
 - Everything in Pro
 - Power Modes - Voice-activated AI agents with tools
 - AI can ask clarifying questions
-- Web search tool
-- Full-screen workspace with diff highlighting
+- Web search, code execution capabilities
+- Full-screen workspace with version history
+
+### Competitive Edge
+- **vs Wispr Flow ($12-15/mo)**: Same price for Power tier, but with AI agents + lifetime option
+- **vs Otter.ai ($8-30/mo)**: No minute caps (Otter limits to 1,200 min)
+- **vs Whisper Memos ($5/mo)**: No 15-min recording limit
+- **Lifetime option**: $99/$199 - unique in market (break-even ~14 months)
 
 ## Key UI Components
 

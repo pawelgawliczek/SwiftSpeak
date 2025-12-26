@@ -93,9 +93,16 @@ class SharedSettings: ObservableObject {
         set { defaults?.set(newValue, forKey: Constants.Keys.deepgramAPIKey) }
     }
 
+    /// Legacy property - use localConfig in AIProviderConfig instead
+    @available(*, deprecated, message: "Use localConfig in AIProviderConfig instead")
     var ollamaEndpoint: String? {
         get { defaults?.string(forKey: Constants.Keys.ollamaEndpoint) }
         set { defaults?.set(newValue, forKey: Constants.Keys.ollamaEndpoint) }
+    }
+
+    /// Get the local provider configuration
+    var localProviderConfig: LocalProviderConfig? {
+        getAIProviderConfig(for: .local)?.localConfig
     }
 
     var lastTranscription: String? {
@@ -298,8 +305,8 @@ class SharedSettings: ObservableObject {
 
     func hasValidAPIKey(for provider: AIProvider) -> Bool {
         guard let config = getAIProviderConfig(for: provider) else { return false }
-        if provider == .ollama {
-            return config.endpoint?.isEmpty == false
+        if provider.isLocalProvider {
+            return config.isLocalProviderConfigured
         }
         return config.apiKey.isEmpty == false
     }

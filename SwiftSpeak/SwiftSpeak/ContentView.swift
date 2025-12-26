@@ -118,8 +118,8 @@ struct HomeView: View {
         guard let config = settings.transcriptionProviders.first else {
             return false
         }
-        if config.provider == .ollama {
-            return !(config.endpoint?.isEmpty ?? true)
+        if config.provider.isLocalProvider {
+            return config.isLocalProviderConfigured
         }
         return !config.apiKey.isEmpty
     }
