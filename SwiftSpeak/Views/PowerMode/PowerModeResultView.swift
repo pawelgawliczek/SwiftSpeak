@@ -9,9 +9,11 @@ import SwiftUI
 
 struct PowerModeResultView: View {
     @State var session: PowerModeSession
+    let isFromKeyboard: Bool
     let onCopy: () -> Void
-    let onInsert: () -> Void
+    let onRefine: () -> Void
     let onRegenerate: () -> Void
+    let onAccept: () -> Void
 
     @State private var showDiff = false
 
@@ -141,47 +143,69 @@ struct PowerModeResultView: View {
     // MARK: - Action Buttons
 
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            Button(action: onCopy) {
-                HStack(spacing: 6) {
-                    Image(systemName: "doc.on.doc")
-                        .font(.footnote)
-                    Text("Copy")
-                        .font(.callout.weight(.medium))
+        VStack(spacing: 16) {
+            // Refine button - circular mic button
+            Button(action: onRefine) {
+                VStack(spacing: 8) {
+                    Image(systemName: "mic.fill")
+                        .font(.title2)
+                        .foregroundStyle(.white)
+                        .frame(width: 64, height: 64)
+                        .background(AppTheme.powerGradient)
+                        .clipShape(Circle())
+
+                    Text("Refine")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(Color.primary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             }
 
-            Button(action: onInsert) {
-                HStack(spacing: 6) {
-                    Image(systemName: "text.insert")
-                        .font(.footnote)
-                    Text("Insert")
-                        .font(.callout.weight(.medium))
+            // Secondary action row
+            HStack(spacing: 12) {
+                Button(action: onCopy) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.footnote)
+                        Text("Copy")
+                            .font(.callout.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color.primary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
                 }
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(Color.primary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                Button(action: onRegenerate) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.footnote)
+                        Text("Regenerate")
+                            .font(.callout.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color.primary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
             }
 
-            Button(action: onRegenerate) {
-                HStack(spacing: 6) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.footnote)
-                    Text("Regenerate")
-                        .font(.callout.weight(.medium))
+            // Accept button for keyboard flow
+            if isFromKeyboard {
+                Button(action: onAccept) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.body)
+                        Text("Accept & Insert")
+                            .font(.callout.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(AppTheme.powerGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
                 }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(AppTheme.powerGradient)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             }
         }
         .padding(.horizontal, 16)
@@ -446,15 +470,33 @@ private struct DiffElement: Identifiable {
 
 // MARK: - Preview
 
-#Preview {
+#Preview("Standard Flow") {
     var session = PowerModeSession()
     session.addResult(PowerModeResult.sample)
 
     return PowerModeResultView(
         session: session,
+        isFromKeyboard: false,
         onCopy: {},
-        onInsert: {},
-        onRegenerate: {}
+        onRefine: {},
+        onRegenerate: {},
+        onAccept: {}
+    )
+    .background(AppTheme.darkBase)
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Keyboard Flow") {
+    var session = PowerModeSession()
+    session.addResult(PowerModeResult.sample)
+
+    return PowerModeResultView(
+        session: session,
+        isFromKeyboard: true,
+        onCopy: {},
+        onRefine: {},
+        onRegenerate: {},
+        onAccept: {}
     )
     .background(AppTheme.darkBase)
     .preferredColorScheme(.dark)

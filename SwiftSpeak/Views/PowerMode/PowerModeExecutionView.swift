@@ -10,7 +10,9 @@ import SwiftUI
 
 struct PowerModeExecutionView: View {
     let powerMode: PowerMode
+    let isFromKeyboard: Bool
     let onDismiss: () -> Void
+    let onAcceptAndInsert: ((String) -> Void)?
 
     @State private var executionState: PowerModeExecutionState = .idle
     @State private var session: PowerModeSession = PowerModeSession()
@@ -18,16 +20,34 @@ struct PowerModeExecutionView: View {
     @State private var recordingDuration: TimeInterval = 0
     @State private var timer: Timer?
 
+    // Edit mode
+    @State private var isEditing = false
+    @State private var editedText: String = ""
+    @FocusState private var isEditFocused: Bool
+
+    // Refine mode - record additional input to combine with current result
+    @State private var isRefining = false
+    @State private var refinementText: String = ""
+
     // Mock waveform data
     @State private var waveformHeights: [CGFloat] = Array(repeating: 10, count: 12)
+
+    init(powerMode: PowerMode, isFromKeyboard: Bool = false, onDismiss: @escaping () -> Void, onAcceptAndInsert: ((String) -> Void)? = nil) {
+        self.powerMode = powerMode
+        self.isFromKeyboard = isFromKeyboard
+        self.onDismiss = onDismiss
+        self.onAcceptAndInsert = onAcceptAndInsert
+    }
 
     var body: some View {
         ZStack {
             AppTheme.darkBase.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header
-                header
+                // Header (hide when editing to give more space)
+                if !isEditing {
+                    header
+                }
 
                 Spacer()
 
@@ -36,8 +56,18 @@ struct PowerModeExecutionView: View {
 
                 Spacer()
 
-                // Bottom action button
-                bottomAction
+                // Bottom action button (hide when editing)
+                if !isEditing {
+                    bottomAction
+                }
+            }
+        }
+        .onAppear {
+            // Auto-start recording when launched from keyboard
+            if isFromKeyboard && executionState == .idle {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    startRecording()
+                }
             }
         }
     }
@@ -48,10 +78,16 @@ struct PowerModeExecutionView: View {
         HStack {
             Button(action: {
                 HapticManager.lightTap()
-                cleanup()
-                onDismiss()
+                if isEditing {
+                    // Cancel editing
+                    isEditing = false
+                    isEditFocused = false
+                } else {
+                    cleanup()
+                    onDismiss()
+                }
             }) {
-                Image(systemName: "xmark")
+                Image(systemName: isEditing ? "xmark" : "xmark")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 44, height: 44)
@@ -61,11 +97,24 @@ struct PowerModeExecutionView: View {
 
             Spacer()
 
-            // Options menu (when complete)
-            if case .complete = executionState {
+            // Save button when editing
+            if isEditing {
+                Button(action: { saveEditedText() }) {
+                    Text("Save")
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(AppTheme.powerAccent)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial)
+                        .clipShape(Capsule())
+                }
+            }
+
+            // Options menu (when complete and not editing)
+            if case .complete = executionState, !isEditing {
                 Menu {
-                    Button(action: { copyResult() }) {
-                        Label("Copy", systemImage: "doc.on.doc")
+                    Button(action: { startEditing() }) {
+                        Label("Edit", systemImage: "pencil")
                     }
                     Button(action: { shareResult() }) {
                         Label("Share", systemImage: "square.and.arrow.up")
@@ -88,39 +137,49 @@ struct PowerModeExecutionView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        switch executionState {
-        case .idle:
-            idleView
-        case .recording:
-            recordingView
-        case .transcribing:
-            transcribingView
-        case .thinking:
-            thinkingView
-        case .usingCapability(let capability):
-            usingCapabilityView(capability)
-        case .askingQuestion(let question):
-            PowerModeQuestionView(
-                question: question,
-                onAnswer: { answer in
-                    handleQuestionAnswer(answer)
-                },
-                onVoiceAnswer: {
-                    // Start voice recording for answer
-                    startRecordingAnswer()
+        if isEditing {
+            editView
+        } else {
+            switch executionState {
+            case .idle:
+                idleView
+            case .recording:
+                if isRefining {
+                    refiningRecordingView
+                } else {
+                    recordingView
                 }
-            )
-        case .generating:
-            generatingView
-        case .complete(let session):
-            PowerModeResultView(
-                session: session,
-                onCopy: copyResult,
-                onInsert: insertResult,
-                onRegenerate: regenerate
-            )
-        case .error(let message):
-            errorView(message)
+            case .transcribing:
+                transcribingView
+            case .thinking:
+                thinkingView
+            case .usingCapability(let capability):
+                usingCapabilityView(capability)
+            case .askingQuestion(let question):
+                PowerModeQuestionView(
+                    question: question,
+                    onAnswer: { answer in
+                        handleQuestionAnswer(answer)
+                    },
+                    onVoiceAnswer: {
+                        // Start voice recording for answer
+                        startRecordingAnswer()
+                    }
+                )
+            case .generating:
+                generatingView
+            case .complete(let session):
+                PowerModeResultView(
+                    session: session,
+                    isFromKeyboard: isFromKeyboard,
+                    onCopy: copyResult,
+                    onRefine: startRefining,
+                    onRegenerate: regenerate,
+                    onAccept: acceptAndInsert
+                )
+            case .error(let message):
+                errorView(message)
+            }
         }
     }
 
@@ -194,6 +253,85 @@ struct PowerModeExecutionView: View {
                     .font(.footnote)
             }
             .foregroundStyle(.secondary)
+        }
+        .onAppear {
+            startWaveformAnimation()
+        }
+        .onDisappear {
+            stopWaveformAnimation()
+        }
+    }
+
+    // MARK: - Edit View
+
+    private var editView: some View {
+        VStack(spacing: 16) {
+            // Header
+            Text("Edit Result")
+                .font(.headline)
+                .foregroundStyle(.primary)
+
+            // Text editor
+            TextEditor(text: $editedText)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .focused($isEditFocused)
+                .padding(12)
+                .background(Color.primary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                .frame(maxHeight: .infinity)
+                .padding(.horizontal, 16)
+        }
+        .onAppear {
+            isEditFocused = true
+        }
+    }
+
+    // MARK: - Refining Recording View
+
+    private var refiningRecordingView: some View {
+        VStack(spacing: 24) {
+            // Current result preview
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Current result:")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Text(session.currentResult?.markdownOutput.prefix(100) ?? "")
+                    .font(.caption)
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+            }
+            .padding(12)
+            .frame(maxWidth: 280)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Waveform
+            HStack(spacing: 4) {
+                ForEach(0..<12, id: \.self) { index in
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(AppTheme.powerGradient)
+                        .frame(width: 4, height: waveformHeights[index])
+                        .animation(.spring(dampingFraction: 0.5), value: waveformHeights[index])
+                }
+            }
+            .frame(height: 60)
+            .padding(.horizontal, 32)
+
+            Text("Add refinement...")
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.primary)
+
+            Text(formatDuration(recordingDuration))
+                .font(.body.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            Text("Your voice input will be combined with the current result")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
         }
         .onAppear {
             startWaveformAnimation()
@@ -471,26 +609,84 @@ struct PowerModeExecutionView: View {
         timer?.invalidate()
         timer = nil
 
-        // Simulate processing flow
-        executionState = .transcribing
-        transcribedText = "Find me the latest news about artificial intelligence and summarize the key points"
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            executionState = .thinking
+        if isRefining {
+            // Handle refinement flow
+            refinementText = "Make it more concise and add bullet points for key takeaways"
+            executionState = .transcribing
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                if let firstCapability = powerMode.enabledCapabilities.first {
-                    executionState = .usingCapability(firstCapability)
+                executionState = .thinking
 
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                        // Show question (for demo)
-                        executionState = .askingQuestion(PowerModeQuestion.sample)
-                    }
-                } else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                     executionState = .generating
-                    finishWithResult()
+                    finishWithRefinedResult()
                 }
             }
+        } else {
+            // Normal flow
+            executionState = .transcribing
+            transcribedText = "Find me the latest news about artificial intelligence and summarize the key points"
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                executionState = .thinking
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    if let firstCapability = powerMode.enabledCapabilities.first {
+                        executionState = .usingCapability(firstCapability)
+
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                            // Show question (for demo) - skip if from keyboard for faster flow
+                            if isFromKeyboard {
+                                executionState = .generating
+                                finishWithResult()
+                            } else {
+                                executionState = .askingQuestion(PowerModeQuestion.sample)
+                            }
+                        }
+                    } else {
+                        executionState = .generating
+                        finishWithResult()
+                    }
+                }
+            }
+        }
+    }
+
+    private func finishWithRefinedResult() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+            // Create refined version
+            let refinedResult = PowerModeResult(
+                powerModeId: powerMode.id,
+                powerModeName: powerMode.name,
+                userInput: "\(transcribedText)\n\nRefinement: \(refinementText)",
+                markdownOutput: """
+                # AI News Summary - December 2024 (Refined)
+
+                ## Key Takeaways
+                - OpenAI improved reasoning models for complex tasks
+                - DeepMind achieved 97% accuracy in protein folding
+                - Anthropic released new safety guidelines
+                - Meta open-sourced Llama 3 with multilingual support
+
+                ## Industry Trends
+                - AI safety and alignment focus increasing
+                - Enterprise adoption growing rapidly
+                - Global regulatory frameworks emerging
+                - Open-source AI momentum building
+
+                ## Sources
+                - TechCrunch, MIT Technology Review, The Verge, Wired
+                """,
+                capabilitiesUsed: [.webSearch],
+                processingDuration: 4.2,
+                versionNumber: session.results.count + 1
+            )
+
+            session.addResult(refinedResult)
+            isRefining = false
+            refinementText = ""
+            executionState = .complete(session)
+            HapticManager.success()
         }
     }
 
@@ -521,10 +717,56 @@ struct PowerModeExecutionView: View {
         }
     }
 
-    private func insertResult() {
-        // Would insert to text field via URL scheme
+    private func startEditing() {
+        if let result = session.currentResult {
+            editedText = result.markdownOutput
+            isEditing = true
+            HapticManager.selection()
+        }
+    }
+
+    private func saveEditedText() {
+        // Update the current result with edited text
+        if let currentResult = session.currentResult {
+            let updatedResult = PowerModeResult(
+                powerModeId: currentResult.powerModeId,
+                powerModeName: currentResult.powerModeName,
+                userInput: currentResult.userInput,
+                markdownOutput: editedText,
+                capabilitiesUsed: currentResult.capabilitiesUsed,
+                processingDuration: currentResult.processingDuration,
+                versionNumber: currentResult.versionNumber
+            )
+            // Replace the current result
+            if session.currentVersionIndex < session.results.count {
+                session.results[session.currentVersionIndex] = updatedResult
+            }
+            executionState = .complete(session)
+        }
+        isEditing = false
+        isEditFocused = false
         HapticManager.success()
-        onDismiss()
+    }
+
+    private func startRefining() {
+        isRefining = true
+        executionState = .recording
+        recordingDuration = 0
+        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
+            recordingDuration += 0.1
+        }
+        HapticManager.mediumTap()
+    }
+
+    private func acceptAndInsert() {
+        if let result = session.currentResult {
+            // Copy to clipboard for insertion
+            UIPasteboard.general.string = result.markdownOutput
+            HapticManager.success()
+            // Call the callback if provided
+            onAcceptAndInsert?(result.markdownOutput)
+            onDismiss()
+        }
     }
 
     private func regenerate() {
@@ -620,10 +862,21 @@ struct PowerModeExecutionView: View {
 
 // MARK: - Preview
 
-#Preview("Idle") {
+#Preview("Standard Flow") {
     PowerModeExecutionView(
         powerMode: PowerMode.presets.first!,
+        isFromKeyboard: false,
         onDismiss: {}
+    )
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Keyboard Flow") {
+    PowerModeExecutionView(
+        powerMode: PowerMode.presets.first!,
+        isFromKeyboard: true,
+        onDismiss: {},
+        onAcceptAndInsert: { _ in }
     )
     .preferredColorScheme(.dark)
 }

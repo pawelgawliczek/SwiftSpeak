@@ -123,10 +123,8 @@ struct HomeView: View {
         return !config.apiKey.isEmpty
     }
 
-    private var settingsSummary: String {
-        let provider = settings.selectedProvider.shortName
-        let language = settings.selectedTargetLanguage.flag
-        return "\(provider) → \(language)"
+    private var currentModel: String {
+        settings.getSTTProviderConfig(for: settings.selectedProvider)?.model ?? settings.selectedProvider.defaultModel
     }
 
     var body: some View {
@@ -185,24 +183,42 @@ struct HomeView: View {
                                 }
                             }
 
-                            // Settings summary with gear button
-                            HStack(spacing: 12) {
-                                Text(settingsSummary)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                            // Settings summary
+                            VStack(spacing: 8) {
+                                // Model info
+                                HStack(spacing: 16) {
+                                    // Transcription
+                                    ModelInfoPill(
+                                        icon: "waveform",
+                                        text: settings.selectedProvider.shortName,
+                                        color: AppTheme.accent
+                                    )
 
+                                    // Translation
+                                    ModelInfoPill(
+                                        icon: "globe",
+                                        text: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTranslationProvider.shortName)",
+                                        color: .pink
+                                    )
+
+                                    // Mode (only when not Raw)
+                                    if settings.selectedMode != .raw {
+                                        ModelInfoPill(
+                                            icon: "text.badge.star",
+                                            text: settings.selectedModeProvider.shortName,
+                                            color: .orange
+                                        )
+                                    }
+                                }
+
+                                // Edit defaults button
                                 Button(action: {
                                     HapticManager.lightTap()
                                     showDefaultsSettings = true
                                 }) {
-                                    Image(systemName: "gearshape.fill")
-                                        .font(.subheadline)
+                                    Text("Edit defaults")
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
-                                        .padding(8)
-                                        .background(
-                                            Circle()
-                                                .fill(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
-                                        )
                                 }
                             }
                         }
@@ -332,6 +348,8 @@ struct DefaultsSettingsSheet: View {
 
     @State private var showProviderPicker = false
     @State private var showLanguagePicker = false
+    @State private var showTranslationModelPicker = false
+    @State private var showModeModelPicker = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -383,20 +401,34 @@ struct DefaultsSettingsSheet: View {
                                 Divider()
                                     .padding(.horizontal, 8)
 
-                                SettingsModelPicker(
-                                    label: "AI Model",
-                                    selection: $settings.selectedTranslationProvider
-                                )
+                                Button(action: {
+                                    HapticManager.lightTap()
+                                    showTranslationModelPicker = true
+                                }) {
+                                    SettingsInfoRow(
+                                        label: "AI Model",
+                                        value: settings.selectedTranslationProvider.displayName,
+                                        showChevron: true
+                                    )
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
 
                         // Mode Section
                         SettingsSection(title: "MODE", icon: "text.badge.star", iconColor: .orange) {
                             VStack(spacing: 8) {
-                                SettingsModelPicker(
-                                    label: "AI Model",
-                                    selection: $settings.selectedModeProvider
-                                )
+                                Button(action: {
+                                    HapticManager.lightTap()
+                                    showModeModelPicker = true
+                                }) {
+                                    SettingsInfoRow(
+                                        label: "AI Model",
+                                        value: settings.selectedModeProvider.displayName,
+                                        showChevron: true
+                                    )
+                                }
+                                .buttonStyle(.plain)
 
                                 Text("Used for Email, Formal, Casual, and custom modes")
                                     .font(.caption)
@@ -429,6 +461,20 @@ struct DefaultsSettingsSheet: View {
             .sheet(isPresented: $showLanguagePicker) {
                 LanguagePickerSheet(selectedLanguage: $settings.selectedTargetLanguage)
                     .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showTranslationModelPicker) {
+                LLMProviderPickerSheet(
+                    title: "Translation AI Model",
+                    selectedProvider: $settings.selectedTranslationProvider
+                )
+                .presentationDetents([.height(280)])
+            }
+            .sheet(isPresented: $showModeModelPicker) {
+                LLMProviderPickerSheet(
+                    title: "Mode AI Model",
+                    selectedProvider: $settings.selectedModeProvider
+                )
+                .presentationDetents([.height(280)])
             }
         }
     }
@@ -557,6 +603,35 @@ struct SettingsModelPicker: View {
                 .clipShape(Capsule())
             }
         }
+    }
+}
+
+// MARK: - Model Info Pill
+struct ModelInfoPill: View {
+    let icon: String
+    let text: String
+    let color: Color
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var pillBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.05)
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .foregroundStyle(color)
+
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(pillBackground)
+        .clipShape(Capsule())
     }
 }
 
@@ -996,8 +1071,12 @@ struct LanguagePickerSheet: View {
 struct QuickStatsCard: View {
     @EnvironmentObject var settings: SharedSettings
 
+    private var totalPowerModeUsage: Int {
+        PowerMode.presets.reduce(0) { $0 + $1.usageCount }
+    }
+
     var body: some View {
-        HStack(spacing: 24) {
+        HStack(spacing: 16) {
             ThemedStatItem(
                 icon: "waveform",
                 value: "\(settings.transcriptionHistory.count)",
@@ -1008,22 +1087,22 @@ struct QuickStatsCard: View {
                 .frame(height: 40)
 
             ThemedStatItem(
-                icon: "clock",
-                value: formattedDuration,
-                label: "Total Time"
+                icon: "bolt.fill",
+                value: "\(totalPowerModeUsage)",
+                label: "Power Modes"
             )
 
             Divider()
                 .frame(height: 40)
 
             ThemedStatItem(
-                icon: "star.fill",
-                value: settings.subscriptionTier.displayName,
-                label: "Plan"
+                icon: "clock",
+                value: formattedDuration,
+                label: "Time"
             )
         }
-        .padding(.vertical, 20)
-        .padding(.horizontal, 24)
+        .padding(.vertical, 16)
+        .padding(.horizontal, 20)
         .glassBackground(cornerRadius: AppTheme.cornerRadiusLarge, includeShadow: false)
     }
 

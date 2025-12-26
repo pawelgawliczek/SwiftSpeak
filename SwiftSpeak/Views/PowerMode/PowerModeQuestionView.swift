@@ -91,6 +91,9 @@ struct PowerModeQuestionView: View {
                     .background(Color.primary.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
                     .padding(.horizontal, 16)
+                    .onTapGesture {
+                        isCustomAnswerFocused = true
+                    }
 
                     // Voice answer button
                     Button(action: {

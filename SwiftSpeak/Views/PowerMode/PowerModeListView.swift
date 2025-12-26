@@ -207,7 +207,7 @@ struct PowerModeCard: View {
                 // Play button indicator
                 Image(systemName: "play.fill")
                     .font(.body)
-                    .foregroundStyle(powerMode.iconColor.color)
+                    .foregroundStyle(AppTheme.powerAccent)
             }
             .padding(14)
             .background(Color.primary.opacity(0.05))
