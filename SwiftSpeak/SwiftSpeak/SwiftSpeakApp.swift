@@ -13,8 +13,8 @@ struct SwiftSpeakApp: App {
     @State private var showOnboarding = true
 
     init() {
-        // Pre-warm audio session for instant recording
-        // (Will be implemented in Phase 1)
+        // Pre-warm audio session for instant recording (<200ms startup)
+        AudioSessionManager.shared.preWarm()
     }
 
     var body: some Scene {

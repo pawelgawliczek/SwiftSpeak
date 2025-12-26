@@ -2,15 +2,29 @@
 //  SwiftSpeakTests.swift
 //  SwiftSpeakTests
 //
-//  Created by Pawel Gawliczek on 26/12/2025.
+//  Main test file for SwiftSpeak unit tests
 //
 
 import Testing
+@testable import SwiftSpeak
+
+// This file serves as the entry point for the test module.
+// Individual test suites are organized in subdirectories:
+//
+// Models/
+//   - AIProviderTests.swift
+//   - FormattingModeTests.swift
+//   - LanguageTests.swift
+//
+// Services/
+//   - MockTranscriptionProviderTests.swift
+//   - MockFormattingProviderTests.swift
+//   - TranscriptionErrorTests.swift
 
 struct SwiftSpeakTests {
 
-    @Test func example() async throws {
-        // Write your test here and use APIs like `#expect(...)` to check expected conditions.
+    @Test func moduleLoads() {
+        // Verify the SwiftSpeak module loads correctly
+        #expect(true)
     }
-
 }

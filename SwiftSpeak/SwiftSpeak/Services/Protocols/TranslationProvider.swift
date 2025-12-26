@@ -1,0 +1,46 @@
+//
+//  TranslationProvider.swift
+//  SwiftSpeak
+//
+//  Created by Claude Code on 26/12/2025.
+//
+
+import Foundation
+
+/// Protocol for text translation providers
+/// Phase 2 implementation - interface defined now for architecture consistency
+protocol TranslationProvider {
+    /// The provider identifier
+    var providerId: AIProvider { get }
+
+    /// Whether the provider is properly configured
+    var isConfigured: Bool { get }
+
+    /// The model being used for translation
+    var model: String { get }
+
+    /// Languages supported by this provider
+    var supportedLanguages: [Language] { get }
+
+    /// Translate text to the target language
+    /// - Parameters:
+    ///   - text: Text to translate
+    ///   - from: Source language (nil for auto-detection)
+    ///   - to: Target language
+    /// - Returns: Translated text
+    /// - Throws: TranscriptionError on failure
+    func translate(
+        text: String,
+        from sourceLanguage: Language?,
+        to targetLanguage: Language
+    ) async throws -> String
+}
+
+// MARK: - Default Implementation
+
+extension TranslationProvider {
+    /// Convenience method with auto-detection of source language
+    func translate(text: String, to targetLanguage: Language) async throws -> String {
+        try await translate(text: text, from: nil, to: targetLanguage)
+    }
+}

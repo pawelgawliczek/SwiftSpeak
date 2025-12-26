@@ -499,6 +499,7 @@ swiftspeak://powermode?id=<uuid>&autostart=true
 ```
 SwiftSpeak/
 ├── SwiftSpeak.xcodeproj
+├── PHASE1_PLAN.md                       # Phase 1 execution guide
 ├── SwiftSpeak/                          # Containing App
 │   ├── SwiftSpeakApp.swift              # @main entry
 │   ├── ContentView.swift                # 4-tab navigation + HomeView
@@ -524,6 +525,13 @@ SwiftSpeak/
 │   │       ├── PowerModeEditorView.swift    # Create/edit modes
 │   │       ├── PowerModeExecutionView.swift # Full execution workspace
 │   │       └── IconPicker.swift             # Icon & color selection
+│   ├── Services/                        # Phase 1: NEW DIRECTORY
+│   │   ├── Protocols/                   # Provider abstraction layer
+│   │   ├── Audio/                       # AudioRecorder, AudioSessionManager
+│   │   ├── Providers/OpenAI/            # OpenAI Whisper + GPT services
+│   │   ├── Providers/Mock/              # Mock providers for testing
+│   │   ├── Orchestration/               # TranscriptionOrchestrator
+│   │   └── Network/                     # APIClient
 │   └── Components/
 │       ├── WaveformView.swift           # 7 waveform animation types
 │       ├── GlassBackground.swift        # Glassmorphic modifiers
@@ -534,6 +542,14 @@ SwiftSpeak/
 │   ├── KeyboardViewModel.swift          # URL scheme handling
 │   ├── KeyboardTheme.swift              # Keyboard-specific theming
 │   └── Info.plist                       # RequestsOpenAccess = YES
+├── SwiftSpeakTests/                     # Phase 1: NEW TEST TARGET
+│   ├── Models/                          # Model unit tests
+│   ├── Services/                        # Service unit tests
+│   ├── Settings/                        # SharedSettings tests
+│   └── Mocks/                           # Test mocks
+├── SwiftSpeakUITests/                   # Phase 1: NEW UI TEST TARGET
+│   ├── RecordingFlowUITests.swift
+│   └── SettingsUITests.swift
 └── Shared/
     └── Constants.swift                  # URL scheme, App Group ID
 ```
@@ -1007,14 +1023,24 @@ All screens functional with mock data, full navigation, polished animations.
 9. ✅ History view - search, multi-select, reprocess
 10. ✅ 4-tab main navigation
 
-### Phase 1: Core Transcription
-1. [ ] Real audio recording with AVAudioRecorder
-2. [ ] OpenAI Whisper API integration
-3. [ ] App Groups for keyboard ↔ app communication
-4. [ ] URL scheme handling for keyboard → app launch
-5. [ ] Auto-return to previous app
-6. [ ] Clipboard text insertion
-7. [ ] Silence detection for auto-stop (OPTIONAL)
+### Phase 1: Core Transcription + Testing Infrastructure
+**Execution Guide:** See `/PHASE1_PLAN.md` for step-by-step implementation details.
+
+**Testing Infrastructure:**
+1. [ ] Create SwiftSpeakTests unit test target
+2. [ ] Create SwiftSpeakUITests UI test target
+3. [ ] Write model tests (AIProvider, FormattingMode, etc.)
+4. [ ] Write service tests with mocks
+
+**Core Transcription:**
+1. [ ] Provider abstraction layer (protocols)
+2. [ ] Real audio recording with AVAudioRecorder
+3. [ ] OpenAI Whisper API integration
+4. [ ] GPT-4 formatting integration (Email, Formal, Casual modes)
+5. [ ] App Groups for keyboard ↔ app communication
+6. [ ] URL scheme handling for keyboard → app launch
+7. [ ] Auto-return to previous app + clipboard insertion
+8. [ ] Silence detection for auto-stop (OPTIONAL)
 
 ### Phase 2: Templates & Translation
 1. [ ] GPT-4 formatting integration (Email, Formal, Casual modes)

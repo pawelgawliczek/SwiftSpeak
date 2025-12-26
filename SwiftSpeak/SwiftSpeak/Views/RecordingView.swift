@@ -24,9 +24,9 @@ struct RecordingView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var recordingState: RecordingState = .idle
-    @State private var recordingDuration: TimeInterval = 0
-    @State private var timer: Timer?
+    // Use real orchestrator for actual transcription
+    @StateObject private var orchestrator = TranscriptionOrchestrator()
+
     @State private var cardScale: CGFloat = 0.8
     @State private var cardOpacity: Double = 0
     @State private var selectedWaveform: WaveformType = .bars
@@ -41,15 +41,15 @@ struct RecordingView: View {
             backgroundColor.opacity(0.95)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    if recordingState == .recording {
+                    if orchestrator.state == .recording {
                         stopRecording()
                     }
                 }
 
             // Recording card
             RecordingCard(
-                state: recordingState,
-                duration: recordingDuration,
+                state: orchestrator.state,
+                duration: orchestrator.recordingDuration,
                 mode: settings.selectedMode,
                 isTranslationEnabled: translateAfterRecording,
                 targetLanguage: settings.selectedTargetLanguage,
@@ -65,13 +65,18 @@ struct RecordingView: View {
             .opacity(cardOpacity)
         }
         .onAppear {
+            // Configure orchestrator with current settings
+            orchestrator.mode = settings.selectedMode
+            orchestrator.translateEnabled = translateAfterRecording
+            orchestrator.targetLanguage = settings.selectedTargetLanguage
+
             // Randomly select a waveform type
             selectedWaveform = WaveformType.allCases.randomElement() ?? .bars
             showCard()
             startRecording()
         }
         .onDisappear {
-            timer?.invalidate()
+            orchestrator.cancel()
         }
     }
 
@@ -95,83 +100,41 @@ struct RecordingView: View {
     private func startRecording() {
         HapticManager.lightTap()
 
-        recordingState = .recording
-        recordingDuration = 0
-
-        // Start timer for duration tracking
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            recordingDuration += 0.1
+        Task {
+            await orchestrator.startRecording()
         }
     }
 
     private func stopRecording() {
-        timer?.invalidate()
         HapticManager.mediumTap()
 
-        // Transition to processing
-        withAnimation(AppTheme.quickSpring) {
-            recordingState = .processing
-        }
+        Task {
+            await orchestrator.stopRecording()
 
-        // Simulate transcription (mock)
-        simulateTranscription()
-    }
+            // Check if completed successfully
+            if orchestrator.isComplete {
+                HapticManager.success()
 
-    private func simulateTranscription() {
-        // Simulate processing delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // Transition to formatting if mode is not raw
-            if settings.selectedMode != .raw {
-                withAnimation(AppTheme.quickSpring) {
-                    recordingState = .formatting
+                // Auto-dismiss after showing result
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                hideCard {
+                    isPresented = false
                 }
-
-                // Simulate formatting delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    completeTranscription()
-                }
-            } else {
-                completeTranscription()
-            }
-        }
-    }
-
-    private func completeTranscription() {
-        // Mock transcription result
-        let mockText = "This is a mock transcription. In the real app, this would be the text transcribed from your voice using OpenAI Whisper."
-
-        HapticManager.success()
-
-        withAnimation(AppTheme.quickSpring) {
-            recordingState = .complete(mockText)
-        }
-
-        // Save to history (mock)
-        let record = TranscriptionRecord(
-            text: mockText,
-            mode: settings.selectedMode,
-            provider: settings.selectedTranscriptionProvider,
-            duration: recordingDuration
-        )
-        settings.addTranscription(record)
-
-        // Auto-dismiss after showing result
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            hideCard {
-                isPresented = false
+            } else if orchestrator.hasError {
+                HapticManager.error()
             }
         }
     }
 
     private func cancelRecording() {
-        timer?.invalidate()
+        orchestrator.cancel()
         hideCard {
             isPresented = false
         }
     }
 
     private func handleCardTap() {
-        switch recordingState {
+        switch orchestrator.state {
         case .idle:
             startRecording()
         case .recording:
@@ -179,6 +142,11 @@ struct RecordingView: View {
         case .complete:
             hideCard {
                 isPresented = false
+            }
+        case .error:
+            // Tap to retry on error
+            Task {
+                await orchestrator.retry()
             }
         default:
             break

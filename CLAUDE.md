@@ -18,6 +18,7 @@ This file provides guidance to Claude Code when working with this repository.
 - Main App: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeak/`
 - Keyboard Extension: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeakKeyboard/`
 - Implementation Plan: `~/projects/SwiftSpeak/IMPLEMENTATION_PLAN.md`
+- Phase 1 Plan: `~/projects/SwiftSpeak/PHASE1_PLAN.md`
 
 ## Bundle IDs & Configuration
 
@@ -34,19 +35,33 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Current Project State
 
-### What's Done
-- [x] Xcode project created (SwiftUI, Swift, iOS 17+)
-- [x] Keyboard extension target added: `SwiftSpeakKeyboard`
-- [x] App Groups capability configured in both targets
-- [x] Basic `KeyboardViewController.swift` with globe button
-- [x] Implementation plan document complete
+### Phase 0: UI/UX Prototype - COMPLETE
+- [x] Onboarding flow (6 screens with animations)
+- [x] Keyboard UI - buttons, dropdowns, all states
+- [x] Recording card - waveform animation, state transitions
+- [x] Settings screens - providers, API keys, templates
+- [x] Paywall screens - Free/Pro/Power tiers
+- [x] History view - past transcriptions list
+- [x] Power Mode views
 
-### What's NOT Done
-- [ ] `RequestsOpenAccess` is `false` in Info.plist (needs to be `true` for network access)
-- [ ] All UI screens (Phase 0 is UI-first with mock data)
-- [ ] Recording functionality
-- [ ] API integrations
-- [ ] Onboarding flow
+### Phase 1: Core Transcription - IN PROGRESS
+- [x] Test targets created (SwiftSpeakTests, SwiftSpeakUITests)
+- [x] Provider abstraction layer (TranscriptionProvider, FormattingProvider, TranslationProvider protocols)
+- [x] Audio recording (AudioRecorder, AudioSessionManager)
+- [x] Network layer (APIClient with async/await)
+- [x] OpenAI services (OpenAITranscriptionService, OpenAIFormattingService)
+- [x] TranscriptionOrchestrator (coordinates full recording → transcription → formatting flow)
+- [x] Mock providers for testing
+- [x] RecordingView integrated with real orchestrator
+- [x] RequestsOpenAccess = true in keyboard Info.plist
+- [ ] Unit tests
+- [ ] UI tests
+
+### What's NOT Done Yet
+- [ ] Translation feature integration (Phase 2)
+- [ ] Multi-provider support (Anthropic, ElevenLabs, Deepgram, Ollama) - Phase 3
+- [ ] Power Mode voice agents - Phase 4
+- [ ] StoreKit 2 subscriptions - Phase 5
 
 ## iOS Keyboard Architecture Constraint
 
@@ -85,25 +100,16 @@ swiftspeak://record?mode=raw&translate=true&target=french
 
 ## Implementation Phases
 
-### Phase 0: UI/UX Prototype (CURRENT)
-**Goal:** Build all screens with mock data, full navigation, polished animations.
-No real API calls - just simulated responses.
+### Phase 0: UI/UX Prototype - COMPLETE
+All screens built with mock data, full navigation, polished animations.
 
-**Deliverables:**
-1. Onboarding flow (6 screens with animations)
-2. Keyboard UI - buttons, dropdowns, all states
-3. Recording card - waveform animation, state transitions
-4. Settings screens - providers, API keys, templates
-5. Paywall screens - Free/Pro/Power tiers
-6. History view - past transcriptions list
-
-### Phase 1: Core Transcription
+### Phase 1: Core Transcription - IN PROGRESS
+- Testing infrastructure (Swift Testing framework)
 - Provider abstraction layer
 - OpenAI Whisper integration (real API calls)
 - Audio recording with AVAudioRecorder
 - App Groups communication
 - URL scheme handling
-- Auto-return and clipboard insertion
 
 ### Phase 2: Templates & Translation
 - Predefined templates (Email, Formal, Casual)
@@ -122,53 +128,137 @@ No real API calls - just simulated responses.
 - StoreKit 2 subscriptions
 - App Store submission
 
-## Target File Structure
+## Current File Structure
 
 ```
 SwiftSpeak/
 ├── SwiftSpeak.xcodeproj
+├── IMPLEMENTATION_PLAN.md
+├── PHASE1_PLAN.md
+├── CLAUDE.md
 ├── SwiftSpeak/                          # Containing App
-│   ├── SwiftSpeakApp.swift              # @main entry
+│   ├── SwiftSpeakApp.swift              # @main entry (pre-warms audio session)
 │   ├── ContentView.swift                # Main app navigation
+│   ├── SharedSettings.swift             # App Groups data + settings management
+│   │
+│   ├── Services/                        # NEW - Phase 1
+│   │   ├── Protocols/
+│   │   │   ├── TranscriptionProvider.swift
+│   │   │   ├── FormattingProvider.swift
+│   │   │   └── TranslationProvider.swift
+│   │   ├── Audio/
+│   │   │   ├── AudioSessionManager.swift
+│   │   │   └── AudioRecorder.swift
+│   │   ├── Providers/
+│   │   │   ├── OpenAI/
+│   │   │   │   ├── OpenAITranscriptionService.swift
+│   │   │   │   └── OpenAIFormattingService.swift
+│   │   │   └── Mock/
+│   │   │       ├── MockTranscriptionProvider.swift
+│   │   │       └── MockFormattingProvider.swift
+│   │   ├── Orchestration/
+│   │   │   └── TranscriptionOrchestrator.swift
+│   │   ├── Network/
+│   │   │   └── APIClient.swift
+│   │   └── TranscriptionError.swift
+│   │
 │   ├── Views/
 │   │   ├── Onboarding/
-│   │   │   ├── OnboardingView.swift     # TabView container
-│   │   │   ├── WelcomeScreen.swift      # Logo + tagline
-│   │   │   ├── HowItWorksScreen.swift   # 3-step carousel
+│   │   │   ├── OnboardingView.swift
+│   │   │   ├── WelcomeScreen.swift
+│   │   │   ├── HowItWorksScreen.swift
 │   │   │   ├── EnableKeyboardScreen.swift
 │   │   │   ├── FullAccessScreen.swift
 │   │   │   ├── APIKeyScreen.swift
-│   │   │   └── AllSetScreen.swift       # Confetti celebration
-│   │   ├── RecordingView.swift          # Recording UI with waveform
-│   │   ├── SettingsView.swift           # API keys, preferences
-│   │   ├── TemplatesView.swift          # Manage formatting templates
-│   │   ├── HistoryView.swift            # Past transcriptions
-│   │   └── PaywallView.swift            # Pro subscription prompt
-│   ├── Models/
-│   │   ├── AudioRecorder.swift          # AVAudioRecorder wrapper
-│   │   ├── TranscriptionService.swift   # OpenAI Whisper API
-│   │   ├── TranslationService.swift     # GPT-4 translation
-│   │   ├── FormattingService.swift      # GPT-4 template formatting
-│   │   ├── SettingsManager.swift        # UserDefaults + App Groups
-│   │   └── SubscriptionManager.swift    # StoreKit 2 purchases
-│   ├── Components/
-│   │   ├── WaveformView.swift           # Audio visualization
-│   │   └── RecordingCard.swift          # Compact center card
-│   └── Resources/
-│       └── Localizable.strings
+│   │   │   └── AllSetScreen.swift
+│   │   ├── PowerMode/
+│   │   │   ├── PowerModeListView.swift
+│   │   │   ├── PowerModeEditorView.swift
+│   │   │   ├── PowerModeExecutionView.swift
+│   │   │   ├── PowerModeResultView.swift
+│   │   │   ├── PowerModeQuestionView.swift
+│   │   │   └── Components/
+│   │   │       └── IconPicker.swift
+│   │   ├── Components/
+│   │   │   ├── WaveformView.swift
+│   │   │   └── Animations.swift
+│   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
+│   │   ├── SettingsView.swift
+│   │   ├── HistoryView.swift
+│   │   ├── PaywallView.swift
+│   │   └── KeyboardPreviewView.swift
+│   │
+│   └── Shared/
+│       ├── Constants.swift              # API endpoints, timeouts
+│       ├── Models.swift                 # AIProvider, FormattingMode, Language, etc.
+│       └── Theme.swift                  # AppTheme, HapticManager
+│
 ├── SwiftSpeakKeyboard/                  # Keyboard Extension
-│   ├── KeyboardViewController.swift     # UIInputViewController
-│   ├── KeyboardView.swift               # SwiftUI keyboard UI
+│   ├── KeyboardViewController.swift
+│   ├── KeyboardView.swift
 │   ├── Components/
-│   │   ├── TranscribeButton.swift
-│   │   ├── TranslateButton.swift
-│   │   ├── ModeDropdown.swift
-│   │   └── LanguageDropdown.swift
+│   │   └── (keyboard UI components)
 │   └── Info.plist                       # RequestsOpenAccess = YES
-└── Shared/
-    ├── SharedSettings.swift             # App Groups data
-    ├── Template.swift                   # Formatting template model
-    └── Constants.swift                  # API endpoints, keys
+│
+├── SwiftSpeakTests/                     # Unit Tests
+│   └── (test files)
+│
+└── SwiftSpeakUITests/                   # UI Tests
+    └── (test files)
+```
+
+## Provider Protocols (Implemented)
+
+```swift
+protocol TranscriptionProvider {
+    var providerId: AIProvider { get }
+    var isConfigured: Bool { get }
+    var model: String { get }
+    func transcribe(audioURL: URL, language: Language?) async throws -> String
+    func validateAPIKey(_ key: String) async -> Bool
+}
+
+protocol FormattingProvider {
+    var providerId: AIProvider { get }
+    var isConfigured: Bool { get }
+    var model: String { get }
+    func format(text: String, mode: FormattingMode, customPrompt: String?) async throws -> String
+}
+
+protocol TranslationProvider {
+    var providerId: AIProvider { get }
+    var isConfigured: Bool { get }
+    var model: String { get }
+    func translate(text: String, from: Language?, to: Language) async throws -> String
+}
+```
+
+## TranscriptionOrchestrator State Machine
+
+```
+idle → recording → processing → formatting → complete
+                 ↘ error (at any step)
+```
+
+The orchestrator:
+1. Manages audio recording via AudioRecorder
+2. Sends audio to transcription provider (OpenAI Whisper)
+3. Applies formatting via FormattingProvider (if mode != .raw)
+4. Applies vocabulary replacements from settings
+5. Saves to history
+6. Copies to clipboard
+7. Updates `lastTranscription` for keyboard access
+
+## Audio Recording Configuration
+
+Audio format optimized for Whisper API:
+```swift
+let settings: [String: Any] = [
+    AVFormatIDKey: kAudioFormatMPEG4AAC,
+    AVSampleRateKey: 16000,          // 16kHz for Whisper
+    AVNumberOfChannelsKey: 1,         // Mono
+    AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+]
 ```
 
 ## Business Model (BYOK - Bring Your Own Key)
@@ -196,137 +286,32 @@ This is **40-70% cheaper** than hosted competitors like Wispr Flow ($12-15/mo) o
 - Web search, code execution capabilities
 - Full-screen workspace with version history
 
-### Competitive Edge
-- **vs Wispr Flow ($12-15/mo)**: Same price for Power tier, but with AI agents + lifetime option
-- **vs Otter.ai ($8-30/mo)**: No minute caps (Otter limits to 1,200 min)
-- **vs Whisper Memos ($5/mo)**: No 15-min recording limit
-- **Lifetime option**: $99/$199 - unique in market (break-even ~14 months)
-
 ## Key UI Components
 
-### 1. Onboarding Flow
-6 screens with animations:
-1. **WelcomeScreen** - Animated logo, "Speak naturally. Type instantly."
-2. **HowItWorksScreen** - 3-step carousel with auto-advance
-3. **EnableKeyboardScreen** - Deep link to Settings, detect when enabled
-4. **FullAccessScreen** - Permission explanation, detect toggle
-5. **APIKeyScreen** - Enter OpenAI key, validate
-6. **AllSetScreen** - Confetti celebration
+### Recording Card States
+1. **Recording** - Live waveform, "Transcribing..."
+2. **Processing** - Spinner, "Processing transcription..."
+3. **Formatting** - Spinner, "Applying [mode] mode..."
+4. **Complete** - Checkmark, result preview
+5. **Error** - Error icon, message, tap to retry
 
-### 2. Keyboard UI
-```
-┌─────────────────────────────────────────┐
-│  [🎤 Transcribe]    [🌍 Translate]      │
-│  ┌───────────────────────────────────┐  │
-│  │ Mode: Email ▼                     │  │
-│  └───────────────────────────────────┘  │
-│  ┌───────────────────────────────────┐  │
-│  │ Target: Spanish ▼                 │  │
-│  └───────────────────────────────────┘  │
-│  [🌐 Globe]                             │
-└─────────────────────────────────────────┘
-```
-
-### 3. Recording Card (Compact Center)
-```
-┌─────────────────────────┐
-│     ~~~~∿∿∿~~~~         │
-│   (waveform animation)   │
-│   "Listening..."        │
-│   [Tap to finish]       │
-└─────────────────────────┘
-```
-
-**States:**
-1. Listening - Live waveform, "Listening..."
-2. Processing - Spinner, "Transcribing..."
-3. Formatting - Spinner, "Formatting..."
-
-### 4. Waveform Animation
+### Waveform Animation
 ```swift
 ForEach(0..<12) { i in
     RoundedRectangle(cornerRadius: 3)
-        .fill(LinearGradient(colors: [.blue, .purple]))
+        .fill(AppTheme.accentGradient)
         .frame(width: 4, height: heights[i])
-        .animation(.spring(dampingFraction: 0.5), value: heights[i])
+        .animation(AppTheme.smoothSpring, value: heights[i])
 }
 ```
 
 ## Design Guidelines
 
 - **Dark mode by default** - easier on eyes, feels premium
-- **Spring animations** - organic, Apple-like feel
-- **Haptic feedback** - light tap on record, success on complete
+- **Spring animations** - organic, Apple-like feel (use AppTheme.smoothSpring)
+- **Haptic feedback** - use HapticManager for consistent haptics
 - **Blur backgrounds** - `.ultraThinMaterial` for cards
-- **Accent color** - Blue or customizable
-
-## Keyboard Detection
-
-```swift
-// Check if SwiftSpeak keyboard is enabled
-func isKeyboardEnabled() -> Bool {
-    let keyboards = UserDefaults.standard.object(forKey: "AppleKeyboards") as? [String] ?? []
-    return keyboards.contains { $0.contains("SwiftSpeakKeyboard") }
-}
-
-// Deep link to keyboard settings
-func openKeyboardSettings() {
-    if let url = URL(string: "App-prefs:General&path=Keyboard/KEYBOARDS") {
-        UIApplication.shared.open(url)
-    }
-}
-```
-
-## Info.plist Changes Needed
-
-In `SwiftSpeakKeyboard/Info.plist`, change:
-```xml
-<key>RequestsOpenAccess</key>
-<true/>  <!-- Currently false, needs to be true -->
-```
-
-## Predefined Templates
-
-**Email Template:**
-```
-Format this dictated text as a professional email.
-Add appropriate greeting and sign-off.
-Fix grammar and punctuation. Keep the original meaning.
-```
-
-**Formal Template:**
-```
-Rewrite this text in a formal, professional tone.
-Use proper business language. Fix any grammatical errors.
-```
-
-**Casual Template:**
-```
-Clean up this text while keeping a casual, friendly tone.
-Fix grammar but maintain conversational style.
-```
-
-## Provider Abstraction
-
-```swift
-protocol TranscriptionProvider {
-    var id: String { get }
-    var name: String { get }
-    var requiresAPIKey: Bool { get }
-    var costPerMinute: Double { get }
-
-    func transcribe(audioURL: URL) async throws -> String
-    func validateAPIKey(_ key: String) async -> Bool
-}
-
-protocol TranslationProvider {
-    var id: String { get }
-    var name: String { get }
-    var supportedLanguages: [Language] { get }
-
-    func translate(text: String, from: Language, to: Language) async throws -> String
-}
-```
+- **Accent color** - Use AppTheme.accent and AppTheme.accentGradient
 
 ## App Groups Data Sharing
 
@@ -344,7 +329,7 @@ let text = sharedDefaults?.string(forKey: "lastTranscription")
 ## Performance Targets
 
 - App launch: <200ms (critical for UX)
-- Pre-warm audio session at app startup
+- Pre-warm audio session at app startup (in SwiftSpeakApp.init())
 - Start recording before UI renders
 - Keep app in memory with background modes
 
@@ -364,13 +349,38 @@ Typical 30-second dictation: ~$0.0032
 # Open project in Xcode
 open ~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeak.xcodeproj
 
-# Build for simulator
-xcodebuild -project SwiftSpeak.xcodeproj -scheme SwiftSpeak -destination 'platform=iOS Simulator,name=iPhone 15 Pro'
+# Build for simulator (use available simulator)
+xcodebuild -project SwiftSpeak.xcodeproj -scheme SwiftSpeak -destination 'platform=iOS Simulator,name=iPhone 17 Pro' build
+
+# Run tests
+xcodebuild test -project SwiftSpeak.xcodeproj -scheme SwiftSpeak -destination 'platform=iOS Simulator,name=iPhone 17 Pro'
 ```
 
 ## Session Start Checklist
 
 1. Read this CLAUDE.md for context
-2. Check current phase (Phase 0 = UI prototype)
-3. Use Context7 for Swift/SwiftUI documentation if needed
-4. Focus on mock data - no real API calls in Phase 0
+2. Check current phase (Phase 1 = Core Transcription in progress)
+3. Review PHASE1_PLAN.md for specific implementation steps
+4. Use Context7 for Swift/SwiftUI documentation if needed
+5. Run build to verify current state before making changes
+
+## Error Types
+
+`TranscriptionError` enum covers:
+- Microphone/audio errors (permission denied, recording failed)
+- Network errors (connectivity, timeout, server errors)
+- API errors (invalid key, rate limiting, quota exceeded)
+- File errors (audio file not found, too large)
+- Provider errors (not configured, empty response)
+
+Each error includes:
+- User-friendly `errorDescription`
+- `isUserRecoverable` flag
+- `shouldRetry` flag
+- `iconName` for UI display
+
+## Testing Strategy
+
+- **Unit Tests:** Swift Testing framework (@Test attribute, #expect macro)
+- **Mock Providers:** MockTranscriptionProvider, MockFormattingProvider with configurable delays and failures
+- **UI Tests:** XCTest framework for recording flow and settings
