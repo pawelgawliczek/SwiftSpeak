@@ -10,7 +10,7 @@ import SwiftUI
 struct PowerModeResultView: View {
     @State var session: PowerModeSession
     let isFromKeyboard: Bool
-    let onCopy: () -> Void
+    let onCopyAndDone: () -> Void
     let onRefine: () -> Void
     let onRegenerate: () -> Void
     let onAccept: () -> Void
@@ -162,20 +162,6 @@ struct PowerModeResultView: View {
 
             // Secondary action row
             HStack(spacing: 12) {
-                Button(action: onCopy) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "doc.on.doc")
-                            .font(.footnote)
-                        Text("Copy")
-                            .font(.callout.weight(.medium))
-                    }
-                    .foregroundStyle(.primary)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(Color.primary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                }
-
                 Button(action: onRegenerate) {
                     HStack(spacing: 6) {
                         Image(systemName: "arrow.clockwise")
@@ -191,13 +177,27 @@ struct PowerModeResultView: View {
                 }
             }
 
-            // Accept button for keyboard flow
+            // Done button - different for keyboard vs standard flow
             if isFromKeyboard {
                 Button(action: onAccept) {
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.body)
                         Text("Accept & Insert")
+                            .font(.callout.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(AppTheme.powerGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                }
+            } else {
+                Button(action: onCopyAndDone) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "doc.on.doc.fill")
+                            .font(.body)
+                        Text("Copy & Done")
                             .font(.callout.weight(.semibold))
                     }
                     .foregroundStyle(.white)
@@ -477,7 +477,7 @@ private struct DiffElement: Identifiable {
     return PowerModeResultView(
         session: session,
         isFromKeyboard: false,
-        onCopy: {},
+        onCopyAndDone: {},
         onRefine: {},
         onRegenerate: {},
         onAccept: {}
@@ -493,7 +493,7 @@ private struct DiffElement: Identifiable {
     return PowerModeResultView(
         session: session,
         isFromKeyboard: true,
-        onCopy: {},
+        onCopyAndDone: {},
         onRefine: {},
         onRegenerate: {},
         onAccept: {}

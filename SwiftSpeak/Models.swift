@@ -221,6 +221,148 @@ enum LLMProvider: String, Codable, CaseIterable, Identifiable {
     var requiresAPIKey: Bool {
         self != .ollama
     }
+
+    var availableModels: [String] {
+        switch self {
+        case .openAI: return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo"]
+        case .anthropic: return ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
+        case .google: return ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"]
+        case .ollama: return ["llama3.2", "mistral", "codellama", "gemma2"]
+        }
+    }
+
+    var defaultModel: String {
+        switch self {
+        case .openAI: return "gpt-4o-mini"
+        case .anthropic: return "claude-3-5-sonnet-latest"
+        case .google: return "gemini-2.0-flash-exp"
+        case .ollama: return "llama3.2"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .openAI: return "Fast and versatile AI models"
+        case .anthropic: return "Advanced reasoning and safety"
+        case .google: return "Multimodal AI capabilities"
+        case .ollama: return "Local AI, no cloud required"
+        }
+    }
+
+    var apiKeyHelpURL: URL? {
+        switch self {
+        case .openAI: return URL(string: "https://platform.openai.com/api-keys")
+        case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")
+        case .google: return URL(string: "https://aistudio.google.com/app/apikey")
+        case .ollama: return nil
+        }
+    }
+
+    var setupInstructions: String {
+        switch self {
+        case .openAI:
+            return """
+            1. Go to platform.openai.com
+            2. Sign in or create an account
+            3. Navigate to API Keys section
+            4. Click "Create new secret key"
+            5. Copy and paste the key here
+            """
+        case .anthropic:
+            return """
+            1. Go to console.anthropic.com
+            2. Sign in or create an account
+            3. Go to Settings → API Keys
+            4. Click "Create Key"
+            5. Copy and paste the key here
+            """
+        case .google:
+            return """
+            1. Go to aistudio.google.com
+            2. Sign in with your Google account
+            3. Click "Get API Key"
+            4. Create a new API key
+            5. Copy and paste the key here
+            """
+        case .ollama:
+            return """
+            1. Install Ollama on your Mac
+            2. Run: ollama pull llama3.2
+            3. Start Ollama server
+            4. Enter the server address below
+               (default: http://localhost:11434)
+            """
+        }
+    }
+}
+
+// MARK: - Provider Usage Category
+enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
+    case transcription = "transcription"
+    case translation = "translation"
+    case powerMode = "power_mode"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .transcription: return "Transcription"
+        case .translation: return "Translation"
+        case .powerMode: return "Power Mode"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .transcription: return "waveform"
+        case .translation: return "globe"
+        case .powerMode: return "bolt.fill"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .transcription: return "Speech-to-text processing"
+        case .translation: return "Text translation between languages"
+        case .powerMode: return "AI-powered voice workflows"
+        }
+    }
+}
+
+// MARK: - LLM Provider Configuration
+struct LLMProviderConfig: Codable, Identifiable, Equatable {
+    var id: String { provider.rawValue }
+    var provider: LLMProvider
+    var apiKey: String
+    var model: String
+    var endpoint: String? // For Ollama
+    var usageCategories: Set<ProviderUsageCategory>
+
+    init(
+        provider: LLMProvider,
+        apiKey: String = "",
+        model: String? = nil,
+        endpoint: String? = nil,
+        usageCategories: Set<ProviderUsageCategory> = [.translation, .powerMode]
+    ) {
+        self.provider = provider
+        self.apiKey = apiKey
+        self.model = model ?? provider.defaultModel
+        self.endpoint = endpoint
+        self.usageCategories = usageCategories
+    }
+
+    var isConfiguredForTranscription: Bool {
+        usageCategories.contains(.transcription)
+    }
+
+    var isConfiguredForTranslation: Bool {
+        usageCategories.contains(.translation)
+    }
+
+    var isConfiguredForPowerMode: Bool {
+        usageCategories.contains(.powerMode)
+    }
 }
 
 // MARK: - Formatting Mode

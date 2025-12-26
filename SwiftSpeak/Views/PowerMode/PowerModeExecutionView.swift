@@ -44,10 +44,8 @@ struct PowerModeExecutionView: View {
             AppTheme.darkBase.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Header (hide when editing to give more space)
-                if !isEditing {
-                    header
-                }
+                // Header - always show (has Save button when editing)
+                header
 
                 Spacer()
 
@@ -172,7 +170,7 @@ struct PowerModeExecutionView: View {
                 PowerModeResultView(
                     session: session,
                     isFromKeyboard: isFromKeyboard,
-                    onCopy: copyResult,
+                    onCopyAndDone: copyAndDone,
                     onRefine: startRefining,
                     onRegenerate: regenerate,
                     onAccept: acceptAndInsert
@@ -713,10 +711,12 @@ struct PowerModeExecutionView: View {
         }
     }
 
-    private func copyResult() {
+    private func copyAndDone() {
         if let result = session.currentResult {
             UIPasteboard.general.string = result.markdownOutput
             HapticManager.success()
+            cleanup()
+            onDismiss()
         }
     }
 

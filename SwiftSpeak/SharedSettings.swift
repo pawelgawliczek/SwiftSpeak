@@ -28,7 +28,13 @@ class SharedSettings: ObservableObject {
 
     @Published var configuredSTTProviders: [STTProviderConfig] = [] {
         didSet {
-            saveConfiguredProviders()
+            saveConfiguredSTTProviders()
+        }
+    }
+
+    @Published var configuredLLMProviders: [LLMProviderConfig] = [] {
+        didSet {
+            saveConfiguredLLMProviders()
         }
     }
 
@@ -164,11 +170,14 @@ class SharedSettings: ObservableObject {
         }
 
         // Load configured STT providers
-        loadConfiguredProviders()
+        loadConfiguredSTTProviders()
+
+        // Load configured LLM providers
+        loadConfiguredLLMProviders()
     }
 
     // MARK: - STT Provider Management
-    private func loadConfiguredProviders() {
+    private func loadConfiguredSTTProviders() {
         if let data = defaults?.data(forKey: Constants.Keys.configuredSTTProviders),
            let providers = try? JSONDecoder().decode([STTProviderConfig].self, from: data) {
             configuredSTTProviders = providers
@@ -183,7 +192,7 @@ class SharedSettings: ObservableObject {
         }
     }
 
-    private func saveConfiguredProviders() {
+    private func saveConfiguredSTTProviders() {
         if let data = try? JSONEncoder().encode(configuredSTTProviders) {
             defaults?.set(data, forKey: Constants.Keys.configuredSTTProviders)
         }
@@ -213,9 +222,87 @@ class SharedSettings: ObservableObject {
         configuredSTTProviders.first { $0.provider == provider }
     }
 
-    var availableProvidersToAdd: [STTProvider] {
+    var availableSTTProvidersToAdd: [STTProvider] {
         let configuredProviderTypes = Set(configuredSTTProviders.map { $0.provider })
         return STTProvider.allCases.filter { !configuredProviderTypes.contains($0) }
+    }
+
+    // MARK: - LLM Provider Management
+    private func loadConfiguredLLMProviders() {
+        if let data = defaults?.data(forKey: Constants.Keys.configuredLLMProviders),
+           let providers = try? JSONDecoder().decode([LLMProviderConfig].self, from: data) {
+            configuredLLMProviders = providers
+        } else {
+            // Default: OpenAI GPT with any existing API key for translation and power mode
+            let defaultConfig = LLMProviderConfig(
+                provider: .openAI,
+                apiKey: openAIAPIKey ?? "",
+                model: LLMProvider.openAI.defaultModel,
+                usageCategories: [.translation, .powerMode]
+            )
+            configuredLLMProviders = [defaultConfig]
+        }
+    }
+
+    private func saveConfiguredLLMProviders() {
+        if let data = try? JSONEncoder().encode(configuredLLMProviders) {
+            defaults?.set(data, forKey: Constants.Keys.configuredLLMProviders)
+        }
+    }
+
+    func addLLMProvider(_ config: LLMProviderConfig) {
+        // Don't add duplicates
+        guard !configuredLLMProviders.contains(where: { $0.provider == config.provider }) else { return }
+        configuredLLMProviders.append(config)
+    }
+
+    func updateLLMProvider(_ config: LLMProviderConfig) {
+        if let index = configuredLLMProviders.firstIndex(where: { $0.provider == config.provider }) {
+            configuredLLMProviders[index] = config
+        }
+    }
+
+    func removeLLMProvider(_ provider: LLMProvider) {
+        configuredLLMProviders.removeAll { $0.provider == provider }
+        // If we removed the selected provider, select the first available
+        if selectedTranslationProvider == provider {
+            if let first = translationProviders.first {
+                selectedTranslationProvider = first.provider
+            }
+        }
+        if selectedModeProvider == provider {
+            if let first = powerModeProviders.first {
+                selectedModeProvider = first.provider
+            }
+        }
+    }
+
+    func getLLMProviderConfig(for provider: LLMProvider) -> LLMProviderConfig? {
+        configuredLLMProviders.first { $0.provider == provider }
+    }
+
+    var availableLLMProvidersToAdd: [LLMProvider] {
+        let configuredProviderTypes = Set(configuredLLMProviders.map { $0.provider })
+        return LLMProvider.allCases.filter { !configuredProviderTypes.contains($0) }
+    }
+
+    // MARK: - Filtered Provider Lists
+    var translationProviders: [LLMProviderConfig] {
+        configuredLLMProviders.filter { $0.isConfiguredForTranslation }
+    }
+
+    var powerModeProviders: [LLMProviderConfig] {
+        configuredLLMProviders.filter { $0.isConfiguredForPowerMode }
+    }
+
+    /// Get the currently selected translation provider config
+    var selectedTranslationProviderConfig: LLMProviderConfig? {
+        configuredLLMProviders.first { $0.provider == selectedTranslationProvider }
+    }
+
+    /// Get the currently selected mode provider config
+    var selectedModeProviderConfig: LLMProviderConfig? {
+        configuredLLMProviders.first { $0.provider == selectedModeProvider }
     }
 
     // MARK: - Helper Methods

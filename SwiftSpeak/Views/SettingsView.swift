@@ -11,9 +11,12 @@ struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
     @State private var showPaywall = false
-    @State private var showAddProvider = false
-    @State private var editingProviderConfig: STTProviderConfig?
-    @State private var isAddingNewProvider = false
+    @State private var showAddSTTProvider = false
+    @State private var editingSTTProviderConfig: STTProviderConfig?
+    @State private var isAddingNewSTTProvider = false
+    @State private var showAddLLMProvider = false
+    @State private var editingLLMProviderConfig: LLMProviderConfig?
+    @State private var isAddingNewLLMProvider = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -38,30 +41,30 @@ struct SettingsView: View {
                         .listRowInsets(EdgeInsets())
                     }
 
-                    // Provider Section
+                    // Transcription Providers Section
                     Section {
                         // Configured providers
                         ForEach(settings.configuredSTTProviders) { config in
-                            ConfiguredProviderRow(
+                            ConfiguredSTTProviderRow(
                                 config: config,
                                 isSelected: settings.selectedProvider == config.provider,
                                 colorScheme: colorScheme
                             ) {
                                 settings.selectedProvider = config.provider
                             } onEdit: {
-                                isAddingNewProvider = false
-                                editingProviderConfig = config
+                                isAddingNewSTTProvider = false
+                                editingSTTProviderConfig = config
                             }
                             .listRowBackground(rowBackground)
                         }
 
                         // Add Provider button
-                        if !settings.availableProvidersToAdd.isEmpty {
+                        if !settings.availableSTTProvidersToAdd.isEmpty {
                             Button(action: {
                                 if settings.subscriptionTier == .free {
                                     showPaywall = true
                                 } else {
-                                    showAddProvider = true
+                                    showAddSTTProvider = true
                                 }
                             }) {
                                 HStack(spacing: 12) {
@@ -100,24 +103,71 @@ struct SettingsView: View {
                             .listRowBackground(rowBackground)
                         }
                     } header: {
-                        Text("Transcription Providers")
+                        Text("Transcription")
                     }
 
-                    // Templates Section
+                    // AI Models Section (Translation & Power Mode)
                     Section {
-                        NavigationLink {
-                            TemplatesView()
-                        } label: {
-                            SettingsRow(
-                                icon: "doc.text",
-                                iconColor: .orange,
-                                title: "Custom Templates",
-                                subtitle: "Create your own formatting styles"
-                            )
+                        // Configured LLM providers
+                        ForEach(settings.configuredLLMProviders) { config in
+                            ConfiguredLLMProviderRow(
+                                config: config,
+                                colorScheme: colorScheme
+                            ) {
+                                isAddingNewLLMProvider = false
+                                editingLLMProviderConfig = config
+                            }
+                            .listRowBackground(rowBackground)
                         }
-                        .listRowBackground(rowBackground)
+
+                        // Add AI Model button
+                        if !settings.availableLLMProvidersToAdd.isEmpty {
+                            Button(action: {
+                                if settings.subscriptionTier == .free {
+                                    showPaywall = true
+                                } else {
+                                    showAddLLMProvider = true
+                                }
+                            }) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "plus.circle.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.orange)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack {
+                                            Text("Add AI Model")
+                                                .font(.callout.weight(.medium))
+                                                .foregroundStyle(.primary)
+
+                                            Text("PRO")
+                                                .font(.caption2.weight(.bold))
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 6)
+                                                .padding(.vertical, 2)
+                                                .background(Color.purple)
+                                                .clipShape(Capsule())
+                                        }
+
+                                        Text("Use different models for translation & modes")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    if settings.subscriptionTier == .free {
+                                        Image(systemName: "lock.fill")
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
                     } header: {
-                        Text("Formatting")
+                        Text("AI Models")
+                    } footer: {
+                        Text("Configure which AI models are used for translation and Power Modes. Enable categories for each model when editing.")
                     }
 
                     // Language Section
@@ -230,31 +280,62 @@ struct SettingsView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
-            .sheet(item: $editingProviderConfig) { config in
-                ProviderEditorSheet(
+            // STT Provider Sheets
+            .sheet(item: $editingSTTProviderConfig) { config in
+                STTProviderEditorSheet(
                     config: config,
-                    isEditing: !isAddingNewProvider,
+                    isEditing: !isAddingNewSTTProvider,
                     onSave: { updatedConfig in
-                        if isAddingNewProvider {
+                        if isAddingNewSTTProvider {
                             settings.addSTTProvider(updatedConfig)
                         } else {
                             settings.updateSTTProvider(updatedConfig)
                         }
                     },
-                    onDelete: isAddingNewProvider ? nil : {
+                    onDelete: isAddingNewSTTProvider ? nil : {
                         settings.removeSTTProvider(config.provider)
                     }
                 )
             }
-            .sheet(isPresented: $showAddProvider) {
-                AddProviderSheet(
-                    availableProviders: settings.availableProvidersToAdd,
+            .sheet(isPresented: $showAddSTTProvider) {
+                AddSTTProviderSheet(
+                    availableProviders: settings.availableSTTProvidersToAdd,
                     onSelect: { provider in
-                        showAddProvider = false
+                        showAddSTTProvider = false
                         // Small delay to allow sheet dismiss animation
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            isAddingNewProvider = true
-                            editingProviderConfig = STTProviderConfig(provider: provider)
+                            isAddingNewSTTProvider = true
+                            editingSTTProviderConfig = STTProviderConfig(provider: provider)
+                        }
+                    }
+                )
+            }
+            // LLM Provider Sheets
+            .sheet(item: $editingLLMProviderConfig) { config in
+                LLMProviderEditorSheet(
+                    config: config,
+                    isEditing: !isAddingNewLLMProvider,
+                    onSave: { updatedConfig in
+                        if isAddingNewLLMProvider {
+                            settings.addLLMProvider(updatedConfig)
+                        } else {
+                            settings.updateLLMProvider(updatedConfig)
+                        }
+                    },
+                    onDelete: isAddingNewLLMProvider ? nil : {
+                        settings.removeLLMProvider(config.provider)
+                    }
+                )
+            }
+            .sheet(isPresented: $showAddLLMProvider) {
+                AddLLMProviderSheet(
+                    availableProviders: settings.availableLLMProvidersToAdd,
+                    onSelect: { provider in
+                        showAddLLMProvider = false
+                        // Small delay to allow sheet dismiss animation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            isAddingNewLLMProvider = true
+                            editingLLMProviderConfig = LLMProviderConfig(provider: provider)
                         }
                     }
                 )
@@ -853,36 +934,6 @@ struct SettingsRow: View {
 
             Spacer()
         }
-    }
-}
-
-// MARK: - Templates View (Placeholder)
-struct TemplatesView: View {
-    @Environment(\.colorScheme) var colorScheme
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    var body: some View {
-        ZStack {
-            backgroundColor.ignoresSafeArea()
-
-            VStack(spacing: 24) {
-                Image(systemName: "doc.text")
-                    .font(.system(size: 60))
-                    .foregroundStyle(.secondary)
-
-                Text("Custom Templates")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.primary)
-
-                Text("Coming in Phase 2")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .navigationTitle("Templates")
     }
 }
 

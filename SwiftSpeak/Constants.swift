@@ -19,6 +19,7 @@ enum Constants {
         static let hasCompletedOnboarding = "hasCompletedOnboarding"
         static let selectedProvider = "selectedProvider"
         static let configuredSTTProviders = "configuredSTTProviders"
+        static let configuredLLMProviders = "configuredLLMProviders"
         static let openAIAPIKey = "openAIAPIKey"
         static let anthropicAPIKey = "anthropicAPIKey"
         static let elevenLabsAPIKey = "elevenLabsAPIKey"
@@ -32,6 +33,7 @@ enum Constants {
         static let lastTranscription = "lastTranscription"
         static let transcriptionHistory = "transcriptionHistory"
         static let subscriptionTier = "subscriptionTier"
+        static let vocabulary = "vocabulary"
     }
 
     // MARK: - API Endpoints
