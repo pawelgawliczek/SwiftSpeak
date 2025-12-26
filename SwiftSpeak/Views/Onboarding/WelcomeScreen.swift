@@ -9,6 +9,7 @@ import SwiftUI
 
 struct WelcomeScreen: View {
     let onContinue: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     @State private var logoScale: CGFloat = 0.5
     @State private var logoOpacity: Double = 0
@@ -16,6 +17,10 @@ struct WelcomeScreen: View {
     @State private var taglineOpacity: Double = 0
     @State private var buttonOpacity: Double = 0
     @State private var waveformPhase: Double = 0
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
 
     var body: some View {
         VStack(spacing: 32) {
@@ -70,16 +75,28 @@ struct WelcomeScreen: View {
                 HapticManager.mediumTap()
                 onContinue()
             }) {
-                Text("Get Started")
+                HStack(spacing: 10) {
+                    Text("Get Started")
+                        .font(.body.weight(.semibold))
+                    Image(systemName: "arrow.right")
+                        .font(.body.weight(.semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 50)
+                .background(AppTheme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: AppTheme.accent.opacity(0.3), radius: 8, y: 4)
             }
-            .buttonStyle(PrimaryButtonStyle())
-            .padding(.horizontal, 32)
+            .buttonStyle(.plain)
+            .padding(.horizontal, 24)
             .opacity(buttonOpacity)
             .scaleEffect(buttonOpacity == 1 ? 1 : 0.9)
 
             Spacer()
-                .frame(height: 60)
+                .frame(height: 50)
         }
+        .background(backgroundColor.ignoresSafeArea())
         .onAppear {
             startAnimations()
         }
@@ -148,9 +165,12 @@ struct WaveformCircle: Shape {
     }
 }
 
-#Preview {
-    ZStack {
-        AppTheme.darkBase.ignoresSafeArea()
-        WelcomeScreen(onContinue: {})
-    }
+#Preview("Dark") {
+    WelcomeScreen(onContinue: {})
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    WelcomeScreen(onContinue: {})
+        .preferredColorScheme(.light)
 }

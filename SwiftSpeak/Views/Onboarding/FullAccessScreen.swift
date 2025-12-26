@@ -10,122 +10,136 @@ import SwiftUI
 struct FullAccessScreen: View {
     @Binding var isEnabled: Bool
     let onContinue: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     @State private var contentVisible = false
     @State private var checkmarkScale: CGFloat = 0
-    @State private var showConfetti = false
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer()
+                    .frame(height: 24)
 
-            // Title
-            Text("Allow Full Access")
-                .font(.largeTitle.weight(.bold))
-                .foregroundStyle(.primary)
-
-            // Subtitle
-            Text("Required for voice transcription")
-                .font(.body)
-                .foregroundStyle(.secondary)
-
-            // Explanation cards
-            VStack(spacing: 16) {
-                ExplanationCard(
-                    icon: "network",
-                    title: "Network Access",
-                    description: "Needed to send audio to OpenAI for transcription",
-                    color: .blue
-                )
-
-                ExplanationCard(
-                    icon: "lock.shield.fill",
-                    title: "Your Privacy",
-                    description: "Audio is sent directly to OpenAI, never stored on our servers",
-                    color: .green
-                )
-
-                ExplanationCard(
-                    icon: "xmark.shield.fill",
-                    title: "What We Don't Access",
-                    description: "Passwords, credit cards, and other keyboard data",
-                    color: .purple
-                )
-            }
-            .padding(.horizontal, 24)
-            .opacity(contentVisible ? 1 : 0)
-            .offset(y: contentVisible ? 0 : 20)
-
-            // Toggle mockup
-            FullAccessToggleMockup(isEnabled: isEnabled)
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-                .opacity(contentVisible ? 1 : 0)
-
-            // Success state with confetti
-            if isEnabled {
+                // Animated waveform - same position as other onboarding screens
                 ZStack {
-                    if showConfetti {
-                        ConfettiView()
-                    }
+                    SoundBarsWaveformView(
+                        barCount: 7,
+                        color: isEnabled ? .green : AppTheme.accent,
+                        isActive: true
+                    )
+                    .frame(width: 80, height: 50)
 
-                    HStack(spacing: 12) {
+                    // Green checkmark overlay when enabled
+                    if isEnabled {
                         Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 32))
+                            .font(.system(size: 28))
                             .foregroundStyle(.green)
-                            .scaleEffect(checkmarkScale)
-
-                        Text("Full Access Enabled!")
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(.green)
+                            .background(
+                                Circle()
+                                    .fill(backgroundColor)
+                                    .frame(width: 32, height: 32)
+                            )
+                            .transition(.scale.combined(with: .opacity))
                     }
                 }
-                .frame(height: 50)
-                .transition(.scale.combined(with: .opacity))
-            }
-
-            Spacer()
-
-            // Continue button
-            Button(action: {
-                HapticManager.mediumTap()
-                if isEnabled {
-                    onContinue()
-                } else {
-                    openKeyboardSettings()
-                }
-            }) {
-                HStack(spacing: 12) {
-                    Image(systemName: isEnabled ? "arrow.right" : "gear")
-                        .font(.callout.weight(.semibold))
-
-                    Text(isEnabled ? "Continue" : "Open Settings")
-                        .font(.callout.weight(.semibold))
-                }
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .padding(.vertical, 6)
-                .background(
-                    isEnabled ?
-                        LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .leading, endPoint: .trailing) :
-                        AppTheme.accentGradient
-                )
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
-            }
-            .padding(.horizontal, 32)
-
-            // Skip for now
-            Button("Skip for now") {
-                onContinue()
-            }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.top, 8)
-
-            Spacer()
                 .frame(height: 60)
+                .animation(AppTheme.smoothSpring, value: isEnabled)
+
+                // Title
+                Text(isEnabled ? "Full Access Enabled!" : "Allow Full Access")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(.primary)
+
+                // Subtitle
+                Text(isEnabled ? "You're ready for voice transcription" : "Required for voice transcription")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                // Explanation cards
+                VStack(spacing: 8) {
+                    ExplanationCard(
+                        icon: "network",
+                        title: "Network Access",
+                        description: "Needed to send audio to OpenAI for transcription",
+                        color: .blue,
+                        colorScheme: colorScheme
+                    )
+
+                    ExplanationCard(
+                        icon: "lock.shield.fill",
+                        title: "Your Privacy",
+                        description: "Audio is sent directly to OpenAI, never stored on our servers",
+                        color: .green,
+                        colorScheme: colorScheme
+                    )
+
+                    ExplanationCard(
+                        icon: "xmark.shield.fill",
+                        title: "What We Don't Access",
+                        description: "Passwords, credit cards, and other keyboard data",
+                        color: .purple,
+                        colorScheme: colorScheme
+                    )
+                }
+                .padding(.horizontal, 24)
+                .opacity(contentVisible ? 1 : 0)
+                .offset(y: contentVisible ? 0 : 20)
+
+                // Toggle mockup
+                if !isEnabled {
+                    FullAccessToggleMockup(isEnabled: isEnabled, colorScheme: colorScheme)
+                        .padding(.horizontal, 24)
+                        .opacity(contentVisible ? 1 : 0)
+                }
+
+                Spacer()
+                    .frame(height: 20)
+
+                // Continue/Open Settings button
+                Button(action: {
+                    HapticManager.mediumTap()
+                    if isEnabled {
+                        onContinue()
+                    } else {
+                        openKeyboardSettings()
+                    }
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: isEnabled ? "arrow.right" : "gear")
+                            .font(.body.weight(.semibold))
+                        Text(isEnabled ? "Continue" : "Open Settings")
+                            .font(.body.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 50)
+                    .background(isEnabled ? Color.green : AppTheme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shadow(color: (isEnabled ? Color.green : AppTheme.accent).opacity(0.3), radius: 8, y: 4)
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 24)
+
+                // Skip for now
+                Button("Skip for now") {
+                    onContinue()
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
+
+                Spacer()
+                    .frame(height: 50)
+            }
         }
+        .background(backgroundColor.ignoresSafeArea())
         .onAppear {
             withAnimation(AppTheme.smoothSpring.delay(0.2)) {
                 contentVisible = true
@@ -136,10 +150,9 @@ struct FullAccessScreen: View {
                 HapticManager.success()
                 withAnimation(AppTheme.smoothSpring) {
                     checkmarkScale = 1.0
-                    showConfetti = true
                 }
-                // Auto-advance after celebration
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                // Auto-advance after short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     onContinue()
                 }
             }
@@ -159,99 +172,110 @@ struct ExplanationCard: View {
     let title: String
     let description: String
     let color: Color
+    let colorScheme: ColorScheme
+
+    private var iconBackground: Color {
+        color.opacity(colorScheme == .dark ? 0.2 : 0.15)
+    }
 
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 10) {
+            // Icon with colored background
             Image(systemName: icon)
-                .font(.title2)
+                .font(.system(size: 14))
                 .foregroundStyle(color)
-                .frame(width: 44, height: 44)
-                .background(color.opacity(0.2))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 32, height: 32)
+                .background(iconBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.callout.weight(.semibold))
+                    .font(.footnote.weight(.semibold))
                     .foregroundStyle(.primary)
 
                 Text(description)
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
 
             Spacer()
         }
-        .padding(16)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+        .padding(10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 }
 
 // MARK: - Full Access Toggle Mockup
 struct FullAccessToggleMockup: View {
     let isEnabled: Bool
+    let colorScheme: ColorScheme
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
 
     var body: some View {
-        HStack {
-            Text("Allow Full Access")
-                .font(.body)
-                .foregroundStyle(.primary)
+        VStack(spacing: 0) {
+            // Header - looks like iOS Settings
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(AppTheme.accent)
 
-            Spacer()
+                Text("Keyboards")
+                    .font(.body)
+                    .foregroundStyle(AppTheme.accent)
 
-            Toggle("", isOn: .constant(isEnabled))
-                .labelsHidden()
-                .tint(.green)
-                .allowsHitTesting(false)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(colorScheme == .dark ? Color.white.opacity(0.05) : Color(UIColor.systemGray6))
+
+            // SwiftSpeak settings row
+            VStack(spacing: 0) {
+                HStack {
+                    Text("Allow Full Access")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    Toggle("", isOn: .constant(isEnabled))
+                        .labelsHidden()
+                        .tint(.green)
+                        .allowsHitTesting(false)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(rowBackground)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(UIColor.separator).opacity(0.5), lineWidth: 0.5)
+            )
+            .padding(.horizontal, 16)
         }
-        .padding(16)
-        .background(Color.white.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.2), radius: 20, y: 5)
     }
 }
 
-// MARK: - Confetti View
-struct ConfettiView: View {
-    @State private var particles: [(id: Int, offset: CGSize, rotation: Double, color: Color)] = []
-
-    var body: some View {
-        ZStack {
-            ForEach(particles, id: \.id) { particle in
-                Circle()
-                    .fill(particle.color)
-                    .frame(width: 8, height: 8)
-                    .offset(particle.offset)
-                    .rotationEffect(.degrees(particle.rotation))
-            }
-        }
-        .onAppear {
-            createConfetti()
-        }
-    }
-
-    private func createConfetti() {
-        let colors: [Color] = [.blue, .purple, .green, .yellow, .orange, .pink]
-
-        for i in 0..<30 {
-            let randomX = CGFloat.random(in: -150...150)
-            let randomY = CGFloat.random(in: -200...0)
-            let randomRotation = Double.random(in: 0...360)
-            let color = colors.randomElement() ?? .blue
-
-            particles.append((id: i, offset: .zero, rotation: 0, color: color))
-
-            withAnimation(.easeOut(duration: 1.5).delay(Double(i) * 0.02)) {
-                particles[i].offset = CGSize(width: randomX, height: randomY)
-                particles[i].rotation = randomRotation
-            }
-        }
-    }
+#Preview("Dark") {
+    FullAccessScreen(isEnabled: .constant(false), onContinue: {})
+        .preferredColorScheme(.dark)
 }
 
-#Preview {
-    ZStack {
-        AppTheme.darkBase.ignoresSafeArea()
-        FullAccessScreen(isEnabled: .constant(false), onContinue: {})
-    }
+#Preview("Light") {
+    FullAccessScreen(isEnabled: .constant(false), onContinue: {})
+        .preferredColorScheme(.light)
+}
+
+#Preview("Enabled") {
+    FullAccessScreen(isEnabled: .constant(true), onContinue: {})
+        .preferredColorScheme(.dark)
 }

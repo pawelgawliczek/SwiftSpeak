@@ -183,17 +183,19 @@ struct MirroredBarWaveformView: View {
     let barCount: Int
     let color: Color
     let isActive: Bool
+    let speed: Double
 
-    init(barCount: Int = 16, color: Color = AppTheme.accent, isActive: Bool = true) {
+    init(barCount: Int = 16, color: Color = AppTheme.accent, isActive: Bool = true, speed: Double = 1.0) {
         self.barCount = barCount
         self.color = color
         self.isActive = isActive
+        self.speed = speed
     }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1/30)) { timeline in
             Canvas { context, size in
-                let time: Double = timeline.date.timeIntervalSinceReferenceDate
+                let time: Double = timeline.date.timeIntervalSinceReferenceDate * speed
                 let count: Int = barCount
                 let barWidth: CGFloat = size.width / CGFloat(count * 2 - 1)
                 let maxHeight: CGFloat = size.height / 2 - 2
@@ -282,11 +284,13 @@ struct BlobWaveformView: View {
 struct SoundBarsWaveformView: View {
     let barCount: Int
     let spacing: CGFloat
+    let color: Color
     let isActive: Bool
 
-    init(barCount: Int = 5, spacing: CGFloat = 4, isActive: Bool = true) {
+    init(barCount: Int = 5, spacing: CGFloat = 4, color: Color = AppTheme.accent, isActive: Bool = true) {
         self.barCount = barCount
         self.spacing = spacing
+        self.color = color
         self.isActive = isActive
     }
 
@@ -296,6 +300,7 @@ struct SoundBarsWaveformView: View {
                 time: timeline.date.timeIntervalSinceReferenceDate,
                 barCount: barCount,
                 spacing: spacing,
+                color: color,
                 isActive: isActive
             )
         }
@@ -306,12 +311,13 @@ private struct SoundBarsContent: View {
     let time: Double
     let barCount: Int
     let spacing: CGFloat
+    let color: Color
     let isActive: Bool
 
     var body: some View {
         HStack(spacing: spacing) {
             ForEach(0..<barCount, id: \.self) { index in
-                SoundBarItem(time: time, index: index, isActive: isActive)
+                SoundBarItem(time: time, index: index, color: color, isActive: isActive)
             }
         }
     }
@@ -320,6 +326,7 @@ private struct SoundBarsContent: View {
 private struct SoundBarItem: View {
     let time: Double
     let index: Int
+    let color: Color
     let isActive: Bool
 
     var body: some View {
@@ -329,7 +336,7 @@ private struct SoundBarItem: View {
         let height: CGFloat = isActive ? CGFloat(0.3 + wave1 + wave2) : 0.2
 
         RoundedRectangle(cornerRadius: 3)
-            .fill(AppTheme.accentGradient)
+            .fill(color.gradient)
             .frame(width: 6)
             .scaleEffect(y: height, anchor: .center)
     }
@@ -385,166 +392,90 @@ struct SpectrumWaveformView: View {
     }
 }
 
-// MARK: - SwiftSpeak Text Waveform
-/// Animated "SwiftSpeak" text with sound wave effect
-struct SwiftSpeakWaveformView: View {
-    let isActive: Bool
-    let fontSize: CGFloat
-    let showWaveBackground: Bool
-
-    init(isActive: Bool = true, fontSize: CGFloat = 32, showWaveBackground: Bool = true) {
-        self.isActive = isActive
-        self.fontSize = fontSize
-        self.showWaveBackground = showWaveBackground
-    }
-
-    var body: some View {
-        TimelineView(.animation(minimumInterval: 1/60)) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-
-            ZStack {
-                // Background wave lines
-                if showWaveBackground {
-                    WaveBackgroundCanvas(time: time, isActive: isActive)
-                        .opacity(0.3)
-                }
-
-                // Animated text with wave distortion
-                SwiftSpeakTextCanvas(time: time, isActive: isActive, fontSize: fontSize)
-            }
-        }
-    }
-}
-
-/// Canvas for background wave lines
-private struct WaveBackgroundCanvas: View {
-    let time: Double
+// MARK: - SwiftSpeak Waveform Reveal
+/// Sound wave that reveals/morphs into SwiftSpeak text
+struct SwiftSpeakWaveRevealView: View {
     let isActive: Bool
 
-    var body: some View {
-        Canvas { context, size in
-            let lineCount = 5
-            let midY = size.height / 2
-
-            for lineIndex in 0..<lineCount {
-                let offset = CGFloat(lineIndex - lineCount / 2) * 12
-                var path = Path()
-
-                let phase = isActive ? time * 2 + Double(lineIndex) * 0.5 : 0
-                let amplitude: CGFloat = isActive ? 8 + CGFloat(lineIndex) * 2 : 2
-
-                for x in stride(from: CGFloat(0), to: size.width, by: 2) {
-                    let relativeX = x / size.width
-                    let angle = relativeX * .pi * 6 + CGFloat(phase)
-                    let y = midY + offset + sin(angle) * amplitude
-
-                    if x == 0 {
-                        path.move(to: CGPoint(x: x, y: y))
-                    } else {
-                        path.addLine(to: CGPoint(x: x, y: y))
-                    }
-                }
-
-                let opacity = 0.3 + Double(abs(lineIndex - lineCount / 2)) * 0.1
-                context.stroke(
-                    path,
-                    with: .color(AppTheme.accent.opacity(opacity)),
-                    lineWidth: 1.5
-                )
-            }
-        }
-    }
-}
-
-/// Canvas for the animated SwiftSpeak text
-private struct SwiftSpeakTextCanvas: View {
-    let time: Double
-    let isActive: Bool
-    let fontSize: CGFloat
-
-    var body: some View {
-        Canvas { context, size in
-            let text = "SwiftSpeak"
-            let midX = size.width / 2
-            let midY = size.height / 2
-
-            // Create attributed string for measurement
-            let font = UIFont.systemFont(ofSize: fontSize, weight: .bold)
-            let attributes: [NSAttributedString.Key: Any] = [.font: font]
-            let attributedString = NSAttributedString(string: text, attributes: attributes)
-            let textSize = attributedString.size()
-
-            // Draw each character with wave offset
-            var currentX = midX - textSize.width / 2
-
-            for (index, char) in text.enumerated() {
-                let charString = String(char)
-                let charAttr = NSAttributedString(string: charString, attributes: attributes)
-                let charWidth = charAttr.size().width
-
-                // Calculate wave offset for this character
-                let phase = isActive ? time * 3 : 0
-                let charPhase = Double(index) * 0.4 + phase
-                let waveOffset: CGFloat = isActive ? sin(charPhase) * 4 : 0
-                let scaleOffset: CGFloat = isActive ? 1.0 + sin(charPhase * 0.5) * 0.05 : 1.0
-
-                // Calculate color hue shift for rainbow effect when active
-                let hueShift = isActive ? Double(index) / Double(text.count) * 0.15 : 0
-                let charColor = Color(
-                    hue: 0.6 + hueShift + (isActive ? sin(time + Double(index) * 0.3) * 0.05 : 0),
-                    saturation: 0.8,
-                    brightness: 0.95
-                )
-
-                // Draw character
-                let charPoint = CGPoint(
-                    x: currentX + charWidth / 2,
-                    y: midY + waveOffset
-                )
-
-                context.drawLayer { ctx in
-                    ctx.translateBy(x: charPoint.x, y: charPoint.y)
-                    ctx.scaleBy(x: scaleOffset, y: scaleOffset)
-                    ctx.translateBy(x: -charPoint.x, y: -charPoint.y)
-
-                    // Draw the character
-                    let resolvedText = ctx.resolve(Text(charString)
-                        .font(.system(size: fontSize, weight: .bold, design: .rounded))
-                        .foregroundStyle(charColor))
-
-                    ctx.draw(resolvedText, at: charPoint, anchor: .center)
-                }
-
-                currentX += charWidth
-            }
-        }
-    }
-}
-
-// MARK: - SwiftSpeak Logo Waveform
-/// Complete logo with waveform circle and text
-struct SwiftSpeakLogoWaveformView: View {
-    let isActive: Bool
+    @State private var revealProgress: CGFloat = 0
 
     init(isActive: Bool = true) {
         self.isActive = isActive
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            // Circular waveform with mic icon
-            ZStack {
-                CircularWaveformView(isActive: isActive)
-                    .frame(width: 80, height: 80)
+        TimelineView(.animation(minimumInterval: 1/60)) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
 
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 28))
-                    .foregroundStyle(AppTheme.accentGradient)
+            Canvas { context, size in
+                let midY = size.height / 2
+                let phase = time * 3
+
+                // Draw multiple wave lines that converge into text shape
+                for waveIndex in 0..<5 {
+                    let waveOffset = CGFloat(waveIndex - 2) * 8
+                    let baseAmplitude: CGFloat = isActive ? 15 - CGFloat(waveIndex) * 2 : 5
+
+                    var path = Path()
+
+                    for x in stride(from: CGFloat(0), to: size.width, by: 1) {
+                        let relativeX = x / size.width
+
+                        // Calculate how much to blend between wave and text position
+                        // Waves converge toward center
+                        let convergeFactor = sin(relativeX * .pi) // Peaks at center
+                        let textY = midY // Text baseline
+
+                        // Wave calculation
+                        let waveAngle = relativeX * .pi * 8 + CGFloat(phase) + CGFloat(waveIndex) * 0.5
+                        let waveY = midY + waveOffset + sin(waveAngle) * baseAmplitude * (1 - convergeFactor * 0.5)
+
+                        // Blend between wave and converged position
+                        let y = waveY * (1 - convergeFactor * 0.3) + textY * convergeFactor * 0.3
+
+                        if x == 0 {
+                            path.move(to: CGPoint(x: x, y: y))
+                        } else {
+                            path.addLine(to: CGPoint(x: x, y: y))
+                        }
+                    }
+
+                    let opacity = 0.3 + Double(2 - abs(waveIndex - 2)) * 0.2
+                    context.stroke(
+                        path,
+                        with: .linearGradient(
+                            Gradient(colors: [
+                                AppTheme.accent.opacity(0),
+                                AppTheme.accent.opacity(opacity),
+                                AppTheme.accentSecondary.opacity(opacity),
+                                AppTheme.accent.opacity(opacity),
+                                AppTheme.accent.opacity(0)
+                            ]),
+                            startPoint: CGPoint(x: 0, y: midY),
+                            endPoint: CGPoint(x: size.width, y: midY)
+                        ),
+                        lineWidth: waveIndex == 2 ? 3 : 1.5
+                    )
+                }
+
+                // Draw text on top
+                let text = "SwiftSpeak"
+
+                let resolvedText = context.resolve(
+                    Text(text)
+                        .font(.system(size: size.height * 0.5, weight: .heavy, design: .rounded))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [AppTheme.accent, AppTheme.accentSecondary],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                )
+
+                let textPoint = CGPoint(x: size.width / 2, y: midY)
+                context.draw(resolvedText, at: textPoint, anchor: .center)
             }
-
-            // Animated text
-            SwiftSpeakWaveformView(isActive: isActive, fontSize: 28, showWaveBackground: false)
-                .frame(height: 40)
         }
     }
 }
@@ -685,25 +616,18 @@ private struct WaveUnderlineCanvas: View {
     }
 }
 
-#Preview("SwiftSpeak Waveform") {
-    ZStack {
-        AppTheme.darkBase.ignoresSafeArea()
-        SwiftSpeakWaveformView(isActive: true)
-            .frame(width: 300, height: 80)
-    }
-}
-
-#Preview("SwiftSpeak Logo") {
-    ZStack {
-        AppTheme.darkBase.ignoresSafeArea()
-        SwiftSpeakLogoWaveformView(isActive: true)
-    }
-}
-
 #Preview("SwiftSpeak Wave Text") {
     ZStack {
         AppTheme.darkBase.ignoresSafeArea()
         SwiftSpeakWaveTextView(isActive: true)
             .frame(width: 300)
+    }
+}
+
+#Preview("SwiftSpeak Wave Reveal") {
+    ZStack {
+        AppTheme.darkBase.ignoresSafeArea()
+        SwiftSpeakWaveRevealView(isActive: true)
+            .frame(width: 350, height: 80)
     }
 }

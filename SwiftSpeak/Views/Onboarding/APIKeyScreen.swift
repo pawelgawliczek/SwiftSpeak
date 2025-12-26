@@ -20,7 +20,7 @@ struct APIKeyScreen: View {
     @FocusState private var isTextFieldFocused: Bool
 
     private var backgroundColor: Color {
-        colorScheme == .dark ? Color(hex: "#1C1C1E") : Color(hex: "#F2F2F7")
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
     }
 
     var body: some View {
@@ -29,9 +29,10 @@ struct APIKeyScreen: View {
                 Spacer()
                     .frame(height: 24)
 
-                // Animated waveform
+                // Animated waveform - same position as other onboarding screens
                 CircularWaveformView(isActive: true)
                     .frame(width: 60, height: 60)
+                    .frame(height: 60)
 
                 // Title
                 Text("Almost There!")

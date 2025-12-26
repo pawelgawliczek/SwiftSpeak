@@ -10,104 +10,151 @@ import SwiftUI
 struct EnableKeyboardScreen: View {
     @Binding var isEnabled: Bool
     let onContinue: () -> Void
+    @Environment(\.colorScheme) var colorScheme
 
     @State private var contentVisible = false
     @State private var arrowOffset: CGFloat = 0
     @State private var checkmarkScale: CGFloat = 0
 
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: 24) {
+                Spacer()
+                    .frame(height: 24)
 
-            // Title
-            Text("Enable Keyboard")
-                .font(.title.weight(.bold))
-                .foregroundStyle(.primary)
+                // Animated waveform - same position as other onboarding screens
+                ZStack {
+                    MirroredBarWaveformView(
+                        barCount: 20,
+                        color: isEnabled ? .green : AppTheme.accent,
+                        isActive: true,
+                        speed: 0.4
+                    )
+                    .frame(width: 140, height: 36)
 
-            // Subtitle
-            Text("Add SwiftSpeak to your keyboards")
-                .font(.body)
-                .foregroundStyle(.secondary)
+                    // Green checkmark overlay when enabled
+                    if isEnabled {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.green)
+                            .background(
+                                Circle()
+                                    .fill(backgroundColor)
+                                    .frame(width: 32, height: 32)
+                            )
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .frame(height: 60)
+                .animation(AppTheme.smoothSpring, value: isEnabled)
 
-            // Instruction card
-            VStack(spacing: 20) {
-                // Settings mockup
-                SettingsMockup(isEnabled: isEnabled)
+                // Title
+                Text(isEnabled ? "Keyboard Enabled!" : "Enable Keyboard")
+                    .font(.largeTitle.weight(.bold))
+                    .foregroundStyle(.primary)
+
+                // Subtitle
+                Text(isEnabled ? "You're all set to use SwiftSpeak" : "Add SwiftSpeak to your keyboards")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+
+                // Instruction card
+                if !isEnabled {
+                    VStack(spacing: 0) {
+                        // Step indicator
+                        HStack {
+                            Text("Follow these steps in Settings")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+
+                        // Settings mockup
+                        SettingsMockup(isEnabled: isEnabled)
+
+                        // Animated instruction
+                        HStack(spacing: 8) {
+                            Image(systemName: "hand.tap.fill")
+                                .font(.body)
+                                .foregroundStyle(AppTheme.accent)
+
+                            Text("Tap")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+
+                            Text("Keyboards")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(.primary)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(AppTheme.accent)
+                                .offset(x: arrowOffset)
+
+                            Text("SwiftSpeak")
+                                .font(.callout.weight(.semibold))
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                        .padding(.top, 16)
+                    }
+                    .padding(20)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .shadow(color: .black.opacity(0.2), radius: 20, y: 5)
+                    .padding(.horizontal, 24)
                     .opacity(contentVisible ? 1 : 0)
                     .offset(y: contentVisible ? 0 : 20)
-
-                // Animated arrow pointing to keyboard
-                if !isEnabled {
-                    HStack {
-                        Spacer()
-                        Image(systemName: "arrow.right")
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(AppTheme.accent)
-                            .offset(x: arrowOffset)
-                        Text("Tap Keyboards")
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(AppTheme.accent)
-                        Spacer()
-                    }
-                    .padding(.top, 8)
                 }
 
-                // Success state
-                if isEnabled {
-                    HStack(spacing: 12) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 32))
-                            .foregroundStyle(.green)
-                            .scaleEffect(checkmarkScale)
+                Spacer()
+                    .frame(height: 20)
 
-                        Text("Keyboard Enabled!")
-                            .font(.headline)
-                            .foregroundStyle(.green)
+                // Open Settings / Continue button
+                Button(action: {
+                    HapticManager.mediumTap()
+                    if isEnabled {
+                        onContinue()
+                    } else {
+                        openKeyboardSettings()
                     }
-                    .transition(.scale.combined(with: .opacity))
+                }) {
+                    HStack(spacing: 10) {
+                        Image(systemName: isEnabled ? "arrow.right" : "gear")
+                            .font(.body.weight(.semibold))
+                        Text(isEnabled ? "Continue" : "Open Settings")
+                            .font(.body.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: 50)
+                    .background(isEnabled ? Color.green : AppTheme.accent)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shadow(color: (isEnabled ? Color.green : AppTheme.accent).opacity(0.3), radius: 8, y: 4)
                 }
-            }
-            .padding(24)
-            .glassBackground(cornerRadius: AppTheme.cornerRadiusLarge, includeShadow: false)
-            .padding(.horizontal, 24)
+                .buttonStyle(.plain)
+                .padding(.horizontal, 24)
 
-            Spacer()
-
-            // Open Settings / Continue button
-            Button(action: {
-                HapticManager.mediumTap()
-                if isEnabled {
+                // Skip for now
+                Button("Skip for now") {
                     onContinue()
-                } else {
-                    openKeyboardSettings()
                 }
-            }) {
-                HStack(spacing: 12) {
-                    Image(systemName: isEnabled ? "arrow.right" : "gear")
-                    Text(isEnabled ? "Continue" : "Open Settings")
-                }
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: 44)
-                .padding(.vertical, 6)
-                .background(isEnabled ? Color.green : AppTheme.accent)
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 32)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
 
-            // Skip for now (development only)
-            Button("Skip for now") {
-                onContinue()
+                Spacer()
+                    .frame(height: 50)
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-            .padding(.top, 8)
-
-            Spacer()
-                .frame(height: 60)
         }
+        .background(backgroundColor.ignoresSafeArea())
         .onAppear {
             startAnimations()
         }
@@ -130,9 +177,9 @@ struct EnableKeyboardScreen: View {
             contentVisible = true
         }
 
-        // Pulsing arrow animation
-        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-            arrowOffset = 10
+        // Arrow bounce animation
+        withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+            arrowOffset = 4
         }
     }
 
@@ -147,77 +194,125 @@ struct EnableKeyboardScreen: View {
 // MARK: - Settings Mockup
 struct SettingsMockup: View {
     let isEnabled: Bool
+    @Environment(\.colorScheme) var colorScheme
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    private var headerBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color(UIColor.systemGray6)
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
-            HStack {
+            // Navigation header - looks like iOS Settings
+            HStack(spacing: 6) {
                 Image(systemName: "chevron.left")
+                    .font(.body.weight(.semibold))
                     .foregroundStyle(AppTheme.accent)
+
                 Text("General")
+                    .font(.body)
                     .foregroundStyle(AppTheme.accent)
+
                 Spacer()
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(Color.primary.opacity(0.1))
+            .background(headerBackground)
 
-            // Keyboards row
-            HStack {
-                Image(systemName: "keyboard")
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(Color.secondary.opacity(0.3))
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            // Settings rows container
+            VStack(spacing: 0) {
+                // Keyboards row
+                HStack(spacing: 14) {
+                    // iOS-style icon
+                    Image(systemName: "keyboard.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(
+                            LinearGradient(
+                                colors: [Color.gray, Color.gray.opacity(0.8)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
 
-                Text("Keyboards")
-                    .foregroundStyle(.primary)
+                    Text("Keyboards")
+                        .font(.body)
+                        .foregroundStyle(.primary)
 
-                Spacer()
+                    Spacer()
 
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(Color.primary.opacity(0.05))
-
-            Divider()
-
-            // SwiftSpeak row
-            HStack {
-                Image(systemName: "mic.fill")
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(AppTheme.accentGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: 6))
-
-                Text("SwiftSpeak")
-                    .foregroundStyle(.primary)
-
-                Spacer()
-
-                if isEnabled {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(AppTheme.accent)
-                        .font(.callout.weight(.semibold))
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color(UIColor.tertiaryLabel))
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(rowBackground)
+
+                // Divider with indent
+                HStack(spacing: 0) {
+                    Color.clear.frame(width: 60)
+                    Rectangle()
+                        .fill(Color(UIColor.separator))
+                        .frame(height: 0.5)
+                }
+
+                // SwiftSpeak row
+                HStack(spacing: 14) {
+                    // App icon
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.white)
+                        .frame(width: 30, height: 30)
+                        .background(AppTheme.accentGradient)
+                        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+
+                    Text("SwiftSpeak")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    Spacer()
+
+                    if isEnabled {
+                        Image(systemName: "checkmark")
+                            .font(.body.weight(.medium))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    isEnabled
+                        ? AppTheme.accent.opacity(colorScheme == .dark ? 0.15 : 0.1)
+                        : rowBackground
+                )
             }
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color(UIColor.separator).opacity(0.5), lineWidth: 0.5)
+            )
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
-            .background(isEnabled ? AppTheme.accent.opacity(0.1) : Color.primary.opacity(0.05))
         }
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
-                .stroke(Color.primary.opacity(0.2), lineWidth: 1)
-        )
     }
 }
 
-#Preview {
-    ZStack {
-        AppTheme.darkBase.ignoresSafeArea()
-        EnableKeyboardScreen(isEnabled: .constant(false), onContinue: {})
-    }
+#Preview("Dark") {
+    EnableKeyboardScreen(isEnabled: .constant(false), onContinue: {})
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    EnableKeyboardScreen(isEnabled: .constant(false), onContinue: {})
+        .preferredColorScheme(.light)
+}
+
+#Preview("Enabled") {
+    EnableKeyboardScreen(isEnabled: .constant(true), onContinue: {})
+        .preferredColorScheme(.dark)
 }
