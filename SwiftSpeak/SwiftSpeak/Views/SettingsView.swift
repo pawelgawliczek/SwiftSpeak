@@ -660,410 +660,19 @@ struct AIProviderEditorSheet: View {
         }
     }
 
+    // MARK: - Body (broken into sub-views for type-checker performance)
+
     var body: some View {
         NavigationStack {
             ZStack {
                 backgroundColor.ignoresSafeArea()
 
                 List {
-                    // Provider Info Header
-                    Section {
-                        HStack(spacing: 16) {
-                            Image(systemName: config.provider.icon)
-                                .font(.title)
-                                .foregroundStyle(AppTheme.accent)
-                                .frame(width: 56, height: 56)
-                                .background(AppTheme.accent.opacity(0.15))
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(config.provider.displayName)
-                                    .font(.title3.weight(.semibold))
-
-                                Text(config.provider.description)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
-                    }
-
-                    // Configuration Section - Different for cloud vs local providers
-                    if config.provider.isLocalProvider {
-                        // Local Provider Configuration
-                        // Provider Type Selection (custom cards)
-                        Section {
-                            VStack(alignment: .leading, spacing: 10) {
-                                ForEach(LocalProviderType.allCases) { type in
-                                    Button {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                            localProviderType = type
-                                            // Update URL when type changes
-                                            if localServerURL.isEmpty || localServerURL == LocalProviderType.ollama.defaultEndpoint ||
-                                               localServerURL == LocalProviderType.lmStudio.defaultEndpoint ||
-                                               localServerURL == LocalProviderType.openAICompatible.defaultEndpoint {
-                                                localServerURL = type.defaultEndpoint
-                                            }
-                                            // Reset connection test result
-                                            connectionTestResult = nil
-                                            cachedModels = []
-                                        }
-                                        HapticManager.selection()
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            // Icon
-                                            Image(systemName: type.icon)
-                                                .font(.body.weight(.medium))
-                                                .foregroundStyle(localProviderType == type ? .white : .secondary)
-                                                .frame(width: 32, height: 32)
-                                                .background(
-                                                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                                        .fill(localProviderType == type ? AppTheme.accentGradient : LinearGradient(colors: [Color.secondary.opacity(0.15)], startPoint: .top, endPoint: .bottom))
-                                                )
-
-                                            // Text
-                                            VStack(alignment: .leading, spacing: 1) {
-                                                Text(type.displayName)
-                                                    .font(.subheadline.weight(.medium))
-                                                    .foregroundStyle(colorScheme == .dark ? .white : .primary)
-
-                                                Text(type.description)
-                                                    .font(.caption2)
-                                                    .foregroundStyle(.secondary)
-                                                    .lineLimit(1)
-                                            }
-
-                                            Spacer()
-
-                                            // Checkmark
-                                            if localProviderType == type {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundStyle(AppTheme.accent)
-                                                    .font(.body)
-                                            }
-                                        }
-                                        .padding(.vertical, 8)
-                                        .padding(.horizontal, 10)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .fill(localProviderType == type ?
-                                                      (colorScheme == .dark ? Color.white.opacity(0.06) : AppTheme.accent.opacity(0.08)) :
-                                                      (colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
-                                        )
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                                .stroke(localProviderType == type ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1.5)
-                                        )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                            .listRowBackground(rowBackground)
-                            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-                        } header: {
-                            Text("Provider Type")
-                        }
-
-                        // Server Configuration Section
-                        Section {
-                            // Server URL
-                            VStack(alignment: .leading, spacing: 8) {
-                                TextField(localProviderType.placeholderEndpoint, text: $localServerURL)
-                                    .textContentType(.URL)
-                                    .autocapitalization(.none)
-                                    .autocorrectionDisabled()
-                                    .keyboardType(.URL)
-                                    .font(.body)
-
-                                Text("IP address or hostname with port (e.g., 192.168.1.50:11434)")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .listRowBackground(rowBackground)
-
-                            // Authentication Toggle
-                            Toggle(isOn: $useAuthToken) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Use API Token")
-                                        .font(.callout)
-                                    Text("For secured servers requiring authentication")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .tint(AppTheme.accent)
-                            .listRowBackground(rowBackground)
-
-                            // Auth Token Field (shown when toggle is on)
-                            if useAuthToken {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    SecureField("Bearer token", text: $localAuthToken)
-                                        .textContentType(.password)
-                                        .autocorrectionDisabled()
-                                        .font(.body)
-                                }
-                                .listRowBackground(rowBackground)
-                            }
-                        } header: {
-                            Text("Server URL")
-                        }
-
-                        // Test Connection Section
-                        Section {
-                            Button(action: {
-                                testConnection()
-                            }) {
-                                HStack {
-                                    if isTestingConnection {
-                                        ProgressView()
-                                            .scaleEffect(0.8)
-                                    } else {
-                                        Image(systemName: "network")
-                                    }
-                                    Text("Test Connection")
-                                    Spacer()
-
-                                    if let result = connectionTestResult {
-                                        if result.success {
-                                            HStack(spacing: 4) {
-                                                Image(systemName: "checkmark.circle.fill")
-                                                    .foregroundStyle(.green)
-                                                if let latency = result.latencyMs {
-                                                    Text("\(latency) ms")
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                            }
-                                        } else {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .foregroundStyle(.red)
-                                        }
-                                    }
-                                }
-                            }
-                            .disabled(isTestingConnection || localServerURL.isEmpty)
-                            .listRowBackground(rowBackground)
-
-                            // Show error message if connection failed
-                            if let result = connectionTestResult, !result.success, let error = result.errorMessage {
-                                HStack(spacing: 8) {
-                                    Image(systemName: "exclamationmark.triangle.fill")
-                                        .foregroundStyle(.orange)
-                                    Text(error)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .listRowBackground(rowBackground)
-                            }
-
-                            // Show available models if connection succeeded
-                            if let result = connectionTestResult, result.success, !result.availableModels.isEmpty {
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("\(result.availableModels.count) models available")
-                                        .font(.caption.weight(.medium))
-                                        .foregroundStyle(.green)
-
-                                    Text(result.availableModels.prefix(5).joined(separator: ", ") +
-                                         (result.availableModels.count > 5 ? "..." : ""))
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(2)
-                                }
-                                .listRowBackground(rowBackground)
-                            }
-                        } header: {
-                            Text("Connection")
-                        } footer: {
-                            Text("Test your connection to fetch available models. Models will be auto-populated after a successful connection.")
-                        }
-
-                        // Advanced Options Section
-                        Section {
-                            DisclosureGroup("Advanced Options", isExpanded: $showAdvancedOptions) {
-                                // Streaming Toggle
-                                Toggle(isOn: $streamingEnabled) {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Enable Streaming")
-                                            .font(.callout)
-                                        Text("Stream responses in real-time")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.top, 8)
-
-                                // Timeout Picker
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Text("Request Timeout")
-                                        .font(.subheadline.weight(.medium))
-                                        .foregroundStyle(.secondary)
-
-                                    Picker("Timeout", selection: $timeoutSeconds) {
-                                        ForEach(LocalProviderConfig.timeoutOptions, id: \.self) { seconds in
-                                            Text("\(seconds)s").tag(seconds)
-                                        }
-                                    }
-                                    .pickerStyle(.segmented)
-                                }
-                                .padding(.top, 8)
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    } else {
-                        // Cloud Provider Configuration (API Key)
-                        Section {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("API Key")
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.secondary)
-
-                                SecureField("Enter your API key", text: $apiKey)
-                                    .textContentType(.password)
-                                    .autocorrectionDisabled()
-                            }
-                            .listRowBackground(rowBackground)
-                        } header: {
-                            Text("Configuration")
-                        }
-                    }
-
-                    // Capabilities Section with Model Selection
-                    Section {
-                        ForEach(ProviderUsageCategory.allCases) { category in
-                            if config.provider.supportedCategories.contains(category) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    // Category toggle
-                                    Button(action: {
-                                        HapticManager.selection()
-                                        if usageCategories.contains(category) {
-                                            usageCategories.remove(category)
-                                        } else {
-                                            usageCategories.insert(category)
-                                        }
-                                    }) {
-                                        HStack {
-                                            Image(systemName: category.icon)
-                                                .font(.body)
-                                                .foregroundStyle(categoryColor(for: category))
-                                                .frame(width: 24)
-
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(category.displayName)
-                                                    .font(.callout.weight(.medium))
-                                                    .foregroundStyle(.primary)
-
-                                                Text(category.description)
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-
-                                            Spacer()
-
-                                            Image(systemName: usageCategories.contains(category) ? "checkmark.circle.fill" : "circle")
-                                                .font(.title3)
-                                                .foregroundStyle(usageCategories.contains(category) ? categoryColor(for: category) : Color.secondary.opacity(0.3))
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    // Model picker when enabled
-                                    if usageCategories.contains(category) {
-                                        Picker("Model", selection: modelBinding(for: category)) {
-                                            ForEach(availableModels(for: category), id: \.self) { model in
-                                                Text(model).tag(model)
-                                            }
-                                        }
-                                        .pickerStyle(.menu)
-                                        .padding(.leading, 32)
-                                    }
-                                }
-                                .listRowBackground(rowBackground)
-                            }
-                        }
-
-                        // Refresh Models Button
-                        Button(action: {
-                            refreshModels()
-                        }) {
-                            HStack {
-                                if isRefreshingModels {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                } else {
-                                    Image(systemName: "arrow.clockwise")
-                                }
-                                Text("Refresh Models")
-                                Spacer()
-                                if refreshedLLMModels != nil || refreshedSTTModels != nil {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(.green)
-                                }
-                            }
-                        }
-                        .disabled(isRefreshingModels || apiKey.isEmpty)
-                        .listRowBackground(rowBackground)
-
-                        // Show refresh error if any
-                        if let error = refreshError {
-                            HStack {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .foregroundStyle(.orange)
-                                Text(error)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-                    } header: {
-                        Text("Capabilities & Models")
-                    } footer: {
-                        Text("Enable capabilities and select which model to use for each. Tap 'Refresh Models' to fetch the latest available models from the provider.")
-                    }
-
-                    // Setup Instructions
-                    Section {
-                        DisclosureGroup("How to get your API key", isExpanded: $showInstructions) {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text(config.provider.setupInstructions)
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-
-                                if let helpURL = config.provider.apiKeyHelpURL {
-                                    Button(action: {
-                                        UIApplication.shared.open(helpURL)
-                                    }) {
-                                        HStack {
-                                            Image(systemName: "arrow.up.right.square")
-                                            Text("Open \(config.provider.shortName) Dashboard")
-                                        }
-                                        .font(.subheadline.weight(.medium))
-                                        .foregroundStyle(AppTheme.accent)
-                                    }
-                                    .padding(.top, 4)
-                                }
-                            }
-                            .padding(.vertical, 8)
-                        }
-                        .listRowBackground(rowBackground)
-                    }
-
-                    // Delete Section
-                    if isEditing && config.provider != .openAI && onDelete != nil {
-                        Section {
-                            Button(role: .destructive, action: {
-                                showDeleteConfirmation = true
-                            }) {
-                                HStack {
-                                    Spacer()
-                                    Text("Remove Provider")
-                                    Spacer()
-                                }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-                    }
+                    providerInfoHeaderSection
+                    configurationSection
+                    capabilitiesSection
+                    setupInstructionsSection
+                    deleteSection
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
@@ -1096,6 +705,461 @@ struct AIProviderEditorSheet: View {
                 }
             } message: {
                 Text("This will remove \(config.provider.displayName) from your configured providers.")
+            }
+        }
+    }
+
+    // MARK: - Provider Info Header Section
+
+    private var providerInfoHeaderSection: some View {
+        Section {
+            HStack(spacing: 16) {
+                Image(systemName: config.provider.icon)
+                    .font(.title)
+                    .foregroundStyle(AppTheme.accent)
+                    .frame(width: 56, height: 56)
+                    .background(AppTheme.accent.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(config.provider.displayName)
+                        .font(.title3.weight(.semibold))
+
+                    Text(config.provider.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
+        }
+    }
+
+    // MARK: - Configuration Section
+
+    @ViewBuilder
+    private var configurationSection: some View {
+        if config.provider.isLocalProvider {
+            localProviderTypeSection
+            serverConfigurationSection
+            testConnectionSection
+            advancedOptionsSection
+        } else {
+            cloudProviderConfigSection
+        }
+    }
+
+    // MARK: - Local Provider Type Section
+
+    private var localProviderTypeSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(LocalProviderType.allCases) { type in
+                    localProviderTypeButton(for: type)
+                }
+            }
+            .listRowBackground(rowBackground)
+            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
+        } header: {
+            Text("Provider Type")
+        }
+    }
+
+    private func localProviderTypeButton(for type: LocalProviderType) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                localProviderType = type
+                if localServerURL.isEmpty || localServerURL == LocalProviderType.ollama.defaultEndpoint ||
+                   localServerURL == LocalProviderType.lmStudio.defaultEndpoint ||
+                   localServerURL == LocalProviderType.openAICompatible.defaultEndpoint {
+                    localServerURL = type.defaultEndpoint
+                }
+                connectionTestResult = nil
+                cachedModels = []
+            }
+            HapticManager.selection()
+        } label: {
+            localProviderTypeButtonLabel(for: type)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func localProviderTypeButtonLabel(for type: LocalProviderType) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: type.icon)
+                .font(.body.weight(.medium))
+                .foregroundStyle(localProviderType == type ? .white : .secondary)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(localProviderType == type ? AppTheme.accentGradient : LinearGradient(colors: [Color.secondary.opacity(0.15)], startPoint: .top, endPoint: .bottom))
+                )
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(type.displayName)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(colorScheme == .dark ? .white : .primary)
+
+                Text(type.description)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            if localProviderType == type {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(AppTheme.accent)
+                    .font(.body)
+            }
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(localProviderType == type ?
+                      (colorScheme == .dark ? Color.white.opacity(0.06) : AppTheme.accent.opacity(0.08)) :
+                      (colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(localProviderType == type ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1.5)
+        )
+    }
+
+    // MARK: - Server Configuration Section
+
+    private var serverConfigurationSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField(localProviderType.placeholderEndpoint, text: $localServerURL)
+                    .textContentType(.URL)
+                    .autocapitalization(.none)
+                    .autocorrectionDisabled()
+                    .keyboardType(.URL)
+                    .font(.body)
+
+                Text("IP address or hostname with port (e.g., 192.168.1.50:11434)")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+            .listRowBackground(rowBackground)
+
+            Toggle(isOn: $useAuthToken) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Use API Token")
+                        .font(.callout)
+                    Text("For secured servers requiring authentication")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            if useAuthToken {
+                VStack(alignment: .leading, spacing: 8) {
+                    SecureField("Bearer token", text: $localAuthToken)
+                        .textContentType(.password)
+                        .autocorrectionDisabled()
+                        .font(.body)
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Server URL")
+        }
+    }
+
+    // MARK: - Test Connection Section
+
+    private var testConnectionSection: some View {
+        Section {
+            Button(action: {
+                testConnection()
+            }) {
+                HStack {
+                    if isTestingConnection {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                    } else {
+                        Image(systemName: "network")
+                    }
+                    Text("Test Connection")
+                    Spacer()
+
+                    connectionTestResultIndicator
+                }
+            }
+            .disabled(isTestingConnection || localServerURL.isEmpty)
+            .listRowBackground(rowBackground)
+
+            connectionErrorRow
+            connectionModelsRow
+        } header: {
+            Text("Connection")
+        } footer: {
+            Text("Test your connection to fetch available models. Models will be auto-populated after a successful connection.")
+        }
+    }
+
+    @ViewBuilder
+    private var connectionTestResultIndicator: some View {
+        if let result = connectionTestResult {
+            if result.success {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    if let latency = result.latencyMs {
+                        Text("\(latency) ms")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var connectionErrorRow: some View {
+        if let result = connectionTestResult, !result.success, let error = result.errorMessage {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .listRowBackground(rowBackground)
+        }
+    }
+
+    @ViewBuilder
+    private var connectionModelsRow: some View {
+        if let result = connectionTestResult, result.success, !result.availableModels.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("\(result.availableModels.count) models available")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.green)
+
+                Text(result.availableModels.prefix(5).joined(separator: ", ") +
+                     (result.availableModels.count > 5 ? "..." : ""))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            .listRowBackground(rowBackground)
+        }
+    }
+
+    // MARK: - Advanced Options Section
+
+    private var advancedOptionsSection: some View {
+        Section {
+            DisclosureGroup("Advanced Options", isExpanded: $showAdvancedOptions) {
+                Toggle(isOn: $streamingEnabled) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Enable Streaming")
+                            .font(.callout)
+                        Text("Stream responses in real-time")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 8)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Request Timeout")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.secondary)
+
+                    Picker("Timeout", selection: $timeoutSeconds) {
+                        ForEach(LocalProviderConfig.timeoutOptions, id: \.self) { seconds in
+                            Text("\(seconds)s").tag(seconds)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                .padding(.top, 8)
+            }
+        }
+        .listRowBackground(rowBackground)
+    }
+
+    // MARK: - Cloud Provider Config Section
+
+    private var cloudProviderConfigSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("API Key")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                SecureField("Enter your API key", text: $apiKey)
+                    .textContentType(.password)
+                    .autocorrectionDisabled()
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Configuration")
+        }
+    }
+
+    // MARK: - Capabilities Section
+
+    private var capabilitiesSection: some View {
+        Section {
+            ForEach(ProviderUsageCategory.allCases) { category in
+                if config.provider.supportedCategories.contains(category) {
+                    categoryRow(for: category)
+                }
+            }
+
+            refreshModelsButton
+            refreshErrorRow
+        } header: {
+            Text("Capabilities & Models")
+        } footer: {
+            Text("Enable capabilities and select which model to use for each. Tap 'Refresh Models' to fetch the latest available models from the provider.")
+        }
+    }
+
+    private func categoryRow(for category: ProviderUsageCategory) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: {
+                HapticManager.selection()
+                if usageCategories.contains(category) {
+                    usageCategories.remove(category)
+                } else {
+                    usageCategories.insert(category)
+                }
+            }) {
+                HStack {
+                    Image(systemName: category.icon)
+                        .font(.body)
+                        .foregroundStyle(categoryColor(for: category))
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.displayName)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        Text(category.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: usageCategories.contains(category) ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(usageCategories.contains(category) ? categoryColor(for: category) : Color.secondary.opacity(0.3))
+                }
+            }
+            .buttonStyle(.plain)
+
+            if usageCategories.contains(category) {
+                Picker("Model", selection: modelBinding(for: category)) {
+                    ForEach(availableModels(for: category), id: \.self) { model in
+                        Text(model).tag(model)
+                    }
+                }
+                .pickerStyle(.menu)
+                .padding(.leading, 32)
+            }
+        }
+        .listRowBackground(rowBackground)
+    }
+
+    private var refreshModelsButton: some View {
+        Button(action: {
+            refreshModels()
+        }) {
+            HStack {
+                if isRefreshingModels {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    Image(systemName: "arrow.clockwise")
+                }
+                Text("Refresh Models")
+                Spacer()
+                if refreshedLLMModels != nil || refreshedSTTModels != nil {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+            }
+        }
+        .disabled(isRefreshingModels || apiKey.isEmpty)
+        .listRowBackground(rowBackground)
+    }
+
+    @ViewBuilder
+    private var refreshErrorRow: some View {
+        if let error = refreshError {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .listRowBackground(rowBackground)
+        }
+    }
+
+    // MARK: - Setup Instructions Section
+
+    private var setupInstructionsSection: some View {
+        Section {
+            DisclosureGroup("How to get your API key", isExpanded: $showInstructions) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text(config.provider.setupInstructions)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let helpURL = config.provider.apiKeyHelpURL {
+                        Button(action: {
+                            UIApplication.shared.open(helpURL)
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.up.right.square")
+                                Text("Open \(config.provider.shortName) Dashboard")
+                            }
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(AppTheme.accent)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(.vertical, 8)
+            }
+            .listRowBackground(rowBackground)
+        }
+    }
+
+    // MARK: - Delete Section
+
+    @ViewBuilder
+    private var deleteSection: some View {
+        if isEditing && config.provider != .openAI && onDelete != nil {
+            Section {
+                Button(role: .destructive, action: {
+                    showDeleteConfirmation = true
+                }) {
+                    HStack {
+                        Spacer()
+                        Text("Remove Provider")
+                        Spacer()
+                    }
+                }
+                .listRowBackground(rowBackground)
             }
         }
     }

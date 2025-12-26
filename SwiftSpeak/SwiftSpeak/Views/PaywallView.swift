@@ -98,7 +98,7 @@ struct PaywallView: View {
                         Image(systemName: "bolt.fill")
                             .font(.caption2)
                             .foregroundStyle(.orange)
-                        Text("Save 40-70% vs Wispr Flow & Otter.ai")
+                        Text("Save at least 40% compared to anyone else")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
