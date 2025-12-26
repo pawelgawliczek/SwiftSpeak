@@ -20,6 +20,7 @@ enum WaveformType: CaseIterable {
 
 struct RecordingView: View {
     @Binding var isPresented: Bool
+    var translateAfterRecording: Bool = false
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
 
@@ -50,7 +51,7 @@ struct RecordingView: View {
                 state: recordingState,
                 duration: recordingDuration,
                 mode: settings.selectedMode,
-                isTranslationEnabled: settings.isTranslationEnabled,
+                isTranslationEnabled: translateAfterRecording,
                 targetLanguage: settings.selectedTargetLanguage,
                 sttProvider: settings.selectedProvider,
                 modeProvider: settings.selectedModeProvider,

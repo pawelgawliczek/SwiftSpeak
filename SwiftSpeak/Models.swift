@@ -185,6 +185,7 @@ struct STTProviderConfig: Codable, Identifiable, Equatable {
 enum LLMProvider: String, Codable, CaseIterable, Identifiable {
     case openAI = "openai"
     case anthropic = "anthropic"
+    case google = "google"
     case ollama = "ollama"
 
     var id: String { rawValue }
@@ -193,6 +194,7 @@ enum LLMProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "OpenAI GPT"
         case .anthropic: return "Anthropic Claude"
+        case .google: return "Google Gemini"
         case .ollama: return "Ollama (Local)"
         }
     }
@@ -201,6 +203,7 @@ enum LLMProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "GPT"
         case .anthropic: return "Claude"
+        case .google: return "Gemini"
         case .ollama: return "Ollama"
         }
     }
@@ -209,6 +212,7 @@ enum LLMProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "brain"
         case .anthropic: return "sparkles"
+        case .google: return "globe"
         case .ollama: return "desktopcomputer"
         }
     }
@@ -400,5 +404,353 @@ struct CustomTemplate: Codable, Identifiable {
         self.icon = icon
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+    }
+}
+
+// MARK: - Power Mode Capability
+enum PowerModeCapability: String, Codable, CaseIterable, Identifiable {
+    case webSearch = "web_search"
+    case bashComputerUse = "bash_computer_use"
+    case codeExecution = "code_execution"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .webSearch: return "Web Search"
+        case .bashComputerUse: return "Bash / Computer Use"
+        case .codeExecution: return "Code Execution"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .webSearch: return "magnifyingglass"
+        case .bashComputerUse: return "terminal.fill"
+        case .codeExecution: return "chevron.left.forwardslash.chevron.right"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .webSearch: return "Search the web for current information"
+        case .bashComputerUse: return "Execute shell commands"
+        case .codeExecution: return "Run Python code in sandbox"
+        }
+    }
+
+    /// Which providers support this capability
+    var supportedProviders: [LLMProvider] {
+        switch self {
+        case .webSearch: return [.openAI, .anthropic, .google]
+        case .bashComputerUse: return [.openAI, .anthropic]
+        case .codeExecution: return [.openAI, .google]
+        }
+    }
+
+    /// Check if a provider supports this capability
+    func isSupported(by provider: LLMProvider) -> Bool {
+        supportedProviders.contains(provider)
+    }
+}
+
+// MARK: - Power Mode
+struct PowerMode: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var icon: String
+    var instruction: String
+    var outputFormat: String
+    var enabledCapabilities: Set<PowerModeCapability>
+    let createdAt: Date
+    var updatedAt: Date
+    var usageCount: Int
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        icon: String = "bolt.fill",
+        instruction: String = "",
+        outputFormat: String = "",
+        enabledCapabilities: Set<PowerModeCapability> = [],
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        usageCount: Int = 0
+    ) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.instruction = instruction
+        self.outputFormat = outputFormat
+        self.enabledCapabilities = enabledCapabilities
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.usageCount = usageCount
+    }
+
+    /// Preset power modes for new users
+    static let presets: [PowerMode] = [
+        PowerMode(
+            name: "Research Assistant",
+            icon: "magnifyingglass.circle.fill",
+            instruction: """
+            You are a research assistant. Help me find accurate, up-to-date information on the topic I describe.
+            Cite sources when possible. Be thorough but concise.
+            Focus on factual accuracy, recent developments, and multiple perspectives.
+            """,
+            outputFormat: "Use headers (##) for main topics. Include bullet points for key findings. Add a \"Sources\" section at the end.",
+            enabledCapabilities: [.webSearch]
+        ),
+        PowerMode(
+            name: "Email Composer",
+            icon: "envelope.fill",
+            instruction: """
+            You are an email writing assistant. Help me compose professional emails based on my voice input.
+            Understand the context and tone I want to convey. Ask clarifying questions if needed.
+            """,
+            outputFormat: "Format as a proper email with Subject line, greeting, body paragraphs, and professional sign-off.",
+            enabledCapabilities: []
+        ),
+        PowerMode(
+            name: "Daily Planner",
+            icon: "calendar",
+            instruction: """
+            You are a daily planning assistant. Help me organize my day based on what I tell you.
+            Consider priorities, time constraints, and suggest optimal scheduling.
+            """,
+            outputFormat: "Create a structured daily schedule with time blocks. Include priorities and any notes.",
+            enabledCapabilities: []
+        ),
+        PowerMode(
+            name: "Idea Expander",
+            icon: "lightbulb.fill",
+            instruction: """
+            You are a creative brainstorming partner. Take my initial idea and help expand it.
+            Explore different angles, potential challenges, and opportunities.
+            """,
+            outputFormat: "Start with the core idea summary, then list expansions, variations, and actionable next steps.",
+            enabledCapabilities: [.webSearch]
+        )
+    ]
+}
+
+// MARK: - Power Mode Question Option
+struct PowerModeQuestionOption: Codable, Identifiable, Equatable {
+    let id: UUID
+    let title: String
+    let description: String?
+    let value: String
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        description: String? = nil,
+        value: String? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.description = description
+        self.value = value ?? title
+    }
+}
+
+// MARK: - Power Mode Question
+struct PowerModeQuestion: Codable, Identifiable, Equatable {
+    let id: UUID
+    let questionText: String
+    let options: [PowerModeQuestionOption]
+    let allowFreeform: Bool
+
+    init(
+        id: UUID = UUID(),
+        questionText: String,
+        options: [PowerModeQuestionOption],
+        allowFreeform: Bool = true
+    ) {
+        self.id = id
+        self.questionText = questionText
+        self.options = options
+        self.allowFreeform = allowFreeform
+    }
+
+    /// Sample question for UI mockups
+    static let sample = PowerModeQuestion(
+        questionText: "What time period should I focus the research on?",
+        options: [
+            PowerModeQuestionOption(
+                title: "Last 24 hours",
+                description: "Most recent information and breaking news",
+                value: "24h"
+            ),
+            PowerModeQuestionOption(
+                title: "Last week",
+                description: "Recent developments and trends",
+                value: "week"
+            ),
+            PowerModeQuestionOption(
+                title: "Last month",
+                description: "Broader context and major stories",
+                value: "month"
+            ),
+            PowerModeQuestionOption(
+                title: "All time",
+                description: "Comprehensive historical overview",
+                value: "all"
+            )
+        ]
+    )
+}
+
+// MARK: - Power Mode Result
+struct PowerModeResult: Codable, Identifiable, Equatable {
+    let id: UUID
+    let powerModeId: UUID
+    let powerModeName: String
+    let userInput: String
+    let markdownOutput: String
+    let capabilitiesUsed: [PowerModeCapability]
+    let timestamp: Date
+    let processingDuration: TimeInterval
+    let versionNumber: Int
+
+    init(
+        id: UUID = UUID(),
+        powerModeId: UUID,
+        powerModeName: String,
+        userInput: String,
+        markdownOutput: String,
+        capabilitiesUsed: [PowerModeCapability] = [],
+        timestamp: Date = Date(),
+        processingDuration: TimeInterval = 0,
+        versionNumber: Int = 1
+    ) {
+        self.id = id
+        self.powerModeId = powerModeId
+        self.powerModeName = powerModeName
+        self.userInput = userInput
+        self.markdownOutput = markdownOutput
+        self.capabilitiesUsed = capabilitiesUsed
+        self.timestamp = timestamp
+        self.processingDuration = processingDuration
+        self.versionNumber = versionNumber
+    }
+
+    /// Sample result for UI mockups
+    static let sample = PowerModeResult(
+        powerModeId: UUID(),
+        powerModeName: "Research Assistant",
+        userInput: "Find me the latest news about artificial intelligence and summarize the key points",
+        markdownOutput: """
+        # AI News Summary - December 2024
+
+        ## Key Developments
+
+        - **OpenAI's Latest Release**: The company announced significant improvements to their reasoning models with enhanced capabilities for complex tasks.
+
+        - **Google DeepMind**: New breakthroughs in protein folding prediction showing 95% accuracy.
+
+        - **Anthropic Claude**: Released updated safety guidelines and constitutional AI improvements.
+
+        ## Industry Trends
+
+        1. Increased focus on AI safety and alignment
+        2. Growing adoption in enterprise applications
+        3. Regulatory frameworks taking shape globally
+
+        ## Sources
+
+        - TechCrunch: AI Weekly Roundup
+        - MIT Technology Review
+        - The Verge: AI Coverage
+        """,
+        capabilitiesUsed: [.webSearch],
+        processingDuration: 6.2
+    )
+}
+
+// MARK: - Power Mode Session
+struct PowerModeSession: Codable, Identifiable, Equatable {
+    let id: UUID
+    var results: [PowerModeResult]
+    var currentVersionIndex: Int
+
+    init(
+        id: UUID = UUID(),
+        results: [PowerModeResult] = [],
+        currentVersionIndex: Int = 0
+    ) {
+        self.id = id
+        self.results = results
+        self.currentVersionIndex = results.isEmpty ? 0 : results.count - 1
+    }
+
+    var currentResult: PowerModeResult? {
+        guard !results.isEmpty, currentVersionIndex < results.count else { return nil }
+        return results[currentVersionIndex]
+    }
+
+    var hasMultipleVersions: Bool {
+        results.count > 1
+    }
+
+    var canGoToPrevious: Bool {
+        currentVersionIndex > 0
+    }
+
+    var canGoToNext: Bool {
+        currentVersionIndex < results.count - 1
+    }
+
+    mutating func goToPrevious() {
+        if canGoToPrevious {
+            currentVersionIndex -= 1
+        }
+    }
+
+    mutating func goToNext() {
+        if canGoToNext {
+            currentVersionIndex += 1
+        }
+    }
+
+    mutating func addResult(_ result: PowerModeResult) {
+        results.append(result)
+        currentVersionIndex = results.count - 1
+    }
+}
+
+// MARK: - Power Mode Execution State
+enum PowerModeExecutionState: Equatable {
+    case idle
+    case recording
+    case transcribing
+    case thinking
+    case usingCapability(PowerModeCapability)
+    case askingQuestion(PowerModeQuestion)
+    case generating
+    case complete(PowerModeSession)
+    case error(String)
+
+    var statusText: String {
+        switch self {
+        case .idle: return "Tap to speak"
+        case .recording: return "Listening..."
+        case .transcribing: return "Transcribing..."
+        case .thinking: return "Thinking..."
+        case .usingCapability(let capability): return "Using \(capability.displayName)..."
+        case .askingQuestion: return "Question"
+        case .generating: return "Generating..."
+        case .complete: return "Complete"
+        case .error(let message): return message
+        }
+    }
+
+    var isProcessing: Bool {
+        switch self {
+        case .transcribing, .thinking, .usingCapability, .generating:
+            return true
+        default:
+            return false
+        }
     }
 }

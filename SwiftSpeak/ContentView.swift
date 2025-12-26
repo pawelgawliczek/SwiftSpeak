@@ -11,11 +11,14 @@ struct ContentView: View {
     @EnvironmentObject var settings: SharedSettings
     @State private var selectedTab = 0
     @State private var showRecording = false
+    @State private var translateOnRecord = false
+    @State private var showPowerModeExecution = false
+    @State private var selectedPowerModeId: UUID?
 
     var body: some View {
         TabView(selection: $selectedTab) {
             // Home / Recording
-            HomeView(showRecording: $showRecording)
+            HomeView(showRecording: $showRecording, translateOnRecord: $translateOnRecord)
                 .tabItem {
                     Image(systemName: "mic.fill")
                     Text("Record")
@@ -30,17 +33,25 @@ struct ContentView: View {
                 }
                 .tag(1)
 
+            // Power Mode
+            PowerModeListView()
+                .tabItem {
+                    Image(systemName: "bolt.fill")
+                    Text("Power")
+                }
+                .tag(2)
+
             // Settings
             SettingsView()
                 .tabItem {
                     Image(systemName: "gear")
                     Text("Settings")
                 }
-                .tag(2)
+                .tag(3)
         }
         .tint(AppTheme.accent)
         .fullScreenCover(isPresented: $showRecording) {
-            RecordingView(isPresented: $showRecording)
+            RecordingView(isPresented: $showRecording, translateAfterRecording: translateOnRecord)
         }
         .onOpenURL { url in
             handleURLScheme(url)
@@ -54,6 +65,18 @@ struct ContentView: View {
         // Parse parameters
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems ?? []
+
+        // Check if it's a power mode URL
+        if url.host == "powermode" {
+            // Handle power mode launch from keyboard
+            if let modeIdString = queryItems.first(where: { $0.name == "id" })?.value,
+               let modeId = UUID(uuidString: modeIdString) {
+                selectedPowerModeId = modeId
+                selectedTab = 2 // Switch to Power tab
+                // The PowerModeListView will handle the autostart
+            }
+            return
+        }
 
         // Extract mode
         if let modeString = queryItems.first(where: { $0.name == "mode" })?.value,
@@ -79,22 +102,15 @@ struct ContentView: View {
 struct HomeView: View {
     @EnvironmentObject var settings: SharedSettings
     @Binding var showRecording: Bool
+    @Binding var translateOnRecord: Bool
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var showProviderPicker = false
     @State private var showModePicker = false
-    @State private var showLanguagePicker = false
-    @State private var showModeModelPicker = false
-    @State private var showTranslationModelPicker = false
+    @State private var showDefaultsSettings = false
     @State private var showProviderSetup = false
-    @State private var editingProviderConfig: STTProviderConfig?
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var isPowerUser: Bool {
-        settings.subscriptionTier != .free
     }
 
     private var isProviderConfigured: Bool {
@@ -107,148 +123,89 @@ struct HomeView: View {
         return !config.apiKey.isEmpty
     }
 
+    private var settingsSummary: String {
+        let provider = settings.selectedProvider.shortName
+        let language = settings.selectedTargetLanguage.flag
+        return "\(provider) → \(language)"
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 backgroundColor.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Dropdowns Section - Full Width, Fixed at top
-                    VStack(spacing: 16) {
-                        // Transcription Provider
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("TRANSCRIPTION")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.leading, 4)
+                    Spacer()
 
-                            PillDropdown(
-                                icon: settings.selectedProvider.icon,
-                                text: "\(settings.selectedProvider.shortName) · \(currentProviderModel)",
-                                isSystemIcon: true
-                            ) {
+                    // Mode Selector - Beautiful centered dropdown
+                    VStack(spacing: 12) {
+                        Text("MODE")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .tracking(1.5)
+
+                        ModeSelector(
+                            selectedMode: $settings.selectedMode,
+                            onTap: {
                                 HapticManager.lightTap()
-                                showProviderPicker = true
+                                showModePicker = true
                             }
-                        }
-
-                        // Mode and Language row
-                        HStack(spacing: 12) {
-                            // Mode dropdown
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("MODE")
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 4)
-
-                                PillDropdown(
-                                    icon: settings.selectedMode.icon,
-                                    text: settings.selectedMode.displayName,
-                                    isSystemIcon: true
-                                ) {
-                                    HapticManager.lightTap()
-                                    showModePicker = true
-                                }
-                            }
-
-                            // Language dropdown
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("LANGUAGE")
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 4)
-
-                                PillDropdown(
-                                    icon: settings.selectedTargetLanguage.flag,
-                                    text: settings.selectedTargetLanguage.displayName,
-                                    isSystemIcon: false
-                                ) {
-                                    HapticManager.lightTap()
-                                    showLanguagePicker = true
-                                }
-                            }
-                        }
-
-                        // Pro/Power: LLM Model selectors - always reserve space
-                        HStack(spacing: 12) {
-                            // Mode LLM (when mode != raw)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("MODE MODEL")
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 4)
-
-                                PillDropdown(
-                                    icon: settings.selectedModeProvider.icon,
-                                    text: settings.selectedModeProvider.shortName,
-                                    isSystemIcon: true
-                                ) {
-                                    HapticManager.lightTap()
-                                    showModeModelPicker = true
-                                }
-                            }
-                            .opacity(isPowerUser && settings.selectedMode != .raw ? 1 : 0)
-                            .allowsHitTesting(isPowerUser && settings.selectedMode != .raw)
-
-                            // Translation LLM (when translation enabled)
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("TRANSLATION MODEL")
-                                    .font(.caption2.weight(.medium))
-                                    .foregroundStyle(.secondary)
-                                    .padding(.leading, 4)
-
-                                PillDropdown(
-                                    icon: settings.selectedTranslationProvider.icon,
-                                    text: settings.selectedTranslationProvider.shortName,
-                                    isSystemIcon: true
-                                ) {
-                                    HapticManager.lightTap()
-                                    showTranslationModelPicker = true
-                                }
-                            }
-                            .opacity(isPowerUser && settings.isTranslationEnabled ? 1 : 0)
-                            .allowsHitTesting(isPowerUser && settings.isTranslationEnabled)
-                        }
+                        )
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
 
                     Spacer()
 
-                    // Record Button Area with Translate toggle - Fixed position
+                    // Action Buttons Area
                     if isProviderConfigured {
-                        // Normal state - provider is configured
-                        ZStack {
-                            // Main record button - centered, larger
-                            Button(action: {
-                                HapticManager.mediumTap()
-                                showRecording = true
-                            }) {
-                                ZStack {
-                                    Circle()
-                                        .fill(AppTheme.accentGradient)
-                                        .frame(width: 120, height: 120)
-                                        .shadow(color: AppTheme.accent.opacity(0.5), radius: 20)
+                        VStack(spacing: 24) {
+                            // Two action buttons side by side
+                            HStack(spacing: 32) {
+                                // Translate + Transcribe button (pink)
+                                ActionButton(
+                                    icon: "globe",
+                                    label: "Translate",
+                                    color: .pink,
+                                    size: 72
+                                ) {
+                                    HapticManager.mediumTap()
+                                    translateOnRecord = true
+                                    showRecording = true
+                                }
 
-                                    Image(systemName: "mic.fill")
-                                        .font(.system(size: 48))
-                                        .foregroundStyle(.white)
+                                // Transcribe only button (accent)
+                                ActionButton(
+                                    icon: "mic.fill",
+                                    label: "Transcribe",
+                                    gradient: AppTheme.accentGradient,
+                                    size: 100
+                                ) {
+                                    HapticManager.mediumTap()
+                                    translateOnRecord = false
+                                    showRecording = true
                                 }
                             }
 
-                            // Translate button - positioned at 45° angle to top-left
-                            TranslateToggleButton(
-                                isActive: settings.isTranslationEnabled,
-                                action: {
-                                    HapticManager.selection()
-                                    withAnimation(AppTheme.quickSpring) {
-                                        settings.isTranslationEnabled.toggle()
-                                    }
+                            // Settings summary with gear button
+                            HStack(spacing: 12) {
+                                Text(settingsSummary)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+
+                                Button(action: {
+                                    HapticManager.lightTap()
+                                    showDefaultsSettings = true
+                                }) {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .padding(8)
+                                        .background(
+                                            Circle()
+                                                .fill(colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05))
+                                        )
                                 }
-                            )
-                            .offset(x: -90, y: -60) // 45° angle positioning
+                            }
                         }
-                        .frame(height: 180)
                     } else {
                         // Empty state - no API key configured
                         SetupRequiredView(
@@ -257,7 +214,6 @@ struct HomeView: View {
                                 showProviderSetup = true
                             }
                         )
-                        .frame(height: 180)
                     }
 
                     Spacer()
@@ -272,62 +228,216 @@ struct HomeView: View {
             }
             .navigationTitle("SwiftSpeak")
             .navigationBarTitleDisplayMode(.inline)
-            .sheet(isPresented: $showProviderPicker) {
-                ProviderPickerSheet(
-                    selectedProvider: $settings.selectedProvider,
-                    providers: settings.configuredSTTProviders
-                )
-                .presentationDetents([.medium])
-            }
             .sheet(isPresented: $showModePicker) {
                 ModePickerSheet(selectedMode: $settings.selectedMode)
                     .presentationDetents([.height(320)])
             }
-            .sheet(isPresented: $showLanguagePicker) {
-                LanguagePickerSheet(selectedLanguage: $settings.selectedTargetLanguage)
-                    .presentationDetents([.medium, .large])
-            }
-            .sheet(isPresented: $showModeModelPicker) {
-                LLMProviderPickerSheet(
-                    title: "Mode Model",
-                    selectedProvider: $settings.selectedModeProvider
-                )
-                .presentationDetents([.height(280)])
-            }
-            .sheet(isPresented: $showTranslationModelPicker) {
-                LLMProviderPickerSheet(
-                    title: "Translation Model",
-                    selectedProvider: $settings.selectedTranslationProvider
-                )
-                .presentationDetents([.height(280)])
+            .sheet(isPresented: $showDefaultsSettings) {
+                DefaultsSettingsSheet()
+                    .presentationDetents([.medium])
             }
             .sheet(isPresented: $showProviderSetup) {
-                if let config = editingProviderConfig {
-                    ProviderEditorSheet(
-                        config: config,
-                        isEditing: true,
-                        onSave: { updatedConfig in
-                            settings.updateSTTProvider(updatedConfig)
-                        },
-                        onDelete: nil
-                    )
-                }
-            }
-            .onChange(of: showProviderSetup) { _, isShowing in
-                if isShowing && editingProviderConfig == nil {
-                    // Create a config for the current provider if none exists
-                    if let existingConfig = settings.getSTTProviderConfig(for: settings.selectedProvider) {
-                        editingProviderConfig = existingConfig
-                    } else {
-                        editingProviderConfig = STTProviderConfig(provider: settings.selectedProvider)
-                    }
-                }
+                ProviderEditorSheet(
+                    config: settings.getSTTProviderConfig(for: settings.selectedProvider) ?? STTProviderConfig(provider: settings.selectedProvider),
+                    isEditing: true,
+                    onSave: { updatedConfig in
+                        settings.updateSTTProvider(updatedConfig)
+                    },
+                    onDelete: nil
+                )
             }
         }
     }
+}
 
-    private var currentProviderModel: String {
-        settings.getSTTProviderConfig(for: settings.selectedProvider)?.model ?? settings.selectedProvider.defaultModel
+// MARK: - Mode Selector (Beautiful Dropdown)
+struct ModeSelector: View {
+    @Binding var selectedMode: FormattingMode
+    let onTap: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    private var pillBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                Image(systemName: selectedMode.icon)
+                    .font(.title3)
+                    .foregroundStyle(selectedMode == .raw ? .secondary : AppTheme.accent)
+
+                Text(selectedMode.displayName)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                Image(systemName: "chevron.down")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 14)
+            .background(pillBackground)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Action Button
+struct ActionButton: View {
+    let icon: String
+    let label: String
+    var color: Color? = nil
+    var gradient: LinearGradient? = nil
+    let size: CGFloat
+    let action: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Button(action: action) {
+                ZStack {
+                    if let gradient = gradient {
+                        Circle()
+                            .fill(gradient)
+                            .frame(width: size, height: size)
+                            .shadow(color: AppTheme.accent.opacity(0.4), radius: 16)
+                    } else if let color = color {
+                        Circle()
+                            .fill(color)
+                            .frame(width: size, height: size)
+                            .shadow(color: color.opacity(0.4), radius: 12)
+                    }
+
+                    Image(systemName: icon)
+                        .font(.system(size: size * 0.4))
+                        .foregroundStyle(.white)
+                }
+            }
+
+            Text(label)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+// MARK: - Defaults Settings Sheet
+struct DefaultsSettingsSheet: View {
+    @EnvironmentObject var settings: SharedSettings
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    // Transcription Provider
+                    Section {
+                        HStack {
+                            Label {
+                                Text("Provider")
+                            } icon: {
+                                Image(systemName: settings.selectedProvider.icon)
+                                    .foregroundStyle(AppTheme.accent)
+                            }
+
+                            Spacer()
+
+                            Text(settings.selectedProvider.displayName)
+                                .foregroundStyle(.secondary)
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Transcription")
+                    }
+
+                    // Translation Settings
+                    Section {
+                        // Target Language
+                        NavigationLink {
+                            LanguagePickerView(selectedLanguage: $settings.selectedTargetLanguage)
+                        } label: {
+                            HStack {
+                                Label {
+                                    Text("Target Language")
+                                } icon: {
+                                    Text(settings.selectedTargetLanguage.flag)
+                                }
+
+                                Spacer()
+
+                                Text(settings.selectedTargetLanguage.displayName)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+
+                        // Translation LLM
+                        Picker(selection: $settings.selectedTranslationProvider) {
+                            ForEach(LLMProvider.allCases) { provider in
+                                Text(provider.displayName).tag(provider)
+                            }
+                        } label: {
+                            Label {
+                                Text("AI Model")
+                            } icon: {
+                                Image(systemName: "sparkles")
+                                    .foregroundStyle(.purple)
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Translation")
+                    }
+
+                    // Mode Settings
+                    Section {
+                        Picker(selection: $settings.selectedModeProvider) {
+                            ForEach(LLMProvider.allCases) { provider in
+                                Text(provider.displayName).tag(provider)
+                            }
+                        } label: {
+                            Label {
+                                Text("AI Model")
+                            } icon: {
+                                Image(systemName: "text.badge.star")
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Formatting Mode")
+                    } footer: {
+                        Text("Used when applying Email, Formal, or Casual formatting to your transcription.")
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Defaults")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
@@ -839,9 +949,8 @@ struct QuickStatsCard: View {
         .preferredColorScheme(.light)
 }
 
-#Preview("Home - Translation Enabled") {
+#Preview("Home - Email Mode") {
     let settings = SharedSettings.shared
-    settings.isTranslationEnabled = true
     settings.selectedMode = .email
     // Ensure API key is configured
     if var config = settings.getSTTProviderConfig(for: settings.selectedProvider) {

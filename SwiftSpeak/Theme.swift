@@ -39,6 +39,16 @@ struct AppTheme {
         endPoint: .bottomTrailing
     )
 
+    /// Power tier gradient (vibrant gold/orange)
+    static let powerGradient = LinearGradient(
+        colors: [Color.orange, Color.yellow],
+        startPoint: .topLeading,
+        endPoint: .bottomTrailing
+    )
+
+    /// Power accent color
+    static let powerAccent = Color.orange
+
     /// Confetti colors for celebrations
     static let confettiColors: [Color] = [
         accent,
