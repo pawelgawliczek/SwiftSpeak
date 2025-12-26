@@ -120,6 +120,21 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    var vocabulary: [VocabularyEntry] {
+        get {
+            guard let data = defaults?.data(forKey: Constants.Keys.vocabulary),
+                  let entries = try? JSONDecoder().decode([VocabularyEntry].self, from: data) else {
+                return []
+            }
+            return entries
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults?.set(data, forKey: Constants.Keys.vocabulary)
+            }
+        }
+    }
+
     // MARK: - Private Initialization
     private init() {
         defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
@@ -334,5 +349,51 @@ class SharedSettings: ObservableObject {
         case .ollama:
             return ollamaEndpoint?.isEmpty == false
         }
+    }
+
+    // MARK: - Vocabulary Management
+    func addVocabularyEntry(_ entry: VocabularyEntry) {
+        var entries = vocabulary
+        // Check for duplicate recognized word
+        if entries.contains(where: { $0.recognizedWord.lowercased() == entry.recognizedWord.lowercased() }) {
+            return
+        }
+        entries.append(entry)
+        vocabulary = entries
+    }
+
+    func updateVocabularyEntry(_ entry: VocabularyEntry) {
+        var entries = vocabulary
+        if let index = entries.firstIndex(where: { $0.id == entry.id }) {
+            entries[index] = entry
+            vocabulary = entries
+        }
+    }
+
+    func removeVocabularyEntry(_ entry: VocabularyEntry) {
+        var entries = vocabulary
+        entries.removeAll { $0.id == entry.id }
+        vocabulary = entries
+    }
+
+    func toggleVocabularyEntry(_ entry: VocabularyEntry) {
+        var updatedEntry = entry
+        updatedEntry.isEnabled.toggle()
+        updatedEntry.updatedAt = Date()
+        updateVocabularyEntry(updatedEntry)
+    }
+
+    /// Apply vocabulary replacements to text
+    func applyVocabulary(to text: String) -> String {
+        var result = text
+        for entry in vocabulary where entry.isEnabled {
+            // Case-insensitive replacement
+            result = result.replacingOccurrences(
+                of: entry.recognizedWord,
+                with: entry.replacementWord,
+                options: .caseInsensitive
+            )
+        }
+        return result
     }
 }
