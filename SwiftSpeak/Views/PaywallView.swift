@@ -11,21 +11,29 @@ import SwiftUI
 
 struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
     @StateObject private var settings = SharedSettings.shared
     @State private var selectedTier: SubscriptionTier = .pro
     @State private var isYearly = true
     @State private var isPurchasing = false
     @State private var showSuccess = false
 
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    private var cardShadow: Color {
+        colorScheme == .dark ? .clear : .black.opacity(0.08)
+    }
+
     var body: some View {
         ZStack {
-            // Background gradient
-            LinearGradient(
-                colors: [AppTheme.darkBase, Color(red: 0.05, green: 0.05, blue: 0.15)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
+            // Background
+            backgroundColor.ignoresSafeArea()
 
             ScrollView {
                 VStack(spacing: 24) {
@@ -40,8 +48,9 @@ struct PaywallView: View {
                                 .font(.callout.weight(.medium))
                                 .foregroundStyle(.secondary)
                                 .padding(10)
-                                .background(Color.white.opacity(0.1))
+                                .background(cardBackground)
                                 .clipShape(Circle())
+                                .shadow(color: cardShadow, radius: 4, y: 2)
                         }
                     }
                     .padding(.horizontal, 20)
@@ -58,7 +67,7 @@ struct PaywallView: View {
                     }
 
                     // Billing toggle
-                    BillingToggle(isYearly: $isYearly)
+                    BillingToggle(isYearly: $isYearly, colorScheme: colorScheme)
                         .padding(.top, 8)
 
                     // Tier cards
@@ -67,6 +76,7 @@ struct PaywallView: View {
                             tier: .pro,
                             isSelected: selectedTier == .pro,
                             isYearly: isYearly,
+                            colorScheme: colorScheme,
                             onSelect: { selectedTier = .pro }
                         )
 
@@ -74,13 +84,14 @@ struct PaywallView: View {
                             tier: .power,
                             isSelected: selectedTier == .power,
                             isYearly: isYearly,
+                            colorScheme: colorScheme,
                             onSelect: { selectedTier = .power }
                         )
                     }
                     .padding(.horizontal, 20)
 
                     // Features comparison
-                    FeaturesComparison(selectedTier: selectedTier)
+                    FeaturesComparison(selectedTier: selectedTier, colorScheme: colorScheme)
                         .padding(.horizontal, 20)
 
                     // Purchase button
@@ -91,23 +102,19 @@ struct PaywallView: View {
                                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             } else {
                                 Text("Continue with \(selectedTier.displayName)")
-                                    .font(.callout.weight(.semibold))
+                                    .font(.body.weight(.semibold))
                             }
                         }
                         .foregroundStyle(.white)
                         .frame(maxWidth: .infinity)
-                        .frame(minHeight: 44)
-                        .padding(.vertical, 6)
+                        .frame(minHeight: 50)
                         .background(
-                            LinearGradient(
-                                colors: selectedTier == .pro ?
-                                    [AppTheme.accent, AppTheme.accentSecondary] : [.purple, .pink],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                            selectedTier == .pro ? AppTheme.accent : Color.purple
                         )
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: (selectedTier == .pro ? AppTheme.accent : Color.purple).opacity(0.3), radius: 8, y: 4)
                     }
+                    .buttonStyle(.plain)
                     .disabled(isPurchasing)
                     .padding(.horizontal, 20)
 
@@ -157,18 +164,17 @@ struct PaywallView: View {
 
             // Success overlay
             if showSuccess {
-                SuccessOverlay {
+                SuccessOverlay(selectedTier: selectedTier) {
                     dismiss()
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 
     private var priceText: String {
         let price = selectedTier == .pro ?
-            (isYearly ? "$79.99/year" : "$9.99/month") :
-            (isYearly ? "$159.99/year" : "$19.99/month")
+            (isYearly ? "$39.99/year" : "$4.99/month") :
+            (isYearly ? "$79.99/year" : "$9.99/month")
         return price
     }
 
@@ -177,6 +183,7 @@ struct PaywallView: View {
     }
 
     private func purchase() {
+        HapticManager.mediumTap()
         isPurchasing = true
 
         // Mock purchase - in Phase 5, this will call RevenueCat
@@ -189,6 +196,7 @@ struct PaywallView: View {
     }
 
     private func restorePurchases() {
+        HapticManager.lightTap()
         // Mock restore - in Phase 5, this will call RevenueCat
         // Purchases.shared.restorePurchases()
     }
@@ -197,17 +205,26 @@ struct PaywallView: View {
 // MARK: - Billing Toggle
 struct BillingToggle: View {
     @Binding var isYearly: Bool
+    let colorScheme: ColorScheme
+
+    private var toggleBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05)
+    }
+
+    private var selectedBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.2) : Color.white
+    }
 
     var body: some View {
         HStack(spacing: 0) {
-            ToggleButton(title: "Monthly", isSelected: !isYearly) {
+            ToggleButton(title: "Monthly", isSelected: !isYearly, colorScheme: colorScheme) {
                 HapticManager.selection()
                 withAnimation(AppTheme.quickSpring) {
                     isYearly = false
                 }
             }
 
-            ToggleButton(title: "Yearly", isSelected: isYearly, badge: "Save 33%") {
+            ToggleButton(title: "Yearly", isSelected: isYearly, badge: "Save 33%", colorScheme: colorScheme) {
                 HapticManager.selection()
                 withAnimation(AppTheme.quickSpring) {
                     isYearly = true
@@ -215,8 +232,8 @@ struct BillingToggle: View {
             }
         }
         .padding(4)
-        .background(Color.white.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+        .background(toggleBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .padding(.horizontal, 20)
     }
 }
@@ -225,7 +242,12 @@ struct ToggleButton: View {
     let title: String
     let isSelected: Bool
     var badge: String? = nil
+    let colorScheme: ColorScheme
     let action: () -> Void
+
+    private var selectedBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.2) : Color.white
+    }
 
     var body: some View {
         Button(action: action) {
@@ -246,8 +268,9 @@ struct ToggleButton: View {
             .foregroundStyle(isSelected ? .primary : .secondary)
             .padding(.vertical, 10)
             .padding(.horizontal, 20)
-            .background(isSelected ? Color.white.opacity(0.2) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            .background(isSelected ? selectedBackground : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .shadow(color: isSelected && colorScheme == .light ? .black.opacity(0.1) : .clear, radius: 4, y: 2)
         }
     }
 }
@@ -257,7 +280,12 @@ struct TierCard: View {
     let tier: SubscriptionTier
     let isSelected: Bool
     let isYearly: Bool
+    let colorScheme: ColorScheme
     let onSelect: () -> Void
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
 
     var body: some View {
         Button(action: {
@@ -338,18 +366,15 @@ struct TierCard: View {
                 }
             }
             .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous)
-                    .fill(Color.white.opacity(0.05))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous)
-                            .stroke(
-                                isSelected ? tierColor : Color.clear,
-                                lineWidth: 2
-                            )
-                    )
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? tierColor : Color.clear, lineWidth: 2)
             )
+            .shadow(color: colorScheme == .dark ? .clear : .black.opacity(0.08), radius: 8, y: 4)
         }
+        .buttonStyle(.plain)
     }
 
     private var tierColor: Color {
@@ -366,8 +391,8 @@ struct TierCard: View {
 
     private var priceAmount: String {
         switch tier {
-        case .pro: return isYearly ? "$6.67" : "$9.99"
-        case .power: return isYearly ? "$13.33" : "$19.99"
+        case .pro: return isYearly ? "$3.33" : "$4.99"
+        case .power: return isYearly ? "$6.67" : "$9.99"
         default: return "$0"
         }
     }
@@ -381,7 +406,7 @@ struct TierCard: View {
         case .pro:
             return [
                 "Unlimited transcriptions",
-                "Multiple STT providers",
+                "Multiple transcript providers",
                 "Translation feature",
                 "Custom templates"
             ]
@@ -401,6 +426,11 @@ struct TierCard: View {
 // MARK: - Features Comparison
 struct FeaturesComparison: View {
     let selectedTier: SubscriptionTier
+    let colorScheme: ColorScheme
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -410,7 +440,7 @@ struct FeaturesComparison: View {
 
             VStack(spacing: 12) {
                 FeatureRow(feature: "Transcriptions/day", free: "10", pro: "Unlimited", power: "Unlimited")
-                FeatureRow(feature: "STT Providers", free: "1", pro: "4+", power: "4+")
+                FeatureRow(feature: "Transcript Providers", free: "1", pro: "4+", power: "4+")
                 FeatureRow(feature: "Translation", free: false, pro: true, power: true)
                 FeatureRow(feature: "Custom Templates", free: false, pro: true, power: true)
                 FeatureRow(feature: "Power Modes", free: false, pro: false, power: true)
@@ -418,8 +448,9 @@ struct FeaturesComparison: View {
             }
         }
         .padding(20)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous))
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: colorScheme == .dark ? .clear : .black.opacity(0.08), radius: 8, y: 4)
     }
 }
 
@@ -468,6 +499,7 @@ struct FeatureValue: View {
 
 // MARK: - Success Overlay
 struct SuccessOverlay: View {
+    let selectedTier: SubscriptionTier
     let onDismiss: () -> Void
 
     @State private var scale: CGFloat = 0.5
@@ -491,32 +523,29 @@ struct SuccessOverlay: View {
                 }
                 .scaleEffect(scale)
 
-                Text("Welcome to Pro!")
+                Text("Welcome to \(selectedTier.displayName)!")
                     .font(.title.weight(.bold))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.white)
 
-                Text("You now have access to all features")
+                Text("You now have access to all \(selectedTier.displayName) features")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.7))
 
                 Button(action: {
                     HapticManager.mediumTap()
                     onDismiss()
                 }) {
                     Text("Start Using SwiftSpeak")
-                        .font(.callout.weight(.semibold))
+                        .font(.body.weight(.semibold))
                         .foregroundStyle(.white)
-                        .padding(.vertical, 16)
-                        .padding(.horizontal, 32)
-                        .background(
-                            LinearGradient(
-                                colors: [.green, .green.opacity(0.8)],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                        .background(Color.green)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shadow(color: Color.green.opacity(0.3), radius: 8, y: 4)
                 }
+                .buttonStyle(.plain)
+                .padding(.horizontal, 40)
                 .padding(.top, 16)
             }
             .opacity(opacity)
@@ -533,6 +562,12 @@ struct SuccessOverlay: View {
     }
 }
 
-#Preview {
+#Preview("Dark") {
     PaywallView()
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    PaywallView()
+        .preferredColorScheme(.light)
 }
