@@ -25,6 +25,7 @@ enum Constants {
         static let ollamaEndpoint = "ollamaEndpoint"
         static let selectedMode = "selectedMode"
         static let selectedTargetLanguage = "selectedTargetLanguage"
+        static let isTranslationEnabled = "isTranslationEnabled"
         static let lastTranscription = "lastTranscription"
         static let transcriptionHistory = "transcriptionHistory"
         static let subscriptionTier = "subscriptionTier"

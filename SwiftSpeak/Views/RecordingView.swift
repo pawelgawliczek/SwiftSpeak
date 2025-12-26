@@ -50,6 +50,8 @@ struct RecordingView: View {
                 state: recordingState,
                 duration: recordingDuration,
                 mode: settings.selectedMode,
+                isTranslationEnabled: settings.isTranslationEnabled,
+                targetLanguage: settings.selectedTargetLanguage,
                 waveformType: selectedWaveform,
                 colorScheme: colorScheme,
                 onTap: handleCardTap,
@@ -185,6 +187,8 @@ struct RecordingCard: View {
     let state: RecordingState
     let duration: TimeInterval
     let mode: FormattingMode
+    let isTranslationEnabled: Bool
+    let targetLanguage: Language
     let waveformType: WaveformType
     let colorScheme: ColorScheme
     let onTap: () -> Void
@@ -200,8 +204,28 @@ struct RecordingCard: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            // Mode badge
-            ModeBadge(icon: mode.icon, text: mode.displayName)
+            // Status badges row
+            HStack(spacing: 8) {
+                // Mode badge (if not raw)
+                if mode != .raw {
+                    ModeBadge(icon: mode.icon, text: mode.displayName)
+                }
+
+                // Translation badge (if enabled)
+                if isTranslationEnabled {
+                    HStack(spacing: 4) {
+                        Text(targetLanguage.flag)
+                            .font(.subheadline)
+                        Text(targetLanguage.displayName)
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.15))
+                    .clipShape(Capsule())
+                }
+            }
 
             // Waveform or status indicator
             ZStack {
@@ -231,9 +255,10 @@ struct RecordingCard: View {
             .frame(height: 60)
 
             // Status text
-            Text(state.statusText)
+            Text(statusText)
                 .font(.headline)
                 .foregroundStyle(.primary)
+                .multilineTextAlignment(.center)
 
             // Duration (only while recording)
             if case .recording = state {
@@ -292,6 +317,34 @@ struct RecordingCard: View {
         let seconds = Int(duration) % 60
         let tenths = Int((duration.truncatingRemainder(dividingBy: 1)) * 10)
         return String(format: "%d:%02d.%d", minutes, seconds, tenths)
+    }
+
+    private var statusText: String {
+        switch state {
+        case .idle:
+            return "Tap to start"
+        case .recording:
+            if isTranslationEnabled && mode != .raw {
+                return "Listening & translating\nwith \(mode.displayName)"
+            } else if isTranslationEnabled {
+                return "Listening & translating"
+            } else if mode != .raw {
+                return "Listening with \(mode.displayName)"
+            } else {
+                return "Listening..."
+            }
+        case .processing:
+            return "Transcribing..."
+        case .formatting:
+            if isTranslationEnabled {
+                return "Formatting & translating..."
+            }
+            return "Formatting..."
+        case .complete:
+            return "Done!"
+        case .error(let message):
+            return message
+        }
     }
 
     @ViewBuilder

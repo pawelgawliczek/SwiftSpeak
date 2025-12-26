@@ -38,6 +38,12 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    @Published var isTranslationEnabled: Bool = false {
+        didSet {
+            defaults?.set(isTranslationEnabled, forKey: Constants.Keys.isTranslationEnabled)
+        }
+    }
+
     @Published var subscriptionTier: SubscriptionTier = .free {
         didSet {
             defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
@@ -117,6 +123,9 @@ class SharedSettings: ObservableObject {
            let lang = Language(rawValue: langRaw) {
             selectedTargetLanguage = lang
         }
+
+        // Load translation enabled
+        isTranslationEnabled = defaults?.bool(forKey: Constants.Keys.isTranslationEnabled) ?? false
 
         // Load subscription tier
         if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier),
