@@ -9,14 +9,23 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings
+    @Environment(\.colorScheme) var colorScheme
     @State private var showPaywall = false
     @State private var showAPIKeyEditor = false
     @State private var editingProvider: STTProvider?
 
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBase.ignoresSafeArea()
+                backgroundColor.ignoresSafeArea()
 
                 List {
                     // Subscription Section
@@ -48,7 +57,7 @@ struct SettingsView: View {
                                 showAPIKeyEditor = true
                             }
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
                     } header: {
                         Text("Transcription Provider")
                     }
@@ -65,7 +74,7 @@ struct SettingsView: View {
                                 subtitle: "Create your own formatting styles"
                             )
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
                     } header: {
                         Text("Formatting")
                     }
@@ -84,7 +93,7 @@ struct SettingsView: View {
                                 )
                             }
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
                     } header: {
                         Text("Translation")
                     }
@@ -97,7 +106,7 @@ struct SettingsView: View {
                             title: "Version",
                             subtitle: "1.0.0 (Build 1)"
                         )
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
 
                         Button(action: {
                             if let url = URL(string: "https://swiftspeak.app/privacy") {
@@ -111,7 +120,7 @@ struct SettingsView: View {
                                 subtitle: nil
                             )
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
 
                         Button(action: {
                             if let url = URL(string: "https://swiftspeak.app/terms") {
@@ -125,7 +134,7 @@ struct SettingsView: View {
                                 subtitle: nil
                             )
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
                     } header: {
                         Text("About")
                     }
@@ -142,7 +151,7 @@ struct SettingsView: View {
                                 subtitle: "Show onboarding again"
                             )
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
 
                         Button(action: {
                             addMockHistory()
@@ -154,7 +163,7 @@ struct SettingsView: View {
                                 subtitle: "Add sample transcriptions"
                             )
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
 
                         NavigationLink {
                             KeyboardPreviewView()
@@ -166,7 +175,7 @@ struct SettingsView: View {
                                 subtitle: "See how the keyboard looks"
                             )
                         }
-                        .listRowBackground(Color.white.opacity(0.05))
+                        .listRowBackground(rowBackground)
 
                     } header: {
                         Text("Debug")
@@ -213,6 +222,25 @@ struct SettingsView: View {
 struct SubscriptionCard: View {
     let tier: SubscriptionTier
     let onUpgrade: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    private var cardBackground: LinearGradient {
+        if tier == .free {
+            return LinearGradient(
+                colors: colorScheme == .dark ?
+                    [Color.white.opacity(0.1), Color.white.opacity(0.05)] :
+                    [Color.black.opacity(0.05), Color.black.opacity(0.02)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+            return LinearGradient(
+                colors: [AppTheme.accent.opacity(0.3), AppTheme.accentSecondary.opacity(0.3)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        }
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -252,15 +280,7 @@ struct SubscriptionCard: View {
             }
         }
         .padding(20)
-        .background(
-            LinearGradient(
-                colors: tier == .free ?
-                    [Color.white.opacity(0.1), Color.white.opacity(0.05)] :
-                    [AppTheme.accent.opacity(0.3), AppTheme.accentSecondary.opacity(0.3)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
+        .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
@@ -382,9 +402,15 @@ struct SettingsRow: View {
 
 // MARK: - Templates View (Placeholder)
 struct TemplatesView: View {
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
     var body: some View {
         ZStack {
-            AppTheme.darkBase.ignoresSafeArea()
+            backgroundColor.ignoresSafeArea()
 
             VStack(spacing: 24) {
                 Image(systemName: "doc.text")
@@ -408,10 +434,19 @@ struct TemplatesView: View {
 struct LanguagePickerView: View {
     @Binding var selectedLanguage: Language
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
 
     var body: some View {
         ZStack {
-            AppTheme.darkBase.ignoresSafeArea()
+            backgroundColor.ignoresSafeArea()
 
             List {
                 ForEach(Language.allCases) { language in
@@ -435,10 +470,11 @@ struct LanguagePickerView: View {
                             }
                         }
                     }
-                    .listRowBackground(Color.white.opacity(0.05))
+                    .listRowBackground(rowBackground)
                 }
             }
             .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("Target Language")
     }
@@ -448,15 +484,20 @@ struct LanguagePickerView: View {
 struct APIKeyEditorView: View {
     let provider: STTProvider
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
     @StateObject private var settings = SharedSettings.shared
     @State private var apiKey = ""
     @State private var isValidating = false
     @State private var isValid = false
 
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                AppTheme.darkBase.ignoresSafeArea()
+                backgroundColor.ignoresSafeArea()
 
                 VStack(spacing: 24) {
                     // Provider icon
@@ -547,7 +588,14 @@ struct APIKeyEditorView: View {
     }
 }
 
-#Preview {
+#Preview("Dark") {
     SettingsView()
         .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.dark)
+}
+
+#Preview("Light") {
+    SettingsView()
+        .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.light)
 }
