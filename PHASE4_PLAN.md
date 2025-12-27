@@ -653,14 +653,14 @@ All webhooks are **outbound only** (mobile-friendly).
 - [x] Formality picker with DeepL-specific note
 - [x] Tone description injected into LLM prompts
 
-### Phase 4b: Memory 🟡 IN PROGRESS
+### Phase 4b: Memory ✅ COMPLETE
 - [x] HistoryMemory model
 - [x] Global memory in SharedSettings
 - [x] Workflow memory toggle per Power Mode
 - [x] Context memory toggle per context
-- [ ] MemoryManager service
-- [ ] Memory updates after conversations
-- [ ] Compression at threshold (>2000 chars → <1500)
+- [x] MemoryManager service (Services/Memory/MemoryManager.swift)
+- [x] Memory updates after conversations (integrated into TranscriptionOrchestrator)
+- [x] Compression at threshold (>2000 chars → <1500)
 
 ### Phase 4c: PowerModeOrchestrator
 - [ ] Full state machine working

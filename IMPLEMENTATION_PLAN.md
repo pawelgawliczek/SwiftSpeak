@@ -1192,16 +1192,16 @@ Named contexts (e.g., "Fatma", "Work") that customize tone and behavior across a
 13. [x] Context injection into translation (formality + context for LLM providers)
 14. [x] Context injection into formatting (full system prompt with memory/tone/instructions)
 
-**Phase 4b: Three-Tier Memory System** 🟡 IN PROGRESS
+**Phase 4b: Three-Tier Memory System** ✅ COMPLETE
 Persistent memory across conversations:
 
 15. [x] HistoryMemory model (global, always on, updated after each conversation)
 16. [x] Global memory fields in SharedSettings (globalMemory, globalMemoryEnabled)
 17. [x] Update PowerMode model with memory fields (memoryEnabled, memory, lastMemoryUpdate)
 18. [x] Context memory fields in ConversationContext (memoryEnabled, memory)
-19. [ ] MemoryManager service (update, compress when >2000 chars)
-20. [ ] Memory update after transcriptions complete
-21. [ ] Memory compression logic (when >2000 chars, compress to <1500)
+19. [x] MemoryManager service (Services/Memory/MemoryManager.swift)
+20. [x] Memory update after transcriptions complete (integrated into TranscriptionOrchestrator)
+21. [x] Memory compression logic (when >2000 chars, compress to <1500)
 22. [x] Add Memory section to SettingsView
 
 **Phase 4c: PowerModeOrchestrator**
