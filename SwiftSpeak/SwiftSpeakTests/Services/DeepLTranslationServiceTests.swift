@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct DeepLTranslationServiceTests {
 
     // MARK: - Initialization
@@ -126,6 +127,7 @@ struct DeepLTranslationServiceTests {
 
 // MARK: - DeepL Language Code Tests
 
+@MainActor
 struct DeepLLanguageCodeTests {
 
     @Test func languageHasDeepLCode() {
@@ -197,6 +199,7 @@ struct DeepLLanguageCodeTests {
 
 // MARK: - AIProvider DeepL Support Tests
 
+@MainActor
 struct AIProviderDeepLTests {
 
     @Test func deepLSupportsTranslation() {
@@ -250,6 +253,7 @@ struct AIProviderDeepLTests {
 
 // MARK: - Constants Tests
 
+@MainActor
 struct DeepLConstantsTests {
 
     @Test func deepLEndpointIsDefined() {

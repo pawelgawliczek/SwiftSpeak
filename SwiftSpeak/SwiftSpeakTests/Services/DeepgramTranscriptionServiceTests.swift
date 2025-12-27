@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct DeepgramTranscriptionServiceTests {
 
     // MARK: - Basic Properties

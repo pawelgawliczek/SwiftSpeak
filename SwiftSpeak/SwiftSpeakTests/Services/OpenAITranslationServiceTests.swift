@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct OpenAITranslationServiceTests {
 
     // MARK: - Initialization
@@ -101,6 +102,7 @@ struct OpenAITranslationServiceTests {
 
 // MARK: - Mock Translation Tests
 
+@MainActor
 struct MockTranslationTests {
 
     @Test func languageHasCorrectDisplayName() {
@@ -137,6 +139,7 @@ struct MockTranslationTests {
 
 // MARK: - Recording State Translation Tests
 
+@MainActor
 struct RecordingStateTranslationTests {
 
     @Test func translatingStateExists() {

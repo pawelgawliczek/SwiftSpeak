@@ -12,6 +12,7 @@ import Foundation
 /// Tests for GoogleTranslationService
 /// Verifies Google Cloud Translation API integration
 @Suite("Google Translation Service Tests")
+@MainActor
 struct GoogleTranslationServiceTests {
 
     // MARK: - Initialization Tests

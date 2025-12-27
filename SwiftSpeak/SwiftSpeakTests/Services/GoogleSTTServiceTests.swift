@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct GoogleSTTServiceTests {
 
     // MARK: - Initialization
@@ -212,6 +213,7 @@ struct GoogleSTTServiceTests {
 
 // MARK: - Language Code Tests
 
+@MainActor
 struct GoogleSTTLanguageCodeTests {
 
     @Test func allLanguagesHaveGoogleSTTCodes() {
@@ -264,6 +266,7 @@ struct GoogleSTTLanguageCodeTests {
 
 // MARK: - Model Support Tests
 
+@MainActor
 struct GoogleSTTModelTests {
 
     @Test func availableModelsIncludesAllExpectedModels() {
@@ -288,6 +291,7 @@ struct GoogleSTTModelTests {
 
 // MARK: - Error Handling Tests
 
+@MainActor
 struct GoogleSTTErrorTests {
 
     @Test func throwsProviderNotConfiguredWhenNotConfigured() async {
@@ -349,6 +353,7 @@ struct GoogleSTTErrorTests {
 
 // MARK: - Integration Tests (Conceptual - would require real API)
 
+@MainActor
 struct GoogleSTTIntegrationTests {
 
     @Test func transcriptionRequiresValidConfiguration() async {
@@ -406,6 +411,7 @@ struct GoogleSTTIntegrationTests {
 
 // MARK: - Base64 Encoding Tests (Conceptual)
 
+@MainActor
 struct GoogleSTTBase64Tests {
 
     @Test func audioDataShouldBeBase64Encoded() {

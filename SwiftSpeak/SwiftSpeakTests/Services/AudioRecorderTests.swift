@@ -546,7 +546,7 @@ struct AudioRecorderProtocolTests {
         let mock = MockAudioRecorder()
 
         // Can be used as protocol type
-        let protocol_: AudioRecorderProtocol = mock
+        let protocol_: any AudioRecorderProtocol = mock
 
         #expect(protocol_.isRecording == false)
         #expect(protocol_.currentLevel == 0)
@@ -557,7 +557,7 @@ struct AudioRecorderProtocolTests {
     @Test("Protocol methods are accessible")
     @MainActor
     func protocolMethodsAccessible() async throws {
-        let mock: AudioRecorderProtocol = MockAudioRecorder()
+        let mock: any AudioRecorderProtocol = MockAudioRecorder()
 
         try await mock.startRecording()
         _ = try mock.stopRecording()

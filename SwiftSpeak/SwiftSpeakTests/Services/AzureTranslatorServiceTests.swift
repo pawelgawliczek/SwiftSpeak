@@ -10,6 +10,7 @@ import Foundation
 @testable import SwiftSpeak
 
 /// Tests for Azure Translator service
+@MainActor
 struct AzureTranslatorServiceTests {
 
     // MARK: - Initialization Tests

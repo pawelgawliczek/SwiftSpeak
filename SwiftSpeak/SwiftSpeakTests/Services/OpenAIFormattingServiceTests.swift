@@ -11,6 +11,7 @@ import Testing
 // MARK: - Initialization Tests
 
 @Suite("OpenAIFormattingService - Initialization")
+@MainActor
 struct OpenAIFormattingServiceInitTests {
 
     @Test("Provider ID is OpenAI")
@@ -52,6 +53,7 @@ struct OpenAIFormattingServiceInitTests {
 // MARK: - Config Initialization Tests
 
 @Suite("OpenAIFormattingService - Config Initialization")
+@MainActor
 struct OpenAIFormattingServiceConfigInitTests {
 
     @Test("Init from valid config succeeds")
@@ -128,6 +130,7 @@ struct OpenAIFormattingServiceConfigInitTests {
 // MARK: - Formatting Mode Behavior Tests
 
 @Suite("OpenAIFormattingService - Raw Mode")
+@MainActor
 struct OpenAIFormattingServiceRawModeTests {
 
     @Test("Raw mode with no context returns text unchanged")
@@ -171,6 +174,7 @@ struct OpenAIFormattingServiceRawModeTests {
 // MARK: - Error Tests
 
 @Suite("OpenAIFormattingService - Formatting Errors")
+@MainActor
 struct OpenAIFormattingServiceErrorTests {
 
     @Test("Formatting with unconfigured service throws error")
@@ -196,6 +200,7 @@ struct OpenAIFormattingServiceErrorTests {
 // MARK: - Protocol Conformance Tests
 
 @Suite("OpenAIFormattingService - FormattingProvider Protocol")
+@MainActor
 struct OpenAIFormattingServiceProtocolTests {
 
     @Test("Conforms to FormattingProvider")
@@ -223,6 +228,7 @@ struct OpenAIFormattingServiceProtocolTests {
 // MARK: - FormattingMode Prompt Tests
 
 @Suite("OpenAIFormattingService - FormattingMode Prompts")
+@MainActor
 struct FormattingModePromptTests {
 
     @Test("Raw mode has minimal prompt")
@@ -260,6 +266,7 @@ struct FormattingModePromptTests {
 // MARK: - Context Integration Tests
 
 @Suite("OpenAIFormattingService - Context Integration")
+@MainActor
 struct OpenAIFormattingServiceContextTests {
 
     @Test("Context with content triggers API call even in raw mode")
@@ -311,6 +318,7 @@ struct OpenAIFormattingServiceContextTests {
 // MARK: - Model Selection Tests
 
 @Suite("OpenAIFormattingService - Model Selection")
+@MainActor
 struct OpenAIFormattingServiceModelTests {
 
     @Test("gpt-4o-mini is default for cost efficiency")

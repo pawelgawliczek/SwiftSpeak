@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct AssemblyAITranscriptionServiceTests {
 
     // MARK: - Initialization
@@ -162,6 +163,7 @@ struct AssemblyAITranscriptionServiceTests {
 
 // MARK: - AssemblyAI Model Tests
 
+@MainActor
 struct AssemblyAIModelTests {
 
     @Test func providerSupportsDefaultModel() {
@@ -205,6 +207,7 @@ struct AssemblyAIModelTests {
 
 // MARK: - AssemblyAI Provider Info Tests
 
+@MainActor
 struct AssemblyAIProviderInfoTests {
 
     @Test func providerHasDisplayName() {
@@ -258,6 +261,7 @@ struct AssemblyAIProviderInfoTests {
 
 // MARK: - Constants Tests
 
+@MainActor
 struct AssemblyAIConstantsTests {
 
     @Test func uploadEndpointIsDefined() {
@@ -275,6 +279,7 @@ struct AssemblyAIConstantsTests {
 
 // MARK: - Integration Scenarios
 
+@MainActor
 struct AssemblyAIIntegrationTests {
 
     @Test func configurationWorkflowCreatesValidService() {

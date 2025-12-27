@@ -12,6 +12,7 @@ import Testing
 // MARK: - Initialization Tests
 
 @Suite("OpenAITranscriptionService - Initialization")
+@MainActor
 struct OpenAITranscriptionServiceInitTests {
 
     @Test("Provider ID is OpenAI")
@@ -53,6 +54,7 @@ struct OpenAITranscriptionServiceInitTests {
 // MARK: - Config Initialization Tests
 
 @Suite("OpenAITranscriptionService - Config Initialization")
+@MainActor
 struct OpenAITranscriptionServiceConfigInitTests {
 
     @Test("Init from valid config succeeds")
@@ -129,6 +131,7 @@ struct OpenAITranscriptionServiceConfigInitTests {
 // MARK: - Transcription Error Tests
 
 @Suite("OpenAITranscriptionService - Transcription Errors")
+@MainActor
 struct OpenAITranscriptionServiceErrorTests {
 
     @Test("Transcription with unconfigured service throws error")
@@ -165,6 +168,7 @@ struct OpenAITranscriptionServiceErrorTests {
 // MARK: - Language Extension Tests
 
 @Suite("OpenAITranscriptionService - Language Whisper Codes")
+@MainActor
 struct LanguageWhisperCodeTests {
 
     @Test("English whisper code is en")
@@ -250,6 +254,7 @@ struct LanguageWhisperCodeTests {
 // MARK: - API Key Validation Tests
 
 @Suite("OpenAITranscriptionService - API Key Validation")
+@MainActor
 struct OpenAITranscriptionServiceValidationTests {
 
     @Test("Empty key validation returns false")
@@ -276,6 +281,7 @@ struct OpenAITranscriptionServiceValidationTests {
 // MARK: - Protocol Conformance Tests
 
 @Suite("OpenAITranscriptionService - TranscriptionProvider Protocol")
+@MainActor
 struct OpenAITranscriptionServiceProtocolTests {
 
     @Test("Conforms to TranscriptionProvider")

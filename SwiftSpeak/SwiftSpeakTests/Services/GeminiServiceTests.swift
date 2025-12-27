@@ -12,6 +12,7 @@ import Foundation
 /// Tests for GeminiService
 /// Verifies Google Gemini API integration for power mode formatting
 @Suite("Gemini Service Tests")
+@MainActor
 struct GeminiServiceTests {
 
     // MARK: - Initialization Tests
