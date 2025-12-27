@@ -1122,6 +1122,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     var memory: String?                 // Stored memory for this context
     var lastMemoryUpdate: Date?
     var isActive: Bool                  // Currently selected context
+    var appAssignment: AppAssignment    // Apps/categories that auto-enable this context
     let createdAt: Date
     var updatedAt: Date
 
@@ -1139,6 +1140,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         memory: String? = nil,
         lastMemoryUpdate: Date? = nil,
         isActive: Bool = false,
+        appAssignment: AppAssignment = AppAssignment(),
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -1155,6 +1157,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.memory = memory
         self.lastMemoryUpdate = lastMemoryUpdate
         self.isActive = isActive
+        self.appAssignment = appAssignment
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -1163,7 +1166,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         ConversationContext(
             name: "",
             icon: "person.circle",
-            color: .blue,
+            color: PowerModeColorPreset.blue,
             description: ""
         )
     }
@@ -1174,11 +1177,11 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
             ConversationContext(
                 name: "Fatma",
                 icon: "💕",
-                color: .pink,
+                color: PowerModeColorPreset.pink,
                 description: "Casual, loving conversation with my wife",
                 toneDescription: "Casual and loving. We often joke around and use pet names. She speaks Polish primarily but we mix in English words sometimes. Keep translations warm and natural.",
-                formality: .informal,  // Explicitly informal for DeepL
-                languageHints: [.polish, .english],
+                formality: ContextFormality.informal,  // Explicitly informal for DeepL
+                languageHints: [Language.polish, Language.english],
                 customInstructions: "When translating to Polish, use informal \"ty\" form. Add endearments where appropriate.",
                 memoryEnabled: true,
                 memory: "Fatma mentioned she has a meeting on Tuesday afternoon. We're planning dinner for Friday. She prefers Italian food lately.",
@@ -1188,11 +1191,11 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
             ConversationContext(
                 name: "Work",
                 icon: "💼",
-                color: .blue,
+                color: PowerModeColorPreset.blue,
                 description: "Professional, formal business communication",
                 toneDescription: "Professional and formal. Use proper business language and avoid casual expressions.",
-                formality: .formal,  // Explicitly formal for DeepL
-                languageHints: [.english],
+                formality: ContextFormality.formal,  // Explicitly formal for DeepL
+                languageHints: [Language.english],
                 customInstructions: "Maintain professional tone. Use formal salutations and sign-offs in emails.",
                 memoryEnabled: true,
                 memory: "Last email was to client about project delay.",
@@ -1201,11 +1204,11 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
             ConversationContext(
                 name: "Family",
                 icon: "👨‍👩‍👧",
-                color: .green,
+                color: PowerModeColorPreset.green,
                 description: "Warm, friendly family conversations",
                 toneDescription: "Warm and friendly. Family talks are casual but respectful.",
-                formality: .auto,  // Auto-infer from tone description
-                languageHints: [.polish],
+                formality: ContextFormality.auto,  // Auto-infer from tone description
+                languageHints: [Language.polish],
                 customInstructions: "Use familiar Polish expressions common in family settings."
             )
         ]
@@ -1617,6 +1620,9 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // Phase 4: Archive support for swipe actions
     var isArchived: Bool
 
+    // App auto-enable assignment
+    var appAssignment: AppAssignment    // Apps/categories that auto-enable this power mode
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -1632,7 +1638,8 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         memory: String? = nil,
         lastMemoryUpdate: Date? = nil,
         knowledgeDocumentIds: [UUID] = [],
-        isArchived: Bool = false
+        isArchived: Bool = false,
+        appAssignment: AppAssignment = AppAssignment()
     ) {
         self.id = id
         self.name = name
@@ -1649,6 +1656,7 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.lastMemoryUpdate = lastMemoryUpdate
         self.knowledgeDocumentIds = knowledgeDocumentIds
         self.isArchived = isArchived
+        self.appAssignment = appAssignment
     }
 
     /// Preset power modes for new users
@@ -1898,7 +1906,8 @@ enum PowerModeExecutionState: Equatable {
     case thinking              // Building context, fetching webhooks
     case queryingKnowledge     // Phase 4: RAG query
     case askingQuestion(PowerModeQuestion)
-    case generating            // LLM response (may be streaming)
+    case generating            // LLM response (blocking mode)
+    case streaming(String)     // LLM response (streaming mode) - partial text
     case complete(PowerModeSession)
     case error(String)
 
@@ -1911,6 +1920,7 @@ enum PowerModeExecutionState: Equatable {
         case .queryingKnowledge: return "Searching knowledge base..."
         case .askingQuestion: return "Question"
         case .generating: return "Generating..."
+        case .streaming: return "Generating..."
         case .complete: return "Complete"
         case .error(let message): return message
         }
@@ -1918,10 +1928,22 @@ enum PowerModeExecutionState: Equatable {
 
     var isProcessing: Bool {
         switch self {
-        case .transcribing, .thinking, .queryingKnowledge, .generating:
+        case .transcribing, .thinking, .queryingKnowledge, .generating, .streaming:
             return true
         default:
             return false
         }
+    }
+
+    /// Whether this state represents active streaming
+    var isStreaming: Bool {
+        if case .streaming = self { return true }
+        return false
+    }
+
+    /// Get partial text if in streaming state
+    var streamingText: String? {
+        if case .streaming(let text) = self { return text }
+        return nil
     }
 }

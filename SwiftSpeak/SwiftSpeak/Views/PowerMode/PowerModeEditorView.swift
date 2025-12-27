@@ -13,6 +13,7 @@ struct PowerModeEditorView: View {
     let onSave: (PowerMode) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SharedSettings
 
     // Form state
     @State private var name: String = ""
@@ -25,6 +26,9 @@ struct PowerModeEditorView: View {
     // Phase 4: Memory
     @State private var memoryEnabled: Bool = false
     @State private var memoryContent: String = ""
+
+    // App assignment
+    @State private var appAssignment: AppAssignment = AppAssignment()
 
     // UI state
     @State private var showingIconPicker = false
@@ -50,6 +54,7 @@ struct PowerModeEditorView: View {
             _outputFormat = State(initialValue: mode.outputFormat)
             _memoryEnabled = State(initialValue: mode.memoryEnabled)
             _memoryContent = State(initialValue: mode.memory ?? "")
+            _appAssignment = State(initialValue: mode.appAssignment)
         }
     }
 
@@ -71,6 +76,9 @@ struct PowerModeEditorView: View {
 
                     // Knowledge Base section (Phase 4)
                     knowledgeBaseSection
+
+                    // App assignment section
+                    appAssignmentSection
                 }
                 .padding(16)
             }
@@ -384,6 +392,19 @@ struct PowerModeEditorView: View {
         }
     }
 
+    // MARK: - App Assignment Section
+
+    private var appAssignmentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("APP AUTO-ENABLE")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            AppAssignmentSection(appAssignment: $appAssignment)
+                .environmentObject(settings)
+        }
+    }
+
     // MARK: - Actions
 
     private func saveAndDismiss() {
@@ -405,7 +426,9 @@ struct PowerModeEditorView: View {
             memoryEnabled: memoryEnabled,
             memory: memoryContent.isEmpty ? nil : memoryContent,
             lastMemoryUpdate: newMemoryUpdate,
-            knowledgeDocumentIds: powerMode?.knowledgeDocumentIds ?? []
+            knowledgeDocumentIds: powerMode?.knowledgeDocumentIds ?? [],
+            isArchived: powerMode?.isArchived ?? false,
+            appAssignment: appAssignment
         )
         HapticManager.success()
         onSave(savedMode)
@@ -460,11 +483,13 @@ struct ColorPickerRow: View {
 
 #Preview("New Mode") {
     PowerModeEditorView(powerMode: nil) { _ in }
+        .environmentObject(SharedSettings.shared)
         .preferredColorScheme(.dark)
 }
 
 #Preview("Edit Mode") {
     PowerModeEditorView(powerMode: PowerMode.presets.first!) { _ in }
+        .environmentObject(SharedSettings.shared)
         .preferredColorScheme(.dark)
 }
 

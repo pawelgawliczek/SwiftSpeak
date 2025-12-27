@@ -28,6 +28,7 @@ struct ContextEditorSheet: View {
     @State private var customInstructions: String = ""
     @State private var memoryEnabled: Bool = false
     @State private var memory: String = ""
+    @State private var appAssignment: AppAssignment = AppAssignment()
 
     // UI state
     @State private var showingIconPicker = false
@@ -69,6 +70,7 @@ struct ContextEditorSheet: View {
         _customInstructions = State(initialValue: context.customInstructions)
         _memoryEnabled = State(initialValue: context.memoryEnabled)
         _memory = State(initialValue: context.memory ?? "")
+        _appAssignment = State(initialValue: context.appAssignment)
     }
 
     var body: some View {
@@ -98,6 +100,9 @@ struct ContextEditorSheet: View {
 
                     // Memory section
                     memorySection
+
+                    // App assignment section
+                    appAssignmentSection
 
                     // Delete button (if editing)
                     if !isNew {
@@ -472,6 +477,22 @@ struct ContextEditorSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
     }
 
+    // MARK: - App Assignment Section
+
+    private var appAssignmentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("APP AUTO-ENABLE")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            AppAssignmentSection(appAssignment: $appAssignment)
+                .environmentObject(settings)
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
     // MARK: - Delete Section
 
     private var deleteSection: some View {
@@ -506,6 +527,7 @@ struct ContextEditorSheet: View {
             memory: memory.isEmpty ? nil : memory,
             lastMemoryUpdate: context.lastMemoryUpdate,
             isActive: context.isActive,
+            appAssignment: appAssignment,
             createdAt: context.createdAt,
             updatedAt: Date()
         )

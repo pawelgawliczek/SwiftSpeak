@@ -161,6 +161,29 @@ struct SettingsView: View {
                         Text("View and manage AI memory for history, Power Modes, and Contexts.")
                     }
 
+                    // App Library Section
+                    Section {
+                        NavigationLink {
+                            AppLibraryView()
+                        } label: {
+                            SettingsRow(
+                                icon: "square.grid.2x2",
+                                iconColor: .indigo,
+                                title: "App Library",
+                                subtitle: "Manage app categories for auto-enable"
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Apps")
+                    } footer: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Reassign apps to different categories. Contexts and Power Modes can auto-enable based on app categories.")
+                            Text("Manual selection always takes precedence over app auto-enable.")
+                                .fontWeight(.medium)
+                        }
+                    }
+
                     // Behavior Section
                     Section {
                         Toggle(isOn: $settings.autoReturnEnabled) {
@@ -173,6 +196,18 @@ struct SettingsView: View {
                             }
                         }
                         .tint(AppTheme.accent)
+                        .listRowBackground(rowBackground)
+
+                        Toggle(isOn: $settings.powerModeStreamingEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Stream Power Mode responses")
+                                    .font(.callout)
+                                Text("Show text as it's generated instead of waiting for completion")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tint(AppTheme.powerAccent)
                         .listRowBackground(rowBackground)
                     } header: {
                         Text("Behavior")

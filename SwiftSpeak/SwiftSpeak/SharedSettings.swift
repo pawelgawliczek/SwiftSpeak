@@ -137,6 +137,23 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Whether Power Mode streaming is enabled (progressive text rendering)
+    /// Only affects Power Mode LLM responses, NOT transcription or translation
+    @Published var powerModeStreamingEnabled: Bool = true {
+        didSet {
+            defaults?.set(powerModeStreamingEnabled, forKey: Constants.Keys.powerModeStreamingEnabled)
+        }
+    }
+
+    // MARK: - App Library: User Category Overrides
+
+    /// User overrides for app categories (e.g., moving Notion from Work to Personal)
+    @Published var userAppCategoryOverrides: [UserAppCategoryOverride] = [] {
+        didSet {
+            saveUserAppCategoryOverrides()
+        }
+    }
+
     // MARK: - Non-Published Properties
 
     var openAIAPIKey: String? {
@@ -264,6 +281,9 @@ class SharedSettings: ObservableObject {
         if defaults?.object(forKey: Constants.Keys.globalMemoryEnabled) != nil {
             globalMemoryEnabled = defaults?.bool(forKey: Constants.Keys.globalMemoryEnabled) ?? true
         }
+
+        // Load user app category overrides
+        loadUserAppCategoryOverrides()
 
         // Load active context ID
         if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
@@ -707,5 +727,137 @@ class SharedSettings: ObservableObject {
 
     func usageCount(forContextId id: UUID) -> Int {
         transcriptionHistory(forContextId: id).count
+    }
+
+    // MARK: - App Category Override Management
+
+    private func loadUserAppCategoryOverrides() {
+        if let data = defaults?.data(forKey: Constants.Keys.userAppCategoryOverrides),
+           let overrides = try? JSONDecoder().decode([UserAppCategoryOverride].self, from: data) {
+            userAppCategoryOverrides = overrides
+        }
+    }
+
+    private func saveUserAppCategoryOverrides() {
+        if let data = try? JSONEncoder().encode(userAppCategoryOverrides) {
+            defaults?.set(data, forKey: Constants.Keys.userAppCategoryOverrides)
+        }
+    }
+
+    /// Get the effective category for an app (user override or default)
+    func effectiveCategory(for bundleId: String) -> AppCategory? {
+        // Check for user override first
+        if let override = userAppCategoryOverrides.first(where: { $0.bundleId == bundleId }) {
+            return override.category
+        }
+        // Fall back to default category from AppLibrary
+        return AppLibrary.find(bundleId: bundleId)?.defaultCategory
+    }
+
+    /// Set a category override for an app
+    func setAppCategoryOverride(bundleId: String, category: AppCategory) {
+        // Remove existing override if any
+        userAppCategoryOverrides.removeAll { $0.bundleId == bundleId }
+        // Add new override
+        let override = UserAppCategoryOverride(bundleId: bundleId, category: category, updatedAt: Date())
+        userAppCategoryOverrides.append(override)
+    }
+
+    /// Remove a category override (revert to default)
+    func removeAppCategoryOverride(bundleId: String) {
+        userAppCategoryOverrides.removeAll { $0.bundleId == bundleId }
+    }
+
+    /// Check if an app has a user category override
+    func hasAppCategoryOverride(bundleId: String) -> Bool {
+        userAppCategoryOverrides.contains { $0.bundleId == bundleId }
+    }
+
+    /// Get all apps in a category (including user overrides)
+    func apps(in category: AppCategory) -> [AppInfo] {
+        // Get all apps from library
+        let allApps = AppLibrary.apps
+        return allApps.filter { app in
+            effectiveCategory(for: app.id) == category
+        }
+    }
+
+    // MARK: - Context/PowerMode Auto-Enable Matching
+
+    /// Find the context that should be auto-enabled for a given bundle ID
+    /// Priority: 1) Specific app ID assignment, 2) Category assignment
+    func contextForApp(bundleId: String) -> ConversationContext? {
+        // First pass: check for specific app ID assignment (highest priority)
+        for context in contexts {
+            if context.appAssignment.assignedAppIds.contains(bundleId) {
+                return context
+            }
+        }
+
+        // Second pass: check for category assignment
+        let appCategory = effectiveCategory(for: bundleId)
+        for context in contexts {
+            if let category = appCategory, context.appAssignment.assignedCategories.contains(category) {
+                return context
+            }
+        }
+
+        return nil
+    }
+
+    /// Find the power mode that should be auto-enabled for a given bundle ID
+    /// Priority: 1) Specific app ID assignment, 2) Category assignment
+    func powerModeForApp(bundleId: String) -> PowerMode? {
+        // First pass: check for specific app ID assignment (highest priority)
+        for powerMode in activePowerModes {
+            if powerMode.appAssignment.assignedAppIds.contains(bundleId) {
+                return powerMode
+            }
+        }
+
+        // Second pass: check for category assignment
+        let appCategory = effectiveCategory(for: bundleId)
+        for powerMode in activePowerModes {
+            if let category = appCategory, powerMode.appAssignment.assignedCategories.contains(category) {
+                return powerMode
+            }
+        }
+
+        return nil
+    }
+
+    // MARK: - Effective Resolution with Manual Precedence
+
+    /// Resolves the effective context for an app, considering manual selection precedence.
+    /// Manual selection (activeContextId) always takes precedence over app auto-enable.
+    /// - Parameter bundleId: The bundle ID of the app
+    /// - Returns: The manually selected context if set, otherwise the auto-enabled context for the app
+    func effectiveContextForApp(bundleId: String) -> ConversationContext? {
+        // Manual selection takes precedence
+        if let manualContext = activeContext {
+            return manualContext
+        }
+        // Fall back to app auto-enable
+        return contextForApp(bundleId: bundleId)
+    }
+
+    /// Resolves the effective power mode for an app, considering manual selection precedence.
+    /// Manual selection always takes precedence over app auto-enable.
+    /// - Parameter bundleId: The bundle ID of the app
+    /// - Parameter selectedPowerModeId: The manually selected power mode ID (if any)
+    /// - Returns: The manually selected power mode if set, otherwise the auto-enabled power mode for the app
+    func effectivePowerModeForApp(bundleId: String, selectedPowerModeId: UUID?) -> PowerMode? {
+        // Manual selection takes precedence
+        if let selectedId = selectedPowerModeId,
+           let manualMode = activePowerModes.first(where: { $0.id == selectedId }) {
+            return manualMode
+        }
+        // Fall back to app auto-enable
+        return powerModeForApp(bundleId: bundleId)
+    }
+
+    /// Clears the manually selected context, allowing app auto-enable to take effect
+    func clearManualContextSelection() {
+        activeContextId = nil
     }
 }

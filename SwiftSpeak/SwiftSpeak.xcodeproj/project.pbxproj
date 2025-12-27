@@ -66,6 +66,7 @@
 		83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Shared/AppLibrary.swift,
 				Shared/Constants.swift,
 				Shared/Models.swift,
 				Shared/ProviderHelpContent.swift,
