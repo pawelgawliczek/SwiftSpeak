@@ -636,38 +636,63 @@ All webhooks are **outbound only** (mobile-friendly).
 
 ## Verification Checklist
 
-### Contexts
-- [ ] Create, edit, delete contexts
-- [ ] Quick switch from recording view
-- [ ] Context injected into prompts
-- [ ] Language hints affect transcription
+### Phase 4.0: UI Mock-ups ✅ COMPLETE
+- [x] ContextsView, ContextEditorSheet, ContextDetailView
+- [x] ContextQuickSwitcher floating overlay
+- [x] MemoryView with filtering, MemoryEditorSheet
+- [x] KnowledgeBaseView, DocumentPickerSheet
+- [x] WebhooksView, WebhookEditorSheet
+- [x] PowerTabView with segmented control
+- [x] SwipeablePowerModeCard with swipe actions
 
-### Memory
-- [ ] History memory updates after conversations
-- [ ] Workflow memory toggle per Power Mode
-- [ ] Context memory toggle per context
-- [ ] Compression at threshold
+### Phase 4a: Contexts ✅ COMPLETE
+- [x] Create, edit, delete contexts
+- [x] Quick switch from recording view
+- [x] Context injected into prompts (PromptContext.swift)
+- [x] Language hints affect transcription (promptHint)
+- [x] Formality picker with DeepL-specific note
+- [x] Tone description injected into LLM prompts
 
-### Streaming
+### Phase 4b: Memory 🟡 IN PROGRESS
+- [x] HistoryMemory model
+- [x] Global memory in SharedSettings
+- [x] Workflow memory toggle per Power Mode
+- [x] Context memory toggle per context
+- [ ] MemoryManager service
+- [ ] Memory updates after conversations
+- [ ] Compression at threshold (>2000 chars → <1500)
+
+### Phase 4c: PowerModeOrchestrator
+- [ ] Full state machine working
+- [ ] Real transcription (not mock)
+- [ ] Real LLM calls (not mock)
+- [ ] All injections working
+
+### Phase 4d: Streaming
+- [ ] StreamingClient.swift (SSE parsing)
 - [ ] OpenAI streaming works
 - [ ] Anthropic streaming works
 - [ ] Gemini streaming works
 - [ ] Progressive text rendering
 
-### RAG
-- [ ] Upload PDF/TXT/MD
+### Phase 4e: RAG
+- [x] KnowledgeDocument model
+- [ ] DocumentChunk model
+- [ ] Upload PDF/TXT/MD (DocumentParser)
 - [ ] Add URL with auto-update
+- [ ] TextChunker, EmbeddingService, VectorStore
 - [ ] Query returns relevant chunks
 - [ ] Chunks included in prompt
 
-### Webhooks
-- [ ] Create, edit, delete webhooks
+### Phase 4f: Webhooks
+- [x] Webhook model
+- [x] Webhooks UI (mock)
+- [ ] WebhookExecutor service
 - [ ] Context sources fetch data
 - [ ] Output destinations send results
 - [ ] Test button works
 
-### PowerModeOrchestrator
-- [ ] Full state machine working
-- [ ] Real transcription (not mock)
-- [ ] Real LLM calls (not mock)
-- [ ] All injections working
+### Phase 4g: Transcription Streaming (OPTIONAL)
+- [ ] DeepgramStreamingService (WebSocket)
+- [ ] AssemblyAIStreamingService (WebSocket)
+- [ ] Real-time transcription UI

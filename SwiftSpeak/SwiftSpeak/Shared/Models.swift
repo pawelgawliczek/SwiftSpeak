@@ -1065,6 +1065,46 @@ enum VocabularyCategory: String, Codable, CaseIterable, Identifiable {
 // - Webhooks for external integrations
 // - Streaming for real-time responses
 
+// MARK: - Context Formality (Phase 4)
+
+/// Explicit formality setting for translation providers
+/// When set to .auto, formality is inferred from tone description
+enum ContextFormality: String, Codable, CaseIterable, Identifiable {
+    case auto = "auto"          // Infer from tone description
+    case formal = "formal"      // Professional, respectful, business tone
+    case informal = "informal"  // Casual, friendly, conversational
+    case neutral = "neutral"    // No preference (provider default)
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .auto: return "Auto (from Tone)"
+        case .formal: return "Formal"
+        case .informal: return "Informal"
+        case .neutral: return "Neutral"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .auto: return "Automatically inferred from your tone description"
+        case .formal: return "Professional and respectful language"
+        case .informal: return "Casual and friendly language"
+        case .neutral: return "Standard language, no preference"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .auto: return "sparkles"
+        case .formal: return "briefcase.fill"
+        case .informal: return "face.smiling.fill"
+        case .neutral: return "equal.circle.fill"
+        }
+    }
+}
+
 // MARK: - Conversation Context (Phase 4)
 
 /// A named context that customizes tone, language, and behavior
@@ -1075,6 +1115,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     var color: PowerModeColorPreset
     var description: String             // Short description for list view
     var toneDescription: String         // Detailed tone guidance for AI
+    var formality: ContextFormality     // Explicit formality for translation (esp. DeepL)
     var languageHints: [Language]       // Expected languages in this context
     var customInstructions: String      // Injected into all prompts
     var memoryEnabled: Bool             // Context-level memory toggle
@@ -1091,6 +1132,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         color: PowerModeColorPreset,
         description: String,
         toneDescription: String = "",
+        formality: ContextFormality = .auto,
         languageHints: [Language] = [],
         customInstructions: String = "",
         memoryEnabled: Bool = false,
@@ -1106,6 +1148,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.color = color
         self.description = description
         self.toneDescription = toneDescription
+        self.formality = formality
         self.languageHints = languageHints
         self.customInstructions = customInstructions
         self.memoryEnabled = memoryEnabled
@@ -1134,6 +1177,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 color: .pink,
                 description: "Casual, loving conversation with my wife",
                 toneDescription: "Casual and loving. We often joke around and use pet names. She speaks Polish primarily but we mix in English words sometimes. Keep translations warm and natural.",
+                formality: .informal,  // Explicitly informal for DeepL
                 languageHints: [.polish, .english],
                 customInstructions: "When translating to Polish, use informal \"ty\" form. Add endearments where appropriate.",
                 memoryEnabled: true,
@@ -1147,6 +1191,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 color: .blue,
                 description: "Professional, formal business communication",
                 toneDescription: "Professional and formal. Use proper business language and avoid casual expressions.",
+                formality: .formal,  // Explicitly formal for DeepL
                 languageHints: [.english],
                 customInstructions: "Maintain professional tone. Use formal salutations and sign-offs in emails.",
                 memoryEnabled: true,
@@ -1159,6 +1204,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 color: .green,
                 description: "Warm, friendly family conversations",
                 toneDescription: "Warm and friendly. Family talks are casual but respectful.",
+                formality: .auto,  // Auto-infer from tone description
                 languageHints: [.polish],
                 customInstructions: "Use familiar Polish expressions common in family settings."
             )

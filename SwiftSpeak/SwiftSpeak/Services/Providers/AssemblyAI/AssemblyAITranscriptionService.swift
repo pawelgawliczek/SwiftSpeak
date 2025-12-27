@@ -68,7 +68,7 @@ final class AssemblyAITranscriptionService: TranscriptionProvider {
 
     // MARK: - Transcription
 
-    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
@@ -82,7 +82,8 @@ final class AssemblyAITranscriptionService: TranscriptionProvider {
         let uploadURL = try await uploadAudio(fileURL: audioURL)
 
         // Step 2: Create transcript job
-        let transcriptID = try await createTranscript(audioURL: uploadURL, language: language)
+        // Note: AssemblyAI supports word_boost for custom vocabulary, we extract words from promptHint
+        let transcriptID = try await createTranscript(audioURL: uploadURL, language: language, promptHint: promptHint)
 
         // Step 3: Poll for completion
         let text = try await pollForCompletion(transcriptID: transcriptID)
@@ -165,8 +166,9 @@ final class AssemblyAITranscriptionService: TranscriptionProvider {
     /// - Parameters:
     ///   - audioURL: Uploaded audio URL from AssemblyAI
     ///   - language: Optional language hint
+    ///   - promptHint: Optional vocabulary/context hints for transcription
     /// - Returns: Transcript job ID
-    private func createTranscript(audioURL: String, language: Language?) async throws -> String {
+    private func createTranscript(audioURL: String, language: Language?, promptHint: String?) async throws -> String {
         // Build request body
         var body: [String: Any] = [
             "audio_url": audioURL
@@ -181,6 +183,20 @@ final class AssemblyAITranscriptionService: TranscriptionProvider {
         // Add model if not default
         if modelName != "default" {
             body["speech_model"] = modelName
+        }
+
+        // Add word_boost from promptHint if provided
+        // AssemblyAI uses word_boost array to improve recognition of specific terms
+        if let hint = promptHint, !hint.isEmpty {
+            // Extract words from the hint (split by common delimiters)
+            let words = hint.components(separatedBy: CharacterSet(charactersIn: ",;. \n"))
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0.count >= 2 } // Filter out single chars
+
+            if !words.isEmpty {
+                body["word_boost"] = words
+                body["boost_param"] = "high" // Use high boost for vocabulary terms
+            }
         }
 
         // Create request

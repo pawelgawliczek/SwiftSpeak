@@ -43,6 +43,10 @@ enum Constants {
         static let activeContextId = "activeContextId"
         static let powerModes = "powerModes"
         static let historyMemory = "historyMemory"
+
+        // Phase 4a: Global Memory (3-Tier System)
+        static let globalMemory = "globalMemory"
+        static let globalMemoryEnabled = "globalMemoryEnabled"
     }
 
     // MARK: - API Endpoints

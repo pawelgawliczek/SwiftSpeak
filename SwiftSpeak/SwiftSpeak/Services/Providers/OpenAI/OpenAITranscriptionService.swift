@@ -61,7 +61,7 @@ final class OpenAITranscriptionService: TranscriptionProvider {
 
     // MARK: - Transcription
 
-    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
@@ -80,6 +80,12 @@ final class OpenAITranscriptionService: TranscriptionProvider {
         // Add language hint if provided
         if let language = language {
             fields["language"] = language.whisperCode
+        }
+
+        // Add prompt hint for context (vocabulary, language hints, etc.)
+        // Whisper uses this to guide transcription with expected terms
+        if let prompt = promptHint, !prompt.isEmpty {
+            fields["prompt"] = prompt
         }
 
         // Upload and transcribe

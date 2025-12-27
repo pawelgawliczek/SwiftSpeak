@@ -241,6 +241,7 @@ private final class AnthropicTranslationAdapter: TranslationProvider {
     var isConfigured: Bool { formattingService.isConfigured }
     var model: String { formattingService.model }
     var supportedLanguages: [Language] { Language.allCases }
+    var supportsFormality: Bool { true } // LLM can understand formality through context
 
     private let formattingService: AnthropicService
 
@@ -248,13 +249,38 @@ private final class AnthropicTranslationAdapter: TranslationProvider {
         self.formattingService = formattingService
     }
 
-    func translate(text: String, from sourceLanguage: Language?, to targetLanguage: Language) async throws -> String {
-        let prompt = """
+    func translate(
+        text: String,
+        from sourceLanguage: Language?,
+        to targetLanguage: Language,
+        formality: Formality?,
+        context: PromptContext?
+    ) async throws -> String {
+        // If we have a context with content, use the PromptContext's translation prompt builder
+        if let ctx = context, ctx.hasContent {
+            let translationPrompt = ctx.buildTranslationPrompt(to: targetLanguage, from: sourceLanguage)
+            return try await formattingService.format(text: text, mode: .raw, customPrompt: translationPrompt, context: nil)
+        }
+
+        // Build basic translation prompt with optional formality
+        var prompt = """
         Translate the following text to \(targetLanguage.displayName).
         \(sourceLanguage != nil ? "The source language is \(sourceLanguage!.displayName)." : "Detect the source language automatically.")
-        Only return the translated text, nothing else.
         """
 
-        return try await formattingService.format(text: text, mode: .raw, customPrompt: prompt)
+        if let f = formality {
+            switch f {
+            case .formal:
+                prompt += "\nUse formal language and polite forms of address."
+            case .informal:
+                prompt += "\nUse casual, informal language."
+            case .neutral:
+                break
+            }
+        }
+
+        prompt += "\nOnly return the translated text, nothing else."
+
+        return try await formattingService.format(text: text, mode: .raw, customPrompt: prompt, context: nil)
     }
 }

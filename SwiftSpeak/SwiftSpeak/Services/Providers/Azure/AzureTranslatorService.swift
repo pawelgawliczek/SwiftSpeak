@@ -70,11 +70,17 @@ final class AzureTranslatorService: TranslationProvider {
     func translate(
         text: String,
         from sourceLanguage: Language?,
-        to targetLanguage: Language
+        to targetLanguage: Language,
+        formality: Formality?,
+        context: PromptContext?
     ) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.providerNotConfigured
         }
+
+        // Note: Azure Translator does not support formality parameter natively
+        // The formality and context parameters are accepted for protocol conformance
+        // but are not used in the API call
 
         // Build endpoint URL with query parameters
         var urlComponents = URLComponents(string: baseURL)!

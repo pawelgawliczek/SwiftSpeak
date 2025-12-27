@@ -49,6 +49,9 @@ final class MockFormattingProvider: FormattingProvider {
     /// Last custom prompt passed to format
     private(set) var lastCustomPrompt: String?
 
+    /// Last context passed to format
+    private(set) var lastContext: PromptContext?
+
     // MARK: - Initialization
 
     init(
@@ -66,12 +69,14 @@ final class MockFormattingProvider: FormattingProvider {
     func format(
         text: String,
         mode: FormattingMode,
-        customPrompt: String?
+        customPrompt: String?,
+        context: PromptContext?
     ) async throws -> String {
         formatCallCount += 1
         lastInputText = text
         lastMode = mode
         lastCustomPrompt = customPrompt
+        lastContext = context
 
         // Simulate network delay
         if delay > 0 {
@@ -123,6 +128,7 @@ final class MockFormattingProvider: FormattingProvider {
         lastInputText = nil
         lastMode = nil
         lastCustomPrompt = nil
+        lastContext = nil
         shouldSucceed = true
         customResult = nil
         delay = 0.3

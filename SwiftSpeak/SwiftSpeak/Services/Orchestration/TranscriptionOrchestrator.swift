@@ -54,6 +54,12 @@ final class TranscriptionOrchestrator: ObservableObject {
     /// Source language hint for transcription (nil for auto-detect)
     var sourceLanguage: Language?
 
+    /// Active conversation context (if any)
+    var activeContext: ConversationContext?
+
+    /// Active power mode (if running in Power Mode)
+    var activePowerMode: PowerMode?
+
     // MARK: - Dependencies
 
     private let settings: SharedSettings
@@ -193,6 +199,18 @@ final class TranscriptionOrchestrator: ObservableObject {
         await startRecording()
     }
 
+    // MARK: - Context Building
+
+    /// Build PromptContext from current settings and active context/power mode
+    private func buildPromptContext() -> PromptContext {
+        // Use the factory method on PromptContext
+        return PromptContext.from(
+            settings: settings,
+            context: activeContext,
+            powerMode: activePowerMode
+        )
+    }
+
     // MARK: - Transcription
 
     private func transcribe(audioURL: URL) async throws -> String {
@@ -201,7 +219,11 @@ final class TranscriptionOrchestrator: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        return try await provider.transcribe(audioURL: audioURL, language: sourceLanguage)
+        // Build prompt hint for transcription (vocabulary + language hints)
+        let context = buildPromptContext()
+        let promptHint = context.buildTranscriptionHint()
+
+        return try await provider.transcribe(audioURL: audioURL, language: sourceLanguage, promptHint: promptHint)
     }
 
     // MARK: - Formatting
@@ -213,9 +235,12 @@ final class TranscriptionOrchestrator: ObservableObject {
             return text
         }
 
+        // Build context for formatting (includes memory, tone, instructions)
+        let context = buildPromptContext()
+
         // Use custom template prompt if provided, otherwise use mode
         let customPrompt = customTemplate?.prompt
-        return try await provider.format(text: text, mode: mode, customPrompt: customPrompt)
+        return try await provider.format(text: text, mode: mode, customPrompt: customPrompt, context: context)
     }
 
     // MARK: - Translation
@@ -226,7 +251,17 @@ final class TranscriptionOrchestrator: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        return try await provider.translate(text: text, from: sourceLanguage, to: targetLanguage)
+        // Build context for translation (includes memory, tone for formality inference)
+        let context = buildPromptContext()
+        let formality = context.inferFormality()
+
+        return try await provider.translate(
+            text: text,
+            from: sourceLanguage,
+            to: targetLanguage,
+            formality: formality,
+            context: context
+        )
     }
 
     // MARK: - History

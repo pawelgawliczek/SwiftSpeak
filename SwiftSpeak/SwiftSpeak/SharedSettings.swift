@@ -121,6 +121,22 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    // MARK: - Phase 4a: Global Memory (3-Tier System)
+
+    /// Global memory - always injected into prompts when enabled
+    @Published var globalMemory: String? {
+        didSet {
+            defaults?.set(globalMemory, forKey: Constants.Keys.globalMemory)
+        }
+    }
+
+    /// Whether global memory injection is enabled
+    @Published var globalMemoryEnabled: Bool = true {
+        didSet {
+            defaults?.set(globalMemoryEnabled, forKey: Constants.Keys.globalMemoryEnabled)
+        }
+    }
+
     // MARK: - Non-Published Properties
 
     var openAIAPIKey: String? {
@@ -190,6 +206,11 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Alias for vocabulary - used by PromptContext
+    var vocabularyEntries: [VocabularyEntry] {
+        vocabulary
+    }
+
     // MARK: - Private Initialization
 
     private init() {
@@ -237,6 +258,12 @@ class SharedSettings: ObservableObject {
         loadContexts()
         loadPowerModes()
         loadHistoryMemory()
+
+        // Load global memory (3-tier system)
+        globalMemory = defaults?.string(forKey: Constants.Keys.globalMemory)
+        if defaults?.object(forKey: Constants.Keys.globalMemoryEnabled) != nil {
+            globalMemoryEnabled = defaults?.bool(forKey: Constants.Keys.globalMemoryEnabled) ?? true
+        }
 
         // Load active context ID
         if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),

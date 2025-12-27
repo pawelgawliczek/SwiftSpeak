@@ -27,6 +27,10 @@ final class DeepLTranslationService: TranslationProvider {
         Language.allCases
     }
 
+    var supportsFormality: Bool {
+        true
+    }
+
     // MARK: - Properties
 
     private let apiKey: String
@@ -72,17 +76,40 @@ final class DeepLTranslationService: TranslationProvider {
     func translate(
         text: String,
         from sourceLanguage: Language?,
-        to targetLanguage: Language
+        to targetLanguage: Language,
+        formality: Formality?,
+        context: PromptContext?
     ) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
 
-        // Build request
+        // Determine formality: use explicit formality, or infer from context
+        let effectiveFormality = formality ?? context?.inferFormality()
+
+        // Build request with formality if supported for target language
+        let formalityValue: String?
+        if let f = effectiveFormality {
+            // DeepL supports formality for certain target languages
+            // (DE, FR, IT, ES, NL, PL, PT-BR, PT-PT, RU, JA)
+            let supportedFormalityLanguages: Set<String> = [
+                "DE", "FR", "IT", "ES", "NL", "PL", "PT", "PT-BR", "PT-PT", "RU", "JA"
+            ]
+            let targetCode = targetLanguage.deepLCode.uppercased()
+            if supportedFormalityLanguages.contains(targetCode) || targetCode.hasPrefix("PT") {
+                formalityValue = f.deepLValue
+            } else {
+                formalityValue = nil
+            }
+        } else {
+            formalityValue = nil
+        }
+
         let request = DeepLTranslateRequest(
             text: [text],
             targetLang: targetLanguage.deepLCode,
-            sourceLang: sourceLanguage?.deepLCode
+            sourceLang: sourceLanguage?.deepLCode,
+            formality: formalityValue
         )
 
         // Make API call
@@ -112,11 +139,21 @@ private struct DeepLTranslateRequest: Encodable {
     let text: [String]
     let targetLang: String
     let sourceLang: String?
+    let formality: String?
 
     enum CodingKeys: String, CodingKey {
         case text
         case targetLang = "target_lang"
         case sourceLang = "source_lang"
+        case formality
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(text, forKey: .text)
+        try container.encode(targetLang, forKey: .targetLang)
+        try container.encodeIfPresent(sourceLang, forKey: .sourceLang)
+        try container.encodeIfPresent(formality, forKey: .formality)
     }
 }
 

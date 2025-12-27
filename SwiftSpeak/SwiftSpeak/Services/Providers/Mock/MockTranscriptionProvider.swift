@@ -46,6 +46,9 @@ final class MockTranscriptionProvider: TranscriptionProvider {
     /// Last language passed to transcribe
     private(set) var lastLanguage: Language?
 
+    /// Last prompt hint passed to transcribe
+    private(set) var lastPromptHint: String?
+
     // MARK: - Initialization
 
     init(
@@ -60,10 +63,11 @@ final class MockTranscriptionProvider: TranscriptionProvider {
 
     // MARK: - TranscriptionProvider Methods
 
-    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String {
         transcribeCallCount += 1
         lastAudioURL = audioURL
         lastLanguage = language
+        lastPromptHint = promptHint
 
         // Simulate network delay
         if delay > 0 {
@@ -90,6 +94,7 @@ final class MockTranscriptionProvider: TranscriptionProvider {
         transcribeCallCount = 0
         lastAudioURL = nil
         lastLanguage = nil
+        lastPromptHint = nil
         shouldSucceed = true
         mockResult = "This is a mock transcription result."
         delay = 0.5

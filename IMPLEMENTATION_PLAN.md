@@ -1154,96 +1154,110 @@ All screens functional with mock data, full navigation, polished animations.
 ### Phase 4: Power Mode Backend + Advanced Features
 **Execution Guide:** See `/PHASE4_PLAN.md` for step-by-step implementation details.
 
-**Phase 4.0: UI Mock-ups (UI/UX First)**
+**Phase 4.0: UI Mock-ups (UI/UX First)** ✅ COMPLETE
 Build all new screens with mock data before backend implementation:
 
-1. [ ] **Contexts UI:**
-   - [ ] ContextsView.swift (Settings → Contexts list)
-   - [ ] ContextEditorSheet.swift (Create/edit context with tone, language hints)
-   - [ ] ContextQuickSwitcher.swift (Floating overlay for quick context switching)
+1. [x] **Contexts UI:**
+   - [x] ContextsView.swift (Settings → Contexts list)
+   - [x] ContextEditorSheet.swift (Create/edit context with tone, language hints, formality)
+   - [x] ContextQuickSwitcher.swift (Floating overlay for quick context switching)
+   - [x] ContextDetailView.swift (Context detail with history link)
 
-2. [ ] **Memory UI:**
-   - [ ] MemoryView.swift (Settings → Memory management)
-   - [ ] MemoryEditorSheet.swift (View/edit memory content)
+2. [x] **Memory UI:**
+   - [x] MemoryView.swift (Settings → Memory management with filtering)
+   - [x] MemoryEditorSheet.swift (View/edit memory content)
 
-3. [ ] **RAG/Knowledge Base UI:**
-   - [ ] KnowledgeBaseView.swift (Documents list in Power Mode editor)
-   - [ ] DocumentPickerSheet.swift (Upload PDF/TXT/MD or add URL)
+3. [x] **RAG/Knowledge Base UI:**
+   - [x] KnowledgeBaseView.swift (Documents list in Power Mode editor)
+   - [x] DocumentPickerSheet.swift (Upload PDF/TXT/MD or add URL)
 
-4. [ ] **Webhooks UI:**
-   - [ ] WebhooksView.swift (Settings → Webhooks list)
-   - [ ] WebhookEditorSheet.swift (Template picker, URL, auth, payload config)
+4. [x] **Webhooks UI:**
+   - [x] WebhooksView.swift (Settings → Webhooks list)
+   - [x] WebhookEditorSheet.swift (Template picker, URL, auth, payload config)
 
-**Phase 4a: Conversation Contexts**
+5. [x] **Power Tab Redesign:**
+   - [x] PowerTabView.swift (Segmented control: Modes | Contexts)
+   - [x] SwipeablePowerModeCard.swift (WhatsApp-style swipe actions)
+
+**Phase 4a: Conversation Contexts** ✅ COMPLETE
 Named contexts (e.g., "Fatma", "Work") that customize tone and behavior across all features:
 
-5. [ ] ConversationContext model (name, icon, color, toneDescription, languageHints, customInstructions)
-6. [ ] Context storage in SharedSettings (contexts array, activeContextId)
-7. [ ] Wire contexts into TranscriptionOrchestrator (inject into prompts)
-8. [ ] Add Contexts section to SettingsView
+6. [x] ConversationContext model (name, icon, color, toneDescription, formality, languageHints, customInstructions)
+7. [x] ContextFormality enum (auto, formal, informal, neutral) with DeepL integration
+8. [x] Context storage in SharedSettings (contexts array, activeContextId)
+9. [x] PromptContext.swift - Universal context injection for all providers
+10. [x] Wire contexts into TranscriptionOrchestrator (inject into prompts)
+11. [x] Formality picker in ContextEditorSheet with DeepL-specific note
+12. [x] Context injection into transcription (promptHint with vocabulary + language)
+13. [x] Context injection into translation (formality + context for LLM providers)
+14. [x] Context injection into formatting (full system prompt with memory/tone/instructions)
 
-**Phase 4b: Three-Tier Memory System**
+**Phase 4b: Three-Tier Memory System** 🟡 IN PROGRESS
 Persistent memory across conversations:
 
-9. [ ] HistoryMemory model (global, always on, updated after each conversation)
-10. [ ] Update PowerMode model with memory fields (memoryEnabled, memory, lastMemoryUpdate)
-11. [ ] MemoryManager service (update, compress when >2000 chars)
-12. [ ] Memory update after transcriptions complete
-13. [ ] Add Memory section to SettingsView
+15. [x] HistoryMemory model (global, always on, updated after each conversation)
+16. [x] Global memory fields in SharedSettings (globalMemory, globalMemoryEnabled)
+17. [x] Update PowerMode model with memory fields (memoryEnabled, memory, lastMemoryUpdate)
+18. [x] Context memory fields in ConversationContext (memoryEnabled, memory)
+19. [ ] MemoryManager service (update, compress when >2000 chars)
+20. [ ] Memory update after transcriptions complete
+21. [ ] Memory compression logic (when >2000 chars, compress to <1500)
+22. [x] Add Memory section to SettingsView
 
 **Phase 4c: PowerModeOrchestrator**
 Replace mock implementations with real execution:
 
-14. [ ] Create PowerModeOrchestrator with full state machine (idle → recording → transcribing → thinking → generating → complete)
-15. [ ] PromptContext builder (system prompt, context injection, memory injection)
-16. [ ] Integrate with AudioRecorder
-17. [ ] Integrate with transcription/formatting providers via ProviderFactory
-18. [ ] Wire to PowerModeExecutionView (replace all mock callbacks)
-19. [ ] Session with multiple versions working
-20. [ ] Refinement flow working
+23. [ ] Create PowerModeOrchestrator with full state machine (idle → recording → transcribing → thinking → generating → complete)
+24. [ ] Integrate with AudioRecorder for recording
+25. [ ] Integrate with transcription providers via ProviderFactory
+26. [ ] Integrate with formatting providers for LLM generation
+27. [ ] Context/memory injection into prompts
+28. [ ] Wire to PowerModeExecutionView (replace all mock callbacks)
+29. [ ] Session with multiple versions working
+30. [ ] Refinement flow working
 
 **Phase 4d: LLM Streaming**
 Real-time response generation:
 
-21. [ ] StreamingClient.swift (SSE parsing)
-22. [ ] Add streaming to OpenAIFormattingService
-23. [ ] Add streaming to AnthropicService
-24. [ ] Add streaming to GeminiService
-25. [ ] Streaming toggle in provider settings
-26. [ ] Progressive text rendering in Power Mode result view
+31. [ ] StreamingClient.swift (SSE parsing)
+32. [ ] Add streaming to OpenAIFormattingService
+33. [ ] Add streaming to AnthropicService
+34. [ ] Add streaming to GeminiService
+35. [ ] Streaming toggle in provider settings
+36. [ ] Progressive text rendering in Power Mode result view
 
 **Phase 4e: RAG System**
 Document-based knowledge per Power Mode:
 
-27. [ ] KnowledgeDocument model (name, type, sourceURL, contentHash, chunkCount)
-28. [ ] DocumentChunk model (content, embedding, metadata)
-29. [ ] DocumentParser.swift (PDF via PDFKit, text/markdown, web URL → markdown)
-30. [ ] TextChunker.swift (~500 token chunks with 50 token overlap)
-31. [ ] EmbeddingService.swift (OpenAI text-embedding-ada-002)
-32. [ ] VectorStore.swift (similarity search, in-memory + file persistence)
-33. [ ] KnowledgeBaseManager.swift (orchestrate RAG pipeline)
-34. [ ] RAG integration in PowerModeOrchestrator
-35. [ ] Add Knowledge Base section to PowerModeEditorView
+37. [x] KnowledgeDocument model (name, type, sourceURL, contentHash, chunkCount)
+38. [ ] DocumentChunk model (content, embedding, metadata)
+39. [ ] DocumentParser.swift (PDF via PDFKit, text/markdown, web URL → markdown)
+40. [ ] TextChunker.swift (~500 token chunks with 50 token overlap)
+41. [ ] EmbeddingService.swift (OpenAI text-embedding-ada-002)
+42. [ ] VectorStore.swift (similarity search, in-memory + file persistence)
+43. [ ] KnowledgeBaseManager.swift (orchestrate RAG pipeline)
+44. [ ] RAG integration in PowerModeOrchestrator
+45. [ ] Wire Knowledge Base UI in PowerModeEditorView
 
 **Phase 4f: Webhooks (Global)**
 Outbound webhooks for integrations:
 
-36. [ ] Webhook model (type: contextSource/outputDestination/automationTrigger, URL, auth, payload config)
-37. [ ] WebhookExecutor.swift (GET for context sources, POST for outputs/triggers)
-38. [ ] Template picker (Slack, Notion, Make, Zapier, Todoist, Custom)
-39. [ ] Webhook storage in SharedSettings
-40. [ ] Integration in PowerModeOrchestrator (fetch context before, send results after)
-41. [ ] Test button functionality
-42. [ ] Add Webhooks section to SettingsView
+46. [x] Webhook model (type: contextSource/outputDestination/automationTrigger, URL, auth, payload config)
+47. [ ] WebhookExecutor.swift (GET for context sources, POST for outputs/triggers)
+48. [ ] Template picker integration (Slack, Notion, Make, Zapier, Todoist, Custom)
+49. [x] Webhook storage in SharedSettings
+50. [ ] Integration in PowerModeOrchestrator (fetch context before, send results after)
+51. [ ] Test button functionality
+52. [x] Add Webhooks section to SettingsView (UI mock)
 
 **Phase 4g: Transcription Streaming (OPTIONAL)**
 Real-time transcription as user speaks:
 
-43. [ ] DeepgramStreamingService.swift (WebSocket)
-44. [ ] AssemblyAIStreamingService.swift (WebSocket)
-45. [ ] GoogleStreamingService.swift
-46. [ ] Real-time transcription UI
-47. [ ] Streaming toggle per provider
+53. [ ] DeepgramStreamingService.swift (WebSocket)
+54. [ ] AssemblyAIStreamingService.swift (WebSocket)
+55. [ ] GoogleStreamingService.swift
+56. [ ] Real-time transcription UI
+57. [ ] Streaming toggle per provider
 
 **REMOVED from original Phase 4 (no longer planned):**
 - ~~Web search capability~~ → Replaced by RAG

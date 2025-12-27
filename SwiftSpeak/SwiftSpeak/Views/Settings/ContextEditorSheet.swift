@@ -15,6 +15,7 @@ struct ContextEditorSheet: View {
     let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SharedSettings
 
     // Form state
     @State private var name: String = ""
@@ -22,6 +23,7 @@ struct ContextEditorSheet: View {
     @State private var color: PowerModeColorPreset = .blue
     @State private var description: String = ""
     @State private var toneDescription: String = ""
+    @State private var formality: ContextFormality = .auto
     @State private var selectedLanguages: Set<Language> = []
     @State private var customInstructions: String = ""
     @State private var memoryEnabled: Bool = false
@@ -41,6 +43,11 @@ struct ContextEditorSheet: View {
         .polish, .english, .spanish, .german, .french, .italian, .portuguese
     ]
 
+    /// Whether DeepL is the selected translation provider
+    private var isDeepLSelected: Bool {
+        settings.selectedTranslationProvider == .deepL
+    }
+
     init(context: ConversationContext, isNew: Bool, onSave: @escaping (ConversationContext) -> Void, onDelete: @escaping () -> Void) {
         self.context = context
         self.isNew = isNew
@@ -53,6 +60,7 @@ struct ContextEditorSheet: View {
         _color = State(initialValue: context.color)
         _description = State(initialValue: context.description)
         _toneDescription = State(initialValue: context.toneDescription)
+        _formality = State(initialValue: context.formality)
         _selectedLanguages = State(initialValue: Set(context.languageHints))
         _customInstructions = State(initialValue: context.customInstructions)
         _memoryEnabled = State(initialValue: context.memoryEnabled)
@@ -74,6 +82,9 @@ struct ContextEditorSheet: View {
 
                     // Tone & Style
                     toneSection
+
+                    // Formality (explicit for DeepL)
+                    formalitySection
 
                     // Expected languages
                     languagesSection
@@ -237,6 +248,85 @@ struct ContextEditorSheet: View {
         }
     }
 
+    // MARK: - Formality Section
+
+    private var formalitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("FORMALITY")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                // DeepL badge if applicable
+                if isDeepLSelected {
+                    HStack(spacing: 4) {
+                        Image(systemName: "character.book.closed.fill")
+                            .font(.caption2)
+                        Text("DeepL")
+                            .font(.caption2.weight(.medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.blue)
+                    .clipShape(Capsule())
+                }
+            }
+
+            // Formality picker
+            HStack(spacing: 8) {
+                ForEach(ContextFormality.allCases) { formalityOption in
+                    Button(action: {
+                        HapticManager.selection()
+                        formality = formalityOption
+                    }) {
+                        VStack(spacing: 6) {
+                            Image(systemName: formalityOption.icon)
+                                .font(.title3)
+                            Text(formalityOption.displayName)
+                                .font(.caption.weight(.medium))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .background(formality == formalityOption ? color.color.opacity(0.2) : Color.primary.opacity(0.05))
+                        .foregroundStyle(formality == formalityOption ? color.color : .secondary)
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous)
+                                .strokeBorder(formality == formalityOption ? color.color : Color.clear, lineWidth: 2)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            // DeepL-specific note
+            if isDeepLSelected {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundStyle(.blue)
+                        .font(.subheadline)
+
+                    Text("DeepL uses only this formality setting for translation. Your detailed tone description is used by other providers (OpenAI, Claude, Gemini).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .background(Color.blue.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
+
+            // Description of selected formality
+            Text(formality.description)
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
     // MARK: - Languages Section
 
     private var languagesSection: some View {
@@ -389,6 +479,7 @@ struct ContextEditorSheet: View {
             color: color,
             description: description.trimmingCharacters(in: .whitespaces),
             toneDescription: toneDescription.trimmingCharacters(in: .whitespaces),
+            formality: formality,
             languageHints: Array(selectedLanguages),
             customInstructions: customInstructions.trimmingCharacters(in: .whitespaces),
             memoryEnabled: memoryEnabled,
@@ -459,6 +550,7 @@ struct FlowLayout: Layout {
         onSave: { _ in },
         onDelete: {}
     )
+    .environmentObject(SharedSettings.shared)
     .preferredColorScheme(.dark)
 }
 
@@ -469,5 +561,19 @@ struct FlowLayout: Layout {
         onSave: { _ in },
         onDelete: {}
     )
+    .environmentObject(SharedSettings.shared)
+    .preferredColorScheme(.dark)
+}
+
+#Preview("With DeepL Selected") {
+    let settings = SharedSettings.shared
+    settings.selectedTranslationProvider = .deepL
+    return ContextEditorSheet(
+        context: ConversationContext.samples[1], // Work context (formal)
+        isNew: false,
+        onSave: { _ in },
+        onDelete: {}
+    )
+    .environmentObject(settings)
     .preferredColorScheme(.dark)
 }

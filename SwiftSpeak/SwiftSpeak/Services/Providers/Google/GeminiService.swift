@@ -62,19 +62,28 @@ final class GeminiService: FormattingProvider {
     func format(
         text: String,
         mode: FormattingMode,
-        customPrompt: String?
+        customPrompt: String?,
+        context: PromptContext?
     ) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
 
-        // Raw mode returns text unchanged
-        if mode == .raw && customPrompt == nil {
+        // Raw mode returns text unchanged (unless context requires processing)
+        if mode == .raw && customPrompt == nil && (context == nil || !context!.hasContent) {
             return text
         }
 
         // Build the system prompt
-        let systemPrompt = customPrompt ?? mode.prompt
+        let basePrompt = customPrompt ?? mode.prompt
+        let systemPrompt: String
+
+        if let ctx = context, ctx.hasContent {
+            // Use PromptContext to build enriched prompt with memory, tone, and instructions
+            systemPrompt = ctx.buildSystemPrompt(task: basePrompt)
+        } else {
+            systemPrompt = basePrompt
+        }
 
         // Gemini doesn't have separate system messages, so combine them
         let combinedPrompt = """

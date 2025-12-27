@@ -19,13 +19,15 @@ protocol TranscriptionProvider {
     /// The model being used for transcription
     var model: String { get }
 
-    /// Transcribe audio file to text
+    /// Transcribe audio file to text with optional context hints
     /// - Parameters:
     ///   - audioURL: Local file URL of recorded audio (m4a, wav, mp3, etc.)
     ///   - language: Optional source language hint for better accuracy
+    ///   - promptHint: Optional context hint for transcription (vocabulary, language hints, etc.)
+    ///                 Format: "This audio may contain: Polish, English. Common terms: Fatma, Kochanie"
     /// - Returns: Transcribed text
     /// - Throws: TranscriptionError on failure
-    func transcribe(audioURL: URL, language: Language?) async throws -> String
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String
 
     /// Validate an API key with the provider
     /// - Parameter key: The API key to validate
@@ -36,8 +38,13 @@ protocol TranscriptionProvider {
 // MARK: - Default Implementation
 
 extension TranscriptionProvider {
-    /// Default implementation assumes language hint is optional
+    /// Convenience method without prompt hint
+    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+        try await transcribe(audioURL: audioURL, language: language, promptHint: nil)
+    }
+
+    /// Convenience method without language or prompt hint
     func transcribe(audioURL: URL) async throws -> String {
-        try await transcribe(audioURL: audioURL, language: nil)
+        try await transcribe(audioURL: audioURL, language: nil, promptHint: nil)
     }
 }

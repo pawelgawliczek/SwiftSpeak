@@ -59,7 +59,7 @@ final class DeepgramTranscriptionService: TranscriptionProvider {
 
     // MARK: - Transcription
 
-    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
@@ -93,6 +93,21 @@ final class DeepgramTranscriptionService: TranscriptionProvider {
         // Add language if provided
         if let language = language {
             queryItems.append(URLQueryItem(name: "language", value: language.rawValue))
+        }
+
+        // Add keywords from promptHint if provided
+        // Deepgram uses `keywords` parameter with format: word:boost,word:boost
+        // Boost intensifier ranges from -100 to 100 (100 = strongly prefer)
+        if let hint = promptHint, !hint.isEmpty {
+            let words = hint.components(separatedBy: CharacterSet(charactersIn: ",;. \n"))
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0.count >= 2 }
+
+            if !words.isEmpty {
+                // Add each word with high boost (100)
+                let keywordsValue = words.map { "\($0):100" }.joined(separator: ",")
+                queryItems.append(URLQueryItem(name: "keywords", value: keywordsValue))
+            }
         }
 
         // Build URL with query parameters

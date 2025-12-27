@@ -22,25 +22,66 @@ protocol TranslationProvider {
     /// Languages supported by this provider
     var supportedLanguages: [Language] { get }
 
-    /// Translate text to the target language
+    /// Whether this provider supports formality control
+    var supportsFormality: Bool { get }
+
+    /// Translate text to the target language with optional context
     /// - Parameters:
     ///   - text: Text to translate
     ///   - from: Source language (nil for auto-detection)
     ///   - to: Target language
+    ///   - formality: Desired formality level (formal, informal, neutral)
+    ///   - context: Optional PromptContext for LLM-based providers
     /// - Returns: Translated text
     /// - Throws: TranscriptionError on failure
     func translate(
         text: String,
         from sourceLanguage: Language?,
-        to targetLanguage: Language
+        to targetLanguage: Language,
+        formality: Formality?,
+        context: PromptContext?
     ) async throws -> String
 }
 
 // MARK: - Default Implementation
 
 extension TranslationProvider {
+    /// Default: formality not supported
+    var supportsFormality: Bool { false }
+
+    /// Convenience method without formality or context
+    func translate(
+        text: String,
+        from sourceLanguage: Language?,
+        to targetLanguage: Language
+    ) async throws -> String {
+        try await translate(
+            text: text,
+            from: sourceLanguage,
+            to: targetLanguage,
+            formality: nil,
+            context: nil
+        )
+    }
+
     /// Convenience method with auto-detection of source language
     func translate(text: String, to targetLanguage: Language) async throws -> String {
-        try await translate(text: text, from: nil, to: targetLanguage)
+        try await translate(text: text, from: nil, to: targetLanguage, formality: nil, context: nil)
+    }
+
+    /// Convenience method with formality but no context
+    func translate(
+        text: String,
+        from sourceLanguage: Language?,
+        to targetLanguage: Language,
+        formality: Formality?
+    ) async throws -> String {
+        try await translate(
+            text: text,
+            from: sourceLanguage,
+            to: targetLanguage,
+            formality: formality,
+            context: nil
+        )
     }
 }

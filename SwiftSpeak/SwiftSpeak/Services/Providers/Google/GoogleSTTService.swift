@@ -69,7 +69,7 @@ final class GoogleSTTService: TranscriptionProvider {
 
     // MARK: - Transcription
 
-    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.providerNotConfigured
         }
@@ -89,12 +89,25 @@ final class GoogleSTTService: TranscriptionProvider {
 
         let base64Audio = audioData.base64EncodedString()
 
+        // Extract phrases from promptHint for speech context
+        var phraseHints: [String]? = nil
+        if let hint = promptHint, !hint.isEmpty {
+            let words = hint.components(separatedBy: CharacterSet(charactersIn: ",;.\n"))
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+
+            if !words.isEmpty {
+                phraseHints = words
+            }
+        }
+
         // Build request body
         let requestBody = GoogleSTTRequest(
             config: GoogleSTTConfig(
                 languageCodes: [language?.googleSTTCode ?? "en-US"],
                 model: modelName,
-                autoDecodingConfig: GoogleSTTAutoDecodingConfig()
+                autoDecodingConfig: GoogleSTTAutoDecodingConfig(),
+                phraseHints: phraseHints
             ),
             content: base64Audio
         )
@@ -148,7 +161,8 @@ final class GoogleSTTService: TranscriptionProvider {
             config: GoogleSTTConfig(
                 languageCodes: ["en-US"],
                 model: "long",
-                autoDecodingConfig: GoogleSTTAutoDecodingConfig()
+                autoDecodingConfig: GoogleSTTAutoDecodingConfig(),
+                phraseHints: nil
             ),
             content: silentAudioBase64
         )
@@ -189,6 +203,47 @@ private struct GoogleSTTConfig: Encodable {
     let languageCodes: [String]
     let model: String
     let autoDecodingConfig: GoogleSTTAutoDecodingConfig
+    let phraseHints: [String]?
+
+    enum CodingKeys: String, CodingKey {
+        case languageCodes = "language_codes"
+        case model
+        case autoDecodingConfig = "auto_decoding_config"
+        case adaptation
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(languageCodes, forKey: .languageCodes)
+        try container.encode(model, forKey: .model)
+        try container.encode(autoDecodingConfig, forKey: .autoDecodingConfig)
+
+        // Only encode adaptation if we have phrase hints
+        if let hints = phraseHints, !hints.isEmpty {
+            let adaptation = GoogleSTTAdaptation(phraseSets: [
+                GoogleSTPhraseSet(phrases: hints.map { GoogleSTTPhrase(value: $0, boost: 20) })
+            ])
+            try container.encode(adaptation, forKey: .adaptation)
+        }
+    }
+}
+
+/// Adaptation configuration for phrase hints
+private struct GoogleSTTAdaptation: Encodable {
+    let phraseSets: [GoogleSTPhraseSet]
+
+    enum CodingKeys: String, CodingKey {
+        case phraseSets = "phrase_sets"
+    }
+}
+
+private struct GoogleSTPhraseSet: Encodable {
+    let phrases: [GoogleSTTPhrase]
+}
+
+private struct GoogleSTTPhrase: Encodable {
+    let value: String
+    let boost: Double
 }
 
 /// Auto-decoding configuration (empty struct tells Google to auto-detect format)

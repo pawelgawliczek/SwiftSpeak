@@ -19,26 +19,37 @@ protocol FormattingProvider {
     /// The model being used for formatting
     var model: String { get }
 
-    /// Format transcribed text according to the specified mode
+    /// Format transcribed text according to the specified mode with optional context
     /// - Parameters:
     ///   - text: Raw transcribed text to format
     ///   - mode: Formatting mode (raw, email, formal, casual)
     ///   - customPrompt: Optional custom template prompt (overrides mode prompt)
+    ///   - context: Optional PromptContext for memory, tone, and instructions injection
     /// - Returns: Formatted text
     /// - Throws: TranscriptionError on failure
     func format(
         text: String,
         mode: FormattingMode,
-        customPrompt: String?
+        customPrompt: String?,
+        context: PromptContext?
     ) async throws -> String
 }
 
 // MARK: - Default Implementation
 
 extension FormattingProvider {
-    /// Convenience method without custom prompt
+    /// Convenience method without context
+    func format(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?
+    ) async throws -> String {
+        try await format(text: text, mode: mode, customPrompt: customPrompt, context: nil)
+    }
+
+    /// Convenience method without custom prompt or context
     func format(text: String, mode: FormattingMode) async throws -> String {
-        try await format(text: text, mode: mode, customPrompt: nil)
+        try await format(text: text, mode: mode, customPrompt: nil, context: nil)
     }
 
     /// Raw mode returns text unchanged
@@ -46,6 +57,15 @@ extension FormattingProvider {
         if mode == .raw {
             return text
         }
-        return try await format(text: text, mode: mode, customPrompt: nil)
+        return try await format(text: text, mode: mode, customPrompt: nil, context: nil)
+    }
+
+    /// Format with context but no custom prompt
+    func format(
+        text: String,
+        mode: FormattingMode,
+        context: PromptContext?
+    ) async throws -> String {
+        try await format(text: text, mode: mode, customPrompt: nil, context: context)
     }
 }

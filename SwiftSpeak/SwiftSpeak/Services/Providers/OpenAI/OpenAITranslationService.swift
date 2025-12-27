@@ -27,6 +27,10 @@ final class OpenAITranslationService: TranslationProvider {
         Language.allCases
     }
 
+    var supportsFormality: Bool {
+        true // LLM can understand formality through context
+    }
+
     // MARK: - Properties
 
     private let apiKey: String
@@ -69,17 +73,27 @@ final class OpenAITranslationService: TranslationProvider {
     func translate(
         text: String,
         from sourceLanguage: Language?,
-        to targetLanguage: Language
+        to targetLanguage: Language,
+        formality: Formality?,
+        context: PromptContext?
     ) async throws -> String {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
 
         // Build the system prompt for translation
-        let systemPrompt = buildTranslationPrompt(
-            sourceLanguage: sourceLanguage,
-            targetLanguage: targetLanguage
-        )
+        let systemPrompt: String
+        if let ctx = context, ctx.hasContent {
+            // Use PromptContext to build enriched translation prompt
+            systemPrompt = ctx.buildTranslationPrompt(to: targetLanguage, from: sourceLanguage)
+        } else {
+            // Fall back to basic translation prompt
+            systemPrompt = buildTranslationPrompt(
+                sourceLanguage: sourceLanguage,
+                targetLanguage: targetLanguage,
+                formality: formality
+            )
+        }
 
         // Build request
         let request = TranslationChatRequest(
@@ -116,8 +130,23 @@ final class OpenAITranslationService: TranslationProvider {
 
     private func buildTranslationPrompt(
         sourceLanguage: Language?,
-        targetLanguage: Language
+        targetLanguage: Language,
+        formality: Formality?
     ) -> String {
+        let formalityGuideline: String
+        if let f = formality {
+            switch f {
+            case .formal:
+                formalityGuideline = "\n- Use formal language and polite forms of address"
+            case .informal:
+                formalityGuideline = "\n- Use casual, informal language"
+            case .neutral:
+                formalityGuideline = ""
+            }
+        } else {
+            formalityGuideline = ""
+        }
+
         if let source = sourceLanguage {
             return """
             You are a professional translator. Translate the following text from \(source.displayName) to \(targetLanguage.displayName).
@@ -125,7 +154,7 @@ final class OpenAITranslationService: TranslationProvider {
             Guidelines:
             - Preserve the original meaning and tone
             - Maintain proper grammar and punctuation in the target language
-            - Keep formatting (paragraphs, lists) intact
+            - Keep formatting (paragraphs, lists) intact\(formalityGuideline)
             - Do not add any explanations or notes
             - Return only the translated text
             """
@@ -136,7 +165,7 @@ final class OpenAITranslationService: TranslationProvider {
             Guidelines:
             - Preserve the original meaning and tone
             - Maintain proper grammar and punctuation in the target language
-            - Keep formatting (paragraphs, lists) intact
+            - Keep formatting (paragraphs, lists) intact\(formalityGuideline)
             - Do not add any explanations or notes
             - Return only the translated text
             """
