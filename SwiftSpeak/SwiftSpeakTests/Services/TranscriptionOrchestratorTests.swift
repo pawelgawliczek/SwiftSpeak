@@ -5,6 +5,7 @@
 //  Comprehensive tests for TranscriptionOrchestrator state and behavior
 //
 
+import Foundation
 import Testing
 @testable import SwiftSpeak
 
@@ -225,12 +226,9 @@ struct TranscriptionOrchestratorConfigTests {
         #expect(orchestrator.customTemplate == nil)
 
         let template = CustomTemplate(
-            id: UUID(),
             name: "Test",
             prompt: "Test prompt",
-            icon: "star",
-            color: .blue,
-            createdAt: Date()
+            icon: "star"
         )
         orchestrator.customTemplate = template
         #expect(orchestrator.customTemplate != nil)
@@ -245,21 +243,14 @@ struct TranscriptionOrchestratorConfigTests {
         #expect(orchestrator.activeContext == nil)
 
         let context = ConversationContext(
-            id: UUID(),
             name: "Test Context",
             icon: "person",
             color: .blue,
             description: "Test",
             toneDescription: "Casual",
-            languageHints: [.english],
-            customInstructions: "",
             formality: .neutral,
-            memoryEnabled: false,
-            memory: nil,
-            lastMemoryUpdate: nil,
-            isActive: true,
-            createdAt: Date(),
-            updatedAt: Date()
+            languageHints: [.english],
+            isActive: true
         )
         orchestrator.activeContext = context
         #expect(orchestrator.activeContext != nil)
@@ -274,20 +265,11 @@ struct TranscriptionOrchestratorConfigTests {
         #expect(orchestrator.activePowerMode == nil)
 
         let powerMode = PowerMode(
-            id: UUID(),
             name: "Test Mode",
-            description: "Test",
             icon: "bolt",
-            color: .purple,
-            systemPrompt: "You are a test assistant",
-            capabilities: [],
-            temperature: 0.7,
-            maxTokens: 2000,
-            memoryEnabled: false,
-            memory: nil,
-            lastMemoryUpdate: nil,
-            createdAt: Date(),
-            updatedAt: Date()
+            iconColor: .purple,
+            iconBackgroundColor: .purple,
+            instruction: "You are a test assistant"
         )
         orchestrator.activePowerMode = powerMode
         #expect(orchestrator.activePowerMode != nil)

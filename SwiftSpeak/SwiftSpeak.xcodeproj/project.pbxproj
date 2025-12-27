@@ -74,13 +74,6 @@
 			);
 			target = 83ED79262EFE4D8F00880604 /* SwiftSpeakKeyboard */;
 		};
-		83ED7A2A2EFECD3800880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				SharedSettings.swift,
-			);
-			target = 83ED7A102EFECCE900880604 /* SwiftSpeakTests */;
-		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -88,7 +81,6 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */,
-				83ED7A2A2EFECD3800880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */,
 			);
 			path = SwiftSpeak;
 			sourceTree = "<group>";
