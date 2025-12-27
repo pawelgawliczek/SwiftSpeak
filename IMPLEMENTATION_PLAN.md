@@ -1204,17 +1204,17 @@ Persistent memory across conversations:
 21. [x] Memory compression logic (when >2000 chars, compress to <1500)
 22. [x] Add Memory section to SettingsView
 
-**Phase 4c: PowerModeOrchestrator**
+**Phase 4c: PowerModeOrchestrator** ✅ COMPLETE
 Replace mock implementations with real execution:
 
-23. [ ] Create PowerModeOrchestrator with full state machine (idle → recording → transcribing → thinking → generating → complete)
-24. [ ] Integrate with AudioRecorder for recording
-25. [ ] Integrate with transcription providers via ProviderFactory
-26. [ ] Integrate with formatting providers for LLM generation
-27. [ ] Context/memory injection into prompts
-28. [ ] Wire to PowerModeExecutionView (replace all mock callbacks)
-29. [ ] Session with multiple versions working
-30. [ ] Refinement flow working
+23. [x] Create PowerModeOrchestrator with full state machine (idle → recording → transcribing → thinking → queryingKnowledge → generating → complete)
+24. [x] Integrate with AudioRecorder via AudioRecorderProtocol for recording
+25. [x] Integrate with transcription providers via ProviderFactoryProtocol
+26. [x] Integrate with formatting providers for LLM generation via ProviderFactoryProtocol
+27. [x] Context/memory injection into prompts (respects active context, global/context/powerMode memory enabled states)
+28. [ ] Wire to PowerModeExecutionView (replace all mock callbacks) ← IN PROGRESS
+29. [x] Session with multiple versions working (PowerModeSession, PowerModeResult)
+30. [x] Refinement/regeneration flow working
 
 **Phase 4d: LLM Streaming**
 Real-time response generation:
@@ -1264,7 +1264,7 @@ Real-time transcription as user speaks:
 - ~~Bash/Computer use capability~~ → Not applicable for mobile
 - ~~Code execution capability~~ → Security concerns for mobile
 
-**Files to Create (28 new files):**
+**Files to Create (34 new files):**
 
 | Category | File | Purpose |
 |----------|------|---------|
@@ -1275,8 +1275,14 @@ Real-time transcription as user speaks:
 | Memory | `Services/Memory/MemoryManager.swift` | Memory update/compression |
 | Memory | `Views/Settings/MemoryView.swift` | Memory management |
 | Memory | `Views/Settings/MemoryEditorSheet.swift` | Edit memory |
-| Orchestration | `Services/Orchestration/PowerModeOrchestrator.swift` | Central coordinator |
-| Orchestration | `Services/Orchestration/PromptContext.swift` | Context builder |
+| Orchestration | `Services/Orchestration/PowerModeOrchestrator.swift` | Central coordinator ✅ |
+| Orchestration | `Services/Orchestration/PromptContext.swift` | Context builder ✅ |
+| Protocols | `Services/Protocols/AudioRecorderProtocol.swift` | Audio recording abstraction ✅ |
+| Protocols | `Services/Protocols/ProviderFactoryProtocol.swift` | Provider factory abstraction ✅ |
+| Protocols | `Services/Protocols/MemoryManagerProtocol.swift` | Memory manager abstraction ✅ |
+| Testing | `Services/Providers/Mock/MockAudioRecorder.swift` | Mock audio recorder ✅ |
+| Testing | `Services/Providers/Mock/MockProviderFactory.swift` | Mock provider factory ✅ |
+| Testing | `Services/Providers/Mock/MockMemoryManager.swift` | Mock memory manager ✅ |
 | Streaming | `Services/Network/StreamingClient.swift` | SSE parsing |
 | RAG | `Services/RAG/DocumentParser.swift` | PDF/text/web parsing |
 | RAG | `Services/RAG/TextChunker.swift` | Chunking strategy |

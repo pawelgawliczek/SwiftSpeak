@@ -69,10 +69,18 @@ This file provides guidance to Claude Code when working with this repository.
 - [ ] Integration with SettingsView (pending)
 - [ ] Integration with KeyboardView (pending)
 
+### Phase 4: Power Mode Backend - IN PROGRESS
+- [x] Phase 4a: Conversation Contexts (ConversationContext model, ContextsView, ContextEditorSheet, ContextQuickSwitcher)
+- [x] Phase 4b: Three-Tier Memory System (MemoryManager, global/context/powerMode memory, MemoryView, MemoryEditorSheet)
+- [x] Phase 4c: PowerModeOrchestrator (central coordinator, context/memory injection, comprehensive tests)
+- [ ] Phase 4d: LLM Streaming (SSE parsing, progressive rendering)
+- [ ] Phase 4e: RAG System (document parsing, embeddings, vector store)
+- [ ] Phase 4f: Webhooks (outbound integrations)
+
 ### What's NOT Done Yet
 - [ ] Translation feature integration (Phase 2)
 - [ ] Multi-provider support services (Anthropic, ElevenLabs, Deepgram, Ollama) - Phase 3
-- [ ] Power Mode voice agents - Phase 4
+- [ ] Power Mode view integration with orchestrator - Phase 4c (in progress)
 - [ ] StoreKit 2 subscriptions - Phase 5
 
 ## iOS Keyboard Architecture Constraint
@@ -153,25 +161,36 @@ SwiftSpeak/
 │   ├── ContentView.swift                # Main app navigation
 │   ├── SharedSettings.swift             # App Groups data + settings management
 │   │
-│   ├── Services/                        # NEW - Phase 1
+│   ├── Services/                        # NEW - Phase 1, expanded Phase 4
 │   │   ├── Protocols/
 │   │   │   ├── TranscriptionProvider.swift
 │   │   │   ├── FormattingProvider.swift
-│   │   │   └── TranslationProvider.swift
+│   │   │   ├── TranslationProvider.swift
+│   │   │   ├── AudioRecorderProtocol.swift      # Phase 4c - Audio abstraction
+│   │   │   ├── ProviderFactoryProtocol.swift    # Phase 4c - Factory abstraction
+│   │   │   └── MemoryManagerProtocol.swift      # Phase 4c - Memory abstraction
 │   │   ├── Audio/
 │   │   │   ├── AudioSessionManager.swift
 │   │   │   └── AudioRecorder.swift
+│   │   ├── Memory/
+│   │   │   └── MemoryManager.swift              # Phase 4b - Memory update/compression
 │   │   ├── Providers/
 │   │   │   ├── OpenAI/
 │   │   │   │   ├── OpenAITranscriptionService.swift
 │   │   │   │   └── OpenAIFormattingService.swift
 │   │   │   └── Mock/
 │   │   │       ├── MockTranscriptionProvider.swift
-│   │   │       └── MockFormattingProvider.swift
+│   │   │       ├── MockFormattingProvider.swift
+│   │   │       ├── MockAudioRecorder.swift      # Phase 4c - For testing
+│   │   │       ├── MockProviderFactory.swift    # Phase 4c - For testing
+│   │   │       └── MockMemoryManager.swift      # Phase 4c - For testing
 │   │   ├── Orchestration/
-│   │   │   └── TranscriptionOrchestrator.swift
+│   │   │   ├── TranscriptionOrchestrator.swift
+│   │   │   ├── PowerModeOrchestrator.swift      # Phase 4c - Power Mode coordinator
+│   │   │   └── PromptContext.swift              # Phase 4c - Context builder
 │   │   ├── Network/
 │   │   │   └── APIClient.swift
+│   │   ├── ProviderFactory.swift
 │   │   └── TranscriptionError.swift
 │   │
 │   ├── Views/
@@ -198,6 +217,12 @@ SwiftSpeak/
 │   │   │   ├── ProviderStatusDashboard.swift   # Phase 3A - Status card
 │   │   │   ├── SmartLanguagePicker.swift       # Phase 3A - Language dropdown
 │   │   │   └── IncompatibilityWarning.swift    # Phase 3A - Warning banners
+│   │   ├── Settings/                           # Phase 4a/4b - Settings views
+│   │   │   ├── ContextsView.swift              # Phase 4a - Context list
+│   │   │   ├── ContextEditorSheet.swift        # Phase 4a - Edit context
+│   │   │   ├── ContextDetailView.swift         # Phase 4a - View context
+│   │   │   ├── MemoryView.swift                # Phase 4b - Memory management
+│   │   │   └── MemoryEditorSheet.swift         # Phase 4b - Edit memory
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift
