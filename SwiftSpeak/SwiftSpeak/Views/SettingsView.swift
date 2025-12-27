@@ -142,6 +142,42 @@ struct SettingsView: View {
                         Text("Add names, companies, acronyms, and slang to improve transcription accuracy.")
                     }
 
+                    // Memory Section
+                    Section {
+                        NavigationLink {
+                            MemoryView()
+                        } label: {
+                            SettingsRow(
+                                icon: "brain.head.profile",
+                                iconColor: .pink,
+                                title: "Memory",
+                                subtitle: "History, workflow & context memory"
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Memory")
+                    } footer: {
+                        Text("View and manage AI memory for history, Power Modes, and Contexts.")
+                    }
+
+                    // Behavior Section
+                    Section {
+                        Toggle(isOn: $settings.autoReturnEnabled) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Auto-return after transcription")
+                                    .font(.callout)
+                                Text("Automatically dismiss after copying to clipboard")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tint(AppTheme.accent)
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Behavior")
+                    }
+
                     // About Section
                     Section {
                         SettingsRow(
@@ -478,6 +514,11 @@ struct AddAIProviderSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
 
+    // Filter state - nil means "All"
+    @State private var selectedFilter: ProviderUsageCategory? = nil
+    @State private var selectedLanguage: Language? = nil
+    @State private var showLanguagePicker = false
+
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
     }
@@ -490,14 +531,57 @@ struct AddAIProviderSheet: View {
         provider.requiresPowerTier && currentTier != .power
     }
 
+    private var filteredProviders: [AIProvider] {
+        var providers = availableProviders
+
+        // Filter by capability
+        if let filter = selectedFilter {
+            providers = providers.filter { $0.supportedCategories.contains(filter) }
+        }
+
+        // Filter by language support (only when a language is selected)
+        if let language = selectedLanguage, let capability = selectedFilter {
+            providers = providers.filter { provider in
+                let level = ProviderLanguageDatabase.supportLevel(
+                    provider: provider,
+                    language: language,
+                    for: capability
+                )
+                return level >= .limited
+            }
+        }
+
+        return providers
+    }
+
+    /// Get language support level for display
+    private func languageSupport(for provider: AIProvider) -> LanguageSupportLevel? {
+        guard let language = selectedLanguage, let capability = selectedFilter else {
+            return nil
+        }
+        return ProviderLanguageDatabase.supportLevel(provider: provider, language: language, for: capability)
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
                 backgroundColor.ignoresSafeArea()
 
                 List {
+                    // Filter Section
                     Section {
-                        ForEach(availableProviders) { provider in
+                        capabilityFilterView
+
+                        // Language filter (shown when a capability is selected)
+                        if selectedFilter != nil {
+                            languageFilterRow
+                        }
+                    }
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+
+                    Section {
+                        ForEach(filteredProviders) { provider in
                             let isLocked = isProviderLocked(provider)
 
                             Button(action: {
@@ -555,6 +639,11 @@ struct AddAIProviderSheet: View {
 
                                     Spacer()
 
+                                    // Language support indicator (when language is selected)
+                                    if let level = languageSupport(for: provider) {
+                                        LanguageSupportBadge(level: level)
+                                    }
+
                                     if isLocked {
                                         Image(systemName: "lock.fill")
                                             .foregroundStyle(.secondary)
@@ -587,12 +676,319 @@ struct AddAIProviderSheet: View {
         }
     }
 
+    // MARK: - Capability Filter View
+
+    private var capabilityFilterView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                // "All" filter chip
+                FilterChip(
+                    title: "All",
+                    icon: "square.grid.2x2",
+                    color: AppTheme.accent,
+                    isSelected: selectedFilter == nil,
+                    count: availableProviders.count
+                ) {
+                    HapticManager.selection()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        selectedFilter = nil
+                        selectedLanguage = nil
+                    }
+                }
+
+                // Category filter chips
+                ForEach(ProviderUsageCategory.allCases) { category in
+                    let count = availableProviders.filter { $0.supportedCategories.contains(category) }.count
+                    FilterChip(
+                        title: category.displayName,
+                        icon: category.icon,
+                        color: categoryColor(for: category),
+                        isSelected: selectedFilter == category,
+                        count: count
+                    ) {
+                        HapticManager.selection()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedFilter = category
+                            // Clear language when switching categories
+                            if category != selectedFilter {
+                                selectedLanguage = nil
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+        }
+    }
+
+    // MARK: - Language Filter Row
+
+    private var languageFilterRow: some View {
+        VStack(spacing: 0) {
+            Button(action: {
+                HapticManager.selection()
+                showLanguagePicker = true
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "globe")
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(selectedLanguage != nil ? .white : .secondary)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(selectedLanguage != nil ? categoryColor(for: selectedFilter ?? .translation) : Color.secondary.opacity(0.15))
+                        )
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Filter by Language")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        if let lang = selectedLanguage {
+                            Text("\(lang.flag) \(lang.displayName)")
+                                .font(.caption)
+                                .foregroundStyle(categoryColor(for: selectedFilter ?? .translation))
+                        } else {
+                            Text("Show providers supporting a specific language")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    if selectedLanguage != nil {
+                        Button(action: {
+                            HapticManager.selection()
+                            withAnimation {
+                                selectedLanguage = nil
+                            }
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(.plain)
+        }
+        .background(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .sheet(isPresented: $showLanguagePicker) {
+            LanguageFilterPicker(
+                selectedLanguage: $selectedLanguage,
+                capability: selectedFilter ?? .translation
+            )
+        }
+    }
+
     private func categoryColor(for category: ProviderUsageCategory) -> Color {
         switch category {
         case .transcription: return .blue
         case .translation: return .purple
         case .powerMode: return .orange
         }
+    }
+}
+
+// MARK: - Filter Chip Component
+private struct FilterChip: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let isSelected: Bool
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+
+                Text("\(count)")
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(isSelected ? Color.white.opacity(0.25) : color.opacity(0.15))
+                    .clipShape(Capsule())
+            }
+            .foregroundStyle(isSelected ? .white : color)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(isSelected ? color : color.opacity(0.1))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(isSelected ? Color.clear : color.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Language Support Badge
+private struct LanguageSupportBadge: View {
+    let level: LanguageSupportLevel
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: level.icon)
+                .font(.caption2)
+            Text(level.shortLabel)
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(level.color)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(level.color.opacity(0.15))
+        .clipShape(Capsule())
+    }
+}
+
+// MARK: - Language Filter Picker
+private struct LanguageFilterPicker: View {
+    @Binding var selectedLanguage: Language?
+    let capability: ProviderUsageCategory
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    /// Languages sorted by provider support count (most supported first)
+    private var sortedLanguages: [Language] {
+        Language.allCases.sorted { lang1, lang2 in
+            let count1 = ProviderLanguageDatabase.providers(supporting: lang1, for: capability, minimumLevel: .limited).count
+            let count2 = ProviderLanguageDatabase.providers(supporting: lang2, for: capability, minimumLevel: .limited).count
+            return count1 > count2
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    // Popular languages section
+                    Section {
+                        ForEach(ProviderLanguageDatabase.popularLanguages, id: \.self) { language in
+                            languageRow(for: language)
+                        }
+                    } header: {
+                        Text("Popular")
+                    }
+
+                    // All languages section
+                    Section {
+                        ForEach(sortedLanguages.filter { !ProviderLanguageDatabase.popularLanguages.contains($0) }, id: \.self) { language in
+                            languageRow(for: language)
+                        }
+                    } header: {
+                        Text("All Languages")
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Select Language")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+
+                if selectedLanguage != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("Clear") {
+                            selectedLanguage = nil
+                            dismiss()
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private func languageRow(for language: Language) -> some View {
+        let providerCount = ProviderLanguageDatabase.providers(
+            supporting: language,
+            for: capability,
+            minimumLevel: .limited
+        ).count
+
+        let excellentCount = ProviderLanguageDatabase.providers(
+            supporting: language,
+            for: capability,
+            minimumLevel: .excellent
+        ).count
+
+        return Button(action: {
+            HapticManager.selection()
+            selectedLanguage = language
+            dismiss()
+        }) {
+            HStack(spacing: 12) {
+                Text(language.flag)
+                    .font(.title2)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(language.displayName)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    HStack(spacing: 8) {
+                        Text("\(providerCount) provider\(providerCount == 1 ? "" : "s")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if excellentCount > 0 {
+                            HStack(spacing: 2) {
+                                Image(systemName: "star.fill")
+                                    .font(.caption2)
+                                Text("\(excellentCount) excellent")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.green)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                if selectedLanguage == language {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(AppTheme.accent)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(rowBackground)
     }
 }
 
@@ -614,6 +1010,10 @@ struct AIProviderEditorSheet: View {
     @State private var powerModeModel: String = ""
     @State private var showDeleteConfirmation = false
     @State private var showInstructions = false
+
+    // Provider-specific configuration
+    @State private var googleProjectId: String = ""
+    @State private var azureRegion: AzureRegion = .eastUS
     // Refresh models state
     @State private var isRefreshingModels = false
     @State private var refreshedSTTModels: [String]? = nil
@@ -650,14 +1050,31 @@ struct AIProviderEditorSheet: View {
     }
 
     private var canSave: Bool {
+        // Must have at least one capability enabled
+        guard !usageCategories.isEmpty else { return false }
+
         if config.provider.isLocalProvider {
-            // For local providers, need a valid URL and at least one capability
-            return !localServerURL.isEmpty && !usageCategories.isEmpty
+            // For local providers, need a valid URL
+            return !localServerURL.isEmpty
         } else if config.provider.requiresAPIKey {
-            return !apiKey.isEmpty && !usageCategories.isEmpty
-        } else {
-            return !usageCategories.isEmpty
+            guard !apiKey.isEmpty else { return false }
         }
+
+        // Provider-specific validation
+        switch config.provider {
+        case .google:
+            // Google STT requires Project ID
+            if usageCategories.contains(.transcription) && googleProjectId.isEmpty {
+                return false
+            }
+        case .azure:
+            // Azure always has a region selected (has default), so no additional validation needed
+            break
+        default:
+            break
+        }
+
+        return true
     }
 
     // MARK: - Body (broken into sub-views for type-checker performance)
@@ -1004,6 +1421,65 @@ struct AIProviderEditorSheet: View {
                     .autocorrectionDisabled()
             }
             .listRowBackground(rowBackground)
+
+            // Google Cloud - Project ID (required for STT)
+            if config.provider == .google && usageCategories.contains(.transcription) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Project ID")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+
+                        Text("Required for Speech-to-Text")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+
+                    TextField("your-gcp-project-id", text: $googleProjectId)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+
+                    Text("Find this in Google Cloud Console → Project Settings")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .listRowBackground(rowBackground)
+            }
+
+            // Azure - Region (required for Translator)
+            if config.provider == .azure {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Region")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+
+                        Text("Required")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+
+                    Picker("Azure Region", selection: $azureRegion) {
+                        ForEach(AzureRegion.allCases) { region in
+                            Text(region.displayName).tag(region)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    Text("Select the region where your Azure Translator resource is deployed")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .listRowBackground(rowBackground)
+            }
         } header: {
             Text("Configuration")
         }
@@ -1191,6 +1667,13 @@ struct AIProviderEditorSheet: View {
         translationModel = config.translationModel ?? config.provider.defaultLLMModel ?? ""
         powerModeModel = config.powerModeModel ?? config.provider.defaultLLMModel ?? ""
 
+        // Load provider-specific configuration
+        googleProjectId = config.googleProjectId ?? ""
+        if let regionString = config.azureRegion,
+           let region = AzureRegion(rawValue: regionString) {
+            azureRegion = region
+        }
+
         // Load local provider config
         if config.provider.isLocalProvider {
             if let localConfig = config.localConfig {
@@ -1216,6 +1699,14 @@ struct AIProviderEditorSheet: View {
         updatedConfig.transcriptionModel = usageCategories.contains(.transcription) ? transcriptionModel : nil
         updatedConfig.translationModel = usageCategories.contains(.translation) ? translationModel : nil
         updatedConfig.powerModeModel = usageCategories.contains(.powerMode) ? powerModeModel : nil
+
+        // Save provider-specific configuration
+        if config.provider == .google {
+            updatedConfig.googleProjectId = googleProjectId.isEmpty ? nil : googleProjectId
+        }
+        if config.provider == .azure {
+            updatedConfig.azureRegion = azureRegion.rawValue
+        }
 
         if config.provider.isLocalProvider {
             // Save local provider configuration
@@ -1406,6 +1897,15 @@ struct AIProviderEditorSheet: View {
         case .deepgram:
             // Deepgram models are documented, not via API
             return (config.provider.availableSTTModels, [])
+        case .assemblyAI:
+            // AssemblyAI models are documented, not via API
+            return (config.provider.availableSTTModels, [])
+        case .deepL:
+            // DeepL doesn't have model selection
+            return ([], config.provider.availableLLMModels)
+        case .azure:
+            // Azure Translator doesn't have model selection
+            return ([], config.provider.availableLLMModels)
         }
     }
 

@@ -42,6 +42,9 @@ final class TranscriptionOrchestrator: ObservableObject {
     /// Formatting mode to apply
     var mode: FormattingMode = .raw
 
+    /// Custom template for formatting (overrides mode if set)
+    var customTemplate: CustomTemplate?
+
     /// Whether to translate after transcription
     var translateEnabled: Bool = false
 
@@ -55,16 +58,20 @@ final class TranscriptionOrchestrator: ObservableObject {
 
     private let settings: SharedSettings
     private let audioRecorder: AudioRecorder
+    private let providerFactory: ProviderFactory
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
 
     init(
-        settings: SharedSettings = .shared,
-        audioRecorder: AudioRecorder? = nil
+        settings: SharedSettings? = nil,
+        audioRecorder: AudioRecorder? = nil,
+        providerFactory: ProviderFactory? = nil
     ) {
-        self.settings = settings
+        let resolvedSettings = settings ?? SharedSettings.shared
+        self.settings = resolvedSettings
         self.audioRecorder = audioRecorder ?? AudioRecorder()
+        self.providerFactory = providerFactory ?? ProviderFactory(settings: resolvedSettings)
 
         setupBindings()
     }
@@ -124,12 +131,18 @@ final class TranscriptionOrchestrator: ObservableObject {
             // Apply vocabulary replacements
             let processedText = settings.applyVocabulary(to: rawText)
 
-            // Format if needed
-            if mode != .raw {
+            // Format if needed (custom template or built-in mode)
+            if customTemplate != nil || mode != .raw {
                 state = .formatting
                 formattedText = try await format(text: processedText)
             } else {
                 formattedText = processedText
+            }
+
+            // Translate if enabled
+            if translateEnabled {
+                state = .translating
+                formattedText = try await translate(text: formattedText)
             }
 
             // Save to history
@@ -183,70 +196,37 @@ final class TranscriptionOrchestrator: ObservableObject {
     // MARK: - Transcription
 
     private func transcribe(audioURL: URL) async throws -> String {
-        // Get transcription provider
-        guard let provider = createTranscriptionProvider() else {
+        // Get transcription provider via factory
+        guard let provider = providerFactory.createSelectedTranscriptionProvider() else {
             throw TranscriptionError.providerNotConfigured
         }
 
         return try await provider.transcribe(audioURL: audioURL, language: sourceLanguage)
     }
 
-    private func createTranscriptionProvider() -> TranscriptionProvider? {
-        let selectedProvider = settings.selectedTranscriptionProvider
-
-        // Get config for selected provider
-        guard let config = settings.getAIProviderConfig(for: selectedProvider) else {
-            return nil
-        }
-
-        // Create provider based on type
-        switch selectedProvider {
-        case .openAI:
-            return OpenAITranscriptionService(config: config)
-        case .elevenLabs, .deepgram, .local:
-            // TODO: Implement other providers in Phase 3
-            return nil
-        default:
-            return nil
-        }
-    }
-
     // MARK: - Formatting
 
     private func format(text: String) async throws -> String {
-        // Get formatting provider (can be different from transcription provider)
-        guard let provider = createFormattingProvider() else {
+        // Get formatting provider via factory
+        guard let provider = providerFactory.createSelectedTextFormattingProvider() else {
             // If no formatting provider, return original text
             return text
         }
 
-        return try await provider.format(text: text, mode: mode, customPrompt: nil)
+        // Use custom template prompt if provided, otherwise use mode
+        let customPrompt = customTemplate?.prompt
+        return try await provider.format(text: text, mode: mode, customPrompt: customPrompt)
     }
 
-    private func createFormattingProvider() -> FormattingProvider? {
-        // Use translation provider for formatting (it's an LLM)
-        let selectedProvider = settings.selectedTranslationProvider
+    // MARK: - Translation
 
-        // Get config for selected provider
-        guard let config = settings.getAIProviderConfig(for: selectedProvider) else {
-            // Try using transcription provider if it supports LLM
-            if let transcriptionConfig = settings.getAIProviderConfig(for: settings.selectedTranscriptionProvider),
-               settings.selectedTranscriptionProvider == .openAI {
-                return OpenAIFormattingService(config: transcriptionConfig)
-            }
-            return nil
+    private func translate(text: String) async throws -> String {
+        // Get translation provider via factory
+        guard let provider = providerFactory.createSelectedTranslationProvider() else {
+            throw TranscriptionError.providerNotConfigured
         }
 
-        // Create provider based on type
-        switch selectedProvider {
-        case .openAI:
-            return OpenAIFormattingService(config: config)
-        case .anthropic, .google, .local:
-            // TODO: Implement other providers in Phase 3
-            return nil
-        default:
-            return nil
-        }
+        return try await provider.translate(text: text, from: sourceLanguage, to: targetLanguage)
     }
 
     // MARK: - History

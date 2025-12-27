@@ -39,7 +39,12 @@ struct KeyboardPreviewView: View {
                 ModernKeyboardPreview(
                     selectedMode: $selectedMode,
                     selectedLanguage: $selectedLanguage,
-                    isPro: settings.subscriptionTier != .free
+                    isPro: settings.subscriptionTier != .free,
+                    contexts: settings.contexts,
+                    activeContext: settings.activeContext,
+                    onContextChange: { context in
+                        settings.setActiveContext(context)
+                    }
                 )
             }
         }
@@ -53,14 +58,18 @@ struct ModernKeyboardPreview: View {
     @Binding var selectedMode: FormattingMode
     @Binding var selectedLanguage: Language
     let isPro: Bool
+    let contexts: [ConversationContext]
+    let activeContext: ConversationContext?
+    let onContextChange: (ConversationContext?) -> Void
 
     @State private var showModeDropdown = false
     @State private var showLanguageDropdown = false
+    @State private var showContextPicker = false
     @State private var isRecording = false
 
     var body: some View {
         VStack(spacing: 16) {
-            // Top row: Dropdowns
+            // Top row: Dropdowns + Context
             HStack(spacing: 12) {
                 // Mode dropdown
                 ModernDropdown(
@@ -75,6 +84,53 @@ struct ModernKeyboardPreview: View {
                     }
                 }
                 .zIndex(showModeDropdown ? 2 : 1)
+
+                // Context button (Pro only)
+                if isPro {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("CONTEXT")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(Color.white.opacity(0.4))
+                            .tracking(0.5)
+
+                        Button(action: {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showContextPicker.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Text(activeContext?.icon ?? "👤")
+                                    .font(.system(size: 14))
+
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.white.opacity(0.5))
+                                    .rotationEffect(.degrees(showContextPicker ? 180 : 0))
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(activeContext != nil ? activeContext!.color.color.opacity(0.2) : Color.white.opacity(0.08))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                                    )
+                            )
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .overlay(
+                        Group {
+                            if showContextPicker {
+                                contextPickerOverlay
+                                    .offset(y: 75)
+                            }
+                        },
+                        alignment: .top
+                    )
+                    .zIndex(showContextPicker ? 3 : 0)
+                }
 
                 // Language dropdown
                 ModernDropdown(
@@ -136,6 +192,94 @@ struct ModernKeyboardPreview: View {
                 .foregroundColor(Color.white.opacity(0.1)),
             alignment: .top
         )
+    }
+
+    // MARK: - Context Picker Overlay
+
+    @ViewBuilder
+    private var contextPickerOverlay: some View {
+        VStack(spacing: 0) {
+            // No context option
+            Button(action: {
+                onContextChange(nil)
+                withAnimation(.easeOut(duration: 0.2)) {
+                    showContextPicker = false
+                }
+            }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "circle.slash")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.7))
+
+                    Text("No Context")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.white)
+
+                    Spacer()
+
+                    if activeContext == nil {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(.blue)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            if !contexts.isEmpty {
+                Rectangle()
+                    .fill(Color.white.opacity(0.06))
+                    .frame(height: 1)
+            }
+
+            // Context options
+            ForEach(Array(contexts.enumerated()), id: \.element.id) { index, context in
+                Button(action: {
+                    onContextChange(context)
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showContextPicker = false
+                    }
+                }) {
+                    HStack(spacing: 10) {
+                        Text(context.icon)
+                            .font(.system(size: 14))
+
+                        Text(context.name)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.white)
+
+                        Spacer()
+
+                        if activeContext?.id == context.id {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(context.color.color)
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                }
+                .buttonStyle(PlainButtonStyle())
+
+                if index < contexts.count - 1 {
+                    Rectangle()
+                        .fill(Color.white.opacity(0.06))
+                        .frame(height: 1)
+                }
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(red: 0.12, green: 0.12, blue: 0.14))
+                .shadow(color: .black.opacity(0.4), radius: 20, y: 10)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
+        )
+        .frame(width: 160)
     }
 }
 

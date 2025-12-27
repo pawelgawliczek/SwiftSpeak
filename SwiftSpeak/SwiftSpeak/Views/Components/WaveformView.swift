@@ -10,13 +10,23 @@ import SwiftUI
 struct WaveformView: View {
     let isActive: Bool
     let barCount: Int
+    let audioLevels: [Float]?
 
-    @State private var heights: [CGFloat] = []
+    @State private var fallbackHeights: [CGFloat] = []
     @State private var timer: Timer?
 
-    init(isActive: Bool = true, barCount: Int = 12) {
+    init(isActive: Bool = true, barCount: Int = 12, audioLevels: [Float]? = nil) {
         self.isActive = isActive
         self.barCount = barCount
+        self.audioLevels = audioLevels
+    }
+
+    private var heights: [CGFloat] {
+        if let levels = audioLevels, !levels.isEmpty, isActive {
+            // Use real audio levels - normalize from 0-1 to 10-50
+            return levels.prefix(barCount).map { CGFloat(10 + $0 * 40) }
+        }
+        return fallbackHeights
     }
 
     var body: some View {
@@ -32,39 +42,39 @@ struct WaveformView: View {
             }
         }
         .onAppear {
-            heights = Array(repeating: 10, count: barCount)
-            if isActive {
-                startAnimation()
+            fallbackHeights = Array(repeating: 10, count: barCount)
+            if isActive && audioLevels == nil {
+                startFallbackAnimation()
             }
         }
         .onDisappear {
-            stopAnimation()
+            stopFallbackAnimation()
         }
         .onChange(of: isActive) { _, newValue in
-            if newValue {
-                startAnimation()
-            } else {
-                stopAnimation()
+            if newValue && audioLevels == nil {
+                startFallbackAnimation()
+            } else if !newValue {
+                stopFallbackAnimation()
             }
         }
     }
 
-    private func startAnimation() {
+    private func startFallbackAnimation() {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
             withAnimation {
-                heights = (0..<barCount).map { _ in
+                fallbackHeights = (0..<barCount).map { _ in
                     CGFloat.random(in: 10...50)
                 }
             }
         }
     }
 
-    private func stopAnimation() {
+    private func stopFallbackAnimation() {
         timer?.invalidate()
         timer = nil
         withAnimation {
-            heights = Array(repeating: 10, count: barCount)
+            fallbackHeights = Array(repeating: 10, count: barCount)
         }
     }
 }
@@ -72,6 +82,18 @@ struct WaveformView: View {
 // MARK: - Circular Waveform
 struct CircularWaveformView: View {
     let isActive: Bool
+    let audioLevels: [Float]?
+
+    init(isActive: Bool = true, audioLevels: [Float]? = nil) {
+        self.isActive = isActive
+        self.audioLevels = audioLevels
+    }
+
+    private var averageLevel: CGFloat {
+        guard let levels = audioLevels, !levels.isEmpty else { return 0 }
+        let sum = levels.reduce(0, +)
+        return CGFloat(sum / Float(levels.count))
+    }
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1/60)) { timeline in
@@ -86,10 +108,20 @@ struct CircularWaveformView: View {
 
                 var path = Path()
 
-                // Calculate animated values based on time
+                // Calculate animated values based on time or audio levels
                 let phase = isActive ? time * 2.5 : 0
-                let amplitudePulse = isActive ? (sin(time * 3) * 0.5 + 0.5) : 0
-                let amplitude = isActive ? 0.1 + amplitudePulse * 0.15 : 0
+                let amplitude: CGFloat
+                if isActive {
+                    if audioLevels != nil {
+                        // Use real audio level for amplitude
+                        amplitude = 0.1 + averageLevel * 0.25
+                    } else {
+                        let amplitudePulse = (sin(time * 3) * 0.5 + 0.5)
+                        amplitude = 0.1 + amplitudePulse * 0.15
+                    }
+                } else {
+                    amplitude = 0
+                }
 
                 for angle in stride(from: 0.0, to: 360.0, by: 2.0) {
                     let radians = angle * .pi / 180
@@ -131,14 +163,22 @@ struct CircularWaveformView: View {
 struct LinearWaveView: View {
     let color: Color
     let lineWidth: CGFloat
-    let amplitude: CGFloat
+    let baseAmplitude: CGFloat
     let frequency: CGFloat
+    let audioLevels: [Float]?
 
-    init(color: Color = AppTheme.accent, lineWidth: CGFloat = 3, amplitude: CGFloat = 10, frequency: CGFloat = 4) {
+    init(color: Color = AppTheme.accent, lineWidth: CGFloat = 3, amplitude: CGFloat = 10, frequency: CGFloat = 4, audioLevels: [Float]? = nil) {
         self.color = color
         self.lineWidth = lineWidth
-        self.amplitude = amplitude
+        self.baseAmplitude = amplitude
         self.frequency = frequency
+        self.audioLevels = audioLevels
+    }
+
+    private var averageLevel: CGFloat {
+        guard let levels = audioLevels, !levels.isEmpty else { return 0.5 }
+        let sum = levels.reduce(0, +)
+        return CGFloat(sum / Float(levels.count))
     }
 
     var body: some View {
@@ -148,7 +188,8 @@ struct LinearWaveView: View {
                 var path = Path()
                 let midY: CGFloat = size.height / 2
                 let freq: CGFloat = frequency
-                let amp: CGFloat = amplitude
+                // Use audio level to modulate amplitude
+                let amp: CGFloat = audioLevels != nil ? baseAmplitude * (0.3 + averageLevel * 1.5) : baseAmplitude
 
                 for x in stride(from: CGFloat(0), to: size.width, by: CGFloat(1)) {
                     let relativeX: CGFloat = x / size.width
@@ -184,12 +225,14 @@ struct MirroredBarWaveformView: View {
     let color: Color
     let isActive: Bool
     let speed: Double
+    let audioLevels: [Float]?
 
-    init(barCount: Int = 16, color: Color = AppTheme.accent, isActive: Bool = true, speed: Double = 1.0) {
+    init(barCount: Int = 16, color: Color = AppTheme.accent, isActive: Bool = true, speed: Double = 1.0, audioLevels: [Float]? = nil) {
         self.barCount = barCount
         self.color = color
         self.isActive = isActive
         self.speed = speed
+        self.audioLevels = audioLevels
     }
 
     var body: some View {
@@ -205,9 +248,16 @@ struct MirroredBarWaveformView: View {
                     let seed: Double = Double(i) * 1.5
                     let height: CGFloat
                     if isActive {
-                        let wave1: Double = sin(time * 3 + seed) * 0.5 + 0.5
-                        let wave2: Double = sin(time * 5 + seed * 0.7) * 0.3 + 0.5
-                        height = maxHeight * CGFloat(wave1 * 0.6 + wave2 * 0.4)
+                        if let levels = audioLevels, !levels.isEmpty {
+                            // Use real audio levels - map bar index to audio level index
+                            let levelIndex = min(i, levels.count - 1)
+                            let level = CGFloat(levels[levelIndex])
+                            height = maxHeight * (0.1 + level * 0.9)
+                        } else {
+                            let wave1: Double = sin(time * 3 + seed) * 0.5 + 0.5
+                            let wave2: Double = sin(time * 5 + seed * 0.7) * 0.3 + 0.5
+                            height = maxHeight * CGFloat(wave1 * 0.6 + wave2 * 0.4)
+                        }
                     } else {
                         height = 4
                     }
@@ -233,10 +283,18 @@ struct MirroredBarWaveformView: View {
 struct BlobWaveformView: View {
     let color: Color
     let isActive: Bool
+    let audioLevels: [Float]?
 
-    init(color: Color = AppTheme.accent, isActive: Bool = true) {
+    init(color: Color = AppTheme.accent, isActive: Bool = true, audioLevels: [Float]? = nil) {
         self.color = color
         self.isActive = isActive
+        self.audioLevels = audioLevels
+    }
+
+    private var averageLevel: CGFloat {
+        guard let levels = audioLevels, !levels.isEmpty else { return 0.5 }
+        let sum = levels.reduce(0, +)
+        return CGFloat(sum / Float(levels.count))
     }
 
     var body: some View {
@@ -248,7 +306,9 @@ struct BlobWaveformView: View {
                 var path = Path()
 
                 let points: Int = 60
-                let activeMultipliers: (Double, Double, Double) = isActive ? (0.15, 0.1, 0.08) : (0.02, 0.01, 0.01)
+                // Scale multipliers based on audio level when available
+                let levelScale = audioLevels != nil ? Double(0.5 + averageLevel) : 1.0
+                let activeMultipliers: (Double, Double, Double) = isActive ? (0.15 * levelScale, 0.1 * levelScale, 0.08 * levelScale) : (0.02, 0.01, 0.01)
 
                 for i in 0..<points {
                     let angle: Double = (Double(i) / Double(points)) * 2 * .pi
@@ -286,12 +346,14 @@ struct SoundBarsWaveformView: View {
     let spacing: CGFloat
     let color: Color
     let isActive: Bool
+    let audioLevels: [Float]?
 
-    init(barCount: Int = 5, spacing: CGFloat = 4, color: Color = AppTheme.accent, isActive: Bool = true) {
+    init(barCount: Int = 5, spacing: CGFloat = 4, color: Color = AppTheme.accent, isActive: Bool = true, audioLevels: [Float]? = nil) {
         self.barCount = barCount
         self.spacing = spacing
         self.color = color
         self.isActive = isActive
+        self.audioLevels = audioLevels
     }
 
     var body: some View {
@@ -301,7 +363,8 @@ struct SoundBarsWaveformView: View {
                 barCount: barCount,
                 spacing: spacing,
                 color: color,
-                isActive: isActive
+                isActive: isActive,
+                audioLevels: audioLevels
             )
         }
     }
@@ -313,11 +376,12 @@ private struct SoundBarsContent: View {
     let spacing: CGFloat
     let color: Color
     let isActive: Bool
+    let audioLevels: [Float]?
 
     var body: some View {
         HStack(spacing: spacing) {
             ForEach(0..<barCount, id: \.self) { index in
-                SoundBarItem(time: time, index: index, color: color, isActive: isActive)
+                SoundBarItem(time: time, index: index, color: color, isActive: isActive, audioLevels: audioLevels)
             }
         }
     }
@@ -328,13 +392,24 @@ private struct SoundBarItem: View {
     let index: Int
     let color: Color
     let isActive: Bool
+    let audioLevels: [Float]?
+
+    private var height: CGFloat {
+        guard isActive else { return 0.2 }
+
+        if let levels = audioLevels, !levels.isEmpty {
+            // Use real audio level
+            let levelIndex = min(index, levels.count - 1)
+            return CGFloat(0.2 + levels[levelIndex] * 0.8)
+        } else {
+            let seed: Double = Double(index) * 1.2
+            let wave1: Double = sin(time * 4 + seed) * 0.3
+            let wave2: Double = sin(time * 7 + seed * 0.5) * 0.2
+            return CGFloat(0.3 + wave1 + wave2)
+        }
+    }
 
     var body: some View {
-        let seed: Double = Double(index) * 1.2
-        let wave1: Double = sin(time * 4 + seed) * 0.3
-        let wave2: Double = sin(time * 7 + seed * 0.5) * 0.2
-        let height: CGFloat = isActive ? CGFloat(0.3 + wave1 + wave2) : 0.2
-
         RoundedRectangle(cornerRadius: 3)
             .fill(color.gradient)
             .frame(width: 6)
@@ -348,11 +423,13 @@ struct SpectrumWaveformView: View {
     let barCount: Int
     let color: Color
     let isActive: Bool
+    let audioLevels: [Float]?
 
-    init(barCount: Int = 32, color: Color = AppTheme.accent, isActive: Bool = true) {
+    init(barCount: Int = 32, color: Color = AppTheme.accent, isActive: Bool = true, audioLevels: [Float]? = nil) {
         self.barCount = barCount
         self.color = color
         self.isActive = isActive
+        self.audioLevels = audioLevels
     }
 
     var body: some View {
@@ -369,11 +446,18 @@ struct SpectrumWaveformView: View {
 
                     let height: CGFloat
                     if isActive {
-                        let wave1: Double = sin(time * 5 + seed) * 0.4 + 0.5
-                        let wave2: Double = sin(time * 8 + seed * 1.3) * 0.3 + 0.5
-                        let wave3: Double = sin(time * 3 + seed * 0.5) * 0.2 + 0.5
-                        let combined: Double = wave1 * wave2 * wave3
-                        height = size.height * CGFloat(combined) * distribution
+                        if let levels = audioLevels, !levels.isEmpty {
+                            // Map bar index to audio level - interpolate for smooth spectrum
+                            let levelIndex = Int(Float(i) / Float(count) * Float(levels.count - 1))
+                            let level = CGFloat(levels[min(levelIndex, levels.count - 1)])
+                            height = size.height * (0.1 + level * 0.9) * distribution
+                        } else {
+                            let wave1: Double = sin(time * 5 + seed) * 0.4 + 0.5
+                            let wave2: Double = sin(time * 8 + seed * 1.3) * 0.3 + 0.5
+                            let wave3: Double = sin(time * 3 + seed * 0.5) * 0.2 + 0.5
+                            let combined: Double = wave1 * wave2 * wave3
+                            height = size.height * CGFloat(combined) * distribution
+                        }
                     } else {
                         height = 4
                     }

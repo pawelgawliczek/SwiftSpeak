@@ -18,7 +18,7 @@ This file provides guidance to Claude Code when working with this repository.
 - Main App: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeak/`
 - Keyboard Extension: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeakKeyboard/`
 - Implementation Plan: `~/projects/SwiftSpeak/IMPLEMENTATION_PLAN.md`
-- Phase 1 Plan: `~/projects/SwiftSpeak/PHASE1_PLAN.md`
+- Phase Plans: `~/projects/SwiftSpeak/PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md`, `PHASE3A_PLAN.md`
 
 ## Bundle IDs & Configuration
 
@@ -57,9 +57,21 @@ This file provides guidance to Claude Code when working with this repository.
 - [ ] Unit tests
 - [ ] UI tests
 
+### Phase 3A: Provider Help & Language Guidance - UX MOCKUPS COMPLETE
+- [x] ProviderLanguageSupport.swift - Language support data model + database
+- [x] ProviderHelpContent.swift - Setup guide data model + content
+- [x] ProviderHelpSheet.swift - Setup guide bottom sheet
+- [x] ProviderStatusDashboard.swift - At-a-glance status card
+- [x] ProviderComparisonView.swift - Provider selection guide
+- [x] LanguageSupportView.swift - Language compatibility matrix
+- [x] SmartLanguagePicker.swift - Enhanced language dropdown
+- [x] IncompatibilityWarning.swift - Warning banners
+- [ ] Integration with SettingsView (pending)
+- [ ] Integration with KeyboardView (pending)
+
 ### What's NOT Done Yet
 - [ ] Translation feature integration (Phase 2)
-- [ ] Multi-provider support (Anthropic, ElevenLabs, Deepgram, Ollama) - Phase 3
+- [ ] Multi-provider support services (Anthropic, ElevenLabs, Deepgram, Ollama) - Phase 3
 - [ ] Power Mode voice agents - Phase 4
 - [ ] StoreKit 2 subscriptions - Phase 5
 
@@ -181,17 +193,25 @@ SwiftSpeak/
 │   │   │       └── IconPicker.swift
 │   │   ├── Components/
 │   │   │   ├── WaveformView.swift
-│   │   │   └── Animations.swift
+│   │   │   ├── Animations.swift
+│   │   │   ├── ProviderHelpSheet.swift         # Phase 3A - Setup guide
+│   │   │   ├── ProviderStatusDashboard.swift   # Phase 3A - Status card
+│   │   │   ├── SmartLanguagePicker.swift       # Phase 3A - Language dropdown
+│   │   │   └── IncompatibilityWarning.swift    # Phase 3A - Warning banners
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift
 │   │   ├── PaywallView.swift
-│   │   └── KeyboardPreviewView.swift
+│   │   ├── KeyboardPreviewView.swift
+│   │   ├── ProviderComparisonView.swift        # Phase 3A - Provider selection
+│   │   └── LanguageSupportView.swift           # Phase 3A - Language matrix
 │   │
 │   └── Shared/
 │       ├── Constants.swift              # API endpoints, timeouts
 │       ├── Models.swift                 # AIProvider, FormattingMode, Language, etc.
-│       └── Theme.swift                  # AppTheme, HapticManager
+│       ├── Theme.swift                  # AppTheme, HapticManager
+│       ├── ProviderLanguageSupport.swift       # Phase 3A - Language support data
+│       └── ProviderHelpContent.swift           # Phase 3A - Setup guides
 │
 ├── SwiftSpeakKeyboard/                  # Keyboard Extension
 │   ├── KeyboardViewController.swift
@@ -384,3 +404,16 @@ Each error includes:
 - **Unit Tests:** Swift Testing framework (@Test attribute, #expect macro)
 - **Mock Providers:** MockTranscriptionProvider, MockFormattingProvider with configurable delays and failures
 - **UI Tests:** XCTest framework for recording flow and settings
+
+## Critical: AI Prompts Discussion Required
+
+**IMPORTANT:** Before implementing or modifying any AI prompts (system prompts, user prompts, formatting instructions), you MUST discuss with the user first. This includes:
+
+- Transcription prompts sent to Whisper/STT providers
+- Formatting prompts sent to LLMs (GPT-4, Claude, etc.)
+- Translation prompts
+- Context instructions that get injected into prompts
+- Power Mode agent prompts
+- Any prompt engineering decisions
+
+The exact wording of prompts significantly impacts output quality and user experience. Always present proposed prompts to the user for review before implementing.

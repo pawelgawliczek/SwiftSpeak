@@ -20,6 +20,7 @@ struct KeyboardView: View {
     let onNextKeyboard: () -> Void
 
     @State private var showPowerModePicker = false
+    @State private var showContextPicker = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -75,17 +76,28 @@ struct KeyboardView: View {
             }
             .padding(.horizontal, 16)
 
-            // Mode and Language selectors
-            HStack(spacing: 12) {
-                // Mode dropdown
+            // Mode, Context, and Language selectors
+            HStack(spacing: 8) {
+                // Mode dropdown (includes custom templates for Pro)
                 DropdownButton(
-                    icon: viewModel.selectedMode.icon,
-                    title: viewModel.selectedMode.displayName,
-                    options: FormattingMode.allCases.map { ($0.icon, $0.displayName, $0.rawValue) }
+                    icon: viewModel.currentModeIcon,
+                    title: viewModel.currentModeDisplayName,
+                    options: viewModel.modeOptions
                 ) { value in
-                    if let mode = FormattingMode(rawValue: value) {
-                        viewModel.selectedMode = mode
-                    }
+                    viewModel.selectMode(value: value)
+                }
+
+                // Context button (Pro+ only)
+                if viewModel.isPro {
+                    ContextSelectorButton(
+                        activeContext: viewModel.activeContext,
+                        onTap: {
+                            KeyboardHaptics.selection()
+                            withAnimation(KeyboardTheme.quickSpring) {
+                                showContextPicker = true
+                            }
+                        }
+                    )
                 }
 
                 // Language dropdown (for translation)
@@ -171,6 +183,20 @@ struct KeyboardView: View {
                     }
                 )
             }
+
+            if showContextPicker {
+                ContextPickerOverlay(
+                    contexts: viewModel.contexts,
+                    activeContextId: viewModel.activeContext?.id,
+                    onSelect: { context in
+                        showContextPicker = false
+                        viewModel.selectContext(context)
+                    },
+                    onDismiss: {
+                        showContextPicker = false
+                    }
+                )
+            }
         }
     }
 }
@@ -243,6 +269,147 @@ struct PowerModePickerOverlay: View {
                         }
 
                         if mode.id != powerModes.last?.id {
+                            Divider()
+                                .padding(.leading, 54)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: 180)
+        }
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusMedium, style: .continuous))
+        .shadow(color: .black.opacity(0.3), radius: 15)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+        .animation(KeyboardTheme.quickSpring, value: true)
+    }
+}
+
+// MARK: - Context Selector Button
+struct ContextSelectorButton: View {
+    let activeContext: KeyboardContext?
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            Text(activeContext?.icon ?? "👤")
+                .font(.title3)
+                .frame(width: 44, height: 44)
+                .background(activeContext != nil ? Color.purple.opacity(0.2) : Color.primary.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous)
+                        .strokeBorder(activeContext != nil ? Color.purple.opacity(0.5) : Color.clear, lineWidth: 1.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Context Picker Overlay
+struct ContextPickerOverlay: View {
+    let contexts: [KeyboardContext]
+    let activeContextId: UUID?
+    let onSelect: (KeyboardContext?) -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(Color.purple)
+                    Text("Select Context")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                }
+
+                Spacer()
+
+                Button(action: {
+                    KeyboardHaptics.lightTap()
+                    onDismiss()
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, height: 24)
+                        .background(Color.primary.opacity(0.1))
+                        .clipShape(Circle())
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+
+            Divider()
+
+            // Context list
+            ScrollView {
+                VStack(spacing: 0) {
+                    // No Context option
+                    Button(action: {
+                        KeyboardHaptics.selection()
+                        onSelect(nil)
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "circle.slash")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 28)
+
+                            Text("No Context")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            if activeContextId == nil {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.purple)
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .frame(minHeight: 44)
+                    }
+
+                    Divider()
+                        .padding(.leading, 54)
+
+                    // Context options
+                    ForEach(contexts) { context in
+                        Button(action: {
+                            KeyboardHaptics.mediumTap()
+                            onSelect(context)
+                        }) {
+                            HStack(spacing: 12) {
+                                Text(context.icon)
+                                    .font(.body)
+                                    .frame(width: 28)
+
+                                Text(context.name)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                if activeContextId == context.id {
+                                    Image(systemName: "checkmark")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(Color.purple)
+                                }
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 12)
+                            .frame(minHeight: 44)
+                        }
+
+                        if context.id != contexts.last?.id {
                             Divider()
                                 .padding(.leading, 54)
                         }
@@ -413,21 +580,73 @@ struct KeyboardAIProviderInfo {
     let isConfigured: Bool
 }
 
+// MARK: - Custom Template (for keyboard)
+struct KeyboardCustomTemplate: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let icon: String
+}
+
+// MARK: - Keyboard Context (minimal for keyboard)
+struct KeyboardContext: Identifiable {
+    let id: UUID
+    let name: String
+    let icon: String
+}
+
 // MARK: - Keyboard ViewModel
 class KeyboardViewModel: ObservableObject {
     @Published var selectedMode: FormattingMode = .raw
+    @Published var selectedCustomTemplateId: UUID?
     @Published var selectedLanguage: Language = .spanish
     @Published var lastTranscription: String?
     @Published var isPro: Bool = false
     @Published var isPower: Bool = false
     @Published var powerModes: [KeyboardPowerMode] = []
+    @Published var customTemplates: [KeyboardCustomTemplate] = []
     @Published var transcriptionProvider: KeyboardAIProviderInfo?
+    @Published var contexts: [KeyboardContext] = []
+    @Published var activeContext: KeyboardContext?
 
     weak var textDocumentProxy: UITextDocumentProxy?
     weak var hostViewController: UIViewController?
 
     init() {
         loadSettings()
+    }
+
+    /// All mode options for dropdown (built-in modes + custom templates for Pro users)
+    var modeOptions: [(icon: String, title: String, value: String)] {
+        var options = FormattingMode.allCases.map { mode in
+            (mode.icon, mode.displayName, mode.rawValue)
+        }
+
+        // Add custom templates only for Pro users
+        if isPro && !customTemplates.isEmpty {
+            for template in customTemplates {
+                options.append((template.icon, template.name, "custom:\(template.id.uuidString)"))
+            }
+        }
+
+        return options
+    }
+
+    /// Current display name for mode selector
+    var currentModeDisplayName: String {
+        if let templateId = selectedCustomTemplateId,
+           let template = customTemplates.first(where: { $0.id == templateId }) {
+            return template.name
+        }
+        return selectedMode.displayName
+    }
+
+    /// Current icon for mode selector
+    var currentModeIcon: String {
+        if let templateId = selectedCustomTemplateId,
+           let template = customTemplates.first(where: { $0.id == templateId }) {
+            return template.icon
+        }
+        return selectedMode.icon
     }
 
     func loadSettings() {
@@ -453,6 +672,9 @@ class KeyboardViewModel: ObservableObject {
         // Load configured AI providers for transcription
         loadAIProviders(from: defaults)
 
+        // Load custom templates (Pro only)
+        loadCustomTemplates(from: defaults)
+
         // Load power modes (mock data for now)
         powerModes = [
             KeyboardPowerMode(id: UUID(), name: "Research Assistant", icon: "magnifyingglass.circle.fill"),
@@ -460,6 +682,81 @@ class KeyboardViewModel: ObservableObject {
             KeyboardPowerMode(id: UUID(), name: "Daily Planner", icon: "calendar"),
             KeyboardPowerMode(id: UUID(), name: "Idea Expander", icon: "lightbulb.fill")
         ]
+
+        // Load contexts (Pro only)
+        if isPro {
+            loadContexts(from: defaults)
+        }
+    }
+
+    private func loadContexts(from defaults: UserDefaults?) {
+        guard let data = defaults?.data(forKey: Constants.Keys.contexts) else {
+            contexts = []
+            activeContext = nil
+            return
+        }
+
+        // Decode contexts (simplified struct for keyboard)
+        struct SimpleContext: Codable {
+            let id: UUID
+            let name: String
+            let icon: String
+        }
+
+        do {
+            let loadedContexts = try JSONDecoder().decode([SimpleContext].self, from: data)
+            contexts = loadedContexts.map { KeyboardContext(id: $0.id, name: $0.name, icon: $0.icon) }
+
+            // Load active context ID
+            if let activeIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
+               let activeId = UUID(uuidString: activeIdString),
+               let context = contexts.first(where: { $0.id == activeId }) {
+                activeContext = context
+            } else {
+                activeContext = nil
+            }
+        } catch {
+            contexts = []
+            activeContext = nil
+        }
+    }
+
+    func selectContext(_ context: KeyboardContext?) {
+        activeContext = context
+
+        // Save to UserDefaults
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        if let context = context {
+            defaults?.set(context.id.uuidString, forKey: Constants.Keys.activeContextId)
+        } else {
+            defaults?.removeObject(forKey: Constants.Keys.activeContextId)
+        }
+    }
+
+    private func loadCustomTemplates(from defaults: UserDefaults?) {
+        guard isPro else {
+            customTemplates = []
+            return
+        }
+
+        guard let data = defaults?.data(forKey: Constants.Keys.customTemplates) else {
+            customTemplates = []
+            return
+        }
+
+        // Decode custom templates (use same struct as main app)
+        struct SimpleCustomTemplate: Codable {
+            let id: UUID
+            let name: String
+            let icon: String
+        }
+
+        do {
+            let templates = try JSONDecoder().decode([SimpleCustomTemplate].self, from: data)
+            customTemplates = templates.map { KeyboardCustomTemplate(id: $0.id, name: $0.name, icon: $0.icon) }
+        } catch {
+            customTemplates = []
+        }
     }
 
     private func loadAIProviders(from defaults: UserDefaults?) {
@@ -507,9 +804,33 @@ class KeyboardViewModel: ObservableObject {
         defaults?.set(selectedLanguage.rawValue, forKey: Constants.Keys.selectedTargetLanguage)
     }
 
+    /// Select mode from dropdown (handles both built-in modes and custom templates)
+    func selectMode(value: String) {
+        if value.hasPrefix("custom:") {
+            // Custom template selected
+            let uuidString = String(value.dropFirst(7))  // Remove "custom:" prefix
+            if let uuid = UUID(uuidString: uuidString) {
+                selectedCustomTemplateId = uuid
+                selectedMode = .raw  // Use raw as base mode
+            }
+        } else {
+            // Built-in mode selected
+            selectedCustomTemplateId = nil
+            if let mode = FormattingMode(rawValue: value) {
+                selectedMode = mode
+            }
+        }
+    }
+
     func startTranscription() {
         saveSettings()
-        let urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=false"
+        var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=false"
+
+        // Add custom template ID if selected
+        if let templateId = selectedCustomTemplateId {
+            urlString += "&template=\(templateId.uuidString)"
+        }
+
         if let url = URL(string: urlString) {
             openURL(url)
         }
@@ -518,7 +839,13 @@ class KeyboardViewModel: ObservableObject {
     func startTranslation() {
         guard isPro else { return }
         saveSettings()
-        let urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=true&target=\(selectedLanguage.rawValue)"
+        var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=true&target=\(selectedLanguage.rawValue)"
+
+        // Add custom template ID if selected
+        if let templateId = selectedCustomTemplateId {
+            urlString += "&template=\(templateId.uuidString)"
+        }
+
         if let url = URL(string: urlString) {
             openURL(url)
         }

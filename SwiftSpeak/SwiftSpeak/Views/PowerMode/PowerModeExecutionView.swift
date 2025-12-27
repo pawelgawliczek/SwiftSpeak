@@ -151,8 +151,8 @@ struct PowerModeExecutionView: View {
                 transcribingView
             case .thinking:
                 thinkingView
-            case .usingCapability(let capability):
-                usingCapabilityView(capability)
+            case .queryingKnowledge:
+                queryingKnowledgeView
             case .askingQuestion(let question):
                 PowerModeQuestionView(
                     question: question,
@@ -197,26 +197,38 @@ struct PowerModeExecutionView: View {
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.primary)
 
-            // Enabled capabilities
-            if !powerMode.enabledCapabilities.isEmpty {
-                HStack(spacing: 8) {
-                    ForEach(Array(powerMode.enabledCapabilities), id: \.self) { capability in
-                        HStack(spacing: 4) {
-                            Image(systemName: capability.icon)
-                                .font(.caption)
-                            Text(capability.displayName)
-                                .font(.caption)
-                        }
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(Color.primary.opacity(0.08))
-                        .clipShape(Capsule())
+            // Phase 4: Show memory and knowledge base status
+            HStack(spacing: 12) {
+                if powerMode.memoryEnabled {
+                    HStack(spacing: 4) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.caption)
+                        Text("Memory")
+                            .font(.caption)
                     }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+
+                if !powerMode.knowledgeDocumentIds.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.caption)
+                        Text("\(powerMode.knowledgeDocumentIds.count) docs")
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
                 }
             }
 
-            Text("Tools enabled")
+            Text("Ready to listen")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -406,15 +418,16 @@ struct PowerModeExecutionView: View {
         }
     }
 
-    // MARK: - Using Capability View
+    // MARK: - Querying Knowledge View (Phase 4 RAG)
 
-    private func usingCapabilityView(_ capability: PowerModeCapability) -> some View {
+    private var queryingKnowledgeView: some View {
         VStack(spacing: 24) {
-            Image(systemName: "brain.head.profile")
+            Image(systemName: "doc.text.magnifyingglass")
                 .font(.system(size: 48))
                 .foregroundStyle(AppTheme.powerGradient)
+                .symbolEffect(.pulse, options: .repeating)
 
-            Text("Thinking...")
+            Text("Searching Knowledge Base...")
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.primary)
 
@@ -436,33 +449,25 @@ struct PowerModeExecutionView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             }
 
-            // Tools activity
+            // RAG activity indicator
             VStack(alignment: .leading, spacing: 12) {
-                Text("TOOLS ACTIVITY")
+                Text("KNOWLEDGE RETRIEVAL")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                ForEach(Array(powerMode.enabledCapabilities), id: \.self) { cap in
-                    HStack(spacing: 10) {
-                        Image(systemName: cap.icon)
-                            .font(.body)
-                            .foregroundStyle(cap == capability ? AppTheme.powerAccent : .secondary)
+                HStack(spacing: 10) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.body)
+                        .foregroundStyle(AppTheme.powerAccent)
 
-                        Text(cap.displayName)
-                            .font(.subheadline)
-                            .foregroundStyle(cap == capability ? .primary : .secondary)
+                    Text("Searching \(powerMode.knowledgeDocumentIds.count) documents")
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
 
-                        Spacer()
+                    Spacer()
 
-                        if cap == capability {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        } else {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.body)
-                                .foregroundStyle(.green)
-                        }
-                    }
+                    ProgressView()
+                        .scaleEffect(0.7)
                 }
             }
             .padding(16)
@@ -491,10 +496,13 @@ struct PowerModeExecutionView: View {
             // Completed steps
             VStack(alignment: .leading, spacing: 8) {
                 completedStepRow("Transcribed", isComplete: true)
-                ForEach(Array(powerMode.enabledCapabilities), id: \.self) { capability in
-                    completedStepRow("\(capability.displayName) complete", isComplete: true)
+                if !powerMode.knowledgeDocumentIds.isEmpty {
+                    completedStepRow("Knowledge retrieved", isComplete: true)
                 }
-                completedStepRow("Formatting output...", isComplete: false, isLoading: true)
+                if powerMode.memoryEnabled {
+                    completedStepRow("Context loaded", isComplete: true)
+                }
+                completedStepRow("Generating response...", isComplete: false, isLoading: true)
             }
             .padding(16)
             .frame(maxWidth: 280)
@@ -632,8 +640,9 @@ struct PowerModeExecutionView: View {
                 executionState = .thinking
 
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    if let firstCapability = powerMode.enabledCapabilities.first {
-                        executionState = .usingCapability(firstCapability)
+                    // Phase 4: Check for knowledge base documents (RAG)
+                    if !powerMode.knowledgeDocumentIds.isEmpty {
+                        executionState = .queryingKnowledge
 
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
                             // Show question (for demo) - skip if from keyboard for faster flow
@@ -678,9 +687,10 @@ struct PowerModeExecutionView: View {
                 ## Sources
                 - TechCrunch, MIT Technology Review, The Verge, Wired
                 """,
-                capabilitiesUsed: [.webSearch],
                 processingDuration: 4.2,
-                versionNumber: session.results.count + 1
+                versionNumber: session.results.count + 1,
+                usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
+                ragDocumentIds: powerMode.knowledgeDocumentIds
             )
 
             session.addResult(refinedResult)
@@ -736,9 +746,10 @@ struct PowerModeExecutionView: View {
                 powerModeName: currentResult.powerModeName,
                 userInput: currentResult.userInput,
                 markdownOutput: editedText,
-                capabilitiesUsed: currentResult.capabilitiesUsed,
                 processingDuration: currentResult.processingDuration,
-                versionNumber: currentResult.versionNumber
+                versionNumber: currentResult.versionNumber,
+                usedRAG: currentResult.usedRAG,
+                ragDocumentIds: currentResult.ragDocumentIds
             )
             // Replace the current result
             if session.currentVersionIndex < session.results.count {
@@ -808,9 +819,10 @@ struct PowerModeExecutionView: View {
                 - The Verge: AI Coverage
                 - Wired: AI Section
                 """,
-                capabilitiesUsed: [.webSearch],
                 processingDuration: 5.8,
-                versionNumber: session.results.count + 1
+                versionNumber: session.results.count + 1,
+                usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
+                ragDocumentIds: powerMode.knowledgeDocumentIds
             )
 
             session.addResult(newResult)

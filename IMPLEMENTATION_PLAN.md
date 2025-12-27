@@ -332,10 +332,13 @@ AIProviderConfig(
 | Provider | Transcription | Translation | Power Mode | Models |
 |----------|:-------------:|:-----------:|:----------:|--------|
 | OpenAI | ✅ | ✅ | ✅ | STT: whisper-1 / LLM: gpt-4o, gpt-4o-mini |
-| Anthropic | ❌ | ✅ | ✅ | claude-3-5-sonnet, claude-3-5-haiku, claude-3-opus |
-| Google Gemini | ❌ | ✅ | ✅ | gemini-2.0-flash-exp, gemini-1.5-pro, gemini-1.5-flash |
-| ElevenLabs | ✅ | ❌ | ❌ | scribe_v1 (2.5 hrs/month free) |
+| Anthropic | ❌ | ✅ (via LLM) | ✅ | claude-3-5-sonnet-latest, claude-3-5-haiku-latest, claude-3-opus-latest |
+| Google | ✅ (STT) | ✅ | ✅ (Gemini) | STT: long, short / LLM: gemini-2.0-flash-exp, gemini-1.5-pro |
+| AssemblyAI | ✅ | ❌ | ❌ | default (upload + poll pattern) |
 | Deepgram | ✅ | ❌ | ❌ | nova-2, nova, enhanced, base |
+| DeepL | ❌ | ✅ | ❌ | default (dedicated translation API) |
+| Azure | ❌ | ✅ | ❌ | Translator API (requires region) |
+| ElevenLabs | ✅ | ❌ | ❌ | scribe_v1 (2.5 hrs/month free) - UI only |
 | **Local AI** | ✅ | ✅ | ✅ | Models fetched dynamically from server |
 
 ### Local AI Provider Types (Power Tier Only)
@@ -1023,70 +1026,1282 @@ All screens functional with mock data, full navigation, polished animations.
 9. ✅ History view - search, multi-select, reprocess
 10. ✅ 4-tab main navigation
 
-### Phase 1: Core Transcription + Testing Infrastructure
+### Phase 1: Core Transcription + Testing Infrastructure ✅ COMPLETE
 **Execution Guide:** See `/PHASE1_PLAN.md` for step-by-step implementation details.
 
 **Testing Infrastructure:**
-1. [ ] Create SwiftSpeakTests unit test target
-2. [ ] Create SwiftSpeakUITests UI test target
-3. [ ] Write model tests (AIProvider, FormattingMode, etc.)
-4. [ ] Write service tests with mocks
+1. [x] Create SwiftSpeakTests unit test target (97 tests)
+2. [x] Create SwiftSpeakUITests UI test target (10 tests)
+3. [x] Write model tests (AIProvider, FormattingMode, Language, TranscriptionError)
+4. [x] Write service tests with mocks (MockTranscriptionProvider, MockFormattingProvider)
 
 **Core Transcription:**
-1. [ ] Provider abstraction layer (protocols)
-2. [ ] Real audio recording with AVAudioRecorder
-3. [ ] OpenAI Whisper API integration
-4. [ ] GPT-4 formatting integration (Email, Formal, Casual modes)
-5. [ ] App Groups for keyboard ↔ app communication
-6. [ ] URL scheme handling for keyboard → app launch
-7. [ ] Auto-return to previous app + clipboard insertion
-8. [ ] Silence detection for auto-stop (OPTIONAL)
+1. [x] Provider abstraction layer (TranscriptionProvider, FormattingProvider, TranslationProvider protocols)
+2. [x] Real audio recording with AVAudioRecorder (AudioRecorder, AudioSessionManager)
+3. [x] OpenAI Whisper API integration (OpenAITranscriptionService)
+4. [x] GPT-4 formatting integration (OpenAIFormattingService - Email, Formal, Casual modes)
+5. [x] App Groups for keyboard ↔ app communication (already configured)
+6. [x] URL scheme handling for keyboard → app launch (already configured)
+7. [x] TranscriptionOrchestrator coordinating full flow
+8. [ ] Auto-return to previous app + clipboard insertion (PHASE 2)
+9. [ ] Silence detection for auto-stop (OPTIONAL)
 
-### Phase 2: Templates & Translation
-1. [ ] GPT-4 formatting integration (Email, Formal, Casual modes)
-2. [ ] Translation feature with LLM
-3. [ ] Custom template editor (TemplatesView.swift - NOT YET CREATED)
-4. [ ] Template storage (local)
+### Phase 2: Templates & Translation ✅ COMPLETE
+1. [x] GPT-4 formatting integration (Email, Formal, Casual modes) - Done in Phase 1
+2. [x] Translation feature with LLM (OpenAITranslationService)
+3. [x] Auto-return to previous app + clipboard insertion (configurable in settings)
+4. [x] Custom template editor (TemplatesView.swift)
+5. [x] Template storage and sync via App Groups
+6. [x] Integrate custom templates into keyboard mode dropdown
+7. [x] Connect waveforms to real audio levels
+8. [x] Unit tests for translation and templates
 
-### Phase 3: Multi-Provider Support
-1. [ ] ElevenLabs STT integration
-2. [ ] Deepgram STT integration
-3. [ ] Anthropic Claude LLM integration
-4. [ ] Google Gemini LLM integration
-5. [x] Local AI integration (Ollama, LM Studio, OpenAI-compatible) - **UI COMPLETE**
-   - Provider type selection (Ollama, LM Studio, OpenAI-compatible)
-   - Server URL configuration
-   - Optional API token authentication
-   - Test Connection with model discovery
-   - Streaming and timeout options
-6. [ ] Provider switching logic
+### Phase 3: Multi-Provider Support ✅ COMPLETE
+**Execution Guide:** See `/PHASE3_PLAN.md` for step-by-step implementation details.
 
-### Phase 4: Power Mode Backend
-1. [ ] Power Mode execution engine
-2. [ ] Web search capability implementation
-3. [ ] Bash/Computer use capability implementation (desktop only?)
-4. [ ] Code execution capability implementation
-5. [ ] Question asking with quick-tap UI
-6. [ ] LLM streaming responses
+**Transcription Providers:**
+1. [x] OpenAI Whisper (Phase 1)
+2. [x] AssemblyAI STT integration (upload + poll pattern)
+3. [x] Deepgram STT integration (direct upload)
+4. [x] Google Cloud Speech-to-Text (base64 encoding, requires Project ID)
 
-### Phase 5: Advanced Features
-1. [ ] Vocabulary replacement processing
-2. [ ] Diff highlighting for refinements (DiffHighlighter.swift - NOT YET CREATED)
-3. [ ] Per-mode memory storage (OPTIONAL)
-4. [ ] Voice-based Power Mode creation (OPTIONAL)
+**Translation Providers:**
+5. [x] OpenAI GPT (Phase 2)
+6. [x] DeepL Translation (uppercase language codes)
+7. [x] Google Cloud Translation
+8. [x] Azure Translator (requires region)
+9. [ ] Amazon Translate (optional - AWS Sig V4 complexity, deferred)
 
-### Phase 6: Monetization & Polish
+**Power Mode/Formatting Providers:**
+10. [x] OpenAI GPT (Phase 1)
+11. [x] Anthropic Claude (x-api-key header, anthropic-version)
+12. [x] Google Gemini (generateContent API)
+
+**Infrastructure:**
+13. [x] Local AI integration (Ollama, LM Studio, OpenAI-compatible) - **UI COMPLETE**
+    - Provider type selection (Ollama, LM Studio, OpenAI-compatible)
+    - Server URL configuration
+    - Optional API token authentication
+    - Test Connection with model discovery
+    - Streaming and timeout options
+14. [x] ProviderFactory for unified provider creation
+15. [x] Update TranscriptionOrchestrator to use ProviderFactory
+16. [x] Settings UI: provider-specific config (Google Project ID, Azure Region)
+17. [x] Language code extensions (deepLCode, googleCode, azureCode, assemblyAICode, googleSTTCode)
+
+**Files Created in Phase 3:**
+| File | Purpose |
+|------|---------|
+| `Services/ProviderFactory.swift` | Unified factory for all provider types |
+| `Services/Providers/AssemblyAI/AssemblyAITranscriptionService.swift` | AssemblyAI STT |
+| `Services/Providers/Deepgram/DeepgramTranscriptionService.swift` | Deepgram STT |
+| `Services/Providers/Google/GoogleSTTService.swift` | Google Cloud STT |
+| `Services/Providers/Google/GoogleTranslationService.swift` | Google Translation |
+| `Services/Providers/Google/GeminiService.swift` | Gemini LLM |
+| `Services/Providers/DeepL/DeepLTranslationService.swift` | DeepL Translation |
+| `Services/Providers/Azure/AzureTranslatorService.swift` | Azure Translator |
+| `Services/Providers/Anthropic/AnthropicService.swift` | Anthropic Claude |
+
+**Test Files Created (9 test files):**
+| File | Coverage |
+|------|----------|
+| `SwiftSpeakTests/Services/AssemblyAITranscriptionServiceTests.swift` | Upload, polling, error handling |
+| `SwiftSpeakTests/Services/DeepgramTranscriptionServiceTests.swift` | Model selection, language codes |
+| `SwiftSpeakTests/Services/GoogleSTTServiceTests.swift` | Project ID validation, base64 |
+| `SwiftSpeakTests/Services/DeepLTranslationServiceTests.swift` | Language codes, free tier |
+| `SwiftSpeakTests/Services/GoogleTranslationServiceTests.swift` | API key auth, response parsing |
+| `SwiftSpeakTests/Services/AzureTranslatorServiceTests.swift` | Region validation, headers |
+| `SwiftSpeakTests/Services/AnthropicServiceTests.swift` | Version header, message format |
+| `SwiftSpeakTests/Services/GeminiServiceTests.swift` | Endpoint construction, response |
+| `SwiftSpeakTests/Services/ProviderFactoryTests.swift` | Factory creation, validation |
+
+**⚠️ INVESTIGATION NEEDED (moved to Phase 3a):**
+- [ ] **Terms & Conditions**: Research what disclosures are needed about third-party AI providers
+- [ ] **User Information**: Determine what provider-related information must be shown to users
+- [ ] Review Apple App Store guidelines for apps using third-party APIs
+- [ ] Check each provider's branding guidelines for using their logos/names
+- [ ] Draft privacy disclosure explaining data flows to each provider
+
+### Phase 3a: Provider Help & Language Guidance
+**Execution Guide:** See `/PHASE3A_PLAN.md` for step-by-step implementation details.
+
+**Goal:** Reduce user friction when setting up multiple providers by adding contextual help and language compatibility guidance.
+
+**Data Models:**
+1. [ ] ProviderLanguageSupport model (language support levels per provider)
+2. [ ] ProviderHelpContent model (setup guides per provider)
+3. [ ] Populate language support matrix data
+4. [ ] Populate provider setup guide content
+
+**Help Components:**
+5. [ ] ProviderHelpSheet (bottom sheet with setup steps)
+6. [ ] ProviderStatusDashboard (at-a-glance config status)
+7. [ ] ProviderComparisonView ("Help me choose" flow)
+
+**Language Guidance:**
+8. [ ] LanguageSupportView (language-provider compatibility matrix)
+9. [ ] LanguageProviderRecommendation sheet
+10. [ ] SmartLanguagePicker (shows compatibility in dropdown)
+11. [ ] IncompatibilityWarning banner
+
+**Integration:**
+12. [ ] Add help (?) buttons to provider editor
+13. [ ] Add status dashboard to Settings
+14. [ ] Add language warnings to Settings
+15. [ ] Add "Help me choose" navigation links
+16. [ ] Add language warning indicator to keyboard
+
+### Phase 4: Power Mode Backend + Advanced Features
+**Execution Guide:** See `/PHASE4_PLAN.md` for step-by-step implementation details.
+
+**Phase 4.0: UI Mock-ups (UI/UX First)**
+Build all new screens with mock data before backend implementation:
+
+1. [ ] **Contexts UI:**
+   - [ ] ContextsView.swift (Settings → Contexts list)
+   - [ ] ContextEditorSheet.swift (Create/edit context with tone, language hints)
+   - [ ] ContextQuickSwitcher.swift (Floating overlay for quick context switching)
+
+2. [ ] **Memory UI:**
+   - [ ] MemoryView.swift (Settings → Memory management)
+   - [ ] MemoryEditorSheet.swift (View/edit memory content)
+
+3. [ ] **RAG/Knowledge Base UI:**
+   - [ ] KnowledgeBaseView.swift (Documents list in Power Mode editor)
+   - [ ] DocumentPickerSheet.swift (Upload PDF/TXT/MD or add URL)
+
+4. [ ] **Webhooks UI:**
+   - [ ] WebhooksView.swift (Settings → Webhooks list)
+   - [ ] WebhookEditorSheet.swift (Template picker, URL, auth, payload config)
+
+**Phase 4a: Conversation Contexts**
+Named contexts (e.g., "Fatma", "Work") that customize tone and behavior across all features:
+
+5. [ ] ConversationContext model (name, icon, color, toneDescription, languageHints, customInstructions)
+6. [ ] Context storage in SharedSettings (contexts array, activeContextId)
+7. [ ] Wire contexts into TranscriptionOrchestrator (inject into prompts)
+8. [ ] Add Contexts section to SettingsView
+
+**Phase 4b: Three-Tier Memory System**
+Persistent memory across conversations:
+
+9. [ ] HistoryMemory model (global, always on, updated after each conversation)
+10. [ ] Update PowerMode model with memory fields (memoryEnabled, memory, lastMemoryUpdate)
+11. [ ] MemoryManager service (update, compress when >2000 chars)
+12. [ ] Memory update after transcriptions complete
+13. [ ] Add Memory section to SettingsView
+
+**Phase 4c: PowerModeOrchestrator**
+Replace mock implementations with real execution:
+
+14. [ ] Create PowerModeOrchestrator with full state machine (idle → recording → transcribing → thinking → generating → complete)
+15. [ ] PromptContext builder (system prompt, context injection, memory injection)
+16. [ ] Integrate with AudioRecorder
+17. [ ] Integrate with transcription/formatting providers via ProviderFactory
+18. [ ] Wire to PowerModeExecutionView (replace all mock callbacks)
+19. [ ] Session with multiple versions working
+20. [ ] Refinement flow working
+
+**Phase 4d: LLM Streaming**
+Real-time response generation:
+
+21. [ ] StreamingClient.swift (SSE parsing)
+22. [ ] Add streaming to OpenAIFormattingService
+23. [ ] Add streaming to AnthropicService
+24. [ ] Add streaming to GeminiService
+25. [ ] Streaming toggle in provider settings
+26. [ ] Progressive text rendering in Power Mode result view
+
+**Phase 4e: RAG System**
+Document-based knowledge per Power Mode:
+
+27. [ ] KnowledgeDocument model (name, type, sourceURL, contentHash, chunkCount)
+28. [ ] DocumentChunk model (content, embedding, metadata)
+29. [ ] DocumentParser.swift (PDF via PDFKit, text/markdown, web URL → markdown)
+30. [ ] TextChunker.swift (~500 token chunks with 50 token overlap)
+31. [ ] EmbeddingService.swift (OpenAI text-embedding-ada-002)
+32. [ ] VectorStore.swift (similarity search, in-memory + file persistence)
+33. [ ] KnowledgeBaseManager.swift (orchestrate RAG pipeline)
+34. [ ] RAG integration in PowerModeOrchestrator
+35. [ ] Add Knowledge Base section to PowerModeEditorView
+
+**Phase 4f: Webhooks (Global)**
+Outbound webhooks for integrations:
+
+36. [ ] Webhook model (type: contextSource/outputDestination/automationTrigger, URL, auth, payload config)
+37. [ ] WebhookExecutor.swift (GET for context sources, POST for outputs/triggers)
+38. [ ] Template picker (Slack, Notion, Make, Zapier, Todoist, Custom)
+39. [ ] Webhook storage in SharedSettings
+40. [ ] Integration in PowerModeOrchestrator (fetch context before, send results after)
+41. [ ] Test button functionality
+42. [ ] Add Webhooks section to SettingsView
+
+**Phase 4g: Transcription Streaming (OPTIONAL)**
+Real-time transcription as user speaks:
+
+43. [ ] DeepgramStreamingService.swift (WebSocket)
+44. [ ] AssemblyAIStreamingService.swift (WebSocket)
+45. [ ] GoogleStreamingService.swift
+46. [ ] Real-time transcription UI
+47. [ ] Streaming toggle per provider
+
+**REMOVED from original Phase 4 (no longer planned):**
+- ~~Web search capability~~ → Replaced by RAG
+- ~~Bash/Computer use capability~~ → Not applicable for mobile
+- ~~Code execution capability~~ → Security concerns for mobile
+
+**Files to Create (28 new files):**
+
+| Category | File | Purpose |
+|----------|------|---------|
+| Contexts | `Shared/ConversationContext.swift` | Context model |
+| Contexts | `Views/Settings/ContextsView.swift` | Context list |
+| Contexts | `Views/Settings/ContextEditorSheet.swift` | Edit context |
+| Contexts | `Views/Components/ContextQuickSwitcher.swift` | Quick switch overlay |
+| Memory | `Services/Memory/MemoryManager.swift` | Memory update/compression |
+| Memory | `Views/Settings/MemoryView.swift` | Memory management |
+| Memory | `Views/Settings/MemoryEditorSheet.swift` | Edit memory |
+| Orchestration | `Services/Orchestration/PowerModeOrchestrator.swift` | Central coordinator |
+| Orchestration | `Services/Orchestration/PromptContext.swift` | Context builder |
+| Streaming | `Services/Network/StreamingClient.swift` | SSE parsing |
+| RAG | `Services/RAG/DocumentParser.swift` | PDF/text/web parsing |
+| RAG | `Services/RAG/TextChunker.swift` | Chunking strategy |
+| RAG | `Services/RAG/EmbeddingService.swift` | OpenAI embeddings |
+| RAG | `Services/RAG/VectorStore.swift` | Similarity search |
+| RAG | `Services/RAG/KnowledgeBaseManager.swift` | RAG orchestration |
+| RAG | `Views/PowerMode/KnowledgeBaseView.swift` | Document list |
+| RAG | `Views/PowerMode/DocumentPickerSheet.swift` | Add document |
+| Webhooks | `Shared/Webhook.swift` | Webhook model |
+| Webhooks | `Services/Webhooks/WebhookExecutor.swift` | Execute webhooks |
+| Webhooks | `Views/Settings/WebhooksView.swift` | Webhook list |
+| Webhooks | `Views/Settings/WebhookEditorSheet.swift` | Edit webhook |
+
+**Files to Modify:**
+
+| File | Changes |
+|------|---------|
+| `Shared/Models.swift` | Add HistoryMemory, update PowerMode with memory fields |
+| `SharedSettings.swift` | Add contexts, activeContextId, historyMemory, webhooks |
+| `Views/SettingsView.swift` | Add Contexts, Memory, Webhooks sections |
+| `Views/PowerMode/PowerModeExecutionView.swift` | Use real orchestrator |
+| `Views/PowerMode/PowerModeEditorView.swift` | Add knowledge base section |
+| `Services/Providers/OpenAI/OpenAIFormattingService.swift` | Add streaming |
+| `Services/Providers/Anthropic/AnthropicService.swift` | Add streaming |
+| `Services/Providers/Google/GeminiService.swift` | Add streaming |
+| `Services/Orchestration/TranscriptionOrchestrator.swift` | Context injection |
+| `Services/ProviderFactory.swift` | Add streaming provider creation |
+
+### Phase 5: Advanced Features (moved from original Phase 5)
+1. [ ] Vocabulary replacement processing (ALREADY IMPLEMENTED)
+2. [ ] Diff highlighting for refinements (DiffHighlighter.swift)
+3. [ ] Voice-based Power Mode creation (OPTIONAL)
+
+### Phase 6: Security & Data Protection
+1. [ ] Migrate API keys to iOS Keychain (KeychainManager.swift)
+2. [ ] Encrypt transcription history (using Data Protection)
+3. [ ] Biometric protection for History view (Face ID / Touch ID) - optional setting
+4. [ ] Biometric protection for viewing/editing API keys - optional setting
+5. [ ] Secure data deletion (complete account/data reset)
+6. [ ] Add privacy policy & data handling disclosure
+7. [ ] Audit for App Store privacy nutrition labels
+
+**Note:** NO biometric lock on app launch or recording flow - must remain frictionless for core UX.
+
+### Phase 7: Monetization & Polish
 1. [ ] StoreKit 2 / RevenueCat subscription integration
 2. [ ] Paywall logic (Free/Pro/Power limits)
 3. [ ] Usage tracking (free tier limits)
 4. [ ] Error handling & offline states
 5. [ ] App Store submission
 
-### Phase 7: Community Features (OPTIONAL/V2)
+### Phase 8: Community Features (OPTIONAL/V2)
 1. [ ] Global profile system (ProfileEditor.swift)
 2. [ ] Community Power Mode sharing (CommunityBrowser.swift)
 3. [ ] Mode rating and discovery
 4. [ ] Backend for community sync
+
+### Phase 9: Remote Configuration & Cost Analytics
+**Goal:** Display API cost information to users with remote updates to avoid app releases when pricing/languages change.
+
+**Backend Service (Hostinger KVM):**
+1. [ ] Set up nginx on Hostinger KVM to serve static JSON
+2. [ ] Create `config.json` with provider pricing, languages, and status
+3. [ ] Configure HTTPS with Let's Encrypt
+4. [ ] Create simple script to update config and track version
+
+**iOS App - RemoteConfigManager:**
+5. [ ] Create `RemoteConfigManager.swift` - fetches and caches remote config
+6. [ ] Implement weekly update check (on first app launch if >7 days since last check)
+7. [ ] Add manual refresh button in Settings → About
+8. [ ] Bundle fallback config for offline/first launch
+9. [ ] Store cached config in App Groups for keyboard access
+
+**Cost Display - Provider Settings/Help:**
+10. [ ] Show provider rates in ProviderHelpSheet (e.g., "$0.006/minute for Whisper")
+11. [ ] Add pricing info to provider editor (cost per minute/character/token)
+12. [ ] Update rates from remote config automatically
+
+**Cost Display - History:**
+13. [ ] Add estimated cost column to TranscriptionRecord model
+14. [ ] Calculate cost when transcription completes (based on duration/tokens)
+15. [ ] Display cost per item in HistoryView (subtle, not prominent)
+
+**Cost Analytics View (NEW):**
+16. [ ] Create `CostAnalyticsView.swift` - dedicated cost tracking screen
+17. [ ] Summary card: Total spend (day/week/month/all-time)
+18. [ ] Per-provider breakdown with pie chart (SwiftUI Charts)
+19. [ ] Usage over time line chart (transcriptions + costs)
+20. [ ] Cost by category (transcription vs translation vs formatting)
+21. [ ] Average cost per transcription stat
+22. [ ] Export cost report (CSV/PDF) - optional
+
+**UI Design - CostAnalyticsView:**
+```
+┌─────────────────────────────────────────────────────────┐
+│  Cost Analytics                         [↻ Refresh]    │
+├─────────────────────────────────────────────────────────┤
+│                                                         │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │           TOTAL SPEND                            │   │
+│  │              $2.47                               │   │
+│  │         ───────────────                          │   │
+│  │   Today   This Week   This Month   All Time      │   │
+│  │   $0.12     $0.89       $2.47        $2.47       │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  BY PROVIDER                                            │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │    [Pie Chart]         OpenAI      $2.35  95%   │   │
+│  │                        DeepL       $0.08   3%   │   │
+│  │                        Anthropic   $0.04   2%   │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  USAGE OVER TIME                                        │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │    [Line Chart - transcriptions & cost/day]      │   │
+│  │     ^                                            │   │
+│  │    $│   ∙∙∙                                      │   │
+│  │     │ ∙    ∙∙∙∙                                  │   │
+│  │     │∙         ∙∙∙∙                              │   │
+│  │     └────────────────────────────→ Date          │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  BREAKDOWN                                              │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ 🎤 Transcription              $1.98   80%        │   │
+│  │ 🌍 Translation                $0.37   15%        │   │
+│  │ ✨ Formatting                 $0.12    5%        │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  STATS                                                  │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ 📊 342 transcriptions this month                 │   │
+│  │ ⏱️ Average: 28 seconds per transcription         │   │
+│  │ 💰 Average cost: $0.007 per transcription        │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  Rates last updated: Dec 26, 2025                       │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Remote Config JSON Schema (with Dynamic Capabilities):**
+
+The config includes full capability definitions so providers can add/remove features without app updates:
+
+```json
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-12-26T00:00:00Z",
+  "schemaVersion": 2,
+  "providers": {
+    "openai": {
+      "displayName": "OpenAI",
+      "status": "operational",
+      "capabilities": {
+        "transcription": {
+          "enabled": true,
+          "models": [
+            { "id": "whisper-1", "name": "Whisper", "default": true }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi"],
+          "features": ["languageDetection", "timestamps"]
+        },
+        "translation": {
+          "enabled": true,
+          "models": [
+            { "id": "gpt-4o-mini", "name": "GPT-4o Mini", "default": true },
+            { "id": "gpt-4o", "name": "GPT-4o" }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi"],
+          "features": ["contextAware", "formalityControl"]
+        },
+        "powerMode": {
+          "enabled": true,
+          "models": [
+            { "id": "gpt-4o", "name": "GPT-4o", "default": true },
+            { "id": "gpt-4o-mini", "name": "GPT-4o Mini" },
+            { "id": "o1", "name": "o1 (Reasoning)", "tier": "power" }
+          ],
+          "features": ["streaming", "functionCalling", "vision", "webSearch"]
+        },
+        "formatting": {
+          "enabled": true,
+          "models": [
+            { "id": "gpt-4o-mini", "name": "GPT-4o Mini", "default": true }
+          ]
+        }
+      },
+      "pricing": {
+        "whisper-1": { "unit": "minute", "cost": 0.006 },
+        "gpt-4o": { "inputPerMToken": 2.50, "outputPerMToken": 10.00 },
+        "gpt-4o-mini": { "inputPerMToken": 0.15, "outputPerMToken": 0.60 },
+        "o1": { "inputPerMToken": 15.00, "outputPerMToken": 60.00 }
+      },
+      "freeCredits": "$5 for new accounts",
+      "apiKeyUrl": "https://platform.openai.com/api-keys",
+      "docsUrl": "https://platform.openai.com/docs"
+    },
+    "anthropic": {
+      "displayName": "Anthropic",
+      "status": "operational",
+      "capabilities": {
+        "transcription": { "enabled": false },
+        "translation": {
+          "enabled": true,
+          "models": [
+            { "id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "default": true },
+            { "id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku" }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko"],
+          "features": ["contextAware"]
+        },
+        "powerMode": {
+          "enabled": true,
+          "models": [
+            { "id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "default": true },
+            { "id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku" },
+            { "id": "claude-3-opus-latest", "name": "Claude 3 Opus", "tier": "power" }
+          ],
+          "features": ["streaming", "functionCalling", "vision", "computerUse"]
+        },
+        "formatting": {
+          "enabled": true,
+          "models": [
+            { "id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku", "default": true }
+          ]
+        }
+      },
+      "pricing": {
+        "claude-3-5-sonnet-latest": { "inputPerMToken": 3.00, "outputPerMToken": 15.00 },
+        "claude-3-5-haiku-latest": { "inputPerMToken": 0.80, "outputPerMToken": 4.00 },
+        "claude-3-opus-latest": { "inputPerMToken": 15.00, "outputPerMToken": 75.00 }
+      },
+      "apiKeyUrl": "https://console.anthropic.com/settings/keys",
+      "docsUrl": "https://docs.anthropic.com"
+    },
+    "google": {
+      "displayName": "Google",
+      "status": "operational",
+      "capabilities": {
+        "transcription": {
+          "enabled": true,
+          "models": [
+            { "id": "long", "name": "Long-form", "default": true },
+            { "id": "short", "name": "Short-form" }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi"],
+          "features": ["languageDetection", "timestamps", "speakerDiarization"],
+          "requiresProjectId": true
+        },
+        "translation": {
+          "enabled": true,
+          "models": [
+            { "id": "nmt", "name": "Neural MT", "default": true }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi", "th", "vi"],
+          "features": ["languageDetection", "glossary"]
+        },
+        "powerMode": {
+          "enabled": true,
+          "models": [
+            { "id": "gemini-2.0-flash-exp", "name": "Gemini 2.0 Flash", "default": true },
+            { "id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro" },
+            { "id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash" }
+          ],
+          "features": ["streaming", "functionCalling", "vision", "codeExecution"]
+        },
+        "formatting": {
+          "enabled": true,
+          "models": [
+            { "id": "gemini-2.0-flash-exp", "name": "Gemini 2.0 Flash", "default": true }
+          ]
+        }
+      },
+      "pricing": {
+        "long": { "unit": "minute", "cost": 0.006 },
+        "short": { "unit": "15seconds", "cost": 0.006 },
+        "nmt": { "unit": "character", "cost": 0.00002 },
+        "gemini-2.0-flash-exp": { "inputPerMToken": 0.075, "outputPerMToken": 0.30 },
+        "gemini-1.5-pro": { "inputPerMToken": 1.25, "outputPerMToken": 5.00 },
+        "gemini-1.5-flash": { "inputPerMToken": 0.075, "outputPerMToken": 0.30 }
+      },
+      "freeCredits": "Free tier available",
+      "apiKeyUrl": "https://aistudio.google.com/apikey",
+      "docsUrl": "https://ai.google.dev/docs"
+    },
+    "deepgram": {
+      "displayName": "Deepgram",
+      "status": "operational",
+      "capabilities": {
+        "transcription": {
+          "enabled": true,
+          "models": [
+            { "id": "nova-2", "name": "Nova-2", "default": true },
+            { "id": "nova", "name": "Nova" },
+            { "id": "enhanced", "name": "Enhanced" },
+            { "id": "base", "name": "Base" }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pt", "ru", "it"],
+          "features": ["languageDetection", "timestamps", "speakerDiarization", "streaming"]
+        },
+        "translation": { "enabled": false },
+        "powerMode": { "enabled": false },
+        "formatting": { "enabled": false }
+      },
+      "pricing": {
+        "nova-2": { "unit": "minute", "cost": 0.0043 },
+        "nova": { "unit": "minute", "cost": 0.0036 },
+        "enhanced": { "unit": "minute", "cost": 0.0145 },
+        "base": { "unit": "minute", "cost": 0.0125 }
+      },
+      "freeCredits": "$200 free credits",
+      "apiKeyUrl": "https://console.deepgram.com/project/*/keys",
+      "docsUrl": "https://developers.deepgram.com"
+    },
+    "deepl": {
+      "displayName": "DeepL",
+      "status": "operational",
+      "capabilities": {
+        "transcription": { "enabled": false },
+        "translation": {
+          "enabled": true,
+          "models": [
+            { "id": "default", "name": "DeepL Neural", "default": true }
+          ],
+          "languages": ["EN", "DE", "FR", "ES", "IT", "JA", "ZH", "PL", "PT", "RU", "NL", "SV", "DA", "FI", "EL", "CS", "RO", "HU", "SK", "BG", "LT", "LV", "ET", "SL"],
+          "features": ["formalityControl", "glossary", "documentTranslation"]
+        },
+        "powerMode": { "enabled": false },
+        "formatting": { "enabled": false }
+      },
+      "pricing": {
+        "default": { "unit": "character", "cost": 0.00002 }
+      },
+      "freeCredits": "500,000 chars/month free",
+      "apiKeyUrl": "https://www.deepl.com/account/summary",
+      "docsUrl": "https://www.deepl.com/docs-api"
+    },
+    "azure": {
+      "displayName": "Azure",
+      "status": "operational",
+      "capabilities": {
+        "transcription": { "enabled": false },
+        "translation": {
+          "enabled": true,
+          "models": [
+            { "id": "translator", "name": "Azure Translator", "default": true }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi", "th", "vi", "id"],
+          "features": ["languageDetection", "transliteration", "dictionary"],
+          "requiresRegion": true
+        },
+        "powerMode": { "enabled": false },
+        "formatting": { "enabled": false }
+      },
+      "pricing": {
+        "translator": { "unit": "character", "cost": 0.00001 }
+      },
+      "freeCredits": "2M chars/month free",
+      "apiKeyUrl": "https://portal.azure.com",
+      "docsUrl": "https://learn.microsoft.com/en-us/azure/ai-services/translator"
+    },
+    "assemblyai": {
+      "displayName": "AssemblyAI",
+      "status": "operational",
+      "capabilities": {
+        "transcription": {
+          "enabled": true,
+          "models": [
+            { "id": "best", "name": "Best", "default": true },
+            { "id": "nano", "name": "Nano (Fast)" }
+          ],
+          "languages": ["en", "es", "fr", "de", "it", "pt", "nl", "ja", "ko", "zh", "hi", "pl", "ru", "tr", "uk", "vi"],
+          "features": ["languageDetection", "timestamps", "speakerDiarization", "summarization", "sentimentAnalysis"]
+        },
+        "translation": { "enabled": false },
+        "powerMode": { "enabled": false },
+        "formatting": { "enabled": false }
+      },
+      "pricing": {
+        "best": { "unit": "minute", "cost": 0.00037 },
+        "nano": { "unit": "minute", "cost": 0.00012 }
+      },
+      "apiKeyUrl": "https://www.assemblyai.com/app/account",
+      "docsUrl": "https://www.assemblyai.com/docs"
+    },
+    "elevenlabs": {
+      "displayName": "ElevenLabs",
+      "status": "operational",
+      "capabilities": {
+        "transcription": {
+          "enabled": true,
+          "models": [
+            { "id": "scribe_v1", "name": "Scribe", "default": true }
+          ],
+          "languages": ["en", "es", "fr", "de", "ja", "ko", "zh", "pt", "it", "pl", "nl", "sv", "da", "fi", "no", "ru", "uk", "tr", "ar", "hi", "id", "ms", "th", "vi", "cs", "el", "hu", "ro", "sk", "bg"],
+          "features": ["timestamps", "speakerDiarization"]
+        },
+        "translation": { "enabled": false },
+        "powerMode": { "enabled": false },
+        "formatting": { "enabled": false }
+      },
+      "pricing": {
+        "scribe_v1": { "unit": "minute", "cost": 0.00 }
+      },
+      "freeCredits": "2.5 hours/month free, then $0.003/min",
+      "notes": "Free tier includes 2.5 hours of transcription per month",
+      "apiKeyUrl": "https://elevenlabs.io/app/settings/api-keys",
+      "docsUrl": "https://elevenlabs.io/docs/api-reference"
+    },
+    "local": {
+      "displayName": "Local AI",
+      "status": "operational",
+      "capabilities": {
+        "transcription": {
+          "enabled": true,
+          "models": [],
+          "languages": [],
+          "features": ["offline"],
+          "note": "Models fetched dynamically from local server"
+        },
+        "translation": {
+          "enabled": true,
+          "models": [],
+          "languages": [],
+          "features": ["offline"],
+          "note": "Models fetched dynamically from local server"
+        },
+        "powerMode": {
+          "enabled": true,
+          "models": [],
+          "features": ["offline", "streaming"],
+          "note": "Models fetched dynamically from local server"
+        },
+        "formatting": {
+          "enabled": true,
+          "models": [],
+          "note": "Models fetched dynamically from local server"
+        }
+      },
+      "pricing": {},
+      "notes": "100% free - runs on your own hardware"
+    }
+  },
+  "defaultProviders": {
+    "transcription": "openai",
+    "translation": "openai",
+    "powerMode": "openai",
+    "formatting": "openai"
+  },
+  "featureFlags": {
+    "powerModeEnabled": true,
+    "translationEnabled": true,
+    "customTemplatesEnabled": true,
+    "costTrackingEnabled": true
+  },
+  "announcements": [
+    {
+      "id": "gemini-2-launch",
+      "type": "info",
+      "title": "Gemini 2.0 Flash Now Available",
+      "message": "Google's fastest model is now available for Power Mode!",
+      "validUntil": "2025-01-15T00:00:00Z"
+    }
+  ]
+}
+```
+
+**Capability Schema Explained:**
+
+| Field | Purpose |
+|-------|---------|
+| `capabilities.<type>.enabled` | Whether this provider supports this capability (can change!) |
+| `capabilities.<type>.models[]` | Available models with id, name, default flag, and tier |
+| `capabilities.<type>.languages[]` | Supported language codes (can be updated remotely) |
+| `capabilities.<type>.features[]` | Special features: streaming, vision, functionCalling, etc. |
+| `capabilities.<type>.requiresProjectId` | Provider needs additional config (e.g., Google) |
+| `capabilities.<type>.requiresRegion` | Provider needs region (e.g., Azure) |
+| `pricing.<modelId>` | Cost per unit for each model |
+| `freeCredits` | Info about free tier |
+| `apiKeyUrl` | Direct link to get API key |
+| `featureFlags` | App-wide feature toggles (can disable features remotely) |
+| `announcements` | In-app notifications about new features/providers |
+
+**Example: Provider Adds New Capability**
+
+If Anthropic suddenly adds transcription support, you just update the config:
+```json
+// Before
+"anthropic": {
+  "capabilities": {
+    "transcription": { "enabled": false },
+    ...
+  }
+}
+
+// After (update remotely, no app release needed!)
+"anthropic": {
+  "capabilities": {
+    "transcription": {
+      "enabled": true,
+      "models": [{ "id": "claude-whisper", "name": "Claude Whisper", "default": true }],
+      "languages": ["en", "es", "fr", "de"],
+      "features": ["languageDetection"]
+    },
+    ...
+  },
+  "pricing": {
+    "claude-whisper": { "unit": "minute", "cost": 0.005 },
+    ...
+  }
+}
+```
+
+**How iOS App Uses Dynamic Capabilities:**
+
+```swift
+// Check if provider supports a capability (reads from remote config)
+func supportsCapability(_ provider: AIProvider, _ capability: ProviderUsageCategory) -> Bool {
+    guard let providerConfig = remoteConfig.providers[provider.rawValue],
+          let capConfig = providerConfig.capabilities[capability.rawValue] else {
+        return false
+    }
+    return capConfig.enabled
+}
+
+// Get available models for a capability
+func availableModels(for provider: AIProvider, capability: ProviderUsageCategory) -> [ModelInfo] {
+    remoteConfig.providers[provider.rawValue]?
+        .capabilities[capability.rawValue]?
+        .models ?? []
+}
+
+// Check if a feature is available
+func hasFeature(_ provider: AIProvider, capability: ProviderUsageCategory, feature: String) -> Bool {
+    remoteConfig.providers[provider.rawValue]?
+        .capabilities[capability.rawValue]?
+        .features.contains(feature) ?? false
+}
+
+// Get languages supported by provider for a capability
+func supportedLanguages(for provider: AIProvider, capability: ProviderUsageCategory) -> [String] {
+    remoteConfig.providers[provider.rawValue]?
+        .capabilities[capability.rawValue]?
+        .languages ?? []
+}
+```
+
+**Dynamic UI Updates:**
+
+When capabilities change remotely, the app automatically:
+1. Shows/hides providers in capability dropdowns based on `enabled`
+2. Updates available models in model picker based on `models[]`
+3. Updates language dropdowns based on `languages[]`
+4. Enables/disables features based on `featureFlags`
+5. Shows announcements for new features/providers
+
+**Files to Create:**
+| File | Purpose |
+|------|---------|
+| `Services/Remote/RemoteConfigManager.swift` | Fetch, cache, parse remote config |
+| `Services/Remote/RemoteConfig.swift` | Data models for remote config |
+| `Services/Remote/CostCalculator.swift` | Calculate costs based on usage |
+| `Views/CostAnalyticsView.swift` | Cost analytics dashboard |
+| `Views/Components/CostSummaryCard.swift` | Total spend summary |
+| `Views/Components/ProviderCostChart.swift` | Pie chart by provider |
+| `Views/Components/UsageTimelineChart.swift` | Line chart over time |
+
+**Files to Modify:**
+| File | Changes |
+|------|---------|
+| `SharedSettings.swift` | Add cached config storage, cost tracking |
+| `Models.swift` | Add `TranscriptionRecord.estimatedCost` field |
+| `HistoryView.swift` | Display cost per item |
+| `SettingsView.swift` | Add Cost Analytics navigation, refresh button |
+| `Views/Components/ProviderHelpSheet.swift` | Show pricing from remote config |
+| `TranscriptionOrchestrator.swift` | Calculate and store cost after transcription |
+
+**Backend Setup (Hostinger KVM):**
+```bash
+# On Hostinger KVM (Ubuntu/Debian)
+
+# 1. Install nginx
+sudo apt update && sudo apt install nginx certbot python3-certbot-nginx
+
+# 2. Create directory for config
+sudo mkdir -p /var/www/swiftspeak-config
+sudo chown $USER:$USER /var/www/swiftspeak-config
+
+# 3. Create config.json
+nano /var/www/swiftspeak-config/config.json
+
+# 4. Configure nginx
+sudo nano /etc/nginx/sites-available/swiftspeak-config
+# server {
+#     listen 80;
+#     server_name config.yourdomain.com;
+#     root /var/www/swiftspeak-config;
+#     location / {
+#         add_header Access-Control-Allow-Origin "*";
+#         add_header Cache-Control "public, max-age=3600";
+#     }
+# }
+
+# 5. Enable site
+sudo ln -s /etc/nginx/sites-available/swiftspeak-config /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+# 6. Add HTTPS
+sudo certbot --nginx -d config.yourdomain.com
+```
+
+**Fallback & Offline Handling:**
+The iOS app must work even if the Hostinger server is temporarily unavailable:
+
+1. **Bundled Fallback Config** - Ship a copy of config.json in app bundle
+2. **Cache with Expiry** - Cache fetched config in UserDefaults/App Groups
+3. **Graceful Degradation** - If fetch fails, use cached config (even if stale)
+4. **Network-Resilient Flow:**
+   ```
+   App Launch
+       │
+       ▼
+   ┌─────────────────────────┐
+   │ Last fetch > 7 days?    │──No──→ Use cached config
+   └─────────────────────────┘
+       │ Yes
+       ▼
+   ┌─────────────────────────┐
+   │ Fetch from Hostinger    │
+   └─────────────────────────┘
+       │
+   ┌───┴───┐
+   │       │
+Success   Fail (timeout/error)
+   │       │
+   ▼       ▼
+   ┌─────────────────────────┐
+   │ Update cache, use new   │
+   └─────────────────────────┘
+           │
+   ┌───────┴───────┐
+   │               │
+   ▼               ▼
+   ┌─────────────────────────┐
+   │ Use cached config       │──Cached exists──→ Use stale cache (show warning)
+   └─────────────────────────┘
+           │
+           │ No cache
+           ▼
+   ┌─────────────────────────┐
+   │ Use bundled fallback    │
+   └─────────────────────────┘
+   ```
+
+5. **Stale Indicator** - If using stale cache (>30 days old), show subtle "Last updated X days ago" in Settings
+
+**RemoteConfigManager Pseudocode:**
+```swift
+actor RemoteConfigManager {
+    private let configURL = URL(string: "https://config.yourdomain.com/config.json")!
+    private let cacheKey = "cachedProviderConfig"
+    private let lastFetchKey = "lastConfigFetch"
+    private let staleThreshold: TimeInterval = 7 * 24 * 60 * 60  // 7 days
+
+    func getConfig() async -> ProviderConfig {
+        // 1. Check if we need to refresh
+        if shouldRefresh() {
+            if let freshConfig = await fetchRemoteConfig() {
+                saveToCache(freshConfig)
+                return freshConfig
+            }
+        }
+
+        // 2. Try cached config
+        if let cached = loadFromCache() {
+            return cached
+        }
+
+        // 3. Fall back to bundled config
+        return loadBundledConfig()
+    }
+
+    func forceRefresh() async -> Result<ProviderConfig, Error> {
+        guard let config = await fetchRemoteConfig() else {
+            return .failure(NetworkError.fetchFailed)
+        }
+        saveToCache(config)
+        return .success(config)
+    }
+
+    private func fetchRemoteConfig() async -> ProviderConfig? {
+        do {
+            let (data, _) = try await URLSession.shared.data(from: configURL, timeout: 10)
+            return try JSONDecoder().decode(ProviderConfig.self, from: data)
+        } catch {
+            print("Config fetch failed: \(error)")
+            return nil
+        }
+    }
+}
+```
+
+---
+
+**Automatic Update Script (Hostinger):**
+
+Create a Python script that updates pricing, capabilities, models, and languages automatically:
+
+**File: `/var/www/swiftspeak-config/auto-update.py`**
+```python
+#!/usr/bin/env python3
+"""
+Auto-update provider pricing, capabilities, models, and languages.
+Run via cron: 0 3 * * 0  /usr/bin/python3 /var/www/swiftspeak-config/auto-update.py
+(Every Sunday at 3 AM)
+
+This script maintains the master data for all providers.
+When a provider adds/removes capabilities, update the PROVIDER_DATA dictionary below.
+"""
+
+import json
+import requests
+from datetime import datetime
+from pathlib import Path
+import shutil
+
+CONFIG_PATH = Path("/var/www/swiftspeak-config/config.json")
+BACKUP_DIR = Path("/var/www/swiftspeak-config/backups")
+
+# ============================================================================
+# MASTER DATA - Update this when providers change pricing/capabilities/models
+# ============================================================================
+
+PROVIDER_DATA = {
+    "openai": {
+        "displayName": "OpenAI",
+        "capabilities": {
+            "transcription": {
+                "enabled": True,
+                "models": [
+                    {"id": "whisper-1", "name": "Whisper", "default": True}
+                ],
+                "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi"],
+                "features": ["languageDetection", "timestamps"]
+            },
+            "translation": {
+                "enabled": True,
+                "models": [
+                    {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "default": True},
+                    {"id": "gpt-4o", "name": "GPT-4o"}
+                ],
+                "languages": ["en", "es", "fr", "de", "ja", "zh", "ko", "pl", "pt", "ru", "it", "ar", "hi"],
+                "features": ["contextAware", "formalityControl"]
+            },
+            "powerMode": {
+                "enabled": True,
+                "models": [
+                    {"id": "gpt-4o", "name": "GPT-4o", "default": True},
+                    {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
+                    {"id": "o1", "name": "o1 (Reasoning)", "tier": "power"}
+                ],
+                "features": ["streaming", "functionCalling", "vision", "webSearch"]
+            },
+            "formatting": {
+                "enabled": True,
+                "models": [{"id": "gpt-4o-mini", "name": "GPT-4o Mini", "default": True}]
+            }
+        },
+        "pricing": {
+            "whisper-1": {"unit": "minute", "cost": 0.006},
+            "gpt-4o": {"inputPerMToken": 2.50, "outputPerMToken": 10.00},
+            "gpt-4o-mini": {"inputPerMToken": 0.15, "outputPerMToken": 0.60},
+            "o1": {"inputPerMToken": 15.00, "outputPerMToken": 60.00}
+        },
+        "freeCredits": "$5 for new accounts",
+        "apiKeyUrl": "https://platform.openai.com/api-keys",
+        "docsUrl": "https://platform.openai.com/docs"
+    },
+    "anthropic": {
+        "displayName": "Anthropic",
+        "capabilities": {
+            "transcription": {"enabled": False},  # Anthropic doesn't have STT (yet!)
+            "translation": {
+                "enabled": True,
+                "models": [
+                    {"id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "default": True},
+                    {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"}
+                ],
+                "languages": ["en", "es", "fr", "de", "ja", "zh", "ko"],
+                "features": ["contextAware"]
+            },
+            "powerMode": {
+                "enabled": True,
+                "models": [
+                    {"id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "default": True},
+                    {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"},
+                    {"id": "claude-3-opus-latest", "name": "Claude 3 Opus", "tier": "power"}
+                ],
+                "features": ["streaming", "functionCalling", "vision", "computerUse"]
+            },
+            "formatting": {
+                "enabled": True,
+                "models": [{"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku", "default": True}]
+            }
+        },
+        "pricing": {
+            "claude-3-5-sonnet-latest": {"inputPerMToken": 3.00, "outputPerMToken": 15.00},
+            "claude-3-5-haiku-latest": {"inputPerMToken": 0.80, "outputPerMToken": 4.00},
+            "claude-3-opus-latest": {"inputPerMToken": 15.00, "outputPerMToken": 75.00}
+        },
+        "apiKeyUrl": "https://console.anthropic.com/settings/keys",
+        "docsUrl": "https://docs.anthropic.com"
+    },
+    # ... (other providers - deepgram, deepl, google, azure, assemblyai, elevenlabs, local)
+    # Full data for all providers stored here - update when capabilities change
+}
+
+# Status page endpoints (Atlassian Statuspage format)
+STATUS_ENDPOINTS = {
+    "openai": "https://status.openai.com/api/v2/status.json",
+    "anthropic": "https://status.anthropic.com/api/v2/status.json",
+    "deepgram": "https://status.deepgram.com/api/v2/status.json",
+}
+
+# ============================================================================
+# UTILITY FUNCTIONS
+# ============================================================================
+
+def backup_config():
+    """Create timestamped backup."""
+    BACKUP_DIR.mkdir(exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup_path = BACKUP_DIR / f"config-{timestamp}.json"
+    if CONFIG_PATH.exists():
+        shutil.copy(CONFIG_PATH, backup_path)
+        print(f"✓ Backup created: {backup_path}")
+        # Keep only last 30 backups
+        backups = sorted(BACKUP_DIR.glob("config-*.json"), reverse=True)
+        for old_backup in backups[30:]:
+            old_backup.unlink()
+
+def load_config():
+    """Load current config or create empty one."""
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    return {"version": "1.0.0", "providers": {}}
+
+def save_config(config):
+    """Save updated config with version bump."""
+    config["lastUpdated"] = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    # Bump patch version
+    version_parts = config["version"].split(".")
+    version_parts[2] = str(int(version_parts[2]) + 1)
+    config["version"] = ".".join(version_parts)
+
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(config, f, indent=2)
+
+    print(f"✓ Config saved: version {config['version']}")
+
+def check_provider_status(provider_key):
+    """Check if provider API is operational via status page."""
+    if provider_key not in STATUS_ENDPOINTS:
+        return "operational"  # Assume operational if no status page
+
+    try:
+        resp = requests.get(STATUS_ENDPOINTS[provider_key], timeout=10)
+        if resp.ok:
+            data = resp.json()
+            indicator = data.get("status", {}).get("indicator", "none")
+            return "operational" if indicator == "none" else "degraded"
+    except Exception as e:
+        print(f"  ⚠ Could not check {provider_key} status: {e}")
+
+    return "unknown"
+
+def update_providers(config):
+    """Update all provider data from PROVIDER_DATA."""
+    for provider_key, provider_data in PROVIDER_DATA.items():
+        print(f"Updating {provider_key}...")
+
+        # Merge with existing data (preserve any manual additions)
+        existing = config["providers"].get(provider_key, {})
+
+        # Update from master data
+        config["providers"][provider_key] = {
+            **provider_data,
+            "status": check_provider_status(provider_key)
+        }
+
+        # Log capability changes
+        if existing:
+            for cap_type in ["transcription", "translation", "powerMode", "formatting"]:
+                old_enabled = existing.get("capabilities", {}).get(cap_type, {}).get("enabled", False)
+                new_enabled = provider_data.get("capabilities", {}).get(cap_type, {}).get("enabled", False)
+                if old_enabled != new_enabled:
+                    action = "ENABLED" if new_enabled else "DISABLED"
+                    print(f"  ⚡ {provider_key}.{cap_type}: {action}")
+
+        print(f"  ✓ {provider_key} updated")
+
+    return config
+
+def update_announcements(config):
+    """Remove expired announcements, add new ones."""
+    now = datetime.utcnow()
+    if "announcements" in config:
+        config["announcements"] = [
+            a for a in config["announcements"]
+            if datetime.fromisoformat(a["validUntil"].replace("Z", "+00:00")).replace(tzinfo=None) > now
+        ]
+    return config
+
+def main():
+    print(f"\n{'='*60}")
+    print(f"SwiftSpeak Config Auto-Update")
+    print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'='*60}\n")
+
+    # Backup current config
+    backup_config()
+
+    # Load and update
+    config = load_config()
+    config = update_providers(config)
+    config = update_announcements(config)
+
+    # Update metadata
+    config["schemaVersion"] = 2
+    config["defaultProviders"] = {
+        "transcription": "openai",
+        "translation": "openai",
+        "powerMode": "openai",
+        "formatting": "openai"
+    }
+    config["featureFlags"] = {
+        "powerModeEnabled": True,
+        "translationEnabled": True,
+        "customTemplatesEnabled": True,
+        "costTrackingEnabled": True
+    }
+
+    # Save
+    save_config(config)
+
+    print(f"\n{'='*60}")
+    print("Auto-update complete!")
+    print(f"{'='*60}\n")
+
+if __name__ == "__main__":
+    main()
+```
+
+**When to Update PROVIDER_DATA:**
+
+| Change Type | What to Update |
+|-------------|----------------|
+| New model released | Add to `capabilities.<type>.models[]` and `pricing` |
+| Model deprecated | Remove from `models[]` and `pricing` |
+| Price change | Update `pricing.<modelId>` values |
+| New capability | Set `capabilities.<type>.enabled = True`, add models |
+| Capability removed | Set `capabilities.<type>.enabled = False` |
+| New language | Add to `capabilities.<type>.languages[]` |
+| New feature | Add to `capabilities.<type>.features[]` |
+
+**Example: Anthropic Adds Transcription**
+```python
+# Before
+"anthropic": {
+    "capabilities": {
+        "transcription": {"enabled": False},
+        ...
+    }
+}
+
+# After (just update PROVIDER_DATA)
+"anthropic": {
+    "capabilities": {
+        "transcription": {
+            "enabled": True,
+            "models": [{"id": "claude-whisper", "name": "Claude Whisper", "default": True}],
+            "languages": ["en", "es", "fr", "de"],
+            "features": ["languageDetection"]
+        },
+        ...
+    },
+    "pricing": {
+        "claude-whisper": {"unit": "minute", "cost": 0.005},
+        ...
+    }
+}
+```
+
+Run `python3 auto-update.py` and the app will automatically show Anthropic in the transcription provider dropdown!
+
+**Cron Setup:**
+```bash
+# Edit crontab
+crontab -e
+
+# Add line to run every Sunday at 3 AM:
+0 3 * * 0 /usr/bin/python3 /var/www/swiftspeak-config/auto-update.py >> /var/log/swiftspeak-config-update.log 2>&1
+
+# Or run daily at 4 AM:
+0 4 * * * /usr/bin/python3 /var/www/swiftspeak-config/auto-update.py >> /var/log/swiftspeak-config-update.log 2>&1
+```
+
+**Manual Update Script (for quick edits):**
+```bash
+#!/bin/bash
+# /var/www/swiftspeak-config/update-config.sh
+
+CONFIG_FILE="/var/www/swiftspeak-config/config.json"
+BACKUP_DIR="/var/www/swiftspeak-config/backups"
+
+# Create backup
+mkdir -p $BACKUP_DIR
+cp $CONFIG_FILE "$BACKUP_DIR/config-$(date +%Y%m%d-%H%M%S).json"
+
+# Edit config
+${EDITOR:-nano} $CONFIG_FILE
+
+# Update lastUpdated timestamp
+sed -i "s/\"lastUpdated\": \".*\"/\"lastUpdated\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"/" $CONFIG_FILE
+
+# Validate JSON
+python3 -m json.tool $CONFIG_FILE > /dev/null && echo "✓ Valid JSON" || echo "✗ Invalid JSON!"
+
+echo "Config updated."
+```
+
+**Required Python packages on Hostinger:**
+```bash
+pip3 install requests
+```
 
 ---
 
@@ -1106,6 +2321,147 @@ All screens functional with mock data, full navigation, polished animations.
 - [ ] Confetti on FullAccessScreen (currently only on AllSetScreen)
 - [ ] Real audio recording (currently mock)
 - [ ] Real API integrations (currently mock)
+
+---
+
+## Security Architecture (Phase 6)
+
+### API Key Storage: iOS Keychain
+
+**Current (INSECURE):** API keys stored in UserDefaults (plain text, extractable from backups)
+
+**Target:** Migrate to iOS Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+
+```swift
+// KeychainManager.swift (NEW FILE)
+struct KeychainManager {
+    enum KeychainKey: String {
+        case openAIAPIKey = "com.swiftspeak.openai.apikey"
+        case anthropicAPIKey = "com.swiftspeak.anthropic.apikey"
+        case elevenLabsAPIKey = "com.swiftspeak.elevenlabs.apikey"
+        case deepgramAPIKey = "com.swiftspeak.deepgram.apikey"
+        case googleAPIKey = "com.swiftspeak.google.apikey"
+        case localAuthToken = "com.swiftspeak.local.authtoken"
+    }
+
+    static func save(key: KeychainKey, value: String) -> Bool
+    static func get(key: KeychainKey) -> String?
+    static func delete(key: KeychainKey) -> Bool
+    static func deleteAll() -> Bool
+}
+```
+
+**Migration path:**
+1. On first launch after update, migrate keys from UserDefaults to Keychain
+2. Delete keys from UserDefaults after successful migration
+3. Update `SharedSettings` to use `KeychainManager` for API keys
+4. Keep non-sensitive settings in UserDefaults (modes, preferences)
+
+### Biometric Authentication (Selective - History & API Keys Only)
+
+**IMPORTANT UX PRINCIPLE:** The core recording flow (keyboard → app → record → transcribe → return) must remain completely frictionless. NO Face ID prompts during normal usage.
+
+**What IS protected (optional, user-enabled):**
+- History tab (contains all past transcriptions)
+- Viewing/editing API keys in Settings
+
+**What is NOT protected (for speed):**
+- App launch
+- Recording flow
+- Settings (except API keys section)
+- Power Mode execution
+
+**Settings UI:**
+```
+Settings → Privacy & Security
+┌─────────────────────────────────────────┐
+│ PRIVACY & SECURITY                      │
+│                                         │
+│ Protect History              ────●      │
+│ Require Face ID to view past            │
+│ transcriptions                          │
+│                                         │
+│ Protect API Keys             ────●      │
+│ Require Face ID to view or edit         │
+│ your API keys                           │
+└─────────────────────────────────────────┘
+```
+
+**Implementation:**
+```swift
+// BiometricManager.swift (NEW FILE)
+import LocalAuthentication
+
+struct BiometricManager {
+    static var biometricType: LABiometryType  // .faceID, .touchID, .none
+    static var isAvailable: Bool
+
+    /// Authenticate for sensitive data access
+    /// - Parameter reason: Shown to user (e.g., "Access your transcription history")
+    static func authenticate(reason: String) async -> Bool
+}
+```
+
+**Flow when History is protected:**
+1. User taps History tab
+2. Blur overlay appears with Face ID prompt
+3. Success → History content revealed
+4. Fail → Stay on blur, show "Try Again" or go back
+
+**Protected actions (when enabled):**
+- Viewing History tab
+- Viewing API keys in provider settings
+- Editing/deleting API keys
+
+### Data Protection
+
+**Transcription History Encryption:**
+- Use iOS Data Protection API (`FileProtectionType.complete`)
+- History file only accessible when device is unlocked
+- Alternatively: Encrypt with user-derived key before storing
+
+**Audio Files:**
+- Already using `temporaryDirectory` ✅
+- Files deleted after API upload ✅
+- Add explicit cleanup on app termination
+
+### Secure Data Deletion
+
+```
+Settings → About → Delete All Data
+┌─────────────────────────────────────────┐
+│ ⚠️ Delete All Data                      │
+│                                         │
+│ This will permanently delete:           │
+│ • All API keys                          │
+│ • Transcription history                 │
+│ • Custom templates                      │
+│ • Power Modes                           │
+│ • All preferences                       │
+│                                         │
+│ This action cannot be undone.           │
+│                                         │
+│ [Cancel]            [Delete Everything] │
+└─────────────────────────────────────────┘
+```
+
+### App Store Privacy Labels
+
+Data collected by SwiftSpeak:
+
+| Data Type | Collected | Linked to User | Used for Tracking |
+|-----------|-----------|----------------|-------------------|
+| Audio | Yes (temporary) | No | No |
+| User Content (transcripts) | Yes | No | No |
+| Identifiers | No | - | No |
+| Usage Data | No | - | No |
+| Diagnostics | No | - | No |
+
+**Privacy disclosures required:**
+- Microphone usage description
+- Full Access keyboard justification
+- Data not sold to third parties
+- Data processed on-device or via user's own API keys
 
 ---
 

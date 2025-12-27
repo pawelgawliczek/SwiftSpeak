@@ -74,10 +74,10 @@ struct PowerModeResultView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
 
-                    if !result.capabilitiesUsed.isEmpty {
+                    if result.usedRAG {
                         Text("•")
                             .foregroundStyle(.secondary)
-                        Text("\(result.capabilitiesUsed.map { $0.displayName }.joined(separator: ", ")) used")
+                        Text("\(result.ragDocumentIds.count) documents used")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

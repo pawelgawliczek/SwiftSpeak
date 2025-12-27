@@ -168,6 +168,10 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case elevenLabs = "elevenlabs"
     case deepgram = "deepgram"
     case local = "local"  // Renamed from ollama to support multiple local provider types
+    // Phase 3 additions:
+    case assemblyAI = "assemblyai"
+    case deepL = "deepl"
+    case azure = "azure"
 
     var id: String { rawValue }
 
@@ -175,10 +179,13 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "OpenAI"
         case .anthropic: return "Anthropic Claude"
-        case .google: return "Google Gemini"
+        case .google: return "Google Cloud"
         case .elevenLabs: return "ElevenLabs"
         case .deepgram: return "Deepgram"
         case .local: return "Local AI"
+        case .assemblyAI: return "AssemblyAI"
+        case .deepL: return "DeepL"
+        case .azure: return "Azure Translator"
         }
     }
 
@@ -186,10 +193,13 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "OpenAI"
         case .anthropic: return "Claude"
-        case .google: return "Gemini"
+        case .google: return "Google"
         case .elevenLabs: return "ElevenLabs"
         case .deepgram: return "Deepgram"
         case .local: return "Local"
+        case .assemblyAI: return "AssemblyAI"
+        case .deepL: return "DeepL"
+        case .azure: return "Azure"
         }
     }
 
@@ -201,6 +211,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return "waveform"
         case .deepgram: return "mic.fill"
         case .local: return "desktopcomputer"
+        case .assemblyAI: return "waveform.circle.fill"
+        case .deepL: return "character.book.closed.fill"
+        case .azure: return "cloud.fill"
         }
     }
 
@@ -208,10 +221,13 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return "Whisper for transcription, GPT for AI processing"
         case .anthropic: return "Advanced reasoning and safety-focused AI"
-        case .google: return "Multimodal AI with fast responses"
+        case .google: return "STT, Translation, and Gemini for AI processing"
         case .elevenLabs: return "Speech recognition with free tier (2.5 hrs/month)"
         case .deepgram: return "Fast transcription with competitive pricing"
         case .local: return "Local AI (Ollama, LM Studio, or OpenAI-compatible)"
+        case .assemblyAI: return "Fast, accurate transcription with speaker diarization"
+        case .deepL: return "High-quality neural machine translation"
+        case .azure: return "Microsoft Azure Translator for 100+ languages"
         }
     }
 
@@ -229,22 +245,22 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
     var supportsTranscription: Bool {
         switch self {
-        case .openAI, .elevenLabs, .deepgram, .local: return true
-        case .anthropic, .google: return false
+        case .openAI, .elevenLabs, .deepgram, .local, .assemblyAI, .google: return true
+        case .anthropic, .deepL, .azure: return false
         }
     }
 
     var supportsTranslation: Bool {
         switch self {
-        case .openAI, .anthropic, .google, .local: return true
-        case .elevenLabs, .deepgram: return false
+        case .openAI, .anthropic, .google, .local, .deepL, .azure: return true
+        case .elevenLabs, .deepgram, .assemblyAI: return false
         }
     }
 
     var supportsPowerMode: Bool {
         switch self {
         case .openAI, .anthropic, .google, .local: return true
-        case .elevenLabs, .deepgram: return false
+        case .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure: return false
         }
     }
 
@@ -265,7 +281,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return ["scribe_v1"]
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]
         case .local: return [] // Models are fetched dynamically from the local server
-        case .anthropic, .google: return []
+        case .assemblyAI: return ["default", "nano"]
+        case .google: return ["long", "short", "telephony", "medical_dictation", "medical_conversation"]
+        case .anthropic, .deepL, .azure: return []
         }
     }
 
@@ -275,7 +293,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return "scribe_v1"
         case .deepgram: return "nova-2"
         case .local: return nil // Must be selected after connecting
-        case .anthropic, .google: return nil
+        case .assemblyAI: return "default"
+        case .google: return "long"
+        case .anthropic, .deepL, .azure: return nil
         }
     }
 
@@ -288,7 +308,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .anthropic: return ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
         case .google: return ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"]
         case .local: return [] // Models are fetched dynamically from the local server
-        case .elevenLabs, .deepgram: return []
+        case .deepL: return ["default"]  // DeepL doesn't have model selection
+        case .azure: return ["default"]  // Azure Translator doesn't have model selection
+        case .elevenLabs, .deepgram, .assemblyAI: return []
         }
     }
 
@@ -298,7 +320,9 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .anthropic: return "claude-3-5-sonnet-latest"
         case .google: return "gemini-2.0-flash-exp"
         case .local: return nil // Must be selected after connecting
-        case .elevenLabs, .deepgram: return nil
+        case .deepL: return "default"
+        case .azure: return "default"
+        case .elevenLabs, .deepgram, .assemblyAI: return nil
         }
     }
 
@@ -308,10 +332,13 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return URL(string: "https://platform.openai.com/api-keys")
         case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")
-        case .google: return URL(string: "https://aistudio.google.com/app/apikey")
+        case .google: return URL(string: "https://console.cloud.google.com/apis/credentials")
         case .elevenLabs: return URL(string: "https://elevenlabs.io/app/settings/api-keys")
         case .deepgram: return URL(string: "https://console.deepgram.com/project/api-keys")
         case .local: return URL(string: "https://ollama.ai") // Default to Ollama docs
+        case .assemblyAI: return URL(string: "https://www.assemblyai.com/app/account")
+        case .deepL: return URL(string: "https://www.deepl.com/account/summary")
+        case .azure: return URL(string: "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/TextTranslation")
         }
     }
 
@@ -375,6 +402,30 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
             Other OpenAI-compatible:
             Enter your server's URL and optional API token.
             """
+        case .assemblyAI:
+            return """
+            1. Go to assemblyai.com
+            2. Sign in or create an account
+            3. Go to Account settings
+            4. Copy your API key
+            5. Paste the key here
+            """
+        case .deepL:
+            return """
+            1. Go to deepl.com/pro
+            2. Sign in or create an account
+            3. Go to Account summary
+            4. Scroll to "API Keys" section
+            5. Create and copy your key
+            """
+        case .azure:
+            return """
+            1. Go to portal.azure.com
+            2. Create a Translator resource
+            3. Go to Keys and Endpoint
+            4. Copy Key 1 or Key 2
+            5. Note the region (e.g., eastus)
+            """
         }
     }
 
@@ -383,7 +434,8 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .openAI: return 0.006
         case .elevenLabs: return 0.0
         case .deepgram: return 0.0043
-        case .anthropic, .google, .local: return 0.0
+        case .assemblyAI: return 0.00025  // $0.00025/second = $0.015/minute (universal model)
+        case .anthropic, .google, .local, .deepL, .azure: return 0.0  // Per-character pricing doesn't translate to per-minute
         }
     }
 
@@ -391,13 +443,61 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     var requiresPowerTier: Bool {
         switch self {
         case .local: return true
-        case .openAI, .anthropic, .google, .elevenLabs, .deepgram: return false
+        case .openAI, .anthropic, .google, .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure: return false
         }
     }
 
     /// Minimum subscription tier required for this provider
     var minimumTier: SubscriptionTier {
         requiresPowerTier ? .power : .free
+    }
+}
+
+// MARK: - Azure Region
+/// Azure Translator regions for configuration
+enum AzureRegion: String, Codable, CaseIterable, Identifiable {
+    case eastUS = "eastus"
+    case eastUS2 = "eastus2"
+    case westUS = "westus"
+    case westUS2 = "westus2"
+    case centralUS = "centralus"
+    case northCentralUS = "northcentralus"
+    case southCentralUS = "southcentralus"
+    case westEurope = "westeurope"
+    case northEurope = "northeurope"
+    case southeastAsia = "southeastasia"
+    case eastAsia = "eastasia"
+    case australiaEast = "australiaeast"
+    case brazilSouth = "brazilsouth"
+    case canadaCentral = "canadacentral"
+    case japanEast = "japaneast"
+    case koreacentral = "koreacentral"
+    case uksouth = "uksouth"
+    case global = "global"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .eastUS: return "East US"
+        case .eastUS2: return "East US 2"
+        case .westUS: return "West US"
+        case .westUS2: return "West US 2"
+        case .centralUS: return "Central US"
+        case .northCentralUS: return "North Central US"
+        case .southCentralUS: return "South Central US"
+        case .westEurope: return "West Europe"
+        case .northEurope: return "North Europe"
+        case .southeastAsia: return "Southeast Asia"
+        case .eastAsia: return "East Asia"
+        case .australiaEast: return "Australia East"
+        case .brazilSouth: return "Brazil South"
+        case .canadaCentral: return "Canada Central"
+        case .japanEast: return "Japan East"
+        case .koreacentral: return "Korea Central"
+        case .uksouth: return "UK South"
+        case .global: return "Global"
+        }
     }
 }
 
@@ -420,6 +520,10 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
     // Cached models from last successful connection test (for local providers)
     var cachedModels: [String]?
 
+    // Provider-specific configuration
+    var azureRegion: String?           // Required for Azure Translator (e.g., "eastus", "westeurope")
+    var googleProjectId: String?       // Required for Google Cloud STT
+
     init(
         provider: AIProvider,
         apiKey: String = "",
@@ -429,7 +533,9 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
         translationModel: String? = nil,
         powerModeModel: String? = nil,
         localConfig: LocalProviderConfig? = nil,
-        cachedModels: [String]? = nil
+        cachedModels: [String]? = nil,
+        azureRegion: String? = nil,
+        googleProjectId: String? = nil
     ) {
         self.provider = provider
         self.apiKey = apiKey
@@ -447,6 +553,8 @@ struct AIProviderConfig: Codable, Identifiable, Equatable {
             self.localConfig = localConfig
         }
         self.cachedModels = cachedModels
+        self.azureRegion = azureRegion
+        self.googleProjectId = googleProjectId
     }
 
     /// Get the effective base URL for local providers
@@ -685,6 +793,89 @@ enum Language: String, Codable, CaseIterable, Identifiable {
         case .polish: return "🇵🇱"
         }
     }
+
+    // MARK: - Provider-specific language codes
+
+    /// DeepL uses uppercase language codes
+    var deepLCode: String {
+        switch self {
+        case .english: return "EN"
+        case .spanish: return "ES"
+        case .french: return "FR"
+        case .german: return "DE"
+        case .italian: return "IT"
+        case .portuguese: return "PT"
+        case .chinese: return "ZH"
+        case .japanese: return "JA"
+        case .korean: return "KO"
+        case .arabic: return "AR"
+        case .egyptianArabic: return "AR"  // DeepL doesn't distinguish Egyptian Arabic
+        case .russian: return "RU"
+        case .polish: return "PL"
+        }
+    }
+
+    /// Google Cloud uses lowercase ISO codes
+    var googleCode: String {
+        switch self {
+        case .english: return "en"
+        case .spanish: return "es"
+        case .french: return "fr"
+        case .german: return "de"
+        case .italian: return "it"
+        case .portuguese: return "pt"
+        case .chinese: return "zh"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .arabic: return "ar"
+        case .egyptianArabic: return "ar"  // Use standard Arabic for Google
+        case .russian: return "ru"
+        case .polish: return "pl"
+        }
+    }
+
+    /// Azure Translator uses lowercase ISO codes (same as Google)
+    var azureCode: String {
+        googleCode
+    }
+
+    /// AssemblyAI language codes - returns nil for unsupported languages
+    /// AssemblyAI supports: en, es, fr, de, it, pt, nl, hi, ja, zh, fi, ko, pl, ru, tr, uk, vi
+    var assemblyAICode: String? {
+        switch self {
+        case .english: return "en"
+        case .spanish: return "es"
+        case .french: return "fr"
+        case .german: return "de"
+        case .italian: return "it"
+        case .portuguese: return "pt"
+        case .chinese: return "zh"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .russian: return "ru"
+        case .polish: return "pl"
+        case .arabic, .egyptianArabic: return nil  // Not supported by AssemblyAI
+        }
+    }
+
+    /// Google Cloud Speech-to-Text uses BCP-47 codes
+    var googleSTTCode: String {
+        switch self {
+        case .english: return "en-US"
+        case .spanish: return "es-ES"
+        case .french: return "fr-FR"
+        case .german: return "de-DE"
+        case .italian: return "it-IT"
+        case .portuguese: return "pt-BR"
+        case .chinese: return "zh-CN"
+        case .japanese: return "ja-JP"
+        case .korean: return "ko-KR"
+        case .arabic: return "ar-SA"
+        case .egyptianArabic: return "ar-EG"
+        case .russian: return "ru-RU"
+        case .polish: return "pl-PL"
+        }
+    }
 }
 
 // MARK: - Transcription Record
@@ -698,6 +889,13 @@ struct TranscriptionRecord: Codable, Identifiable {
     let translated: Bool
     let targetLanguage: Language?
 
+    // Power Mode and Context tracking (Phase 4)
+    let powerModeId: UUID?       // nil for regular transcriptions
+    let powerModeName: String?   // Cached name for display even if mode deleted
+    let contextId: UUID?         // nil if no context was active
+    let contextName: String?     // Cached name for display even if context deleted
+    let contextIcon: String?     // Cached icon for display
+
     init(
         id: UUID = UUID(),
         text: String,
@@ -706,7 +904,12 @@ struct TranscriptionRecord: Codable, Identifiable {
         timestamp: Date = Date(),
         duration: TimeInterval,
         translated: Bool = false,
-        targetLanguage: Language? = nil
+        targetLanguage: Language? = nil,
+        powerModeId: UUID? = nil,
+        powerModeName: String? = nil,
+        contextId: UUID? = nil,
+        contextName: String? = nil,
+        contextIcon: String? = nil
     ) {
         self.id = id
         self.text = text
@@ -716,6 +919,11 @@ struct TranscriptionRecord: Codable, Identifiable {
         self.duration = duration
         self.translated = translated
         self.targetLanguage = targetLanguage
+        self.powerModeId = powerModeId
+        self.powerModeName = powerModeName
+        self.contextId = contextId
+        self.contextName = contextName
+        self.contextIcon = contextIcon
     }
 }
 
@@ -725,6 +933,7 @@ enum RecordingState: Equatable {
     case recording
     case processing
     case formatting
+    case translating
     case complete(String)
     case error(String)
 
@@ -734,6 +943,7 @@ enum RecordingState: Equatable {
         case .recording: return "Listening..."
         case .processing: return "Transcribing..."
         case .formatting: return "Formatting..."
+        case .translating: return "Translating..."
         case .complete: return "Done!"
         case .error(let message): return message
         }
@@ -848,50 +1058,442 @@ enum VocabularyCategory: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Power Mode Capability
-enum PowerModeCapability: String, Codable, CaseIterable, Identifiable {
-    case webSearch = "web_search"
-    case bashComputerUse = "bash_computer_use"
-    case codeExecution = "code_execution"
+// MARK: - Power Mode Capability (REMOVED)
+// Old capabilities (webSearch, bashComputerUse, codeExecution) removed in Phase 4.
+// Replaced by:
+// - RAG (Retrieval-Augmented Generation) for document-based knowledge
+// - Webhooks for external integrations
+// - Streaming for real-time responses
 
-    var id: String { rawValue }
+// MARK: - Conversation Context (Phase 4)
+
+/// A named context that customizes tone, language, and behavior
+struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
+    let id: UUID
+    var name: String                    // "Fatma", "Work", "Family"
+    var icon: String                    // Emoji or SF Symbol
+    var color: PowerModeColorPreset
+    var description: String             // Short description for list view
+    var toneDescription: String         // Detailed tone guidance for AI
+    var languageHints: [Language]       // Expected languages in this context
+    var customInstructions: String      // Injected into all prompts
+    var memoryEnabled: Bool             // Context-level memory toggle
+    var memory: String?                 // Stored memory for this context
+    var lastMemoryUpdate: Date?
+    var isActive: Bool                  // Currently selected context
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        icon: String,
+        color: PowerModeColorPreset,
+        description: String,
+        toneDescription: String = "",
+        languageHints: [Language] = [],
+        customInstructions: String = "",
+        memoryEnabled: Bool = false,
+        memory: String? = nil,
+        lastMemoryUpdate: Date? = nil,
+        isActive: Bool = false,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.icon = icon
+        self.color = color
+        self.description = description
+        self.toneDescription = toneDescription
+        self.languageHints = languageHints
+        self.customInstructions = customInstructions
+        self.memoryEnabled = memoryEnabled
+        self.memory = memory
+        self.lastMemoryUpdate = lastMemoryUpdate
+        self.isActive = isActive
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    static var empty: ConversationContext {
+        ConversationContext(
+            name: "",
+            icon: "person.circle",
+            color: .blue,
+            description: ""
+        )
+    }
+
+    /// Sample contexts for previews and mock-ups
+    static var samples: [ConversationContext] {
+        [
+            ConversationContext(
+                name: "Fatma",
+                icon: "💕",
+                color: .pink,
+                description: "Casual, loving conversation with my wife",
+                toneDescription: "Casual and loving. We often joke around and use pet names. She speaks Polish primarily but we mix in English words sometimes. Keep translations warm and natural.",
+                languageHints: [.polish, .english],
+                customInstructions: "When translating to Polish, use informal \"ty\" form. Add endearments where appropriate.",
+                memoryEnabled: true,
+                memory: "Fatma mentioned she has a meeting on Tuesday afternoon. We're planning dinner for Friday. She prefers Italian food lately.",
+                lastMemoryUpdate: Date().addingTimeInterval(-3600),
+                isActive: true
+            ),
+            ConversationContext(
+                name: "Work",
+                icon: "💼",
+                color: .blue,
+                description: "Professional, formal business communication",
+                toneDescription: "Professional and formal. Use proper business language and avoid casual expressions.",
+                languageHints: [.english],
+                customInstructions: "Maintain professional tone. Use formal salutations and sign-offs in emails.",
+                memoryEnabled: true,
+                memory: "Last email was to client about project delay.",
+                lastMemoryUpdate: Date().addingTimeInterval(-86400)
+            ),
+            ConversationContext(
+                name: "Family",
+                icon: "👨‍👩‍👧",
+                color: .green,
+                description: "Warm, friendly family conversations",
+                toneDescription: "Warm and friendly. Family talks are casual but respectful.",
+                languageHints: [.polish],
+                customInstructions: "Use familiar Polish expressions common in family settings."
+            )
+        ]
+    }
+}
+
+// MARK: - History Memory (Phase 4)
+
+/// Global memory that stores user preferences and recent conversation summaries
+struct HistoryMemory: Codable, Equatable {
+    var summary: String
+    var lastUpdated: Date
+    var conversationCount: Int
+    var recentTopics: [String]  // Last 5 topics for quick context
+
+    init(
+        summary: String = "",
+        lastUpdated: Date = Date(),
+        conversationCount: Int = 0,
+        recentTopics: [String] = []
+    ) {
+        self.summary = summary
+        self.lastUpdated = lastUpdated
+        self.conversationCount = conversationCount
+        self.recentTopics = recentTopics
+    }
+
+    /// Sample history memory for previews
+    static var sample: HistoryMemory {
+        HistoryMemory(
+            summary: "User prefers formal English for work, casual Polish for family. Often discusses Swift programming and AI topics. Prefers concise responses.",
+            lastUpdated: Date().addingTimeInterval(-7200),
+            conversationCount: 47,
+            recentTopics: ["Swift development", "AI news", "Family planning", "Work emails", "Polish translations"]
+        )
+    }
+}
+
+// MARK: - Knowledge Document (Phase 4 RAG)
+
+/// Document types for the knowledge base
+enum KnowledgeDocumentType: String, Codable {
+    case localFile = "local"      // PDF, TXT, MD uploaded
+    case remoteURL = "remote"     // Web page fetched
+}
+
+/// Auto-update interval for remote documents
+enum UpdateInterval: String, Codable, CaseIterable {
+    case never = "never"
+    case daily = "daily"
+    case weekly = "weekly"
+    case always = "always"        // Check before each query
 
     var displayName: String {
         switch self {
-        case .webSearch: return "Web Search"
-        case .bashComputerUse: return "Bash / Computer Use"
-        case .codeExecution: return "Code Execution"
+        case .never: return "Never"
+        case .daily: return "Daily"
+        case .weekly: return "Weekly"
+        case .always: return "Always"
+        }
+    }
+}
+
+/// A document in the knowledge base for RAG
+struct KnowledgeDocument: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var type: KnowledgeDocumentType
+    var sourceURL: URL?           // For remote documents
+    var localPath: String?        // For uploaded files
+    var contentHash: String       // For update detection
+    var chunkCount: Int
+    var fileSizeBytes: Int
+    var isIndexed: Bool
+    var lastUpdated: Date
+    var autoUpdateInterval: UpdateInterval?
+    var lastChecked: Date?
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        type: KnowledgeDocumentType,
+        sourceURL: URL? = nil,
+        localPath: String? = nil,
+        contentHash: String = "",
+        chunkCount: Int = 0,
+        fileSizeBytes: Int = 0,
+        isIndexed: Bool = false,
+        lastUpdated: Date = Date(),
+        autoUpdateInterval: UpdateInterval? = nil,
+        lastChecked: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.sourceURL = sourceURL
+        self.localPath = localPath
+        self.contentHash = contentHash
+        self.chunkCount = chunkCount
+        self.fileSizeBytes = fileSizeBytes
+        self.isIndexed = isIndexed
+        self.lastUpdated = lastUpdated
+        self.autoUpdateInterval = autoUpdateInterval
+        self.lastChecked = lastChecked
+    }
+
+    var fileSizeFormatted: String {
+        let bytes = Double(fileSizeBytes)
+        if bytes < 1024 {
+            return "\(fileSizeBytes) B"
+        } else if bytes < 1024 * 1024 {
+            return String(format: "%.1f KB", bytes / 1024)
+        } else {
+            return String(format: "%.1f MB", bytes / (1024 * 1024))
         }
     }
 
-    var icon: String {
+    /// Sample documents for previews
+    static var samples: [KnowledgeDocument] {
+        [
+            KnowledgeDocument(
+                name: "API Documentation.pdf",
+                type: .localFile,
+                localPath: "/documents/api_docs.pdf",
+                chunkCount: 156,
+                fileSizeBytes: 2_400_000,
+                isIndexed: true,
+                lastUpdated: Date().addingTimeInterval(-86400)
+            ),
+            KnowledgeDocument(
+                name: "Project Wiki",
+                type: .remoteURL,
+                sourceURL: URL(string: "https://wiki.example.com/project"),
+                chunkCount: 89,
+                fileSizeBytes: 450_000,
+                isIndexed: true,
+                lastUpdated: Date().addingTimeInterval(-172800),
+                autoUpdateInterval: .weekly,
+                lastChecked: Date().addingTimeInterval(-172800)
+            ),
+            KnowledgeDocument(
+                name: "Style Guide.md",
+                type: .localFile,
+                localPath: "/documents/style_guide.md",
+                chunkCount: 12,
+                fileSizeBytes: 45_000,
+                isIndexed: true,
+                lastUpdated: Date().addingTimeInterval(-604800)
+            )
+        ]
+    }
+}
+
+// MARK: - Webhook (Phase 4)
+
+/// Webhook types for different execution points
+enum WebhookType: String, Codable, CaseIterable {
+    case contextSource = "context"     // GET before processing
+    case outputDestination = "output"  // POST after completion
+    case automationTrigger = "trigger" // POST for Make/Zapier
+
+    var displayName: String {
         switch self {
-        case .webSearch: return "magnifyingglass"
-        case .bashComputerUse: return "terminal.fill"
-        case .codeExecution: return "chevron.left.forwardslash.chevron.right"
+        case .contextSource: return "Context Source"
+        case .outputDestination: return "Output Destination"
+        case .automationTrigger: return "Automation Trigger"
         }
     }
 
     var description: String {
         switch self {
-        case .webSearch: return "Search the web for current information"
-        case .bashComputerUse: return "Execute shell commands"
-        case .codeExecution: return "Run Python code in sandbox"
+        case .contextSource: return "Fetch data before processing"
+        case .outputDestination: return "Send results after completion"
+        case .automationTrigger: return "Trigger external automation"
         }
     }
+}
 
-    /// Which providers support this capability
-    var supportedProviders: [AIProvider] {
+/// Authentication types for webhooks
+enum WebhookAuthType: String, Codable, CaseIterable {
+    case none = "none"
+    case bearerToken = "bearer"
+    case apiKeyHeader = "api_key"
+    case basicAuth = "basic"
+
+    var displayName: String {
         switch self {
-        case .webSearch: return [.openAI, .anthropic, .google]
-        case .bashComputerUse: return [.openAI, .anthropic]
-        case .codeExecution: return [.openAI, .google]
+        case .none: return "None"
+        case .bearerToken: return "Bearer Token"
+        case .apiKeyHeader: return "API Key"
+        case .basicAuth: return "Basic Auth"
+        }
+    }
+}
+
+/// Webhook template for common services
+enum WebhookTemplate: String, Codable, CaseIterable {
+    case slack = "slack"
+    case notion = "notion"
+    case todoist = "todoist"
+    case make = "make"
+    case zapier = "zapier"
+    case custom = "custom"
+
+    var displayName: String {
+        switch self {
+        case .slack: return "Slack"
+        case .notion: return "Notion"
+        case .todoist: return "Todoist"
+        case .make: return "Make"
+        case .zapier: return "Zapier"
+        case .custom: return "Custom"
         }
     }
 
-    /// Check if a provider supports this capability
-    func isSupported(by provider: AIProvider) -> Bool {
-        supportedProviders.contains(provider)
+    var icon: String {
+        switch self {
+        case .slack: return "bubble.left.fill"
+        case .notion: return "doc.text.fill"
+        case .todoist: return "checkmark.circle.fill"
+        case .make: return "bolt.fill"
+        case .zapier: return "link"
+        case .custom: return "gearshape.fill"
+        }
+    }
+}
+
+/// A webhook configuration
+struct Webhook: Codable, Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var type: WebhookType
+    var template: WebhookTemplate
+    var url: URL
+    var isEnabled: Bool
+
+    // Authentication
+    var authType: WebhookAuthType
+    var authToken: String?
+    var authHeader: String?
+
+    // Payload configuration (for POST)
+    var includeInput: Bool
+    var includeOutput: Bool
+    var includeModeName: Bool
+    var includeContext: Bool
+    var includeTimestamp: Bool
+
+    // Status
+    var lastTriggered: Date?
+    var lastStatus: String?
+
+    let createdAt: Date
+    var updatedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        name: String,
+        type: WebhookType,
+        template: WebhookTemplate = .custom,
+        url: URL,
+        isEnabled: Bool = true,
+        authType: WebhookAuthType = .none,
+        authToken: String? = nil,
+        authHeader: String? = nil,
+        includeInput: Bool = true,
+        includeOutput: Bool = true,
+        includeModeName: Bool = true,
+        includeContext: Bool = true,
+        includeTimestamp: Bool = true,
+        lastTriggered: Date? = nil,
+        lastStatus: String? = nil,
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.id = id
+        self.name = name
+        self.type = type
+        self.template = template
+        self.url = url
+        self.isEnabled = isEnabled
+        self.authType = authType
+        self.authToken = authToken
+        self.authHeader = authHeader
+        self.includeInput = includeInput
+        self.includeOutput = includeOutput
+        self.includeModeName = includeModeName
+        self.includeContext = includeContext
+        self.includeTimestamp = includeTimestamp
+        self.lastTriggered = lastTriggered
+        self.lastStatus = lastStatus
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    /// Sample webhooks for previews
+    static var samples: [Webhook] {
+        [
+            Webhook(
+                name: "Calendar Events",
+                type: .contextSource,
+                template: .custom,
+                url: URL(string: "https://api.calendar.com/today")!,
+                authType: .bearerToken,
+                authToken: "cal_xxxx",
+                lastTriggered: Date().addingTimeInterval(-7200),
+                lastStatus: "success"
+            ),
+            Webhook(
+                name: "Slack Channel",
+                type: .outputDestination,
+                template: .slack,
+                url: URL(string: "https://hooks.slack.com/services/xxx")!,
+                lastTriggered: Date().addingTimeInterval(-86400),
+                lastStatus: "success"
+            ),
+            Webhook(
+                name: "Notion Database",
+                type: .outputDestination,
+                template: .notion,
+                url: URL(string: "https://api.notion.com/v1/pages")!,
+                isEnabled: false,
+                authType: .bearerToken,
+                authToken: "secret_xxx"
+            ),
+            Webhook(
+                name: "Make.com Scenario",
+                type: .automationTrigger,
+                template: .make,
+                url: URL(string: "https://hook.make.com/xxx")!,
+                lastTriggered: Date().addingTimeInterval(-259200),
+                lastStatus: "success"
+            )
+        ]
     }
 }
 
@@ -946,7 +1548,7 @@ enum PowerModeColorPreset: String, Codable, CaseIterable, Identifiable {
 }
 
 // MARK: - Power Mode
-struct PowerMode: Codable, Identifiable, Equatable {
+struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     let id: UUID
     var name: String
     var icon: String
@@ -954,10 +1556,20 @@ struct PowerMode: Codable, Identifiable, Equatable {
     var iconBackgroundColor: PowerModeColorPreset
     var instruction: String
     var outputFormat: String
-    var enabledCapabilities: Set<PowerModeCapability>
     let createdAt: Date
     var updatedAt: Date
     var usageCount: Int
+
+    // Phase 4: Memory support
+    var memoryEnabled: Bool
+    var memory: String?
+    var lastMemoryUpdate: Date?
+
+    // Phase 4: Knowledge base document IDs (RAG)
+    var knowledgeDocumentIds: [UUID]
+
+    // Phase 4: Archive support for swipe actions
+    var isArchived: Bool
 
     init(
         id: UUID = UUID(),
@@ -967,10 +1579,14 @@ struct PowerMode: Codable, Identifiable, Equatable {
         iconBackgroundColor: PowerModeColorPreset = .orange,
         instruction: String = "",
         outputFormat: String = "",
-        enabledCapabilities: Set<PowerModeCapability> = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date(),
-        usageCount: Int = 0
+        usageCount: Int = 0,
+        memoryEnabled: Bool = false,
+        memory: String? = nil,
+        lastMemoryUpdate: Date? = nil,
+        knowledgeDocumentIds: [UUID] = [],
+        isArchived: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -979,10 +1595,14 @@ struct PowerMode: Codable, Identifiable, Equatable {
         self.iconBackgroundColor = iconBackgroundColor
         self.instruction = instruction
         self.outputFormat = outputFormat
-        self.enabledCapabilities = enabledCapabilities
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.usageCount = usageCount
+        self.memoryEnabled = memoryEnabled
+        self.memory = memory
+        self.lastMemoryUpdate = lastMemoryUpdate
+        self.knowledgeDocumentIds = knowledgeDocumentIds
+        self.isArchived = isArchived
     }
 
     /// Preset power modes for new users
@@ -997,8 +1617,7 @@ struct PowerMode: Codable, Identifiable, Equatable {
             Cite sources when possible. Be thorough but concise.
             Focus on factual accuracy, recent developments, and multiple perspectives.
             """,
-            outputFormat: "Use headers (##) for main topics. Include bullet points for key findings. Add a \"Sources\" section at the end.",
-            enabledCapabilities: [.webSearch]
+            outputFormat: "Use headers (##) for main topics. Include bullet points for key findings. Add a \"Sources\" section at the end."
         ),
         PowerMode(
             name: "Email Composer",
@@ -1009,8 +1628,7 @@ struct PowerMode: Codable, Identifiable, Equatable {
             You are an email writing assistant. Help me compose professional emails based on my voice input.
             Understand the context and tone I want to convey. Ask clarifying questions if needed.
             """,
-            outputFormat: "Format as a proper email with Subject line, greeting, body paragraphs, and professional sign-off.",
-            enabledCapabilities: []
+            outputFormat: "Format as a proper email with Subject line, greeting, body paragraphs, and professional sign-off."
         ),
         PowerMode(
             name: "Daily Planner",
@@ -1021,8 +1639,7 @@ struct PowerMode: Codable, Identifiable, Equatable {
             You are a daily planning assistant. Help me organize my day based on what I tell you.
             Consider priorities, time constraints, and suggest optimal scheduling.
             """,
-            outputFormat: "Create a structured daily schedule with time blocks. Include priorities and any notes.",
-            enabledCapabilities: []
+            outputFormat: "Create a structured daily schedule with time blocks. Include priorities and any notes."
         ),
         PowerMode(
             name: "Idea Expander",
@@ -1033,8 +1650,7 @@ struct PowerMode: Codable, Identifiable, Equatable {
             You are a creative brainstorming partner. Take my initial idea and help expand it.
             Explore different angles, potential challenges, and opportunities.
             """,
-            outputFormat: "Start with the core idea summary, then list expansions, variations, and actionable next steps.",
-            enabledCapabilities: [.webSearch]
+            outputFormat: "Start with the core idea summary, then list expansions, variations, and actionable next steps."
         )
     ]
 }
@@ -1113,10 +1729,13 @@ struct PowerModeResult: Codable, Identifiable, Equatable {
     let powerModeName: String
     let userInput: String
     let markdownOutput: String
-    let capabilitiesUsed: [PowerModeCapability]
     let timestamp: Date
     let processingDuration: TimeInterval
     let versionNumber: Int
+
+    // Phase 4: Track what context/memory was used
+    var usedRAG: Bool
+    var ragDocumentIds: [UUID]
 
     init(
         id: UUID = UUID(),
@@ -1124,20 +1743,22 @@ struct PowerModeResult: Codable, Identifiable, Equatable {
         powerModeName: String,
         userInput: String,
         markdownOutput: String,
-        capabilitiesUsed: [PowerModeCapability] = [],
         timestamp: Date = Date(),
         processingDuration: TimeInterval = 0,
-        versionNumber: Int = 1
+        versionNumber: Int = 1,
+        usedRAG: Bool = false,
+        ragDocumentIds: [UUID] = []
     ) {
         self.id = id
         self.powerModeId = powerModeId
         self.powerModeName = powerModeName
         self.userInput = userInput
         self.markdownOutput = markdownOutput
-        self.capabilitiesUsed = capabilitiesUsed
         self.timestamp = timestamp
         self.processingDuration = processingDuration
         self.versionNumber = versionNumber
+        self.usedRAG = usedRAG
+        self.ragDocumentIds = ragDocumentIds
     }
 
     /// Sample result for UI mockups
@@ -1168,7 +1789,6 @@ struct PowerModeResult: Codable, Identifiable, Equatable {
         - MIT Technology Review
         - The Verge: AI Coverage
         """,
-        capabilitiesUsed: [.webSearch],
         processingDuration: 6.2
     )
 }
@@ -1229,10 +1849,10 @@ enum PowerModeExecutionState: Equatable {
     case idle
     case recording
     case transcribing
-    case thinking
-    case usingCapability(PowerModeCapability)
+    case thinking              // Building context, fetching webhooks
+    case queryingKnowledge     // Phase 4: RAG query
     case askingQuestion(PowerModeQuestion)
-    case generating
+    case generating            // LLM response (may be streaming)
     case complete(PowerModeSession)
     case error(String)
 
@@ -1242,7 +1862,7 @@ enum PowerModeExecutionState: Equatable {
         case .recording: return "Listening..."
         case .transcribing: return "Transcribing..."
         case .thinking: return "Thinking..."
-        case .usingCapability(let capability): return "Using \(capability.displayName)..."
+        case .queryingKnowledge: return "Searching knowledge base..."
         case .askingQuestion: return "Question"
         case .generating: return "Generating..."
         case .complete: return "Complete"
@@ -1252,7 +1872,7 @@ enum PowerModeExecutionState: Equatable {
 
     var isProcessing: Bool {
         switch self {
-        case .transcribing, .thinking, .usingCapability, .generating:
+        case .transcribing, .thinking, .queryingKnowledge, .generating:
             return true
         default:
             return false

@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 
+@MainActor
 class SharedSettings: ObservableObject {
     static let shared = SharedSettings()
 
@@ -65,9 +66,58 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    @Published var autoReturnEnabled: Bool = true {
+        didSet {
+            defaults?.set(autoReturnEnabled, forKey: Constants.Keys.autoReturnEnabled)
+        }
+    }
+
     @Published var subscriptionTier: SubscriptionTier = .free {
         didSet {
             defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
+        }
+    }
+
+    @Published var customTemplates: [CustomTemplate] = [] {
+        didSet {
+            saveCustomTemplates()
+        }
+    }
+
+    /// Currently selected custom template (set from keyboard URL scheme)
+    @Published var selectedCustomTemplate: CustomTemplate?
+
+    // MARK: - Phase 4: Contexts
+
+    @Published var contexts: [ConversationContext] = [] {
+        didSet {
+            saveContexts()
+        }
+    }
+
+    @Published var activeContextId: UUID? {
+        didSet {
+            if let id = activeContextId {
+                defaults?.set(id.uuidString, forKey: Constants.Keys.activeContextId)
+            } else {
+                defaults?.removeObject(forKey: Constants.Keys.activeContextId)
+            }
+        }
+    }
+
+    // MARK: - Phase 4: Power Modes
+
+    @Published var powerModes: [PowerMode] = [] {
+        didSet {
+            savePowerModes()
+        }
+    }
+
+    // MARK: - Phase 4: History Memory (Global)
+
+    @Published var historyMemory: HistoryMemory? {
+        didSet {
+            saveHistoryMemory()
         }
     }
 
@@ -166,14 +216,33 @@ class SharedSettings: ObservableObject {
         // Load translation enabled
         isTranslationEnabled = defaults?.bool(forKey: Constants.Keys.isTranslationEnabled) ?? false
 
+        // Load auto-return enabled (default: true)
+        if defaults?.object(forKey: Constants.Keys.autoReturnEnabled) != nil {
+            autoReturnEnabled = defaults?.bool(forKey: Constants.Keys.autoReturnEnabled) ?? true
+        }
+
         // Load subscription tier
         if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier),
            let tier = SubscriptionTier(rawValue: tierRaw) {
             subscriptionTier = tier
         }
 
+        // Load custom templates
+        loadCustomTemplates()
+
         // Load configured AI providers
         loadConfiguredAIProviders()
+
+        // Load contexts and power modes
+        loadContexts()
+        loadPowerModes()
+        loadHistoryMemory()
+
+        // Load active context ID
+        if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
+           let contextId = UUID(uuidString: contextIdString) {
+            activeContextId = contextId
+        }
 
         // Load selected providers
         if let transcriptionProviderRaw = defaults?.string(forKey: Constants.Keys.selectedTranscriptionProvider),
@@ -284,6 +353,41 @@ class SharedSettings: ObservableObject {
         configuredAIProviders.first { $0.provider == selectedPowerModeProvider }
     }
 
+    // MARK: - Custom Templates Management
+
+    private func loadCustomTemplates() {
+        if let data = defaults?.data(forKey: Constants.Keys.customTemplates),
+           let templates = try? JSONDecoder().decode([CustomTemplate].self, from: data) {
+            customTemplates = templates
+        }
+    }
+
+    private func saveCustomTemplates() {
+        if let data = try? JSONEncoder().encode(customTemplates) {
+            defaults?.set(data, forKey: Constants.Keys.customTemplates)
+        }
+    }
+
+    func addCustomTemplate(_ template: CustomTemplate) {
+        customTemplates.append(template)
+    }
+
+    func updateCustomTemplate(_ template: CustomTemplate) {
+        if let index = customTemplates.firstIndex(where: { $0.id == template.id }) {
+            var updatedTemplate = template
+            updatedTemplate.updatedAt = Date()
+            customTemplates[index] = updatedTemplate
+        }
+    }
+
+    func deleteCustomTemplate(id: UUID) {
+        customTemplates.removeAll { $0.id == id }
+    }
+
+    func getCustomTemplate(id: UUID) -> CustomTemplate? {
+        customTemplates.first { $0.id == id }
+    }
+
     // MARK: - Helper Methods
 
     func addTranscription(_ record: TranscriptionRecord) {
@@ -356,5 +460,225 @@ class SharedSettings: ObservableObject {
             )
         }
         return result
+    }
+
+    // MARK: - Context Management
+
+    private func loadContexts() {
+        if let data = defaults?.data(forKey: Constants.Keys.contexts),
+           let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
+            contexts = loadedContexts
+        }
+    }
+
+    private func saveContexts() {
+        if let data = try? JSONEncoder().encode(contexts) {
+            defaults?.set(data, forKey: Constants.Keys.contexts)
+        }
+    }
+
+    func addContext(_ context: ConversationContext) {
+        contexts.append(context)
+    }
+
+    func updateContext(_ context: ConversationContext) {
+        if let index = contexts.firstIndex(where: { $0.id == context.id }) {
+            var updatedContext = context
+            updatedContext.updatedAt = Date()
+            contexts[index] = updatedContext
+        }
+    }
+
+    func deleteContext(id: UUID) {
+        contexts.removeAll { $0.id == id }
+        if activeContextId == id {
+            activeContextId = nil
+        }
+    }
+
+    func getContext(id: UUID) -> ConversationContext? {
+        contexts.first { $0.id == id }
+    }
+
+    var activeContext: ConversationContext? {
+        guard let id = activeContextId else { return nil }
+        return contexts.first { $0.id == id }
+    }
+
+    func setActiveContext(_ context: ConversationContext?) {
+        if let context = context {
+            activeContextId = context.id
+            // Update isActive flags
+            for i in contexts.indices {
+                contexts[i].isActive = (contexts[i].id == context.id)
+            }
+        } else {
+            activeContextId = nil
+            for i in contexts.indices {
+                contexts[i].isActive = false
+            }
+        }
+    }
+
+    // MARK: - Power Mode Management
+
+    private func loadPowerModes() {
+        if let data = defaults?.data(forKey: Constants.Keys.powerModes),
+           let loadedModes = try? JSONDecoder().decode([PowerMode].self, from: data) {
+            powerModes = loadedModes
+        } else {
+            // Default to presets if no saved modes
+            powerModes = PowerMode.presets
+        }
+    }
+
+    private func savePowerModes() {
+        if let data = try? JSONEncoder().encode(powerModes) {
+            defaults?.set(data, forKey: Constants.Keys.powerModes)
+        }
+    }
+
+    func addPowerMode(_ mode: PowerMode) {
+        powerModes.append(mode)
+    }
+
+    func updatePowerMode(_ mode: PowerMode) {
+        if let index = powerModes.firstIndex(where: { $0.id == mode.id }) {
+            var updatedMode = mode
+            updatedMode.updatedAt = Date()
+            powerModes[index] = updatedMode
+        }
+    }
+
+    func deletePowerMode(id: UUID) {
+        powerModes.removeAll { $0.id == id }
+    }
+
+    func archivePowerMode(id: UUID) {
+        if let index = powerModes.firstIndex(where: { $0.id == id }) {
+            powerModes[index].isArchived = true
+            powerModes[index].updatedAt = Date()
+        }
+    }
+
+    func unarchivePowerMode(id: UUID) {
+        if let index = powerModes.firstIndex(where: { $0.id == id }) {
+            powerModes[index].isArchived = false
+            powerModes[index].updatedAt = Date()
+        }
+    }
+
+    func getPowerMode(id: UUID) -> PowerMode? {
+        powerModes.first { $0.id == id }
+    }
+
+    var activePowerModes: [PowerMode] {
+        powerModes.filter { !$0.isArchived }
+    }
+
+    var archivedPowerModes: [PowerMode] {
+        powerModes.filter { $0.isArchived }
+    }
+
+    func incrementPowerModeUsage(id: UUID) {
+        if let index = powerModes.firstIndex(where: { $0.id == id }) {
+            powerModes[index].usageCount += 1
+            powerModes[index].updatedAt = Date()
+        }
+    }
+
+    // MARK: - History Memory Management
+
+    private func loadHistoryMemory() {
+        if let data = defaults?.data(forKey: Constants.Keys.historyMemory),
+           let memory = try? JSONDecoder().decode(HistoryMemory.self, from: data) {
+            historyMemory = memory
+        }
+    }
+
+    private func saveHistoryMemory() {
+        if let data = try? JSONEncoder().encode(historyMemory) {
+            defaults?.set(data, forKey: Constants.Keys.historyMemory)
+        }
+    }
+
+    func updateHistoryMemory(summary: String, topic: String? = nil) {
+        var memory = historyMemory ?? HistoryMemory(
+            summary: "",
+            lastUpdated: Date(),
+            conversationCount: 0,
+            recentTopics: []
+        )
+
+        memory.summary = summary
+        memory.lastUpdated = Date()
+        memory.conversationCount += 1
+
+        if let topic = topic {
+            memory.recentTopics.insert(topic, at: 0)
+            if memory.recentTopics.count > 5 {
+                memory.recentTopics = Array(memory.recentTopics.prefix(5))
+            }
+        }
+
+        historyMemory = memory
+    }
+
+    func clearHistoryMemory() {
+        historyMemory = nil
+    }
+
+    // MARK: - Power Mode Memory Management
+
+    func updatePowerModeMemory(id: UUID, memory: String) {
+        if let index = powerModes.firstIndex(where: { $0.id == id }) {
+            powerModes[index].memory = memory
+            powerModes[index].lastMemoryUpdate = Date()
+            powerModes[index].updatedAt = Date()
+        }
+    }
+
+    func clearPowerModeMemory(id: UUID) {
+        if let index = powerModes.firstIndex(where: { $0.id == id }) {
+            powerModes[index].memory = nil
+            powerModes[index].lastMemoryUpdate = nil
+            powerModes[index].updatedAt = Date()
+        }
+    }
+
+    // MARK: - Context Memory Management
+
+    func updateContextMemory(id: UUID, memory: String) {
+        if let index = contexts.firstIndex(where: { $0.id == id }) {
+            contexts[index].memory = memory
+            contexts[index].lastMemoryUpdate = Date()
+            contexts[index].updatedAt = Date()
+        }
+    }
+
+    func clearContextMemory(id: UUID) {
+        if let index = contexts.firstIndex(where: { $0.id == id }) {
+            contexts[index].memory = nil
+            contexts[index].lastMemoryUpdate = nil
+            contexts[index].updatedAt = Date()
+        }
+    }
+
+    // MARK: - Filtered History by PowerMode/Context
+
+    func transcriptionHistory(forPowerModeId id: UUID) -> [TranscriptionRecord] {
+        transcriptionHistory.filter { $0.powerModeId == id }
+    }
+
+    func transcriptionHistory(forContextId id: UUID) -> [TranscriptionRecord] {
+        transcriptionHistory.filter { $0.contextId == id }
+    }
+
+    func usageCount(forPowerModeId id: UUID) -> Int {
+        transcriptionHistory(forPowerModeId: id).count
+    }
+
+    func usageCount(forContextId id: UUID) -> Int {
+        transcriptionHistory(forContextId: id).count
     }
 }

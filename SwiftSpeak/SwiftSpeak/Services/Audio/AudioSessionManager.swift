@@ -10,6 +10,7 @@ import Foundation
 
 /// Manages AVAudioSession configuration for recording
 /// Handles permissions, interruptions, and audio session lifecycle
+@MainActor
 final class AudioSessionManager {
 
     // MARK: - Singleton
@@ -20,9 +21,9 @@ final class AudioSessionManager {
 
     private let audioSession = AVAudioSession.sharedInstance()
 
-    /// Current microphone permission status
-    var permissionStatus: AVAudioSession.RecordPermission {
-        audioSession.recordPermission
+    /// Current microphone permission status (iOS 17+)
+    var permissionStatus: AVAudioApplication.recordPermission {
+        AVAudioApplication.shared.recordPermission
     }
 
     /// Whether microphone permission has been granted
@@ -45,7 +46,7 @@ final class AudioSessionManager {
 
     // MARK: - Permission
 
-    /// Request microphone permission
+    /// Request microphone permission (iOS 17+)
     /// - Returns: true if permission was granted
     @discardableResult
     func requestPermission() async -> Bool {
@@ -55,11 +56,7 @@ final class AudioSessionManager {
         case .denied:
             return false
         case .undetermined:
-            return await withCheckedContinuation { continuation in
-                audioSession.requestRecordPermission { granted in
-                    continuation.resume(returning: granted)
-                }
-            }
+            return await AVAudioApplication.requestRecordPermission()
         @unknown default:
             return false
         }
@@ -89,7 +86,7 @@ final class AudioSessionManager {
             try audioSession.setCategory(
                 .playAndRecord,
                 mode: .default,
-                options: [.defaultToSpeaker, .allowBluetooth]
+                options: [.defaultToSpeaker, .allowBluetoothHFP]
             )
 
             // Set preferred sample rate (16kHz is optimal for Whisper)

@@ -10,23 +10,53 @@ import SwiftUI
 struct HistoryView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
+
+    // Optional filter parameters for reuse from other views
+    var filterPowerModeId: UUID? = nil
+    var filterContextId: UUID? = nil
+    var showFilterBar: Bool = true
+
     @State private var searchText = ""
     @State private var selectedRecord: TranscriptionRecord?
     @State private var showDeleteConfirmation = false
     @State private var isSelecting = false
     @State private var selectedRecords: Set<UUID> = []
 
+    // Interactive filters (used when showFilterBar is true)
+    @State private var selectedPowerModeFilter: UUID?
+    @State private var selectedContextFilter: UUID?
+    @State private var showFilterSheet = false
+
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
     }
 
+    private var hasActiveFilters: Bool {
+        selectedPowerModeFilter != nil || selectedContextFilter != nil
+    }
+
     var filteredHistory: [TranscriptionRecord] {
-        if searchText.isEmpty {
-            return settings.transcriptionHistory
+        var result = settings.transcriptionHistory
+
+        // Apply passed-in filter (takes precedence, used when embedded)
+        if let powerModeId = filterPowerModeId {
+            result = result.filter { $0.powerModeId == powerModeId }
+        } else if let selected = selectedPowerModeFilter {
+            result = result.filter { $0.powerModeId == selected }
         }
-        return settings.transcriptionHistory.filter {
-            $0.text.localizedCaseInsensitiveContains(searchText)
+
+        if let contextId = filterContextId {
+            result = result.filter { $0.contextId == contextId }
+        } else if let selected = selectedContextFilter {
+            result = result.filter { $0.contextId == selected }
         }
+
+        // Text search
+        if !searchText.isEmpty {
+            result = result.filter { $0.text.localizedCaseInsensitiveContains(searchText) }
+        }
+
+        return result
     }
 
     var body: some View {
@@ -137,6 +167,18 @@ struct HistoryView: View {
                         }
                     }
 
+                    if showFilterBar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button(action: {
+                                HapticManager.lightTap()
+                                showFilterSheet = true
+                            }) {
+                                Image(systemName: hasActiveFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                                    .foregroundStyle(hasActiveFilters ? AppTheme.accent : .secondary)
+                            }
+                        }
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button(action: {
@@ -151,6 +193,15 @@ struct HistoryView: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $showFilterSheet) {
+                HistoryFilterSheet(
+                    selectedPowerModeId: $selectedPowerModeFilter,
+                    selectedContextId: $selectedContextFilter,
+                    powerModes: settings.powerModes,
+                    contexts: settings.contexts
+                )
+                .presentationDetents([.medium])
             }
             .sheet(item: $selectedRecord) { record in
                 HistoryDetailView(record: record)
@@ -228,7 +279,7 @@ struct HistoryRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header with mode and time
+            // Header with mode, power mode, context, and time
             HStack {
                 // Mode badge
                 HStack(spacing: 4) {
@@ -243,6 +294,38 @@ struct HistoryRowView: View {
                 .background(AppTheme.accent.opacity(0.15))
                 .clipShape(Capsule())
 
+                // Power Mode badge
+                if let powerModeName = record.powerModeName {
+                    HStack(spacing: 4) {
+                        Image(systemName: "bolt.fill")
+                            .font(.caption2)
+                        Text(powerModeName)
+                            .font(.caption2.weight(.medium))
+                    }
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.orange.opacity(0.15))
+                    .clipShape(Capsule())
+                }
+
+                // Context badge
+                if let contextName = record.contextName {
+                    HStack(spacing: 4) {
+                        if let icon = record.contextIcon {
+                            Text(icon)
+                                .font(.caption2)
+                        }
+                        Text(contextName)
+                            .font(.caption2.weight(.medium))
+                    }
+                    .foregroundStyle(.purple)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.purple.opacity(0.15))
+                    .clipShape(Capsule())
+                }
+
                 if record.translated {
                     HStack(spacing: 4) {
                         Image(systemName: "globe")
@@ -250,10 +333,10 @@ struct HistoryRowView: View {
                         Text(record.targetLanguage?.displayName ?? "")
                             .font(.caption2.weight(.medium))
                     }
-                    .foregroundStyle(.purple)
+                    .foregroundStyle(.teal)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(Color.purple.opacity(0.15))
+                    .background(Color.teal.opacity(0.15))
                     .clipShape(Capsule())
                 }
 

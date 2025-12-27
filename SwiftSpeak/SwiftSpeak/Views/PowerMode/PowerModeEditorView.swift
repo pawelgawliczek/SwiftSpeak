@@ -3,6 +3,7 @@
 //  SwiftSpeak
 //
 //  Create or edit a Power Mode with all configuration options
+//  Phase 4: Removed capabilities, added Memory and Knowledge Base sections
 //
 
 import SwiftUI
@@ -20,13 +21,15 @@ struct PowerModeEditorView: View {
     @State private var iconBackgroundColor: PowerModeColorPreset = .orange
     @State private var instruction: String = ""
     @State private var outputFormat: String = ""
-    @State private var enabledCapabilities: Set<PowerModeCapability> = []
+
+    // Phase 4: Memory
+    @State private var memoryEnabled: Bool = false
+    @State private var memoryContent: String = ""
 
     // UI state
     @State private var showingIconPicker = false
-
-    // Mock selected provider for capability filtering
-    @State private var selectedProvider: AIProvider = .openAI
+    @State private var showingKnowledgeBase = false
+    @State private var showingMemoryEditor = false
 
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -45,7 +48,8 @@ struct PowerModeEditorView: View {
             _iconBackgroundColor = State(initialValue: mode.iconBackgroundColor)
             _instruction = State(initialValue: mode.instruction)
             _outputFormat = State(initialValue: mode.outputFormat)
-            _enabledCapabilities = State(initialValue: mode.enabledCapabilities)
+            _memoryEnabled = State(initialValue: mode.memoryEnabled)
+            _memoryContent = State(initialValue: mode.memory ?? "")
         }
     }
 
@@ -62,8 +66,11 @@ struct PowerModeEditorView: View {
                     // Output format section
                     outputFormatSection
 
-                    // Capabilities section
-                    capabilitiesSection
+                    // Memory section (Phase 4)
+                    memorySection
+
+                    // Knowledge Base section (Phase 4)
+                    knowledgeBaseSection
                 }
                 .padding(16)
             }
@@ -87,6 +94,52 @@ struct PowerModeEditorView: View {
                     selectedIcon: $icon,
                     iconColor: $iconColor,
                     iconBackgroundColor: $iconBackgroundColor
+                )
+            }
+            .sheet(isPresented: $showingKnowledgeBase) {
+                // TODO: Phase 4 - KnowledgeBaseView
+                NavigationStack {
+                    VStack(spacing: 20) {
+                        Image(systemName: "doc.text.magnifyingglass")
+                            .font(.system(size: 60))
+                            .foregroundStyle(AppTheme.accentGradient)
+
+                        Text("Knowledge Base")
+                            .font(.title2.weight(.semibold))
+
+                        Text("Upload documents to give this Power Mode context from your files and URLs.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 40)
+
+                        Text("Coming in Phase 4")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 20)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(AppTheme.darkBase.ignoresSafeArea())
+                    .navigationTitle("Knowledge Base")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showingKnowledgeBase = false }
+                        }
+                    }
+                }
+            }
+            .sheet(isPresented: $showingMemoryEditor) {
+                MemoryEditorSheet(
+                    title: "\(name) - Workflow Memory",
+                    content: $memoryContent,
+                    lastUpdated: powerMode?.lastMemoryUpdate,
+                    onSave: {
+                        // Memory content is already bound
+                    },
+                    onClear: {
+                        memoryContent = ""
+                    }
                 )
             }
         }
@@ -173,44 +226,171 @@ struct PowerModeEditorView: View {
         }
     }
 
-    // MARK: - Capabilities Section
+    // MARK: - Memory Section (Phase 4)
 
-    private var capabilitiesSection: some View {
+    private var memorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("CAPABILITIES (PROVIDER-EXECUTED)")
+            Text("WORKFLOW MEMORY")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            VStack(spacing: 0) {
-                ForEach(PowerModeCapability.allCases, id: \.self) { capability in
-                    CapabilityToggleRow(
-                        capability: capability,
-                        isEnabled: enabledCapabilities.contains(capability),
-                        isSupported: capability.isSupported(by: selectedProvider),
-                        onToggle: {
-                            HapticManager.selection()
-                            if enabledCapabilities.contains(capability) {
-                                enabledCapabilities.remove(capability)
-                            } else {
-                                enabledCapabilities.insert(capability)
-                            }
-                        }
-                    )
+            // Memory toggle
+            HStack(spacing: 12) {
+                Image(systemName: "brain.head.profile")
+                    .font(.title2)
+                    .foregroundStyle(memoryEnabled ? AppTheme.powerAccent : .secondary)
+                    .frame(width: 40)
 
-                    if capability != PowerModeCapability.allCases.last {
-                        Divider()
-                            .padding(.leading, 52)
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable Memory")
+                        .font(.subheadline.weight(.medium))
+
+                    Text("Remember context from previous sessions with this mode")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+
+                Spacer()
+
+                Toggle("", isOn: $memoryEnabled)
+                    .labelsHidden()
+                    .tint(AppTheme.powerAccent)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
             .background(Color.primary.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Memory preview (when enabled and has content)
+            if memoryEnabled, !memoryContent.isEmpty {
+                Button(action: {
+                    HapticManager.lightTap()
+                    showingMemoryEditor = true
+                }) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "brain")
+                                .font(.caption)
+                                .foregroundStyle(.purple)
+                            Text("Current Memory")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            Text("Edit")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(AppTheme.powerAccent)
+                        }
+
+                        Text(memoryContent)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if let lastUpdate = powerMode?.lastMemoryUpdate {
+                            Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color.purple.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+
+            // History link (if editing existing mode)
+            if let mode = powerMode, mode.usageCount > 0 {
+                NavigationLink(destination: HistoryView(filterPowerModeId: mode.id, showFilterBar: false)
+                    .navigationTitle("\(mode.name) History")) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.powerAccent)
+                            .frame(width: 40)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("View Usage History")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+
+                            Text("\(mode.usageCount) transcription\(mode.usageCount == 1 ? "" : "s") with this mode")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Knowledge Base Section (Phase 4)
+
+    private var knowledgeBaseSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("KNOWLEDGE BASE")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            Button(action: {
+                HapticManager.selection()
+                showingKnowledgeBase = true
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.title2)
+                        .foregroundStyle(AppTheme.powerAccent)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Manage Documents")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        let docCount = powerMode?.knowledgeDocumentIds.count ?? 0
+                        Text(docCount == 0 ? "No documents attached" : "\(docCount) document\(docCount == 1 ? "" : "s") attached")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
+            .buttonStyle(PlainButtonStyle())
+
+            Text("Upload PDFs, text files, or URLs to give this mode context")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 
     // MARK: - Actions
 
     private func saveAndDismiss() {
+        // Determine if memory was updated
+        let memoryWasUpdated = memoryContent != (powerMode?.memory ?? "")
+        let newMemoryUpdate: Date? = memoryWasUpdated ? Date() : powerMode?.lastMemoryUpdate
+
         let savedMode = PowerMode(
             id: powerMode?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespaces),
@@ -219,10 +399,13 @@ struct PowerModeEditorView: View {
             iconBackgroundColor: iconBackgroundColor,
             instruction: instruction.trimmingCharacters(in: .whitespaces),
             outputFormat: outputFormat.trimmingCharacters(in: .whitespaces),
-            enabledCapabilities: enabledCapabilities,
             createdAt: powerMode?.createdAt ?? Date(),
             updatedAt: Date(),
-            usageCount: powerMode?.usageCount ?? 0
+            usageCount: powerMode?.usageCount ?? 0,
+            memoryEnabled: memoryEnabled,
+            memory: memoryContent.isEmpty ? nil : memoryContent,
+            lastMemoryUpdate: newMemoryUpdate,
+            knowledgeDocumentIds: powerMode?.knowledgeDocumentIds ?? []
         )
         HapticManager.success()
         onSave(savedMode)
@@ -273,73 +456,6 @@ struct ColorPickerRow: View {
     }
 }
 
-// MARK: - Capability Toggle Row
-
-struct CapabilityToggleRow: View {
-    let capability: PowerModeCapability
-    let isEnabled: Bool
-    let isSupported: Bool
-    let onToggle: () -> Void
-
-    var body: some View {
-        Button(action: {
-            if isSupported {
-                onToggle()
-            }
-        }) {
-            HStack(spacing: 12) {
-                // Icon
-                Image(systemName: capability.icon)
-                    .font(.body)
-                    .foregroundStyle(isSupported ? (isEnabled ? AppTheme.powerAccent : .primary) : .secondary.opacity(0.5))
-                    .frame(width: 32)
-
-                // Content
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(capability.displayName)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(isSupported ? Color.primary : Color.secondary.opacity(0.5))
-
-                    Text(capability.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    // Provider support indicator
-                    HStack(spacing: 4) {
-                        ForEach(capability.supportedProviders, id: \.self) { provider in
-                            Text(provider.shortName)
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                // Toggle indicator
-                if isSupported {
-                    Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(isEnabled ? AppTheme.powerAccent : .secondary.opacity(0.3))
-                } else {
-                    Text("N/A")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary.opacity(0.5))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.primary.opacity(0.05))
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .frame(minHeight: 44)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .disabled(!isSupported)
-    }
-}
-
 // MARK: - Preview
 
 #Preview("New Mode") {
@@ -351,3 +467,4 @@ struct CapabilityToggleRow: View {
     PowerModeEditorView(powerMode: PowerMode.presets.first!) { _ in }
         .preferredColorScheme(.dark)
 }
+

@@ -30,6 +30,7 @@ struct RecordingView: View {
     @State private var cardScale: CGFloat = 0.8
     @State private var cardOpacity: Double = 0
     @State private var selectedWaveform: WaveformType = .bars
+    @State private var showingContextPicker = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -57,18 +58,39 @@ struct RecordingView: View {
                 modeProvider: settings.selectedPowerModeProvider,
                 translationProvider: settings.selectedTranslationProvider,
                 waveformType: selectedWaveform,
+                audioLevels: orchestrator.audioLevels,
                 colorScheme: colorScheme,
+                activeContext: settings.activeContext,
                 onTap: handleCardTap,
-                onCancel: cancelRecording
+                onCancel: cancelRecording,
+                onChangeContext: {
+                    HapticManager.selection()
+                    showingContextPicker = true
+                }
             )
             .scaleEffect(cardScale)
             .opacity(cardOpacity)
         }
+        .sheet(isPresented: $showingContextPicker) {
+            RecordingContextPicker(
+                contexts: settings.contexts,
+                activeContextId: settings.activeContextId,
+                onSelect: { context in
+                    settings.setActiveContext(context)
+                    showingContextPicker = false
+                }
+            )
+            .presentationDetents([.medium])
+        }
         .onAppear {
             // Configure orchestrator with current settings
             orchestrator.mode = settings.selectedMode
+            orchestrator.customTemplate = settings.selectedCustomTemplate
             orchestrator.translateEnabled = translateAfterRecording
             orchestrator.targetLanguage = settings.selectedTargetLanguage
+
+            // Clear the selected custom template after configuring orchestrator
+            settings.selectedCustomTemplate = nil
 
             // Randomly select a waveform type
             selectedWaveform = WaveformType.allCases.randomElement() ?? .bars
@@ -115,10 +137,12 @@ struct RecordingView: View {
             if orchestrator.isComplete {
                 HapticManager.success()
 
-                // Auto-dismiss after showing result
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                hideCard {
-                    isPresented = false
+                // Auto-dismiss after showing result (if enabled in settings)
+                if settings.autoReturnEnabled {
+                    try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+                    hideCard {
+                        isPresented = false
+                    }
                 }
             } else if orchestrator.hasError {
                 HapticManager.error()
@@ -165,9 +189,12 @@ struct RecordingCard: View {
     let modeProvider: AIProvider
     let translationProvider: AIProvider
     let waveformType: WaveformType
+    let audioLevels: [Float]
     let colorScheme: ColorScheme
+    let activeContext: ConversationContext?
     let onTap: () -> Void
     let onCancel: () -> Void
+    let onChangeContext: () -> Void
 
     private var cardBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
@@ -181,6 +208,23 @@ struct RecordingCard: View {
         VStack(spacing: 24) {
             // Status badges row
             HStack(spacing: 8) {
+                // Context badge (if active)
+                if let context = activeContext {
+                    Button(action: onChangeContext) {
+                        HStack(spacing: 4) {
+                            Text(context.icon)
+                                .font(.subheadline)
+                            Text(context.name)
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(context.color.color.opacity(0.15))
+                        .clipShape(Capsule())
+                    }
+                }
+
                 // Mode badge (if not raw)
                 if mode != .raw {
                     ModeBadge(icon: mode.icon, text: mode.displayName)
@@ -209,7 +253,7 @@ struct RecordingCard: View {
                     waveformForType(waveformType, isActive: state == .recording)
                         .frame(height: 60)
 
-                case .processing, .formatting:
+                case .processing, .formatting, .translating:
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: AppTheme.accent))
                         .scaleEffect(1.5)
@@ -344,10 +388,9 @@ struct RecordingCard: View {
             }
             return "Processing transcription..."
         case .formatting:
-            if isTranslationEnabled {
-                return "Applying \(mode.displayName) mode & translation..."
-            }
             return "Applying \(mode.displayName) mode..."
+        case .translating:
+            return "Translating to \(targetLanguage.displayName)..."
         case .complete:
             return "Done!"
         case .error(let message):
@@ -359,25 +402,107 @@ struct RecordingCard: View {
     private func waveformForType(_ type: WaveformType, isActive: Bool) -> some View {
         switch type {
         case .bars:
-            WaveformView(isActive: isActive)
+            WaveformView(isActive: isActive, audioLevels: audioLevels)
         case .circular:
-            CircularWaveformView(isActive: isActive)
+            CircularWaveformView(isActive: isActive, audioLevels: audioLevels)
                 .frame(width: 60, height: 60)
         case .linear:
-            LinearWaveView()
+            LinearWaveView(audioLevels: audioLevels)
                 .frame(width: 200)
         case .mirrored:
-            MirroredBarWaveformView(isActive: isActive)
+            MirroredBarWaveformView(isActive: isActive, audioLevels: audioLevels)
                 .frame(width: 200)
         case .blob:
-            BlobWaveformView(isActive: isActive)
+            BlobWaveformView(isActive: isActive, audioLevels: audioLevels)
                 .frame(width: 80, height: 60)
         case .soundBars:
-            SoundBarsWaveformView(barCount: 7, isActive: isActive)
+            SoundBarsWaveformView(barCount: 7, isActive: isActive, audioLevels: audioLevels)
                 .frame(width: 80)
         case .spectrum:
-            SpectrumWaveformView(isActive: isActive)
+            SpectrumWaveformView(isActive: isActive, audioLevels: audioLevels)
                 .frame(width: 200)
+        }
+    }
+}
+
+// MARK: - Recording Context Picker
+
+struct RecordingContextPicker: View {
+    let contexts: [ConversationContext]
+    let activeContextId: UUID?
+    let onSelect: (ConversationContext?) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                // No Context option
+                Button(action: { onSelect(nil) }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "circle.slash")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 40)
+
+                        Text("No Context")
+                            .foregroundStyle(.primary)
+
+                        Spacer()
+
+                        if activeContextId == nil {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                    }
+                }
+                .listRowBackground(Color.primary.opacity(0.05))
+
+                // Context options
+                ForEach(contexts) { context in
+                    Button(action: { onSelect(context) }) {
+                        HStack(spacing: 12) {
+                            ZStack {
+                                Circle()
+                                    .fill(context.color.color.opacity(0.15))
+                                    .frame(width: 40, height: 40)
+
+                                Text(context.icon)
+                                    .font(.title3)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(context.name)
+                                    .foregroundStyle(.primary)
+
+                                if !context.description.isEmpty {
+                                    Text(context.description)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+
+                            Spacer()
+
+                            if activeContextId == context.id {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(context.color.color)
+                            }
+                        }
+                    }
+                    .listRowBackground(Color.primary.opacity(0.05))
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(AppTheme.darkBase)
+            .navigationTitle("Select Context")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
         }
     }
 }

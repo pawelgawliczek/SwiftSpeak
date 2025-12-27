@@ -33,8 +33,8 @@ struct ContentView: View {
                 }
                 .tag(1)
 
-            // Power Mode
-            PowerModeListView()
+            // Power (Modes + Contexts)
+            PowerTabView()
                 .tabItem {
                     Image(systemName: "bolt.fill")
                     Text("Power")
@@ -84,13 +84,22 @@ struct ContentView: View {
             settings.selectedMode = mode
         }
 
-        // Extract translate flag (Phase 2)
-        _ = queryItems.first(where: { $0.name == "translate" })?.value == "true"
+        // Extract translate flag
+        translateOnRecord = queryItems.first(where: { $0.name == "translate" })?.value == "true"
 
         // Extract target language
         if let targetString = queryItems.first(where: { $0.name == "target" })?.value,
            let language = Language(rawValue: targetString) {
             settings.selectedTargetLanguage = language
+        }
+
+        // Extract custom template (if provided)
+        if let templateIdString = queryItems.first(where: { $0.name == "template" })?.value,
+           let templateId = UUID(uuidString: templateIdString),
+           let template = settings.customTemplates.first(where: { $0.id == templateId }) {
+            settings.selectedCustomTemplate = template
+        } else {
+            settings.selectedCustomTemplate = nil
         }
 
         // Show recording view

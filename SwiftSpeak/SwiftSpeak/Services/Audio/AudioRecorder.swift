@@ -52,8 +52,8 @@ final class AudioRecorder: NSObject, ObservableObject {
 
     // MARK: - Initialization
 
-    init(sessionManager: AudioSessionManager = .shared) {
-        self.sessionManager = sessionManager
+    init(sessionManager: AudioSessionManager? = nil) {
+        self.sessionManager = sessionManager ?? AudioSessionManager.shared
         super.init()
     }
 
@@ -240,16 +240,18 @@ final class AudioRecorder: NSObject, ObservableObject {
     private func startTimers() {
         // Level metering timer (60fps for smooth animation)
         levelTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.currentLevel = self?.getAudioLevel() ?? 0
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                self.currentLevel = self.getAudioLevel()
             }
         }
 
         // Duration timer
         durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                if let recorder = self?.audioRecorder {
-                    self?.duration = recorder.currentTime
+            guard let self else { return }
+            MainActor.assumeIsolated {
+                if let recorder = self.audioRecorder {
+                    self.duration = recorder.currentTime
                 }
             }
         }

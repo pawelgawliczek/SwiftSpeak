@@ -82,7 +82,7 @@ actor APIClient {
         // Read file data
         let fileData = try Data(contentsOf: fileURL)
         let fileName = fileURL.lastPathComponent
-        let mimeType = mimeType(for: fileURL)
+        let fileMimeType = mimeType(for: fileURL)
 
         // Build multipart request
         let boundary = UUID().uuidString
@@ -96,25 +96,15 @@ actor APIClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        // Build body
-        var body = Data()
-
-        // Add form fields
-        for (key, value) in fields {
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n")
-            body.append("\(value)\r\n")
-        }
-
-        // Add file
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"\(fileName)\"\r\n")
-        body.append("Content-Type: \(mimeType)\r\n\r\n")
-        body.append(fileData)
-        body.append("\r\n")
-
-        // End boundary
-        body.append("--\(boundary)--\r\n")
+        // Build body using helper (Sendable-safe)
+        let body = MultipartDataBuilder.build(
+            boundary: boundary,
+            fields: fields,
+            fileFieldName: fileFieldName,
+            fileName: fileName,
+            mimeType: fileMimeType,
+            fileData: fileData
+        )
 
         request.httpBody = body
 
@@ -136,7 +126,7 @@ actor APIClient {
         // Read file data
         let fileData = try Data(contentsOf: fileURL)
         let fileName = fileURL.lastPathComponent
-        let mimeType = mimeType(for: fileURL)
+        let fileMimeType = mimeType(for: fileURL)
 
         // Build multipart request
         let boundary = UUID().uuidString
@@ -150,25 +140,15 @@ actor APIClient {
             request.setValue(value, forHTTPHeaderField: key)
         }
 
-        // Build body
-        var body = Data()
-
-        // Add form fields
-        for (key, value) in fields {
-            body.append("--\(boundary)\r\n")
-            body.append("Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n")
-            body.append("\(value)\r\n")
-        }
-
-        // Add file
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"\(fileName)\"\r\n")
-        body.append("Content-Type: \(mimeType)\r\n\r\n")
-        body.append(fileData)
-        body.append("\r\n")
-
-        // End boundary
-        body.append("--\(boundary)--\r\n")
+        // Build body using helper (Sendable-safe)
+        let body = MultipartDataBuilder.build(
+            boundary: boundary,
+            fields: fields,
+            fileFieldName: fileFieldName,
+            fileName: fileName,
+            mimeType: fileMimeType,
+            fileData: fileData
+        )
 
         request.httpBody = body
 
@@ -187,8 +167,8 @@ actor APIClient {
         do {
             return try decoder.decode(T.self, from: data)
         } catch {
-            // Try to decode error response
-            if let errorResponse = try? decoder.decode(APIErrorResponse.self, from: data) {
+            // Try to decode error response using nonisolated helper
+            if let errorResponse = decodeAPIErrorResponse(from: data) {
                 throw mapAPIError(errorResponse, statusCode: (response as? HTTPURLResponse)?.statusCode)
             }
             throw TranscriptionError.decodingError(error.localizedDescription)
@@ -242,8 +222,8 @@ actor APIClient {
             throw TranscriptionError.rateLimited(retryAfterSeconds: seconds)
 
         case 400...499:
-            // Client error - try to parse error message
-            if let errorResponse = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+            // Client error - try to parse error message using nonisolated helper
+            if let errorResponse = decodeAPIErrorResponse(from: data) {
                 throw mapAPIError(errorResponse, statusCode: response.statusCode)
             }
             throw TranscriptionError.serverError(statusCode: response.statusCode, message: nil)
@@ -332,24 +312,78 @@ actor APIClient {
 
 // MARK: - API Error Response Models
 
-/// Generic API error response structure
-struct APIErrorResponse: Decodable {
+/// Generic API error response structure (Sendable for actor safety)
+struct APIErrorResponse: Sendable {
     let error: APIError?
     let message: String?
 
-    struct APIError: Decodable {
+    struct APIError: Sendable {
         let message: String?
         let type: String?
         let code: String?
     }
 }
 
-// MARK: - Data Extension
+/// Decodes API error response from data (nonisolated free function for Swift 6 compatibility)
+nonisolated private func decodeAPIErrorResponse(from data: Data) -> APIErrorResponse? {
+    struct CodableResponse: Decodable {
+        let error: CodableError?
+        let message: String?
 
-private extension Data {
-    mutating func append(_ string: String) {
-        if let data = string.data(using: .utf8) {
-            append(data)
+        struct CodableError: Decodable {
+            let message: String?
+            let type: String?
+            let code: String?
+        }
+    }
+
+    guard let decoded = try? JSONDecoder().decode(CodableResponse.self, from: data) else {
+        return nil
+    }
+
+    return APIErrorResponse(
+        error: decoded.error.map { APIErrorResponse.APIError(message: $0.message, type: $0.type, code: $0.code) },
+        message: decoded.message
+    )
+}
+
+// MARK: - Multipart Data Builder
+
+/// Helper for building multipart form data (Sendable-safe, nonisolated)
+private enum MultipartDataBuilder: Sendable {
+    nonisolated static func build(
+        boundary: String,
+        fields: [String: String],
+        fileFieldName: String,
+        fileName: String,
+        mimeType: String,
+        fileData: Data
+    ) -> Data {
+        var body = Data()
+
+        // Add form fields
+        for (key, value) in fields {
+            appendString(&body, "--\(boundary)\r\n")
+            appendString(&body, "Content-Disposition: form-data; name=\"\(key)\"\r\n\r\n")
+            appendString(&body, "\(value)\r\n")
+        }
+
+        // Add file
+        appendString(&body, "--\(boundary)\r\n")
+        appendString(&body, "Content-Disposition: form-data; name=\"\(fileFieldName)\"; filename=\"\(fileName)\"\r\n")
+        appendString(&body, "Content-Type: \(mimeType)\r\n\r\n")
+        body.append(fileData)
+        appendString(&body, "\r\n")
+
+        // End boundary
+        appendString(&body, "--\(boundary)--\r\n")
+
+        return body
+    }
+
+    nonisolated private static func appendString(_ data: inout Data, _ string: String) {
+        if let stringData = string.data(using: .utf8) {
+            data.append(stringData)
         }
     }
 }
