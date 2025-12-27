@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct AnthropicServiceTests {
 
     // MARK: - Basic Properties

@@ -69,3 +69,81 @@ extension FormattingProvider {
         try await format(text: text, mode: mode, customPrompt: nil, context: context)
     }
 }
+
+// MARK: - Streaming Formatting Provider
+
+/// Optional streaming capability for formatting providers (Power Mode only)
+///
+/// Providers that support streaming can yield text chunks progressively as the LLM
+/// generates the response. This provides a more responsive user experience in Power Mode.
+///
+/// Note: This is specifically for Power Mode text generation, NOT for transcription or translation.
+protocol StreamingFormattingProvider: FormattingProvider {
+    /// Whether this provider supports streaming responses
+    var supportsStreaming: Bool { get }
+
+    /// Stream formatted text chunks progressively
+    /// - Parameters:
+    ///   - text: Raw transcribed text to format
+    ///   - mode: Formatting mode (raw, email, formal, casual)
+    ///   - customPrompt: Optional custom template prompt (overrides mode prompt)
+    ///   - context: Optional PromptContext for memory, tone, and instructions injection
+    /// - Returns: AsyncThrowingStream that yields text chunks as they arrive
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?,
+        context: PromptContext?
+    ) -> AsyncThrowingStream<String, Error>
+}
+
+// MARK: - Default Streaming Implementation
+
+extension StreamingFormattingProvider {
+    /// Default: streaming not supported (fallback to blocking)
+    var supportsStreaming: Bool { false }
+
+    /// Default implementation wraps blocking format() in a stream
+    /// Providers that support streaming should override this
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?,
+        context: PromptContext?
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    let result = try await format(
+                        text: text,
+                        mode: mode,
+                        customPrompt: customPrompt,
+                        context: context
+                    )
+                    continuation.yield(result)
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+
+    /// Convenience method without context
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?
+    ) -> AsyncThrowingStream<String, Error> {
+        formatStreaming(text: text, mode: mode, customPrompt: customPrompt, context: nil)
+    }
+
+    /// Convenience method without custom prompt
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        context: PromptContext?
+    ) -> AsyncThrowingStream<String, Error> {
+        formatStreaming(text: text, mode: mode, customPrompt: nil, context: context)
+    }
+}

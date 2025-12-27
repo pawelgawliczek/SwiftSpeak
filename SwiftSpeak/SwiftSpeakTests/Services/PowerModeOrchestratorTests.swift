@@ -54,6 +54,7 @@ private func createTestContext(
         name: name,
         icon: "💼",
         color: .blue,
+        description: "Test context",
         toneDescription: tone,
         customInstructions: customInstructions
     )

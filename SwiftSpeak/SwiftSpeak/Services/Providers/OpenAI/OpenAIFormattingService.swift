@@ -9,7 +9,8 @@ import Foundation
 
 /// OpenAI GPT formatting service
 /// Uses GPT to format transcribed text according to templates
-final class OpenAIFormattingService: FormattingProvider {
+/// Supports streaming responses for Power Mode
+final class OpenAIFormattingService: FormattingProvider, StreamingFormattingProvider {
 
     // MARK: - FormattingProvider
 
@@ -118,6 +119,80 @@ final class OpenAIFormattingService: FormattingProvider {
 
         return formattedText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    // MARK: - StreamingFormattingProvider
+
+    var supportsStreaming: Bool { true }
+
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?,
+        context: PromptContext?
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard self.isConfigured else {
+                        throw TranscriptionError.apiKeyMissing
+                    }
+
+                    // Raw mode without context returns text unchanged (no streaming needed)
+                    if mode == .raw && customPrompt == nil && (context == nil || !context!.hasContent) {
+                        continuation.yield(text)
+                        continuation.finish()
+                        return
+                    }
+
+                    // Build the system prompt
+                    let basePrompt = customPrompt ?? mode.prompt
+                    let systemPrompt: String
+
+                    if let ctx = context, ctx.hasContent {
+                        systemPrompt = ctx.buildSystemPrompt(task: basePrompt)
+                    } else {
+                        systemPrompt = basePrompt
+                    }
+
+                    // Build streaming request
+                    let request = StreamingChatCompletionRequest(
+                        model: self.modelName,
+                        messages: [
+                            Message(role: "system", content: systemPrompt),
+                            Message(role: "user", content: text)
+                        ],
+                        temperature: 0.3,
+                        maxTokens: 2000,
+                        stream: true
+                    )
+
+                    // Stream SSE events
+                    for try await event in await self.apiClient.streamPost(
+                        url: self.endpoint,
+                        body: request,
+                        headers: ["Authorization": "Bearer \(self.apiKey)"],
+                        timeout: 120
+                    ) {
+                        // Check for completion
+                        if event.isOpenAIDone {
+                            continuation.finish()
+                            return
+                        }
+
+                        // Extract text content from OpenAI delta format
+                        if let content = event.openAIContent() {
+                            continuation.yield(content)
+                        }
+                    }
+
+                    continuation.finish()
+
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Request/Response Models
@@ -133,6 +208,22 @@ private struct ChatCompletionRequest: Encodable {
         case messages
         case temperature
         case maxTokens = "max_tokens"
+    }
+}
+
+private struct StreamingChatCompletionRequest: Encodable {
+    let model: String
+    let messages: [Message]
+    let temperature: Double
+    let maxTokens: Int
+    let stream: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case messages
+        case temperature
+        case maxTokens = "max_tokens"
+        case stream
     }
 }
 

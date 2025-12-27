@@ -62,6 +62,11 @@ final class PowerModeOrchestrator: ObservableObject {
 
     private var startTime: Date?
 
+    // MARK: - Streaming
+
+    /// Task for active streaming generation (for cancellation support)
+    private var generationTask: Task<Void, Never>?
+
     // MARK: - Initialization
 
     /// Standard initializer for production use with AudioRecorder bindings
@@ -174,9 +179,22 @@ final class PowerModeOrchestrator: ObservableObject {
                 try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
             }
 
-            // Generate response
-            state = .generating
-            let output = try await generate(userInput: processedInput)
+            // Generate response (streaming or blocking)
+            let output: String = try await withCheckedThrowingContinuation { continuation in
+                generationTask = Task {
+                    do {
+                        if let streamingOutput = try await generateWithStreaming(userInput: processedInput) {
+                            continuation.resume(returning: streamingOutput)
+                        } else {
+                            await MainActor.run { state = .generating }
+                            let result = try await generate(userInput: processedInput)
+                            continuation.resume(returning: result)
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
 
             // Calculate processing duration
             let processingDuration = Date().timeIntervalSince(startTime ?? Date())
@@ -434,6 +452,65 @@ final class PowerModeOrchestrator: ObservableObject {
         )
     }
 
+    /// Generate with streaming if supported and enabled
+    /// Returns nil if streaming is not available or disabled
+    private func generateWithStreaming(
+        userInput: String,
+        isRegeneration: Bool = false,
+        isRefinement: Bool = false
+    ) async throws -> String? {
+        // Check if streaming is enabled in settings
+        guard settings.powerModeStreamingEnabled else { return nil }
+
+        // Get provider and check if it supports streaming
+        guard let provider = providerFactory.createSelectedTextFormattingProvider(),
+              let streamingProvider = provider as? StreamingFormattingProvider,
+              streamingProvider.supportsStreaming else {
+            return nil
+        }
+
+        // Build system prompt
+        let systemPrompt = buildSystemPrompt(isRegeneration: isRegeneration, isRefinement: isRefinement)
+
+        // Start streaming
+        var accumulatedText = ""
+        await MainActor.run {
+            state = .streaming("")
+        }
+
+        do {
+            for try await chunk in streamingProvider.formatStreaming(
+                text: userInput,
+                mode: .raw,
+                customPrompt: systemPrompt,
+                context: buildPromptContext()
+            ) {
+                // Check for cancellation
+                try Task.checkCancellation()
+
+                accumulatedText += chunk
+                await MainActor.run {
+                    state = .streaming(accumulatedText)
+                }
+            }
+
+            return accumulatedText
+
+        } catch is CancellationError {
+            // Handle cancellation gracefully - return partial result
+            if !accumulatedText.isEmpty {
+                return accumulatedText + "\n\n*[Generation cancelled]*"
+            }
+            throw CancellationError()
+        } catch {
+            // If streaming failed mid-way, return partial result if any
+            if !accumulatedText.isEmpty {
+                return accumulatedText + "\n\n*[Generation interrupted]*"
+            }
+            throw error
+        }
+    }
+
     /// Build system prompt with all injections
     private func buildSystemPrompt(isRegeneration: Bool, isRefinement: Bool) -> String {
         var parts: [String] = []
@@ -548,11 +625,28 @@ extension PowerModeOrchestrator {
     /// Whether processing
     var isProcessing: Bool {
         switch state {
-        case .transcribing, .thinking, .queryingKnowledge, .generating:
+        case .transcribing, .thinking, .queryingKnowledge, .generating, .streaming:
             return true
         default:
             return false
         }
+    }
+
+    /// Whether currently streaming
+    var isStreaming: Bool {
+        state.isStreaming
+    }
+
+    /// Current streaming text (if streaming)
+    var streamingText: String? {
+        state.streamingText
+    }
+
+    /// Cancel active generation (useful during streaming)
+    /// The streaming code handles partial results and state transitions
+    func cancelGeneration() {
+        generationTask?.cancel()
+        generationTask = nil
     }
 
     /// Whether complete

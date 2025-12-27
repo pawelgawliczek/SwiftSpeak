@@ -416,7 +416,9 @@ struct GoogleSTTBase64Tests {
         let base64 = testData.base64EncodedString()
 
         #expect(!base64.isEmpty)
-        #expect(base64.contains(CharacterSet.alphanumerics))
+        // Base64 uses alphanumerics, +, /, and = for padding
+        let validBase64Chars = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "+/="))
+        #expect(base64.unicodeScalars.allSatisfy(validBase64Chars.contains))
 
         // Verify it can be decoded back
         let decoded = Data(base64Encoded: base64)

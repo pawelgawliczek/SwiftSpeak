@@ -57,6 +57,118 @@ actor APIClient {
         return try await performRequest(request)
     }
 
+    // MARK: - Streaming POST Request
+
+    /// Send a streaming POST request that yields SSE events as they arrive
+    /// - Parameters:
+    ///   - url: The endpoint URL
+    ///   - body: Encodable request body
+    ///   - headers: HTTP headers (Authorization, etc.)
+    ///   - timeout: Request timeout in seconds (longer default for streaming)
+    /// - Returns: AsyncThrowingStream of SSE events
+    func streamPost<U: Encodable>(
+        url: URL,
+        body: U,
+        headers: [String: String] = [:],
+        timeout: TimeInterval = 120
+    ) -> AsyncThrowingStream<SSEEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let task = Task {
+                do {
+                    var request = URLRequest(url: url)
+                    request.httpMethod = "POST"
+                    request.timeoutInterval = timeout
+
+                    // Set headers for SSE streaming
+                    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                    for (key, value) in headers {
+                        request.setValue(value, forHTTPHeaderField: key)
+                    }
+
+                    // Encode body
+                    let encoder = JSONEncoder()
+                    request.httpBody = try encoder.encode(body)
+
+                    // Start streaming request
+                    let (bytes, response) = try await URLSession.shared.bytes(for: request)
+
+                    // Validate response
+                    if let httpResponse = response as? HTTPURLResponse {
+                        guard (200...299).contains(httpResponse.statusCode) else {
+                            // For non-success, try to collect error data
+                            var errorData = Data()
+                            for try await byte in bytes {
+                                errorData.append(byte)
+                                // Limit error data collection
+                                if errorData.count > 4096 { break }
+                            }
+
+                            if httpResponse.statusCode == 401 {
+                                throw TranscriptionError.apiKeyInvalid
+                            } else if httpResponse.statusCode == 429 {
+                                let retryAfter = httpResponse.value(forHTTPHeaderField: "Retry-After")
+                                let seconds = Int(retryAfter ?? "") ?? 60
+                                throw TranscriptionError.rateLimited(retryAfterSeconds: seconds)
+                            } else {
+                                // Try to parse error message
+                                let errorMessage = String(data: errorData, encoding: .utf8)
+                                throw TranscriptionError.serverError(
+                                    statusCode: httpResponse.statusCode,
+                                    message: errorMessage
+                                )
+                            }
+                        }
+                    }
+
+                    // Parse SSE stream
+                    let parser = SSEParser()
+
+                    for try await line in bytes.lines {
+                        // Check for cancellation
+                        if Task.isCancelled {
+                            continuation.finish()
+                            return
+                        }
+
+                        // Parse line (add newline back since lines strips it)
+                        let events = await parser.parse(line + "\n")
+                        for event in events {
+                            continuation.yield(event)
+                        }
+                    }
+
+                    // Handle any remaining buffered content
+                    if await parser.hasBufferedContent {
+                        // Final empty line to flush any pending event
+                        let events = await parser.parse("\n")
+                        for event in events {
+                            continuation.yield(event)
+                        }
+                    }
+
+                    continuation.finish()
+
+                } catch let error as TranscriptionError {
+                    continuation.finish(throwing: error)
+                } catch let error as URLError {
+                    continuation.finish(throwing: mapURLErrorSync(error))
+                } catch {
+                    if Task.isCancelled {
+                        continuation.finish()
+                    } else {
+                        continuation.finish(throwing: TranscriptionError.networkError(error.localizedDescription))
+                    }
+                }
+            }
+
+            // Handle cancellation
+            continuation.onTermination = { @Sendable _ in
+                task.cancel()
+            }
+        }
+    }
+
     // MARK: - Multipart Upload
 
     /// Upload a file using multipart form data
@@ -307,6 +419,22 @@ actor APIClient {
         default:
             return "application/octet-stream"
         }
+    }
+}
+
+// MARK: - Nonisolated URL Error Mapping
+
+/// Maps URLError to TranscriptionError (nonisolated for use in closures)
+nonisolated private func mapURLErrorSync(_ error: URLError) -> TranscriptionError {
+    switch error.code {
+    case .notConnectedToInternet, .networkConnectionLost:
+        return .networkUnavailable
+    case .timedOut:
+        return .networkTimeout
+    case .cancelled:
+        return .cancelled
+    default:
+        return .networkError(error.localizedDescription)
     }
 }
 

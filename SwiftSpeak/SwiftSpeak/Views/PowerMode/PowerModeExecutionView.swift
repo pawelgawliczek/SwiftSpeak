@@ -186,6 +186,8 @@ struct PowerModeExecutionView: View {
                 )
             case .generating:
                 generatingView
+            case .streaming(let partialText):
+                streamingView(text: partialText)
             case .complete(let session):
                 PowerModeResultView(
                     session: session,
@@ -553,6 +555,97 @@ struct PowerModeExecutionView: View {
 
             Spacer()
         }
+    }
+
+    // MARK: - Streaming View (Progressive Text Rendering)
+
+    @ViewBuilder
+    private func streamingView(text: String) -> some View {
+        VStack(spacing: 0) {
+            // Streaming header with stop button
+            HStack {
+                HStack(spacing: 8) {
+                    Image(systemName: "text.bubble.fill")
+                        .font(.body)
+                        .foregroundStyle(AppTheme.powerAccent)
+                        .symbolEffect(.pulse, options: .repeating)
+
+                    Text("Generating...")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                }
+
+                Spacer()
+
+                Button(action: {
+                    HapticManager.lightTap()
+                    orchestrator.cancelGeneration()
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "stop.fill")
+                            .font(.caption2)
+                        Text("Stop")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.15))
+                    .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .background(Color.primary.opacity(0.05))
+
+            // Progressive text content
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(text)
+                            .font(.body)
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(16)
+
+                        // Anchor for auto-scroll
+                        Color.clear
+                            .frame(height: 1)
+                            .id("streamingBottom")
+                    }
+                }
+                .onChange(of: text) { _, _ in
+                    withAnimation(.easeOut(duration: 0.1)) {
+                        proxy.scrollTo("streamingBottom", anchor: .bottom)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
+            // Typing indicator with continuous animation
+            TimelineView(.animation) { timeline in
+                let phase = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.0)
+                HStack(spacing: 6) {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .fill(AppTheme.powerAccent)
+                            .frame(width: 6, height: 6)
+                            .opacity(typingDotOpacity(for: i, phase: phase))
+                    }
+                }
+            }
+            .padding(.vertical, 16)
+        }
+    }
+
+    private func typingDotOpacity(for index: Int, phase: Double) -> Double {
+        let adjustedPhase = (phase + Double(index) * 0.33).truncatingRemainder(dividingBy: 1.0)
+        return 0.3 + 0.7 * sin(adjustedPhase * .pi)
     }
 
     // MARK: - Error View

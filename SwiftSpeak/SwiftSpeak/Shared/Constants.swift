@@ -47,6 +47,10 @@ enum Constants {
         // Phase 4a: Global Memory (3-Tier System)
         static let globalMemory = "globalMemory"
         static let globalMemoryEnabled = "globalMemoryEnabled"
+        static let powerModeStreamingEnabled = "powerModeStreamingEnabled"
+
+        // App Library: User app category overrides
+        static let userAppCategoryOverrides = "userAppCategoryOverrides"
     }
 
     // MARK: - API Endpoints

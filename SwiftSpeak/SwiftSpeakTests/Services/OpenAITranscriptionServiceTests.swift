@@ -5,6 +5,7 @@
 //  Comprehensive tests for OpenAITranscriptionService
 //
 
+import Foundation
 import Testing
 @testable import SwiftSpeak
 

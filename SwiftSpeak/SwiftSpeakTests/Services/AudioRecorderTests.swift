@@ -5,6 +5,8 @@
 //  Comprehensive tests for AudioRecorder and MockAudioRecorder
 //
 
+import Combine
+import Foundation
 import Testing
 @testable import SwiftSpeak
 

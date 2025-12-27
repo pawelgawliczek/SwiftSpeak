@@ -59,7 +59,7 @@ struct OpenAIFormattingServiceConfigInitTests {
         let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "sk-test123",
-            usageCategories: [.textFormatting],
+            usageCategories: [.powerMode],
             translationModel: "gpt-4o-mini"
         )
 
@@ -75,7 +75,7 @@ struct OpenAIFormattingServiceConfigInitTests {
         let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "sk-test123",
-            usageCategories: [.textFormatting],
+            usageCategories: [.powerMode],
             translationModel: "gpt-4-turbo"
         )
 
@@ -89,7 +89,7 @@ struct OpenAIFormattingServiceConfigInitTests {
         let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "sk-test123",
-            usageCategories: [.textFormatting],
+            usageCategories: [.powerMode],
             translationModel: nil
         )
 
@@ -103,7 +103,7 @@ struct OpenAIFormattingServiceConfigInitTests {
         let config = AIProviderConfig(
             provider: .anthropic, // Wrong provider
             apiKey: "sk-test123",
-            usageCategories: [.textFormatting]
+            usageCategories: [.powerMode]
         )
 
         let service = OpenAIFormattingService(config: config)
@@ -116,7 +116,7 @@ struct OpenAIFormattingServiceConfigInitTests {
         let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "", // Empty
-            usageCategories: [.textFormatting]
+            usageCategories: [.powerMode]
         )
 
         let service = OpenAIFormattingService(config: config)
