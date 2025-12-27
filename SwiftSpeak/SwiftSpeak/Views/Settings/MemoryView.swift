@@ -264,51 +264,64 @@ struct MemoryView: View {
 
     private var historyMemorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("HISTORY MEMORY (GLOBAL)")
+            Text("GLOBAL MEMORY")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 4) {
-                    Image(systemName: "brain")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.accent)
-
-                    Text("Updated after every conversation")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Text("Always active")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(AppTheme.accent)
+                // Enable/Disable toggle
+                Toggle(isOn: $settings.globalMemoryEnabled) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "brain")
+                            .font(.callout)
+                            .foregroundStyle(settings.globalMemoryEnabled ? AppTheme.accent : .secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Global Memory")
+                                .font(.subheadline.weight(.medium))
+                            Text("Updated after every conversation")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .tint(AppTheme.accent)
+                .onChange(of: settings.globalMemoryEnabled) { _, newValue in
+                    HapticManager.selection()
                 }
 
-                if let memory = settings.historyMemory, !memory.summary.isEmpty {
-                    Text(memory.summary)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(4)
+                // Only show memory content when enabled
+                if settings.globalMemoryEnabled {
+                    if let memory = settings.historyMemory, !memory.summary.isEmpty {
+                        Divider()
+                            .padding(.vertical, 4)
 
-                    HStack {
-                        Text("Last updated: \(timeAgo(memory.lastUpdated))")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
+                        Text(memory.summary)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(4)
 
-                        Spacer()
+                        HStack {
+                            Text("Last updated: \(timeAgo(memory.lastUpdated))")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
 
-                        Button("Edit") {
-                            editHistoryMemory()
+                            Spacer()
+
+                            Button("Edit") {
+                                editHistoryMemory()
+                            }
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(AppTheme.accent)
                         }
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(AppTheme.accent)
+                    } else {
+                        Divider()
+                            .padding(.vertical, 4)
+
+                        Text("No history recorded yet. Memories are created after each transcription.")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                            .italic()
                     }
-                } else {
-                    Text("No history recorded yet")
-                        .font(.subheadline)
-                        .foregroundStyle(.tertiary)
-                        .italic()
                 }
             }
             .padding(16)

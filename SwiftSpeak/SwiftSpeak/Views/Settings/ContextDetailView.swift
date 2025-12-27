@@ -14,8 +14,17 @@ struct ContextDetailView: View {
 
     @EnvironmentObject var settings: SharedSettings
 
+    // Memory editing state
+    @State private var showingMemoryEditor = false
+    @State private var editingMemoryContent = ""
+
     private var isActive: Bool {
         settings.activeContextId == context.id
+    }
+
+    // Get the current context from settings (for live updates)
+    private var currentContext: ConversationContext {
+        settings.contexts.first { $0.id == context.id } ?? context
     }
 
     var body: some View {
@@ -49,7 +58,7 @@ struct ContextDetailView: View {
                 historySection
 
                 // Memory section (if enabled)
-                if context.memoryEnabled {
+                if currentContext.memoryEnabled {
                     memorySection
                 }
 
@@ -68,6 +77,19 @@ struct ContextDetailView: View {
                         .fontWeight(.medium)
                 }
             }
+        }
+        .sheet(isPresented: $showingMemoryEditor) {
+            MemoryEditorSheet(
+                title: "\(context.icon) \(context.name) - Context Memory",
+                content: $editingMemoryContent,
+                lastUpdated: currentContext.lastMemoryUpdate,
+                onSave: {
+                    settings.updateContextMemory(id: context.id, memory: editingMemoryContent)
+                },
+                onClear: {
+                    settings.updateContextMemory(id: context.id, memory: "")
+                }
+            )
         }
     }
 
@@ -291,9 +313,28 @@ struct ContextDetailView: View {
 
     private var memorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("CONTEXT MEMORY")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("CONTEXT MEMORY")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                // Edit button (always visible when memory section is shown)
+                Button(action: {
+                    HapticManager.lightTap()
+                    editingMemoryContent = currentContext.memory ?? ""
+                    showingMemoryEditor = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.caption2)
+                        Text("Edit")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(AppTheme.accent)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -305,19 +346,33 @@ struct ContextDetailView: View {
                         .foregroundStyle(.purple)
                 }
 
-                if let memory = context.memory, !memory.isEmpty {
+                if let memory = currentContext.memory, !memory.isEmpty {
                     Text(memory)
                         .font(.subheadline)
                         .foregroundStyle(.primary)
                         .lineLimit(4)
 
-                    if let lastUpdate = context.lastMemoryUpdate {
-                        Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    HStack {
+                        if let lastUpdate = currentContext.lastMemoryUpdate {
+                            Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        Spacer()
+
+                        // Clear button
+                        Button(action: {
+                            HapticManager.warning()
+                            settings.updateContextMemory(id: context.id, memory: "")
+                        }) {
+                            Text("Clear")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.red.opacity(0.8))
+                        }
                     }
                 } else {
-                    Text("No memory stored yet")
+                    Text("No memory stored yet. Memories are automatically created when you use this context.")
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                         .italic()

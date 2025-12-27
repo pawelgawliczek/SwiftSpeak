@@ -68,6 +68,8 @@
 			membershipExceptions = (
 				Shared/Constants.swift,
 				Shared/Models.swift,
+				Shared/ProviderHelpContent.swift,
+				Shared/ProviderLanguageSupport.swift,
 				Shared/Theme.swift,
 			);
 			target = 83ED79262EFE4D8F00880604 /* SwiftSpeakKeyboard */;
@@ -77,6 +79,8 @@
 			membershipExceptions = (
 				Shared/Constants.swift,
 				Shared/Models.swift,
+				Shared/ProviderHelpContent.swift,
+				Shared/ProviderLanguageSupport.swift,
 				Shared/Theme.swift,
 				SharedSettings.swift,
 			);

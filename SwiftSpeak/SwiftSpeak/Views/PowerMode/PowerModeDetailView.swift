@@ -14,6 +14,15 @@ struct PowerModeDetailView: View {
 
     @EnvironmentObject var settings: SharedSettings
 
+    // Memory editing state
+    @State private var showingMemoryEditor = false
+    @State private var editingMemoryContent = ""
+
+    // Get the current power mode from settings (for live updates)
+    private var currentPowerMode: PowerMode {
+        settings.powerModes.first { $0.id == powerMode.id } ?? powerMode
+    }
+
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
@@ -30,7 +39,7 @@ struct PowerModeDetailView: View {
                 historySection
 
                 // Memory section (if enabled)
-                if powerMode.memoryEnabled {
+                if currentPowerMode.memoryEnabled {
                     memorySection
                 }
 
@@ -49,6 +58,19 @@ struct PowerModeDetailView: View {
                         .fontWeight(.medium)
                 }
             }
+        }
+        .sheet(isPresented: $showingMemoryEditor) {
+            MemoryEditorSheet(
+                title: "\(powerMode.name) - Workflow Memory",
+                content: $editingMemoryContent,
+                lastUpdated: currentPowerMode.lastMemoryUpdate,
+                onSave: {
+                    settings.updatePowerModeMemory(id: powerMode.id, memory: editingMemoryContent)
+                },
+                onClear: {
+                    settings.updatePowerModeMemory(id: powerMode.id, memory: "")
+                }
+            )
         }
     }
 
@@ -197,9 +219,28 @@ struct PowerModeDetailView: View {
 
     private var memorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("WORKFLOW MEMORY")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("WORKFLOW MEMORY")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                // Edit button (always visible when memory section is shown)
+                Button(action: {
+                    HapticManager.lightTap()
+                    editingMemoryContent = currentPowerMode.memory ?? ""
+                    showingMemoryEditor = true
+                }) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.caption2)
+                        Text("Edit")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(AppTheme.accent)
+                }
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
@@ -211,19 +252,33 @@ struct PowerModeDetailView: View {
                         .foregroundStyle(.purple)
                 }
 
-                if let memory = powerMode.memory, !memory.isEmpty {
+                if let memory = currentPowerMode.memory, !memory.isEmpty {
                     Text(memory)
                         .font(.subheadline)
                         .foregroundStyle(.primary)
                         .lineLimit(4)
 
-                    if let lastUpdate = powerMode.lastMemoryUpdate {
-                        Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    HStack {
+                        if let lastUpdate = currentPowerMode.lastMemoryUpdate {
+                            Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        Spacer()
+
+                        // Clear button
+                        Button(action: {
+                            HapticManager.warning()
+                            settings.updatePowerModeMemory(id: powerMode.id, memory: "")
+                        }) {
+                            Text("Clear")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.red.opacity(0.8))
+                        }
                     }
                 } else {
-                    Text("No memory stored yet")
+                    Text("No memory stored yet. Memories are automatically created after using this Power Mode.")
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
                         .italic()
