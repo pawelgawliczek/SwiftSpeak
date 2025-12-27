@@ -5,6 +5,7 @@
 //  Comprehensive tests for MemoryManager three-tier memory system
 //
 
+import Foundation
 import Testing
 @testable import SwiftSpeak
 
@@ -433,21 +434,15 @@ struct MemoryManagerUpdateTests {
         settings.globalMemoryEnabled = false
 
         let context = ConversationContext(
-            id: UUID(),
             name: "Test",
             icon: "person",
             color: .blue,
             description: "Test",
             toneDescription: "Casual",
-            languageHints: [],
-            customInstructions: "",
             formality: .neutral,
+            languageHints: [],
             memoryEnabled: false, // Disabled
-            memory: nil,
-            lastMemoryUpdate: nil,
-            isActive: true,
-            createdAt: Date(),
-            updatedAt: Date()
+            isActive: true
         )
 
         let manager = MemoryManager(settings: settings)
@@ -477,20 +472,12 @@ struct MemoryManagerUpdateTests {
         settings.globalMemoryEnabled = false
 
         let powerMode = PowerMode(
-            id: UUID(),
             name: "Test",
-            description: "Test",
             icon: "bolt",
-            color: .purple,
-            systemPrompt: "Test",
-            capabilities: [],
-            temperature: 0.7,
-            maxTokens: 2000,
-            memoryEnabled: false, // Disabled
-            memory: nil,
-            lastMemoryUpdate: nil,
-            createdAt: Date(),
-            updatedAt: Date()
+            iconColor: .purple,
+            iconBackgroundColor: .purple,
+            instruction: "Test",
+            memoryEnabled: false // Disabled
         )
 
         let manager = MemoryManager(settings: settings)
