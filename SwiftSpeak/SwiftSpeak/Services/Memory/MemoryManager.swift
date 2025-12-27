@@ -6,6 +6,7 @@
 //  Handles memory updates, compression, and LLM-based summarization.
 //
 
+import Combine
 import Foundation
 
 /// Memory tier for targeting specific memory stores
