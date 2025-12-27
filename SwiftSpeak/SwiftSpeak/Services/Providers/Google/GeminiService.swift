@@ -9,7 +9,7 @@ import Foundation
 
 /// Google Gemini formatting service for power mode
 /// Uses Gemini API for text formatting according to templates
-final class GeminiService: FormattingProvider {
+final class GeminiService: FormattingProvider, StreamingFormattingProvider {
 
     // MARK: - FormattingProvider
 
@@ -126,6 +126,86 @@ final class GeminiService: FormattingProvider {
         }
 
         return part.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    // MARK: - StreamingFormattingProvider
+
+    var supportsStreaming: Bool { true }
+
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?,
+        context: PromptContext?
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard isConfigured else {
+                        continuation.finish(throwing: TranscriptionError.apiKeyMissing)
+                        return
+                    }
+
+                    // Raw mode returns text unchanged
+                    if mode == .raw && customPrompt == nil && (context == nil || !context!.hasContent) {
+                        continuation.yield(text)
+                        continuation.finish()
+                        return
+                    }
+
+                    // Build the system prompt
+                    let basePrompt = customPrompt ?? mode.prompt
+                    let systemPrompt: String
+
+                    if let ctx = context, ctx.hasContent {
+                        systemPrompt = ctx.buildSystemPrompt(task: basePrompt)
+                    } else {
+                        systemPrompt = basePrompt
+                    }
+
+                    // Gemini doesn't have separate system messages, so combine them
+                    let combinedPrompt = """
+                    \(systemPrompt)
+
+                    Text to format:
+                    \(text)
+                    """
+
+                    // Build request
+                    let request = GeminiRequest(
+                        contents: [
+                            GeminiContent(
+                                role: "user",
+                                parts: [GeminiPart(text: combinedPrompt)]
+                            )
+                        ]
+                    )
+
+                    // Build streaming endpoint URL with ?alt=sse
+                    let endpoint = URL(string: "\(Constants.API.gemini)/\(modelName):streamGenerateContent?alt=sse")!
+
+                    // Stream API call
+                    for try await event in await apiClient.streamPost(
+                        url: endpoint,
+                        body: request,
+                        headers: [
+                            "x-goog-api-key": apiKey
+                        ],
+                        timeout: 120
+                    ) {
+                        // Extract text content from Gemini streaming format
+                        if let content = event.geminiContent() {
+                            continuation.yield(content)
+                        }
+                    }
+
+                    continuation.finish()
+
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 }
 

@@ -12,6 +12,7 @@ import Testing
 // MARK: - Initialization Tests
 
 @Suite("MemoryManager - Initialization")
+@MainActor
 struct MemoryManagerInitTests {
 
     @Test("Initial state is not updating")
@@ -42,6 +43,7 @@ struct MemoryManagerInitTests {
 // MARK: - Memory Tier Target Tests
 
 @Suite("MemoryManager - MemoryTierTarget")
+@MainActor
 struct MemoryTierTargetTests {
 
     @Test("Global tier target")
@@ -80,6 +82,7 @@ struct MemoryTierTargetTests {
 // MARK: - Memory Update Result Tests
 
 @Suite("MemoryManager - MemoryUpdateResult")
+@MainActor
 struct MemoryUpdateResultTests {
 
     @Test("Successful result properties")
@@ -134,6 +137,7 @@ struct MemoryUpdateResultTests {
 // MARK: - Memory Error Tests
 
 @Suite("MemoryManager - MemoryError")
+@MainActor
 struct MemoryErrorTests {
 
     @Test("Context not found error description")
@@ -164,6 +168,7 @@ struct MemoryErrorTests {
 // MARK: - Get Memory Tests
 
 @Suite("MemoryManager - Get Memory")
+@MainActor
 struct MemoryManagerGetTests {
 
     @Test("Get global memory returns nil when empty")
@@ -220,6 +225,7 @@ struct MemoryManagerGetTests {
 // MARK: - Is Memory Enabled Tests
 
 @Suite("MemoryManager - Is Memory Enabled")
+@MainActor
 struct MemoryManagerEnabledTests {
 
     @Test("Global memory enabled reflects settings")
@@ -261,6 +267,7 @@ struct MemoryManagerEnabledTests {
 // MARK: - Memory Stats Tests
 
 @Suite("MemoryManager - Memory Stats")
+@MainActor
 struct MemoryManagerStatsTests {
 
     @Test("Global memory stats with empty memory")
@@ -321,6 +328,7 @@ struct MemoryManagerStatsTests {
 // MARK: - Clear Memory Tests
 
 @Suite("MemoryManager - Clear Memory")
+@MainActor
 struct MemoryManagerClearTests {
 
     @Test("Clear global memory sets to nil")
@@ -363,6 +371,7 @@ struct MemoryManagerClearTests {
 // MARK: - Update Memory Tests
 
 @Suite("MemoryManager - Update Memory")
+@MainActor
 struct MemoryManagerUpdateTests {
 
     @Test("Empty transcription returns no results")
@@ -503,6 +512,7 @@ struct MemoryManagerUpdateTests {
 // MARK: - Memory Combining Logic Tests
 
 @Suite("MemoryManager - Memory Combining")
+@MainActor
 struct MemoryManagerCombiningTests {
 
     @Test("Short text used directly for summary")

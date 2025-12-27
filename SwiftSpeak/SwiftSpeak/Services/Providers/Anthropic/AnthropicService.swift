@@ -9,7 +9,7 @@ import Foundation
 
 /// Anthropic Claude formatting service
 /// Uses Claude to format transcribed text according to templates
-final class AnthropicService: FormattingProvider {
+final class AnthropicService: FormattingProvider, StreamingFormattingProvider {
 
     // MARK: - FormattingProvider
 
@@ -119,6 +119,83 @@ final class AnthropicService: FormattingProvider {
 
         return firstContent.text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    // MARK: - StreamingFormattingProvider
+
+    var supportsStreaming: Bool { true }
+
+    func formatStreaming(
+        text: String,
+        mode: FormattingMode,
+        customPrompt: String?,
+        context: PromptContext?
+    ) -> AsyncThrowingStream<String, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard isConfigured else {
+                        continuation.finish(throwing: TranscriptionError.apiKeyMissing)
+                        return
+                    }
+
+                    // Raw mode returns text unchanged
+                    if mode == .raw && customPrompt == nil && (context == nil || !context!.hasContent) {
+                        continuation.yield(text)
+                        continuation.finish()
+                        return
+                    }
+
+                    // Build the system prompt
+                    let basePrompt = customPrompt ?? mode.prompt
+                    let systemPrompt: String
+
+                    if let ctx = context, ctx.hasContent {
+                        systemPrompt = ctx.buildSystemPrompt(task: basePrompt)
+                    } else {
+                        systemPrompt = basePrompt
+                    }
+
+                    // Build streaming request
+                    let request = AnthropicStreamingRequest(
+                        model: modelName,
+                        maxTokens: 4096,
+                        system: systemPrompt,
+                        messages: [
+                            AnthropicMessage(role: "user", content: text)
+                        ],
+                        stream: true
+                    )
+
+                    // Stream API call
+                    for try await event in await apiClient.streamPost(
+                        url: endpoint,
+                        body: request,
+                        headers: [
+                            "x-api-key": apiKey,
+                            "anthropic-version": "2023-06-01"
+                        ],
+                        timeout: 120
+                    ) {
+                        // Check for done signal
+                        if event.isAnthropicDone {
+                            continuation.finish()
+                            return
+                        }
+
+                        // Extract text content
+                        if let content = event.anthropicContent() {
+                            continuation.yield(content)
+                        }
+                    }
+
+                    continuation.finish()
+
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
 }
 
 // MARK: - Request/Response Models
@@ -134,6 +211,22 @@ private struct AnthropicMessageRequest: Encodable {
         case maxTokens = "max_tokens"
         case system
         case messages
+    }
+}
+
+private struct AnthropicStreamingRequest: Encodable {
+    let model: String
+    let maxTokens: Int
+    let system: String
+    let messages: [AnthropicMessage]
+    let stream: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case model
+        case maxTokens = "max_tokens"
+        case system
+        case messages
+        case stream
     }
 }
 
