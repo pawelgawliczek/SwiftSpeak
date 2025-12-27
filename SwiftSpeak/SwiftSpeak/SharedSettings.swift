@@ -154,6 +154,15 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    // MARK: - Phase 4e: RAG Knowledge Documents
+
+    /// Knowledge documents for Power Mode RAG
+    @Published var knowledgeDocuments: [KnowledgeDocument] = [] {
+        didSet {
+            saveKnowledgeDocuments()
+        }
+    }
+
     // MARK: - Non-Published Properties
 
     var openAIAPIKey: String? {
@@ -284,6 +293,9 @@ class SharedSettings: ObservableObject {
 
         // Load user app category overrides
         loadUserAppCategoryOverrides()
+
+        // Load knowledge documents (Phase 4e RAG)
+        loadKnowledgeDocuments()
 
         // Load active context ID
         if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
@@ -859,5 +871,42 @@ class SharedSettings: ObservableObject {
     /// Clears the manually selected context, allowing app auto-enable to take effect
     func clearManualContextSelection() {
         activeContextId = nil
+    }
+
+    // MARK: - Knowledge Document Management (Phase 4e RAG)
+
+    private func loadKnowledgeDocuments() {
+        if let data = defaults?.data(forKey: Constants.Keys.knowledgeDocuments),
+           let docs = try? JSONDecoder().decode([KnowledgeDocument].self, from: data) {
+            knowledgeDocuments = docs
+        }
+    }
+
+    private func saveKnowledgeDocuments() {
+        if let data = try? JSONEncoder().encode(knowledgeDocuments) {
+            defaults?.set(data, forKey: Constants.Keys.knowledgeDocuments)
+        }
+    }
+
+    /// Add a new knowledge document
+    func addKnowledgeDocument(_ document: KnowledgeDocument) {
+        knowledgeDocuments.append(document)
+    }
+
+    /// Remove a knowledge document by ID
+    func removeKnowledgeDocument(_ id: UUID) {
+        knowledgeDocuments.removeAll { $0.id == id }
+    }
+
+    /// Update an existing knowledge document
+    func updateKnowledgeDocument(_ document: KnowledgeDocument) {
+        if let index = knowledgeDocuments.firstIndex(where: { $0.id == document.id }) {
+            knowledgeDocuments[index] = document
+        }
+    }
+
+    /// Get a knowledge document by ID
+    func getKnowledgeDocument(id: UUID) -> KnowledgeDocument? {
+        knowledgeDocuments.first { $0.id == id }
     }
 }

@@ -56,7 +56,13 @@ final class PowerModeOrchestrator: ObservableObject {
     private let audioRecorder: any AudioRecorderProtocol
     private let providerFactory: any ProviderFactoryProtocol
     private let memoryManager: any MemoryManagerProtocol
+    private let ragOrchestrator: RAGOrchestrator
     private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - RAG State
+
+    /// Last RAG query result (used in prompt building)
+    private var lastRAGResult: RAGQueryResult?
 
     // MARK: - Timing
 
@@ -81,6 +87,7 @@ final class PowerModeOrchestrator: ObservableObject {
             audioRecorder: AudioRecorder(),
             providerFactory: ProviderFactory(settings: resolvedSettings),
             memoryManager: MemoryManager(settings: resolvedSettings),
+            ragOrchestrator: RAGOrchestrator(),
             setupBindings: true
         )
     }
@@ -92,14 +99,18 @@ final class PowerModeOrchestrator: ObservableObject {
         audioRecorder: any AudioRecorderProtocol,
         providerFactory: any ProviderFactoryProtocol,
         memoryManager: any MemoryManagerProtocol,
+        ragOrchestrator: RAGOrchestrator? = nil,
         setupBindings: Bool = false
     ) {
+        // Initialize all stored properties first
         self.powerMode = powerMode
         self.settings = settings
         self.audioRecorder = audioRecorder
         self.providerFactory = providerFactory
         self.memoryManager = memoryManager
+        self.ragOrchestrator = ragOrchestrator ?? RAGOrchestrator()
 
+        // Setup bindings after all properties are initialized
         if setupBindings, let concreteRecorder = audioRecorder as? AudioRecorder {
             setupAudioBindings(recorder: concreteRecorder)
         }
@@ -172,11 +183,25 @@ final class PowerModeOrchestrator: ObservableObject {
             state = .thinking
 
             // Query knowledge base if configured (Phase 4e - RAG)
-            // TODO: Implement RAG query when Phase 4e is complete
+            lastRAGResult = nil
             if !powerMode.knowledgeDocumentIds.isEmpty {
                 state = .queryingKnowledge
-                // Simulate knowledge retrieval for now
-                try await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+                do {
+                    // Configure RAG if needed
+                    if !ragOrchestrator.isConfigured,
+                       let openAIKey = settings.openAIAPIKey,
+                       !openAIKey.isEmpty {
+                        try ragOrchestrator.configure(openAIApiKey: openAIKey)
+                    }
+
+                    // Query for relevant context
+                    if ragOrchestrator.isConfigured {
+                        lastRAGResult = try await ragOrchestrator.query(processedInput, powerMode: powerMode)
+                    }
+                } catch {
+                    // RAG failure is non-fatal - continue without RAG context
+                    print("RAG query failed: \(error.localizedDescription)")
+                }
             }
 
             // Generate response (streaming or blocking)
@@ -545,7 +570,21 @@ final class PowerModeOrchestrator: ObservableObject {
             parts.append(memorySection)
         }
 
-        // 5. Special instructions for regeneration/refinement
+        // 5. RAG context injection (Phase 4e)
+        if let ragResult = lastRAGResult, !ragResult.chunks.isEmpty {
+            parts.append("\n## Knowledge Base Context")
+            parts.append("The following relevant information was retrieved from attached documents:")
+            parts.append("Sources: \(ragResult.documentNames.joined(separator: ", "))")
+            parts.append("")
+            for (index, result) in ragResult.chunks.prefix(5).enumerated() {
+                parts.append("### Excerpt \(index + 1) (from \(result.documentName))")
+                parts.append(result.chunk.content)
+                parts.append("")
+            }
+            parts.append("Use this information to inform your response when relevant.")
+        }
+
+        // 6. Special instructions for regeneration/refinement
         if isRegeneration {
             parts.append("\n## Note")
             parts.append("This is a regeneration request. Provide a fresh perspective while maintaining quality.")

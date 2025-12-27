@@ -30,6 +30,9 @@ struct PowerModeEditorView: View {
     // App assignment
     @State private var appAssignment: AppAssignment = AppAssignment()
 
+    // Phase 4e: RAG Knowledge Documents
+    @State private var knowledgeDocumentIds: [UUID] = []
+
     // UI state
     @State private var showingIconPicker = false
     @State private var showingKnowledgeBase = false
@@ -38,6 +41,23 @@ struct PowerModeEditorView: View {
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
         !instruction.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    /// Creates a temporary PowerMode with current editor values for KnowledgeBaseView
+    private var currentPowerModeForKnowledgeBase: PowerMode {
+        PowerMode(
+            id: powerMode?.id ?? UUID(),
+            name: name,
+            icon: icon,
+            iconColor: iconColor,
+            iconBackgroundColor: iconBackgroundColor,
+            instruction: instruction,
+            outputFormat: outputFormat,
+            memoryEnabled: memoryEnabled,
+            memory: memoryContent.isEmpty ? nil : memoryContent,
+            knowledgeDocumentIds: knowledgeDocumentIds,
+            appAssignment: appAssignment
+        )
     }
 
     init(powerMode: PowerMode?, onSave: @escaping (PowerMode) -> Void) {
@@ -55,6 +75,7 @@ struct PowerModeEditorView: View {
             _memoryEnabled = State(initialValue: mode.memoryEnabled)
             _memoryContent = State(initialValue: mode.memory ?? "")
             _appAssignment = State(initialValue: mode.appAssignment)
+            _knowledgeDocumentIds = State(initialValue: mode.knowledgeDocumentIds)
         }
     }
 
@@ -105,37 +126,10 @@ struct PowerModeEditorView: View {
                 )
             }
             .sheet(isPresented: $showingKnowledgeBase) {
-                // TODO: Phase 4 - KnowledgeBaseView
-                NavigationStack {
-                    VStack(spacing: 20) {
-                        Image(systemName: "doc.text.magnifyingglass")
-                            .font(.system(size: 60))
-                            .foregroundStyle(AppTheme.accentGradient)
-
-                        Text("Knowledge Base")
-                            .font(.title2.weight(.semibold))
-
-                        Text("Upload documents to give this Power Mode context from your files and URLs.")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 40)
-
-                        Text("Coming in Phase 4")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                            .padding(.top, 20)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(AppTheme.darkBase.ignoresSafeArea())
-                    .navigationTitle("Knowledge Base")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Done") { showingKnowledgeBase = false }
-                        }
-                    }
-                }
+                KnowledgeBaseView(
+                    powerMode: currentPowerModeForKnowledgeBase,
+                    documentIds: $knowledgeDocumentIds
+                )
             }
             .sheet(isPresented: $showingMemoryEditor) {
                 MemoryEditorSheet(
@@ -426,7 +420,7 @@ struct PowerModeEditorView: View {
             memoryEnabled: memoryEnabled,
             memory: memoryContent.isEmpty ? nil : memoryContent,
             lastMemoryUpdate: newMemoryUpdate,
-            knowledgeDocumentIds: powerMode?.knowledgeDocumentIds ?? [],
+            knowledgeDocumentIds: knowledgeDocumentIds,
             isArchived: powerMode?.isArchived ?? false,
             appAssignment: appAssignment
         )

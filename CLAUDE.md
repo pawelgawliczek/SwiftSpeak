@@ -18,7 +18,8 @@ This file provides guidance to Claude Code when working with this repository.
 - Main App: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeak/`
 - Keyboard Extension: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeakKeyboard/`
 - Implementation Plan: `~/projects/SwiftSpeak/IMPLEMENTATION_PLAN.md`
-- Phase Plans: `~/projects/SwiftSpeak/PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md`, `PHASE3A_PLAN.md`
+- Active Phase Plans: `PHASE4_PLAN.md` (Power Mode), `PHASE9_PLAN.md` (Remote Config)
+- Archived Plans: `archive/PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md`, `PHASE3A_PLAN.md` (completed)
 
 ## Bundle IDs & Configuration
 
@@ -35,53 +36,38 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Current Project State
 
-### Phase 0: UI/UX Prototype - COMPLETE
-- [x] Onboarding flow (6 screens with animations)
-- [x] Keyboard UI - buttons, dropdowns, all states
-- [x] Recording card - waveform animation, state transitions
-- [x] Settings screens - providers, API keys, templates
-- [x] Paywall screens - Free/Pro/Power tiers
-- [x] History view - past transcriptions list
-- [x] Power Mode views
+### Phase 0: UI/UX Prototype - COMPLETE ✅
+All screens functional with mock data, full navigation, polished animations.
 
-### Phase 1: Core Transcription - IN PROGRESS
-- [x] Test targets created (SwiftSpeakTests, SwiftSpeakUITests)
-- [x] Provider abstraction layer (TranscriptionProvider, FormattingProvider, TranslationProvider protocols)
-- [x] Audio recording (AudioRecorder, AudioSessionManager)
-- [x] Network layer (APIClient with async/await)
-- [x] OpenAI services (OpenAITranscriptionService, OpenAIFormattingService)
-- [x] TranscriptionOrchestrator (coordinates full recording → transcription → formatting flow)
-- [x] Mock providers for testing
-- [x] RecordingView integrated with real orchestrator
-- [x] RequestsOpenAccess = true in keyboard Info.plist
-- [ ] Unit tests
-- [ ] UI tests
+### Phase 1: Core Transcription - COMPLETE ✅
+Provider protocols, audio recording, OpenAI services, TranscriptionOrchestrator.
 
-### Phase 3A: Provider Help & Language Guidance - UX MOCKUPS COMPLETE
-- [x] ProviderLanguageSupport.swift - Language support data model + database
-- [x] ProviderHelpContent.swift - Setup guide data model + content
-- [x] ProviderHelpSheet.swift - Setup guide bottom sheet
-- [x] ProviderStatusDashboard.swift - At-a-glance status card
-- [x] ProviderComparisonView.swift - Provider selection guide
-- [x] LanguageSupportView.swift - Language compatibility matrix
-- [x] SmartLanguagePicker.swift - Enhanced language dropdown
-- [x] IncompatibilityWarning.swift - Warning banners
+### Phase 2: Templates & Translation - COMPLETE ✅
+Translation, auto-return, custom templates, waveform audio connection.
+
+### Phase 3: Multi-Provider Support - COMPLETE ✅
+9 providers implemented: OpenAI, Anthropic, Gemini, AssemblyAI, Deepgram, Google STT, DeepL, Google Translate, Azure.
+
+### Phase 3A: Provider Help & Language Guidance - UX COMPLETE, INTEGRATION PENDING
+- [x] All UI components created (ProviderHelpSheet, StatusDashboard, LanguageSupportView, SmartLanguagePicker)
 - [ ] Integration with SettingsView (pending)
 - [ ] Integration with KeyboardView (pending)
 
 ### Phase 4: Power Mode Backend - IN PROGRESS
-- [x] Phase 4a: Conversation Contexts (ConversationContext model, ContextsView, ContextEditorSheet, ContextQuickSwitcher)
-- [x] Phase 4b: Three-Tier Memory System (MemoryManager, global/context/powerMode memory, MemoryView, MemoryEditorSheet)
-- [x] Phase 4c: PowerModeOrchestrator (central coordinator, context/memory injection, comprehensive tests)
-- [ ] Phase 4d: LLM Streaming (SSE parsing, progressive rendering)
+- [x] Phase 4a: Conversation Contexts (ConversationContext model, ContextsView, ContextEditorSheet)
+- [x] Phase 4b: Three-Tier Memory System (MemoryManager, global/context/powerMode memory)
+- [x] Phase 4c: PowerModeOrchestrator (central coordinator, context/memory injection)
+- [x] Phase 4d: LLM Streaming (SSEParser, APIClient.streamPost, StreamingFormattingProvider, OpenAI streaming, progressive UI)
+- [x] App Auto-Enable: Pre-built library of 100+ apps for automatic context/powermode activation
 - [ ] Phase 4e: RAG System (document parsing, embeddings, vector store)
 - [ ] Phase 4f: Webhooks (outbound integrations)
 
-### What's NOT Done Yet
-- [ ] Translation feature integration (Phase 2)
-- [ ] Multi-provider support services (Anthropic, ElevenLabs, Deepgram, Ollama) - Phase 3
-- [ ] Power Mode view integration with orchestrator - Phase 4c (in progress)
-- [ ] StoreKit 2 subscriptions - Phase 5
+### Next Steps
+- [ ] Phase 4e: RAG System
+- [ ] Phase 4f: Webhooks
+- [ ] Add streaming to Anthropic/Gemini providers
+- [ ] Phase 6: Security & Data Protection (Keychain, biometric protection)
+- [ ] Phase 7: StoreKit 2 subscriptions
 
 ## iOS Keyboard Architecture Constraint
 
@@ -216,13 +202,15 @@ SwiftSpeak/
 │   │   │   ├── ProviderHelpSheet.swift         # Phase 3A - Setup guide
 │   │   │   ├── ProviderStatusDashboard.swift   # Phase 3A - Status card
 │   │   │   ├── SmartLanguagePicker.swift       # Phase 3A - Language dropdown
-│   │   │   └── IncompatibilityWarning.swift    # Phase 3A - Warning banners
+│   │   │   ├── IncompatibilityWarning.swift    # Phase 3A - Warning banners
+│   │   │   └── AppAssignmentSection.swift      # App auto-enable for contexts/powermodes
 │   │   ├── Settings/                           # Phase 4a/4b - Settings views
 │   │   │   ├── ContextsView.swift              # Phase 4a - Context list
 │   │   │   ├── ContextEditorSheet.swift        # Phase 4a - Edit context
 │   │   │   ├── ContextDetailView.swift         # Phase 4a - View context
 │   │   │   ├── MemoryView.swift                # Phase 4b - Memory management
-│   │   │   └── MemoryEditorSheet.swift         # Phase 4b - Edit memory
+│   │   │   ├── MemoryEditorSheet.swift         # Phase 4b - Edit memory
+│   │   │   └── AppLibraryView.swift            # App library browser with category reassignment
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift
@@ -236,7 +224,8 @@ SwiftSpeak/
 │       ├── Models.swift                 # AIProvider, FormattingMode, Language, etc.
 │       ├── Theme.swift                  # AppTheme, HapticManager
 │       ├── ProviderLanguageSupport.swift       # Phase 3A - Language support data
-│       └── ProviderHelpContent.swift           # Phase 3A - Setup guides
+│       ├── ProviderHelpContent.swift           # Phase 3A - Setup guides
+│       └── AppLibrary.swift             # Pre-built database of 100+ apps for auto-enable
 │
 ├── SwiftSpeakKeyboard/                  # Keyboard Extension
 │   ├── KeyboardViewController.swift
@@ -408,6 +397,38 @@ xcodebuild test -project SwiftSpeak.xcodeproj -scheme SwiftSpeak -destination 'p
 3. Review PHASE1_PLAN.md for specific implementation steps
 4. Use Context7 for Swift/SwiftUI documentation if needed
 5. Run build to verify current state before making changes
+
+## App Auto-Enable Feature
+
+Automatically activates contexts or power modes based on which app the keyboard is being used in.
+
+**Architecture:**
+- iOS keyboard extensions cannot detect the host app via public APIs (Apple blocks this for privacy)
+- Solution: Pre-built database of 100+ popular apps organized by category
+- Users can reassign apps to different categories (e.g., move Notion from Work to Personal)
+- Contexts and PowerModes have `appAssignment` property specifying which apps/categories auto-enable them
+
+**Key Files:**
+- `AppLibrary.swift` - Database of apps with AppCategory, AppInfo, AppAssignment models
+- `AppLibraryView.swift` - Browse apps, search, reassign categories
+- `AppAssignmentSection.swift` - Reusable UI component for Context/PowerMode editors
+- `SharedSettings.swift` - Methods for `contextForApp(bundleId:)` and `powerModeForApp(bundleId:)`
+
+**How It Works:**
+```swift
+// In keyboard extension, get host bundle ID (via private API or input traits)
+let bundleId = "com.google.Gmail"
+
+// Find matching context or power mode
+if let context = settings.contextForApp(bundleId: bundleId) {
+    settings.setActiveContext(context)
+}
+if let powerMode = settings.powerModeForApp(bundleId: bundleId) {
+    // Auto-enable this power mode
+}
+```
+
+**Note:** Getting the host bundle ID requires either private API (risky for App Store) or inferring from input traits (limited but safe).
 
 ## Error Types
 

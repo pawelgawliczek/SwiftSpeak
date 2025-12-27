@@ -51,6 +51,9 @@ enum Constants {
 
         // App Library: User app category overrides
         static let userAppCategoryOverrides = "userAppCategoryOverrides"
+
+        // Phase 4e: RAG Knowledge Documents
+        static let knowledgeDocuments = "knowledgeDocuments"
     }
 
     // MARK: - API Endpoints

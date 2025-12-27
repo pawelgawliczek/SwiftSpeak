@@ -2,30 +2,51 @@
 //  KnowledgeBaseView.swift
 //  SwiftSpeak
 //
-//  Phase 4: Manage documents attached to a Power Mode for RAG
+//  Phase 4e: Manage documents attached to a Power Mode for RAG
 //  Documents are indexed and searched to provide relevant context
 //
 
 import SwiftUI
 
 struct KnowledgeBaseView: View {
-    let powerModeId: UUID
+    let powerMode: PowerMode
     @Binding var documentIds: [UUID]
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SharedSettings
 
-    // Mock data - will be replaced with actual document storage
-    @State private var documents: [KnowledgeDocument] = KnowledgeDocument.samples
+    @StateObject private var ragOrchestrator = RAGOrchestrator()
+
     @State private var showingPicker = false
     @State private var showingDeleteConfirmation = false
     @State private var documentToDelete: KnowledgeDocument?
+    @State private var showingPrivacySheet = false
+    @State private var errorMessage: String?
+
+    // Get documents from settings that match our IDs
+    private var documents: [KnowledgeDocument] {
+        settings.knowledgeDocuments.filter { documentIds.contains($0.id) }
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 16) {
+                    // Privacy banner (always visible)
+                    RAGPrivacyBanner()
+                        .onTapGesture {
+                            showingPrivacySheet = true
+                        }
+
                     // Header
                     headerSection
+
+                    // Error message
+                    if let error = errorMessage {
+                        ErrorBanner(message: error) {
+                            errorMessage = nil
+                        }
+                    }
 
                     // Document list
                     if documents.isEmpty {
@@ -40,10 +61,12 @@ struct KnowledgeBaseView: View {
                     }
 
                     // Help text
-                    Text("Swipe left to delete. Tap to view details.")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .padding(.top, 8)
+                    if !documents.isEmpty {
+                        Text("Tap trash icon to delete. Tap banner above for privacy details.")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 8)
+                    }
                 }
                 .padding(16)
             }
@@ -62,9 +85,18 @@ struct KnowledgeBaseView: View {
                 }
             }
             .sheet(isPresented: $showingPicker) {
-                DocumentPickerSheet(onAdd: { document in
-                    addDocument(document)
-                })
+                DocumentPickerSheet(
+                    powerMode: powerMode,
+                    onAdd: { document in
+                        addDocument(document)
+                    }
+                )
+                .environmentObject(settings)
+            }
+            .sheet(isPresented: $showingPrivacySheet) {
+                RAGPrivacySheet(isPresented: $showingPrivacySheet) {
+                    // User acknowledged
+                }
             }
             .confirmationDialog("Delete Document", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
@@ -78,6 +110,9 @@ struct KnowledgeBaseView: View {
                     Text("Delete \"\(doc.name)\"? The indexed chunks will be removed.")
                 }
             }
+            .onAppear {
+                configureRAG()
+            }
         }
     }
 
@@ -88,6 +123,19 @@ struct KnowledgeBaseView: View {
             Text("Documents attached to this Power Mode will be searched to provide relevant context.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            HStack {
+                Text("\(documents.count) document\(documents.count == 1 ? "" : "s")")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                if documents.count > 0 {
+                    let totalChunks = documents.reduce(0) { $0 + $1.chunkCount }
+                    Text("• \(totalChunks) chunks indexed")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -123,9 +171,27 @@ struct KnowledgeBaseView: View {
 
     // MARK: - Actions
 
+    private func configureRAG() {
+        // Try to configure RAG with OpenAI key
+        if let openAIKey = settings.openAIAPIKey,
+           !openAIKey.isEmpty {
+            do {
+                try ragOrchestrator.configure(openAIApiKey: openAIKey)
+            } catch {
+                errorMessage = "Failed to configure RAG: \(error.localizedDescription)"
+            }
+        }
+    }
+
     private func addDocument(_ document: KnowledgeDocument) {
-        documents.append(document)
-        documentIds.append(document.id)
+        // Add to settings
+        settings.addKnowledgeDocument(document)
+
+        // Add ID to power mode
+        if !documentIds.contains(document.id) {
+            documentIds.append(document.id)
+        }
+
         HapticManager.success()
     }
 
@@ -135,9 +201,50 @@ struct KnowledgeBaseView: View {
     }
 
     private func deleteDocument(_ document: KnowledgeDocument) {
-        documents.removeAll { $0.id == document.id }
+        // Remove from vector store
+        do {
+            try ragOrchestrator.deleteDocument(document.id)
+        } catch {
+            print("Failed to delete from vector store: \(error)")
+        }
+
+        // Remove from settings
+        settings.removeKnowledgeDocument(document.id)
+
+        // Remove from power mode
         documentIds.removeAll { $0 == document.id }
+
         HapticManager.lightTap()
+    }
+}
+
+// MARK: - Error Banner
+
+private struct ErrorBanner: View {
+    let message: String
+    let onDismiss: () -> Void
+
+    var body: some View {
+        HStack {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+
+            Text(message)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button(action: onDismiss) {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
+                .fill(Color.orange.opacity(0.1))
+        )
     }
 }
 
@@ -152,12 +259,12 @@ struct DocumentRowView: View {
             // Icon
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(document.type == .localFile ? Color.blue.opacity(0.15) : Color.green.opacity(0.15))
+                    .fill(document.type == .remoteURL ? Color.green.opacity(0.15) : Color.blue.opacity(0.15))
                     .frame(width: 44, height: 44)
 
-                Image(systemName: document.type == .localFile ? "doc.fill" : "globe")
+                Image(systemName: document.type == .remoteURL ? "globe" : "doc.fill")
                     .font(.title3)
-                    .foregroundStyle(document.type == .localFile ? .blue : .green)
+                    .foregroundStyle(document.type == .remoteURL ? .green : .blue)
             }
 
             // Info
@@ -231,8 +338,9 @@ struct DocumentRowView: View {
 
 #Preview {
     KnowledgeBaseView(
-        powerModeId: UUID(),
+        powerMode: PowerMode.presets[0],
         documentIds: .constant([])
     )
+    .environmentObject(SharedSettings.shared)
     .preferredColorScheme(.dark)
 }

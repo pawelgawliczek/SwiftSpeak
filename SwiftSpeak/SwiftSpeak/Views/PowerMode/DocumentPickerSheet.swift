@@ -2,16 +2,21 @@
 //  DocumentPickerSheet.swift
 //  SwiftSpeak
 //
-//  Phase 4: Add documents to the knowledge base
-//  Supports file upload (PDF, TXT, MD) and remote URLs
+//  Phase 4e: Add documents to the knowledge base
+//  Supports file upload (PDF, TXT, MD) and remote URLs with real RAG ingestion
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct DocumentPickerSheet: View {
+    let powerMode: PowerMode
     let onAdd: (KnowledgeDocument) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SharedSettings
+
+    @StateObject private var ragOrchestrator = RAGOrchestrator()
 
     @State private var selectedTab: DocumentSourceTab = .file
     @State private var urlString: String = ""
@@ -19,31 +24,61 @@ struct DocumentPickerSheet: View {
     @State private var updateInterval: UpdateInterval = .weekly
     @State private var showingFilePicker = false
 
+    // Ingestion state
+    @State private var isIngesting = false
+    @State private var ingestionProgress: IngestionProgress?
+    @State private var errorMessage: String?
+    @State private var urlValidationError: String?
+
+    // Privacy
+    @State private var hasShownPrivacyPopup = false
+
     enum DocumentSourceTab {
         case file
         case url
     }
 
     private var isURLValid: Bool {
-        guard !urlString.isEmpty else { return false }
-        return URL(string: urlString) != nil
+        guard !urlString.isEmpty,
+              let url = URL(string: urlString),
+              url.scheme == "https" else {
+            return false
+        }
+        return true
+    }
+
+    private var isURLWhitelisted: Bool {
+        guard let url = URL(string: urlString) else { return false }
+        return RAGSecurityManager.shared.isDomainWhitelisted(url.host ?? "")
     }
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Tab selector
-                    tabSelector
+            ZStack {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Privacy warning (always visible)
+                        RAGPrivacyCompactWarning()
 
-                    // Content based on tab
-                    if selectedTab == .file {
-                        fileContent
-                    } else {
-                        urlContent
+                        // Tab selector
+                        tabSelector
+
+                        // Content based on tab
+                        if selectedTab == .file {
+                            fileContent
+                        } else {
+                            urlContent
+                        }
                     }
+                    .padding(16)
                 }
-                .padding(16)
+                .disabled(isIngesting)
+                .opacity(isIngesting ? 0.5 : 1)
+
+                // Ingestion overlay
+                if isIngesting {
+                    ingestionOverlay
+                }
             }
             .background(AppTheme.darkBase.ignoresSafeArea())
             .navigationTitle("Add Document")
@@ -51,9 +86,62 @@ struct DocumentPickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .disabled(isIngesting)
+                }
+            }
+            .fileImporter(
+                isPresented: $showingFilePicker,
+                allowedContentTypes: [.pdf, .plainText, .init(filenameExtension: "md")!],
+                allowsMultipleSelection: false
+            ) { result in
+                handleFileSelection(result)
+            }
+            .onAppear {
+                configureRAG()
+                checkFirstDocumentPrivacy()
+            }
+            .alert("Error", isPresented: .constant(errorMessage != nil)) {
+                Button("OK") { errorMessage = nil }
+            } message: {
+                if let error = errorMessage {
+                    Text(error)
                 }
             }
         }
+    }
+
+    // MARK: - Ingestion Overlay
+
+    private var ingestionOverlay: some View {
+        VStack(spacing: 20) {
+            ProgressView()
+                .scaleEffect(1.5)
+
+            if let progress = ingestionProgress {
+                VStack(spacing: 8) {
+                    Text(progress.message)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    ProgressView(value: progress.progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 200)
+
+                    Text("\(Int(progress.progress * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text("Processing document...")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+            }
+        }
+        .padding(32)
+        .background(
+            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
     }
 
     // MARK: - Tab Selector
@@ -110,22 +198,10 @@ struct DocumentPickerSheet: View {
                 )
             }
 
-            // Mock: In real app, this would trigger document picker
-            Text("(Mock: File picker would open here)")
+            // Size limit note
+            Text("Maximum file size: \(ByteCountFormatter.string(fromByteCount: RAGLimits.maxDocumentSize, countStyle: .file))")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
-                .padding(.top, 8)
-
-            // Demo add button
-            Button(action: { addMockFile() }) {
-                Text("Add Sample PDF")
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 50)
-                    .background(AppTheme.powerGradient)
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
-            }
         }
     }
 
@@ -147,6 +223,22 @@ struct DocumentPickerSheet: View {
                     .padding(12)
                     .background(Color.primary.opacity(0.08))
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    .onChange(of: urlString) { _, _ in
+                        validateURL()
+                    }
+
+                // URL validation feedback
+                if urlValidationError != nil {
+                    RAGURLWarning(domain: URL(string: urlString)?.host ?? "unknown")
+                } else if isURLValid && isURLWhitelisted {
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Domain is trusted")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
+                }
             }
 
             // Name field
@@ -195,48 +287,156 @@ struct DocumentPickerSheet: View {
             Spacer(minLength: 20)
 
             // Add button
-            Button(action: { addURL() }) {
+            Button(action: { Task { await addURL() } }) {
                 Text("Add Document")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(isURLValid ? AnyShapeStyle(AppTheme.powerGradient) : AnyShapeStyle(Color.gray.opacity(0.3)))
+                    .background(canAddURL ? AnyShapeStyle(AppTheme.powerGradient) : AnyShapeStyle(Color.gray.opacity(0.3)))
                     .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
             }
-            .disabled(!isURLValid)
+            .disabled(!canAddURL)
         }
+    }
+
+    private var canAddURL: Bool {
+        isURLValid && isURLWhitelisted && !isIngesting
     }
 
     // MARK: - Actions
 
-    private func addMockFile() {
-        let document = KnowledgeDocument(
-            name: "Sample Document.pdf",
-            type: .localFile,
-            localPath: "/documents/sample.pdf",
-            chunkCount: 0,
-            fileSizeBytes: 500_000,
-            isIndexed: false
-        )
-        onAdd(document)
-        dismiss()
+    private func configureRAG() {
+        if let openAIKey = settings.openAIAPIKey,
+           !openAIKey.isEmpty {
+            do {
+                try ragOrchestrator.configure(openAIApiKey: openAIKey)
+            } catch {
+                errorMessage = "Failed to configure: \(error.localizedDescription)"
+            }
+        } else {
+            errorMessage = "OpenAI API key required for document indexing"
+        }
     }
 
-    private func addURL() {
-        guard let url = URL(string: urlString) else { return }
+    private func checkFirstDocumentPrivacy() {
+        // Check if this is the user's first document
+        if settings.knowledgeDocuments.isEmpty && !hasShownPrivacyPopup {
+            // First document - privacy popup will be shown by KnowledgeBaseView
+            hasShownPrivacyPopup = true
+        }
+    }
 
-        let name = documentName.isEmpty ? (url.host ?? "Web Document") : documentName
-        let document = KnowledgeDocument(
-            name: name,
-            type: .remoteURL,
-            sourceURL: url,
-            chunkCount: 0,
-            isIndexed: false,
-            autoUpdateInterval: updateInterval
-        )
-        onAdd(document)
-        dismiss()
+    private func validateURL() {
+        urlValidationError = nil
+
+        guard !urlString.isEmpty else { return }
+
+        guard let url = URL(string: urlString) else {
+            urlValidationError = "Invalid URL format"
+            return
+        }
+
+        guard url.scheme == "https" else {
+            urlValidationError = "Only HTTPS URLs are allowed"
+            return
+        }
+
+        if !RAGSecurityManager.shared.isDomainWhitelisted(url.host ?? "") {
+            urlValidationError = "Domain not in whitelist"
+        }
+    }
+
+    private func handleFileSelection(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            guard let url = urls.first else { return }
+
+            // Start accessing the security-scoped resource
+            guard url.startAccessingSecurityScopedResource() else {
+                errorMessage = "Cannot access selected file"
+                return
+            }
+
+            Task {
+                await ingestLocalFile(url)
+                url.stopAccessingSecurityScopedResource()
+            }
+
+        case .failure(let error):
+            errorMessage = "Failed to select file: \(error.localizedDescription)"
+        }
+    }
+
+    private func ingestLocalFile(_ url: URL) async {
+        guard ragOrchestrator.isConfigured else {
+            errorMessage = "RAG not configured. Please add OpenAI API key."
+            return
+        }
+
+        isIngesting = true
+
+        do {
+            let document = try await ragOrchestrator.ingestLocalFile(
+                at: url,
+                powerMode: powerMode
+            ) { progress in
+                Task { @MainActor in
+                    self.ingestionProgress = progress
+                }
+            }
+
+            await MainActor.run {
+                isIngesting = false
+                ingestionProgress = nil
+                onAdd(document)
+                HapticManager.success()
+                dismiss()
+            }
+        } catch {
+            await MainActor.run {
+                isIngesting = false
+                ingestionProgress = nil
+                errorMessage = error.localizedDescription
+                HapticManager.error()
+            }
+        }
+    }
+
+    private func addURL() async {
+        guard ragOrchestrator.isConfigured else {
+            errorMessage = "RAG not configured. Please add OpenAI API key."
+            return
+        }
+
+        isIngesting = true
+
+        do {
+            let document = try await ragOrchestrator.ingestRemoteURL(
+                urlString,
+                powerMode: powerMode,
+                refreshInterval: updateInterval
+            ) { progress in
+                Task { @MainActor in
+                    self.ingestionProgress = progress
+                }
+            }
+
+            await MainActor.run {
+                isIngesting = false
+                ingestionProgress = nil
+                onAdd(document)
+                HapticManager.success()
+                dismiss()
+            }
+        } catch {
+            await MainActor.run {
+                isIngesting = false
+                ingestionProgress = nil
+                errorMessage = error.localizedDescription
+                HapticManager.error()
+            }
+        }
     }
 }
 
@@ -271,6 +471,10 @@ private struct TabButton: View {
 // MARK: - Preview
 
 #Preview {
-    DocumentPickerSheet(onAdd: { _ in })
-        .preferredColorScheme(.dark)
+    DocumentPickerSheet(
+        powerMode: PowerMode.presets[0],
+        onAdd: { _ in }
+    )
+    .environmentObject(SharedSettings.shared)
+    .preferredColorScheme(.dark)
 }
