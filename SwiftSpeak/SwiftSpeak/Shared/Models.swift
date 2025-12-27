@@ -1079,7 +1079,7 @@ enum ContextFormality: String, Codable, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .auto: return "Auto (from Tone)"
+        case .auto: return "Auto"
         case .formal: return "Formal"
         case .informal: return "Informal"
         case .neutral: return "Neutral"

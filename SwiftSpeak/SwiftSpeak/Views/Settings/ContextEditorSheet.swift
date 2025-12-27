@@ -38,10 +38,14 @@ struct ContextEditorSheet: View {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
-    // Common languages to show
-    private let commonLanguages: [Language] = [
-        .polish, .english, .spanish, .german, .french, .italian, .portuguese
-    ]
+    /// Languages supported by the current transcription provider (at least "limited" level)
+    private var supportedLanguages: [Language] {
+        ProviderLanguageDatabase.languages(
+            supportedBy: settings.selectedTranscriptionProvider,
+            for: .transcription,
+            minimumLevel: .limited
+        ).sorted { $0.displayName < $1.displayName }
+    }
 
     /// Whether DeepL is the selected translation provider
     private var isDeepLSelected: Bool {
@@ -331,38 +335,54 @@ struct ContextEditorSheet: View {
 
     private var languagesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("EXPECTED LANGUAGES")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+            HStack {
+                Text("EXPECTED LANGUAGES")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
 
-            FlowLayout(spacing: 8) {
-                ForEach(commonLanguages) { language in
-                    Button(action: {
-                        HapticManager.selection()
-                        if selectedLanguages.contains(language) {
-                            selectedLanguages.remove(language)
-                        } else {
-                            selectedLanguages.insert(language)
-                        }
-                    }) {
-                        HStack(spacing: 4) {
+                Spacer()
+
+                // Show which provider is being used
+                Text(settings.selectedTranscriptionProvider.displayName)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.tertiary)
+            }
+
+            if supportedLanguages.isEmpty {
+                Text("No languages available for selected provider")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .italic()
+            } else {
+                FlowLayout(spacing: 8) {
+                    ForEach(supportedLanguages) { language in
+                        Button(action: {
+                            HapticManager.selection()
                             if selectedLanguages.contains(language) {
-                                Image(systemName: "checkmark")
-                                    .font(.caption.weight(.semibold))
+                                selectedLanguages.remove(language)
+                            } else {
+                                selectedLanguages.insert(language)
                             }
-                            Text(language.displayName)
-                                .font(.subheadline)
+                        }) {
+                            HStack(spacing: 4) {
+                                if selectedLanguages.contains(language) {
+                                    Image(systemName: "checkmark")
+                                        .font(.caption.weight(.semibold))
+                                }
+                                Text(language.displayName)
+                                    .font(.subheadline)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(selectedLanguages.contains(language) ? color.color.opacity(0.2) : Color.primary.opacity(0.08))
+                            .foregroundStyle(selectedLanguages.contains(language) ? color.color : .secondary)
+                            .clipShape(Capsule())
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(selectedLanguages.contains(language) ? color.color.opacity(0.2) : Color.primary.opacity(0.08))
-                        .foregroundStyle(selectedLanguages.contains(language) ? color.color : .secondary)
-                        .clipShape(Capsule())
                     }
                 }
             }
 
-            Text("Language hints improve transcription accuracy")
+            Text("Languages supported by \(settings.selectedTranscriptionProvider.displayName)")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
