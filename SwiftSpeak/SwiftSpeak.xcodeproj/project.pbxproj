@@ -77,11 +77,6 @@
 		83ED7A2A2EFECD3800880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Shared/Constants.swift,
-				Shared/Models.swift,
-				Shared/ProviderHelpContent.swift,
-				Shared/ProviderLanguageSupport.swift,
-				Shared/Theme.swift,
 				SharedSettings.swift,
 			);
 			target = 83ED7A102EFECCE900880604 /* SwiftSpeakTests */;
