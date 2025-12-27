@@ -4,6 +4,7 @@
 //
 //  Full execution flow with all states: idle, recording, transcribing,
 //  thinking, asking question, generating, complete, error
+//  Uses PowerModeOrchestrator for real AI execution
 //
 
 import SwiftUI
@@ -14,11 +15,8 @@ struct PowerModeExecutionView: View {
     let onDismiss: () -> Void
     let onAcceptAndInsert: ((String) -> Void)?
 
-    @State private var executionState: PowerModeExecutionState = .idle
-    @State private var session: PowerModeSession = PowerModeSession()
-    @State private var transcribedText: String = ""
-    @State private var recordingDuration: TimeInterval = 0
-    @State private var timer: Timer?
+    // Use the real orchestrator
+    @StateObject private var orchestrator: PowerModeOrchestrator
 
     // Edit mode
     @State private var isEditing = false
@@ -27,16 +25,15 @@ struct PowerModeExecutionView: View {
 
     // Refine mode - record additional input to combine with current result
     @State private var isRefining = false
-    @State private var refinementText: String = ""
 
-    // Mock waveform data
-    @State private var waveformHeights: [CGFloat] = Array(repeating: 10, count: 12)
+    @EnvironmentObject var settings: SharedSettings
 
     init(powerMode: PowerMode, isFromKeyboard: Bool = false, onDismiss: @escaping () -> Void, onAcceptAndInsert: ((String) -> Void)? = nil) {
         self.powerMode = powerMode
         self.isFromKeyboard = isFromKeyboard
         self.onDismiss = onDismiss
         self.onAcceptAndInsert = onAcceptAndInsert
+        _orchestrator = StateObject(wrappedValue: PowerModeOrchestrator(powerMode: powerMode))
     }
 
     var body: some View {
@@ -61,12 +58,17 @@ struct PowerModeExecutionView: View {
             }
         }
         .onAppear {
+            orchestrator.isFromKeyboard = isFromKeyboard
             // Auto-start recording when launched from keyboard
-            if isFromKeyboard && executionState == .idle {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                    startRecording()
+            if isFromKeyboard && orchestrator.isIdle {
+                Task {
+                    try? await Task.sleep(nanoseconds: 300_000_000)
+                    await orchestrator.startRecording()
                 }
             }
+        }
+        .onDisappear {
+            orchestrator.cancel()
         }
     }
 
@@ -81,7 +83,7 @@ struct PowerModeExecutionView: View {
                     isEditing = false
                     isEditFocused = false
                 } else {
-                    cleanup()
+                    orchestrator.cancel()
                     onDismiss()
                 }
             }) {
@@ -94,6 +96,21 @@ struct PowerModeExecutionView: View {
             }
 
             Spacer()
+
+            // Context indicator
+            if orchestrator.hasActiveContext {
+                HStack(spacing: 4) {
+                    Image(systemName: "person.circle.fill")
+                        .font(.caption)
+                    Text(orchestrator.activeContextName ?? "")
+                        .font(.caption.weight(.medium))
+                }
+                .foregroundStyle(.purple)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color.purple.opacity(0.15))
+                .clipShape(Capsule())
+            }
 
             // Save button when editing
             if isEditing {
@@ -109,7 +126,7 @@ struct PowerModeExecutionView: View {
             }
 
             // Options menu (when complete and not editing)
-            if case .complete = executionState, !isEditing {
+            if orchestrator.isComplete, !isEditing {
                 Menu {
                     Button(action: { startEditing() }) {
                         Label("Edit", systemImage: "pencil")
@@ -138,7 +155,7 @@ struct PowerModeExecutionView: View {
         if isEditing {
             editView
         } else {
-            switch executionState {
+            switch orchestrator.state {
             case .idle:
                 idleView
             case .recording:
@@ -157,11 +174,14 @@ struct PowerModeExecutionView: View {
                 PowerModeQuestionView(
                     question: question,
                     onAnswer: { answer in
-                        handleQuestionAnswer(answer)
+                        Task {
+                            await orchestrator.handleQuestionAnswer(answer)
+                        }
                     },
                     onVoiceAnswer: {
-                        // Start voice recording for answer
-                        startRecordingAnswer()
+                        Task {
+                            await orchestrator.startRecording()
+                        }
                     }
                 )
             case .generating:
@@ -172,7 +192,11 @@ struct PowerModeExecutionView: View {
                     isFromKeyboard: isFromKeyboard,
                     onCopyAndDone: copyAndDone,
                     onRefine: startRefining,
-                    onRegenerate: regenerate,
+                    onRegenerate: {
+                        Task {
+                            await orchestrator.regenerate()
+                        }
+                    },
                     onAccept: acceptAndInsert
                 )
             case .error(let message):
@@ -197,19 +221,20 @@ struct PowerModeExecutionView: View {
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.primary)
 
-            // Phase 4: Show memory and knowledge base status
+            // Show memory and knowledge base status
             HStack(spacing: 12) {
-                if powerMode.memoryEnabled {
+                // Active memory sources
+                ForEach(orchestrator.activeMemorySources, id: \.self) { source in
                     HStack(spacing: 4) {
                         Image(systemName: "brain.head.profile")
                             .font(.caption)
-                        Text("Memory")
+                        Text(source)
                             .font(.caption)
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.purple)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.primary.opacity(0.08))
+                    .background(Color.purple.opacity(0.15))
                     .clipShape(Capsule())
                 }
 
@@ -238,13 +263,13 @@ struct PowerModeExecutionView: View {
 
     private var recordingView: some View {
         VStack(spacing: 24) {
-            // Waveform
+            // Waveform from orchestrator
             HStack(spacing: 4) {
                 ForEach(0..<12, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppTheme.powerGradient)
-                        .frame(width: 4, height: waveformHeights[index])
-                        .animation(.spring(dampingFraction: 0.5), value: waveformHeights[index])
+                        .frame(width: 4, height: CGFloat(orchestrator.audioLevels[index] * 50 + 10))
+                        .animation(.spring(dampingFraction: 0.5), value: orchestrator.audioLevels[index])
                 }
             }
             .frame(height: 60)
@@ -254,7 +279,7 @@ struct PowerModeExecutionView: View {
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.primary)
 
-            Text(formatDuration(recordingDuration))
+            Text(formatDuration(orchestrator.recordingDuration))
                 .font(.body.monospacedDigit())
                 .foregroundStyle(.secondary)
 
@@ -266,12 +291,6 @@ struct PowerModeExecutionView: View {
                     .font(.footnote)
             }
             .foregroundStyle(.secondary)
-        }
-        .onAppear {
-            startWaveformAnimation()
-        }
-        .onDisappear {
-            stopWaveformAnimation()
         }
     }
 
@@ -310,7 +329,7 @@ struct PowerModeExecutionView: View {
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
 
-                Text(session.currentResult?.markdownOutput.prefix(100) ?? "")
+                Text(orchestrator.session.currentResult?.markdownOutput.prefix(100) ?? "")
                     .font(.caption)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
@@ -325,8 +344,8 @@ struct PowerModeExecutionView: View {
                 ForEach(0..<12, id: \.self) { index in
                     RoundedRectangle(cornerRadius: 2)
                         .fill(AppTheme.powerGradient)
-                        .frame(width: 4, height: waveformHeights[index])
-                        .animation(.spring(dampingFraction: 0.5), value: waveformHeights[index])
+                        .frame(width: 4, height: CGFloat(orchestrator.audioLevels[index] * 50 + 10))
+                        .animation(.spring(dampingFraction: 0.5), value: orchestrator.audioLevels[index])
                 }
             }
             .frame(height: 60)
@@ -336,21 +355,15 @@ struct PowerModeExecutionView: View {
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.primary)
 
-            Text(formatDuration(recordingDuration))
+            Text(formatDuration(orchestrator.recordingDuration))
                 .font(.body.monospacedDigit())
                 .foregroundStyle(.secondary)
 
-            Text("Your voice input will be combined with the current result")
+            Text("Your voice input will refine the current result")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-        }
-        .onAppear {
-            startWaveformAnimation()
-        }
-        .onDisappear {
-            stopWaveformAnimation()
         }
     }
 
@@ -366,8 +379,8 @@ struct PowerModeExecutionView: View {
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.primary)
 
-            if !transcribedText.isEmpty {
-                Text("\"\(transcribedText)\"")
+            if !orchestrator.transcribedText.isEmpty {
+                Text("\"\(orchestrator.transcribedText)\"")
                     .font(.body)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -400,13 +413,13 @@ struct PowerModeExecutionView: View {
                 .foregroundStyle(.primary)
 
             // User request
-            if !transcribedText.isEmpty {
+            if !orchestrator.transcribedText.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Your request:")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    Text(transcribedText)
+                    Text(orchestrator.transcribedText)
                         .font(.body)
                         .foregroundStyle(.primary)
                         .padding(12)
@@ -414,6 +427,17 @@ struct PowerModeExecutionView: View {
                         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
                 }
                 .frame(maxWidth: 300)
+            }
+
+            // Memory indicator
+            if !orchestrator.activeMemorySources.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "brain")
+                        .font(.caption)
+                    Text("Using \(orchestrator.activeMemorySources.joined(separator: ", ")) memory")
+                        .font(.caption)
+                }
+                .foregroundStyle(.purple)
             }
         }
     }
@@ -432,13 +456,13 @@ struct PowerModeExecutionView: View {
                 .foregroundStyle(.primary)
 
             // User request
-            if !transcribedText.isEmpty {
+            if !orchestrator.transcribedText.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Your request:")
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
 
-                    Text(transcribedText)
+                    Text(orchestrator.transcribedText)
                         .font(.body)
                         .foregroundStyle(.primary)
                         .lineLimit(2)
@@ -499,7 +523,7 @@ struct PowerModeExecutionView: View {
                 if !powerMode.knowledgeDocumentIds.isEmpty {
                     completedStepRow("Knowledge retrieved", isComplete: true)
                 }
-                if powerMode.memoryEnabled {
+                if !orchestrator.activeMemorySources.isEmpty {
                     completedStepRow("Context loaded", isComplete: true)
                 }
                 completedStepRow("Generating response...", isComplete: false, isLoading: true)
@@ -549,7 +573,11 @@ struct PowerModeExecutionView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
 
-            Button(action: { retry() }) {
+            Button(action: {
+                Task {
+                    await orchestrator.retry()
+                }
+            }) {
                 Text("Try Again")
                     .font(.callout.weight(.semibold))
                     .foregroundStyle(.white)
@@ -565,7 +593,7 @@ struct PowerModeExecutionView: View {
 
     @ViewBuilder
     private var bottomAction: some View {
-        switch executionState {
+        switch orchestrator.state {
         case .idle:
             recordButton(title: "Tap to Speak", icon: "mic.fill", isRecording: false)
         case .recording:
@@ -582,10 +610,15 @@ struct PowerModeExecutionView: View {
     private func recordButton(title: String, icon: String, isRecording: Bool) -> some View {
         Button(action: {
             HapticManager.mediumTap()
-            if isRecording {
-                stopRecording()
-            } else {
-                startRecording()
+            Task {
+                if isRecording {
+                    await orchestrator.stopRecording()
+                    if isRefining {
+                        isRefining = false
+                    }
+                } else {
+                    await orchestrator.startRecording()
+                }
             }
         }) {
             HStack(spacing: 10) {
@@ -604,134 +637,19 @@ struct PowerModeExecutionView: View {
         .padding(.bottom, 32)
     }
 
-    // MARK: - Mock Actions
-
-    private func startRecording() {
-        executionState = .recording
-        recordingDuration = 0
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            recordingDuration += 0.1
-        }
-    }
-
-    private func stopRecording() {
-        timer?.invalidate()
-        timer = nil
-
-        if isRefining {
-            // Handle refinement flow
-            refinementText = "Make it more concise and add bullet points for key takeaways"
-            executionState = .transcribing
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                executionState = .thinking
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    executionState = .generating
-                    finishWithRefinedResult()
-                }
-            }
-        } else {
-            // Normal flow
-            executionState = .transcribing
-            transcribedText = "Find me the latest news about artificial intelligence and summarize the key points"
-
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                executionState = .thinking
-
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    // Phase 4: Check for knowledge base documents (RAG)
-                    if !powerMode.knowledgeDocumentIds.isEmpty {
-                        executionState = .queryingKnowledge
-
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                            // Show question (for demo) - skip if from keyboard for faster flow
-                            if isFromKeyboard {
-                                executionState = .generating
-                                finishWithResult()
-                            } else {
-                                executionState = .askingQuestion(PowerModeQuestion.sample)
-                            }
-                        }
-                    } else {
-                        executionState = .generating
-                        finishWithResult()
-                    }
-                }
-            }
-        }
-    }
-
-    private func finishWithRefinedResult() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // Create refined version
-            let refinedResult = PowerModeResult(
-                powerModeId: powerMode.id,
-                powerModeName: powerMode.name,
-                userInput: "\(transcribedText)\n\nRefinement: \(refinementText)",
-                markdownOutput: """
-                # AI News Summary - December 2024 (Refined)
-
-                ## Key Takeaways
-                - OpenAI improved reasoning models for complex tasks
-                - DeepMind achieved 97% accuracy in protein folding
-                - Anthropic released new safety guidelines
-                - Meta open-sourced Llama 3 with multilingual support
-
-                ## Industry Trends
-                - AI safety and alignment focus increasing
-                - Enterprise adoption growing rapidly
-                - Global regulatory frameworks emerging
-                - Open-source AI momentum building
-
-                ## Sources
-                - TechCrunch, MIT Technology Review, The Verge, Wired
-                """,
-                processingDuration: 4.2,
-                versionNumber: session.results.count + 1,
-                usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
-                ragDocumentIds: powerMode.knowledgeDocumentIds
-            )
-
-            session.addResult(refinedResult)
-            isRefining = false
-            refinementText = ""
-            executionState = .complete(session)
-            HapticManager.success()
-        }
-    }
-
-    private func handleQuestionAnswer(_ answer: String) {
-        executionState = .generating
-        finishWithResult()
-    }
-
-    private func startRecordingAnswer() {
-        // Would start voice recording for answer
-        executionState = .recording
-    }
-
-    private func finishWithResult() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            var newSession = PowerModeSession()
-            newSession.addResult(PowerModeResult.sample)
-            session = newSession
-            executionState = .complete(newSession)
-            HapticManager.success()
-        }
-    }
+    // MARK: - Actions
 
     private func copyAndDone() {
-        if let result = session.currentResult {
+        if let result = orchestrator.session.currentResult {
             UIPasteboard.general.string = result.markdownOutput
             HapticManager.success()
-            cleanup()
+            orchestrator.reset()
             onDismiss()
         }
     }
 
     private func startEditing() {
-        if let result = session.currentResult {
+        if let result = orchestrator.session.currentResult {
             editedText = result.markdownOutput
             isEditing = true
             HapticManager.selection()
@@ -739,24 +657,8 @@ struct PowerModeExecutionView: View {
     }
 
     private func saveEditedText() {
-        // Update the current result with edited text
-        if let currentResult = session.currentResult {
-            let updatedResult = PowerModeResult(
-                powerModeId: currentResult.powerModeId,
-                powerModeName: currentResult.powerModeName,
-                userInput: currentResult.userInput,
-                markdownOutput: editedText,
-                processingDuration: currentResult.processingDuration,
-                versionNumber: currentResult.versionNumber,
-                usedRAG: currentResult.usedRAG,
-                ragDocumentIds: currentResult.ragDocumentIds
-            )
-            // Replace the current result
-            if session.currentVersionIndex < session.results.count {
-                session.results[session.currentVersionIndex] = updatedResult
-            }
-            executionState = .complete(session)
-        }
+        // Update the current result with edited text via orchestrator
+        orchestrator.updateCurrentResultText(editedText)
         isEditing = false
         isEditFocused = false
         HapticManager.success()
@@ -764,105 +666,26 @@ struct PowerModeExecutionView: View {
 
     private func startRefining() {
         isRefining = true
-        executionState = .recording
-        recordingDuration = 0
-        timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { _ in
-            recordingDuration += 0.1
+        Task {
+            await orchestrator.startRecording()
         }
         HapticManager.mediumTap()
     }
 
     private func acceptAndInsert() {
-        if let result = session.currentResult {
+        if let result = orchestrator.session.currentResult {
             // Copy to clipboard for insertion
             UIPasteboard.general.string = result.markdownOutput
             HapticManager.success()
             // Call the callback if provided
             onAcceptAndInsert?(result.markdownOutput)
+            orchestrator.reset()
             onDismiss()
-        }
-    }
-
-    private func regenerate() {
-        executionState = .generating
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            // Create new version with slightly different content
-            let newResult = PowerModeResult(
-                powerModeId: powerMode.id,
-                powerModeName: powerMode.name,
-                userInput: transcribedText,
-                markdownOutput: """
-                # AI News Summary - December 2024
-
-                ## Key Developments
-
-                - **OpenAI's Latest Release**: The company announced significant improvements to their reasoning models with enhanced capabilities for complex tasks and multi-step reasoning.
-
-                - **Google DeepMind**: New breakthroughs in protein folding prediction showing 97% accuracy in lab trials.
-
-                - **Anthropic Claude**: Released updated safety guidelines and constitutional AI improvements.
-
-                - **Meta AI**: Open-sourced new Llama 3 models with improved multilingual support.
-
-                ## Industry Trends
-
-                1. Increased focus on AI safety and alignment
-                2. Growing adoption in enterprise applications
-                3. Regulatory frameworks taking shape globally
-                4. Open-source AI gaining momentum
-
-                ## Sources
-
-                - TechCrunch: AI Weekly Roundup
-                - MIT Technology Review
-                - The Verge: AI Coverage
-                - Wired: AI Section
-                """,
-                processingDuration: 5.8,
-                versionNumber: session.results.count + 1,
-                usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
-                ragDocumentIds: powerMode.knowledgeDocumentIds
-            )
-
-            session.addResult(newResult)
-            executionState = .complete(session)
-            HapticManager.success()
         }
     }
 
     private func shareResult() {
         // Would show share sheet
-    }
-
-    private func retry() {
-        executionState = .idle
-        transcribedText = ""
-    }
-
-    private func cleanup() {
-        timer?.invalidate()
-        timer = nil
-    }
-
-    // MARK: - Waveform Animation
-
-    private func startWaveformAnimation() {
-        Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { timer in
-            guard case .recording = executionState else {
-                timer.invalidate()
-                return
-            }
-            withAnimation {
-                waveformHeights = (0..<12).map { _ in
-                    CGFloat.random(in: 10...50)
-                }
-            }
-        }
-    }
-
-    private func stopWaveformAnimation() {
-        waveformHeights = Array(repeating: 10, count: 12)
     }
 
     // MARK: - Helpers
@@ -883,6 +706,7 @@ struct PowerModeExecutionView: View {
         isFromKeyboard: false,
         onDismiss: {}
     )
+    .environmentObject(SharedSettings.shared)
     .preferredColorScheme(.dark)
 }
 
@@ -893,5 +717,6 @@ struct PowerModeExecutionView: View {
         onDismiss: {},
         onAcceptAndInsert: { _ in }
     )
+    .environmentObject(SharedSettings.shared)
     .preferredColorScheme(.dark)
 }

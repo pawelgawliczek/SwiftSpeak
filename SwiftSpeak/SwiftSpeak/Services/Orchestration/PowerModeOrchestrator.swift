@@ -350,6 +350,28 @@ final class PowerModeOrchestrator: ObservableObject {
         await startRecording()
     }
 
+    /// Update the current result's output text (for manual editing)
+    func updateCurrentResultText(_ newText: String) {
+        guard let currentResult = session.currentResult else { return }
+        guard session.currentVersionIndex < session.results.count else { return }
+
+        let updatedResult = PowerModeResult(
+            powerModeId: currentResult.powerModeId,
+            powerModeName: currentResult.powerModeName,
+            userInput: currentResult.userInput,
+            markdownOutput: newText,
+            processingDuration: currentResult.processingDuration,
+            versionNumber: currentResult.versionNumber,
+            usedRAG: currentResult.usedRAG,
+            ragDocumentIds: currentResult.ragDocumentIds
+        )
+
+        session.results[session.currentVersionIndex] = updatedResult
+
+        // Update clipboard with edited text
+        UIPasteboard.general.string = newText
+    }
+
     // MARK: - Transcription
 
     private func transcribe(audioURL: URL) async throws -> String {
