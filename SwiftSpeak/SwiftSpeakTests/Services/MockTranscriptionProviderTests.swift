@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct MockTranscriptionProviderTests {
 
     // MARK: - Basic Properties

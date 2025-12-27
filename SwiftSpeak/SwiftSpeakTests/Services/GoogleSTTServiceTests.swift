@@ -381,6 +381,9 @@ struct GoogleSTTIntegrationTests {
             projectId: "test-project"
         )
 
+        // Verify service is configured
+        #expect(service.isConfigured)
+
         // Verify service can be created with different language hints
         let languages: [SwiftSpeak.Language] = [
             .english, .spanish, .french, .german,
