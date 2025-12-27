@@ -280,6 +280,7 @@ struct TranscriptionOrchestratorConfigTests {
 // MARK: - State Comparison Tests
 
 @Suite("TranscriptionOrchestrator - RecordingState")
+@MainActor
 struct RecordingStateTests {
 
     @Test("RecordingState idle equality")

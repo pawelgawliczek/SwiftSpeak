@@ -9,6 +9,7 @@ import Testing
 import Foundation
 @testable import SwiftSpeak
 
+@MainActor
 struct SSEParserTests {
 
     // MARK: - Basic Parsing
