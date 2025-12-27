@@ -65,6 +65,7 @@ final class TranscriptionOrchestrator: ObservableObject {
     private let settings: SharedSettings
     private let audioRecorder: AudioRecorder
     private let providerFactory: ProviderFactory
+    private let memoryManager: MemoryManager
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Initialization
@@ -72,12 +73,14 @@ final class TranscriptionOrchestrator: ObservableObject {
     init(
         settings: SharedSettings? = nil,
         audioRecorder: AudioRecorder? = nil,
-        providerFactory: ProviderFactory? = nil
+        providerFactory: ProviderFactory? = nil,
+        memoryManager: MemoryManager? = nil
     ) {
         let resolvedSettings = settings ?? SharedSettings.shared
         self.settings = resolvedSettings
         self.audioRecorder = audioRecorder ?? AudioRecorder()
         self.providerFactory = providerFactory ?? ProviderFactory(settings: resolvedSettings)
+        self.memoryManager = memoryManager ?? MemoryManager(settings: resolvedSettings)
 
         setupBindings()
     }
@@ -153,6 +156,11 @@ final class TranscriptionOrchestrator: ObservableObject {
 
             // Save to history
             saveToHistory()
+
+            // Update memory (async, non-blocking)
+            Task {
+                await updateMemory()
+            }
 
             // Update lastTranscription for keyboard
             settings.lastTranscription = formattedText
@@ -287,6 +295,20 @@ final class TranscriptionOrchestrator: ObservableObject {
         #if os(iOS)
         UIPasteboard.general.string = formattedText
         #endif
+    }
+
+    // MARK: - Memory Update
+
+    /// Update memory after transcription completes (async, non-blocking)
+    private func updateMemory() async {
+        let textToRemember = formattedText.isEmpty ? transcribedText : formattedText
+
+        // Update memory for all applicable tiers
+        _ = await memoryManager.updateMemory(
+            from: textToRemember,
+            context: activeContext,
+            powerMode: activePowerMode
+        )
     }
 
     // MARK: - Error Handling
