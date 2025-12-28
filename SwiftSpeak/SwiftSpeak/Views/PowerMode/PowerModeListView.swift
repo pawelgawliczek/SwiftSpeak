@@ -33,6 +33,12 @@ struct PowerModeListContent: View {
     @State private var showingArchived = false
     @State private var navigateToHistory: PowerMode?
     @State private var navigateToDetail: PowerMode?
+    @State private var showPaywall = false
+
+    /// Whether the user has access to Power Modes
+    private var hasPowerAccess: Bool {
+        settings.subscriptionTier == .power
+    }
 
     var body: some View {
         ScrollView {
@@ -85,6 +91,19 @@ struct PowerModeListContent: View {
             }
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
+        .overlay {
+            if !hasPowerAccess {
+                FeatureGateOverlay(
+                    requiredTier: .power,
+                    featureName: "Power Modes",
+                    featureDescription: "AI-powered voice workflows for research, email drafting, and creative writing",
+                    onUpgrade: { showPaywall = true }
+                )
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: { showingEditor = true }) {

@@ -33,6 +33,12 @@ struct PowerModeEditorView: View {
     // Phase 4e: RAG Knowledge Documents
     @State private var knowledgeDocumentIds: [UUID] = []
 
+    // Phase 4f: Webhooks
+    @State private var enabledWebhookIds: [UUID] = []
+
+    // Phase 10: Provider override
+    @State private var providerOverride: ProviderSelection?
+
     // UI state
     @State private var showingIconPicker = false
     @State private var showingKnowledgeBase = false
@@ -56,7 +62,9 @@ struct PowerModeEditorView: View {
             memoryEnabled: memoryEnabled,
             memory: memoryContent.isEmpty ? nil : memoryContent,
             knowledgeDocumentIds: knowledgeDocumentIds,
-            appAssignment: appAssignment
+            appAssignment: appAssignment,
+            enabledWebhookIds: enabledWebhookIds,
+            providerOverride: providerOverride
         )
     }
 
@@ -76,6 +84,8 @@ struct PowerModeEditorView: View {
             _memoryContent = State(initialValue: mode.memory ?? "")
             _appAssignment = State(initialValue: mode.appAssignment)
             _knowledgeDocumentIds = State(initialValue: mode.knowledgeDocumentIds)
+            _enabledWebhookIds = State(initialValue: mode.enabledWebhookIds)
+            _providerOverride = State(initialValue: mode.providerOverride)
         }
     }
 
@@ -97,6 +107,12 @@ struct PowerModeEditorView: View {
 
                     // Knowledge Base section (Phase 4)
                     knowledgeBaseSection
+
+                    // Webhooks section (Phase 4f)
+                    webhooksSection
+
+                    // Provider override section (Phase 10)
+                    providerOverrideSection
 
                     // App assignment section
                     appAssignmentSection
@@ -386,6 +402,294 @@ struct PowerModeEditorView: View {
         }
     }
 
+    // MARK: - Webhooks Section (Phase 4f)
+
+    private var webhooksSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("WEBHOOKS")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                NavigationLink(destination: WebhooksView()) {
+                    HStack(spacing: 4) {
+                        Text("Configure")
+                            .font(.caption.weight(.medium))
+                        Image(systemName: "arrow.up.right")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(AppTheme.powerAccent)
+                }
+            }
+
+            if settings.webhooks.isEmpty {
+                // No webhooks configured
+                HStack(spacing: 12) {
+                    Image(systemName: "link.badge.plus")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("No Webhooks")
+                            .font(.subheadline.weight(.medium))
+                            .foregroundStyle(.secondary)
+
+                        Text("Configure webhooks in Settings to connect to external services")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            } else {
+                // Show webhooks grouped by type
+                VStack(spacing: 8) {
+                    webhookTypeGroup(type: .contextSource, icon: "arrow.down.doc", label: "Context Sources")
+                    webhookTypeGroup(type: .outputDestination, icon: "arrow.up.doc", label: "Output Destinations")
+                    webhookTypeGroup(type: .automationTrigger, icon: "bolt.horizontal", label: "Automation Triggers")
+                }
+            }
+
+            let enabledCount = enabledWebhookIds.count
+            if enabledCount > 0 {
+                Text("\(enabledCount) webhook\(enabledCount == 1 ? "" : "s") enabled for this mode")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text("Enable webhooks to fetch context or send output to external services")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func webhookTypeGroup(type: WebhookType, icon: String, label: String) -> some View {
+        let webhooksOfType = settings.webhooks.filter { $0.type == type }
+
+        if !webhooksOfType.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(label)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 4)
+
+                ForEach(webhooksOfType) { webhook in
+                    webhookToggleRow(webhook: webhook)
+                }
+            }
+        }
+    }
+
+    private func webhookToggleRow(webhook: Webhook) -> some View {
+        let isEnabled = enabledWebhookIds.contains(webhook.id)
+
+        return Button(action: {
+            HapticManager.selection()
+            if isEnabled {
+                enabledWebhookIds.removeAll { $0 == webhook.id }
+            } else {
+                enabledWebhookIds.append(webhook.id)
+            }
+        }) {
+            HStack(spacing: 12) {
+                // Template icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(webhookTemplateColor(webhook.template).opacity(0.15))
+                        .frame(width: 32, height: 32)
+
+                    Image(systemName: webhook.template.icon)
+                        .font(.caption)
+                        .foregroundStyle(webhookTemplateColor(webhook.template))
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(webhook.name)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    Text(webhook.url.host ?? "")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Toggle indicator
+                Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isEnabled ? AppTheme.powerAccent : .secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(isEnabled ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+
+    private func webhookTemplateColor(_ template: WebhookTemplate) -> Color {
+        switch template {
+        case .slack: return .purple
+        case .notion: return .gray
+        case .todoist: return .red
+        case .make: return .purple
+        case .zapier: return .orange
+        case .custom: return .blue
+        }
+    }
+
+    // MARK: - Provider Override Section (Phase 10)
+
+    private var providerOverrideSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("AI PROVIDER")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 8) {
+                // Default option
+                Button(action: {
+                    HapticManager.selection()
+                    providerOverride = nil
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.title3)
+                            .foregroundStyle(providerOverride == nil ? AppTheme.powerAccent : .secondary)
+                            .frame(width: 40)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Use Default Provider")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+
+                            Text("Uses the global default from Settings")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: providerOverride == nil ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(providerOverride == nil ? AppTheme.powerAccent : Color.secondary.opacity(0.3))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .background(providerOverride == nil ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                // Available providers
+                ForEach(availableProviderSelections, id: \.self) { selection in
+                    Button(action: {
+                        HapticManager.selection()
+                        providerOverride = selection
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: selection.icon)
+                                .font(.title3)
+                                .foregroundStyle(providerOverride == selection ? .white : (selection.isLocal ? .green : AppTheme.powerAccent))
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(providerOverride == selection
+                                              ? AppTheme.powerAccent
+                                              : (selection.isLocal ? Color.green.opacity(0.15) : AppTheme.powerAccent.opacity(0.15)))
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(selection.displayName)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.primary)
+
+                                    if selection.isLocal {
+                                        Text("ON-DEVICE")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(.green)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+
+                                if let model = selection.model {
+                                    Text(model)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            Spacer()
+
+                            Image(systemName: providerOverride == selection ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundStyle(providerOverride == selection ? AppTheme.powerAccent : Color.secondary.opacity(0.3))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(providerOverride == selection ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text("Override the default provider for this Power Mode. On-device providers keep your data private.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private var availableProviderSelections: [ProviderSelection] {
+        var selections: [ProviderSelection] = []
+
+        // Add configured cloud providers with Power Mode capability
+        for config in settings.configuredAIProviders {
+            if config.usageCategories.contains(.powerMode) {
+                selections.append(ProviderSelection(
+                    providerType: .cloud(config.provider),
+                    model: config.powerModeModel
+                ))
+            }
+        }
+
+        // Add Apple Intelligence if available
+        if settings.isAppleIntelligenceReady {
+            selections.append(ProviderSelection(providerType: .local(.appleIntelligence)))
+        }
+
+        // Add Ollama/LM Studio if configured for Power Mode
+        if let localConfig = settings.getAIProviderConfig(for: .local),
+           localConfig.usageCategories.contains(.powerMode) {
+            let localType: LocalModelType = localConfig.localConfig?.type == .lmStudio ? .lmStudio : .ollama
+            selections.append(ProviderSelection(
+                providerType: .local(localType),
+                model: localConfig.powerModeModel
+            ))
+        }
+
+        return selections
+    }
+
     // MARK: - App Assignment Section
 
     private var appAssignmentSection: some View {
@@ -422,7 +726,9 @@ struct PowerModeEditorView: View {
             lastMemoryUpdate: newMemoryUpdate,
             knowledgeDocumentIds: knowledgeDocumentIds,
             isArchived: powerMode?.isArchived ?? false,
-            appAssignment: appAssignment
+            appAssignment: appAssignment,
+            enabledWebhookIds: enabledWebhookIds,
+            providerOverride: providerOverride
         )
         HapticManager.success()
         onSave(savedMode)

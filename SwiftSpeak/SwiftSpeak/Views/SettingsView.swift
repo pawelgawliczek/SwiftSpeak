@@ -12,6 +12,7 @@ struct SettingsView: View {
     @Environment(\.colorScheme) var colorScheme
     @State private var showPaywall = false
     @State private var showAddAIProvider = false
+    @State private var showAddLocalModel = false
     @State private var editingAIProviderConfig: AIProviderConfig?
     @State private var isAddingNewAIProvider = false
 
@@ -21,6 +22,107 @@ struct SettingsView: View {
 
     private var rowBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    private var webhooksSubtitle: String {
+        let count = settings.webhooks.count
+        if count == 0 {
+            return "No webhooks configured"
+        } else {
+            return "\(count) webhook\(count == 1 ? "" : "s") configured"
+        }
+    }
+
+    // MARK: - Phase 10: Local Model Helpers
+
+    private var whisperKitSubtitle: String {
+        switch settings.whisperKitConfig.status {
+        case .notConfigured:
+            return "Tap to set up"
+        case .downloading:
+            let progress = Int(settings.whisperKitConfig.downloadProgress * 100)
+            return "Downloading... \(progress)%"
+        case .ready:
+            return settings.whisperKitConfig.selectedModel.displayName
+        case .notAvailable:
+            return "Not available on this device"
+        case .error:
+            return "Error - tap to retry"
+        }
+    }
+
+    private var appleIntelligenceStatus: LocalModelStatus {
+        if !settings.appleIntelligenceConfig.isAvailable {
+            return .notAvailable
+        }
+        return settings.appleIntelligenceConfig.isEnabled ? .ready : .notConfigured
+    }
+
+    private var appleIntelligenceSubtitle: String {
+        if !settings.appleIntelligenceConfig.isAvailable {
+            return settings.appleIntelligenceConfig.unavailableReason ?? "Requires iPhone 15 Pro or later"
+        }
+        return settings.appleIntelligenceConfig.isEnabled ? "Enabled" : "Tap to enable"
+    }
+
+    private var appleTranslationStatus: LocalModelStatus {
+        if !settings.appleTranslationConfig.isAvailable {
+            return .notAvailable
+        }
+        let downloadedCount = settings.appleTranslationConfig.downloadedLanguages.count
+        return downloadedCount > 0 ? .ready : .notConfigured
+    }
+
+    private var appleTranslationSubtitle: String {
+        if !settings.appleTranslationConfig.isAvailable {
+            return "Requires iOS 17.4+"
+        }
+        let downloadedCount = settings.appleTranslationConfig.downloadedLanguages.count
+        if downloadedCount == 0 {
+            return "No languages downloaded"
+        }
+        return "\(downloadedCount) language\(downloadedCount == 1 ? "" : "s") downloaded"
+    }
+
+    private var defaultProvidersSubtitle: String {
+        var parts: [String] = []
+        if let transcription = settings.providerDefaults.transcription {
+            parts.append(transcription.providerType.shortName)
+        }
+        if parts.isEmpty {
+            return "Using defaults"
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private func localModelTypeFromConfig(_ config: LocalProviderConfig) -> LocalModelType {
+        switch config.type {
+        case .ollama: return .ollama
+        case .lmStudio: return .lmStudio
+        case .openAICompatible: return .ollama
+        }
+    }
+
+    private var hasAnyLocalModel: Bool {
+        settings.whisperKitConfig.status == .ready ||
+        settings.whisperKitConfig.status == .downloading ||
+        settings.appleIntelligenceConfig.isEnabled ||
+        !settings.appleTranslationConfig.downloadedLanguages.isEmpty ||
+        settings.getAIProviderConfig(for: .local)?.localConfig != nil
+    }
+
+    // MARK: - Phase 6: Biometric Properties
+
+    private var biometricAvailable: Bool {
+        BiometricAuthManager.shared.isBiometricAvailable
+    }
+
+    private var biometricName: String {
+        BiometricAuthManager.shared.biometricName
+    }
+
+    private var biometricIcon: String {
+        BiometricAuthManager.shared.biometricIcon
     }
 
     var body: some View {
@@ -99,9 +201,155 @@ struct SettingsView: View {
                             .listRowBackground(rowBackground)
                         }
                     } header: {
-                        Text("AI Models")
+                        Text("AI Cloud Models")
                     } footer: {
-                        Text("Configure AI providers for transcription, translation, and Power Modes. Each capability can use a different model.")
+                        Text("Configure cloud AI providers. Requires internet connection and API keys.")
+                    }
+
+                    // AI Local Models Section (Phase 10)
+                    Section {
+                        // Only show WhisperKit if configured (ready or downloading)
+                        if settings.whisperKitConfig.status == .ready || settings.whisperKitConfig.status == .downloading {
+                            NavigationLink {
+                                WhisperKitSetupView()
+                            } label: {
+                                LocalModelRow(
+                                    type: .whisperKit,
+                                    status: settings.whisperKitConfig.status,
+                                    subtitle: whisperKitSubtitle,
+                                    colorScheme: colorScheme
+                                ) { }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Only show Apple Intelligence if enabled
+                        if settings.appleIntelligenceConfig.isEnabled {
+                            NavigationLink {
+                                AppleIntelligenceSetupView()
+                            } label: {
+                                LocalModelRow(
+                                    type: .appleIntelligence,
+                                    status: appleIntelligenceStatus,
+                                    subtitle: appleIntelligenceSubtitle,
+                                    colorScheme: colorScheme
+                                ) { }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Only show Apple Translation if there are downloaded languages
+                        if !settings.appleTranslationConfig.downloadedLanguages.isEmpty {
+                            NavigationLink {
+                                AppleTranslationSetupView()
+                            } label: {
+                                LocalModelRow(
+                                    type: .appleTranslation,
+                                    status: appleTranslationStatus,
+                                    subtitle: appleTranslationSubtitle,
+                                    colorScheme: colorScheme
+                                ) { }
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Ollama/LM Studio (if configured)
+                        if let localConfig = settings.getAIProviderConfig(for: .local)?.localConfig {
+                            LocalModelRow(
+                                type: localModelTypeFromConfig(localConfig),
+                                status: .ready,
+                                subtitle: localConfig.baseURL,
+                                colorScheme: colorScheme
+                            ) {
+                                // Edit existing local provider
+                                isAddingNewAIProvider = false
+                                editingAIProviderConfig = settings.getAIProviderConfig(for: .local)
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Add Local Model button
+                        Button(action: {
+                            showAddLocalModel = true
+                        }) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.title2)
+                                    .foregroundStyle(.green)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Add Local Model")
+                                        .font(.callout.weight(.medium))
+                                        .foregroundStyle(.primary)
+
+                                    Text("Set up on-device or self-hosted AI")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer()
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("AI Local Models")
+                    } footer: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if hasAnyLocalModel {
+                                Text("Process data on-device for privacy. No internet required once downloaded.")
+                                if settings.localModelStorageBytes > 0 {
+                                    Text("Storage used: \(settings.localModelStorageFormatted)")
+                                        .fontWeight(.medium)
+                                }
+                            } else {
+                                Text("Add on-device models for privacy and offline use.")
+                            }
+                        }
+                    }
+
+                    // Default Providers Section (Phase 10)
+                    Section {
+                        NavigationLink {
+                            DefaultProvidersView()
+                        } label: {
+                            SettingsRow(
+                                icon: "slider.horizontal.3",
+                                iconColor: .indigo,
+                                title: "Default Providers",
+                                subtitle: defaultProvidersSubtitle
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+
+                        // Only show Privacy Mode toggle when local providers are available
+                        if settings.canEnablePrivacyMode {
+                            Toggle(isOn: $settings.forcePrivacyMode) {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "lock.shield.fill")
+                                        .font(.title2)
+                                        .foregroundStyle(.green)
+                                        .frame(width: 32)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("Privacy Mode")
+                                            .font(.callout)
+                                        Text("Force local-only processing")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .tint(.green)
+                            .listRowBackground(rowBackground)
+                        }
+                    } header: {
+                        Text("Provider Preferences")
+                    } footer: {
+                        if settings.forcePrivacyMode {
+                            Text("All processing will use local models. Cloud providers are disabled.")
+                        } else {
+                            Text("Choose which provider to use for each capability. Power Modes can override these settings.")
+                        }
                     }
 
                     // Language Section
@@ -184,6 +432,25 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Webhooks Section
+                    Section {
+                        NavigationLink {
+                            WebhooksView()
+                        } label: {
+                            SettingsRow(
+                                icon: "link",
+                                iconColor: .cyan,
+                                title: "Webhooks",
+                                subtitle: webhooksSubtitle
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Integrations")
+                    } footer: {
+                        Text("Connect Power Modes to external services like Slack, Notion, Make, or Zapier.")
+                    }
+
                     // Behavior Section
                     Section {
                         Toggle(isOn: $settings.autoReturnEnabled) {
@@ -211,6 +478,54 @@ struct SettingsView: View {
                         .listRowBackground(rowBackground)
                     } header: {
                         Text("Behavior")
+                    }
+
+                    // Security Section (Phase 6)
+                    Section {
+                        Toggle(isOn: $settings.biometricProtectionEnabled) {
+                            HStack(spacing: 12) {
+                                Image(systemName: biometricIcon)
+                                    .font(.title2)
+                                    .foregroundStyle(AppTheme.accent)
+                                    .frame(width: 32)
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Require \(biometricName)")
+                                        .font(.callout)
+                                    Text("Protect Settings and History")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .disabled(!biometricAvailable)
+                        .tint(AppTheme.accent)
+                        .listRowBackground(rowBackground)
+
+                        Picker(selection: $settings.dataRetentionPeriod) {
+                            ForEach(DataRetentionPeriod.allCases) { period in
+                                Text(period.displayName).tag(period)
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "clock.arrow.circlepath")
+                                    .font(.title2)
+                                    .foregroundStyle(.orange)
+                                    .frame(width: 32)
+
+                                Text("Auto-Delete History")
+                                    .font(.callout)
+                            }
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Security & Privacy")
+                    } footer: {
+                        if !biometricAvailable {
+                            Text("Biometric authentication is not available on this device.")
+                        } else {
+                            Text("When enabled, \(biometricName) is required to access Settings and History.")
+                        }
                     }
 
                     // About Section
@@ -335,6 +650,9 @@ struct SettingsView: View {
                         showPaywall = true
                     }
                 )
+            }
+            .sheet(isPresented: $showAddLocalModel) {
+                AddLocalModelSheet()
             }
         }
     }
@@ -2480,6 +2798,704 @@ struct VocabularyEditorSheet: View {
         )
         onSave(savedEntry)
         dismiss()
+    }
+}
+
+// MARK: - Local Model Row
+struct LocalModelRow: View {
+    let type: LocalModelType
+    let status: LocalModelStatus
+    let subtitle: String
+    let colorScheme: ColorScheme
+    let onTap: () -> Void
+
+    private var statusColor: Color {
+        switch status {
+        case .ready: return .green
+        case .downloading: return .blue
+        case .notConfigured: return .secondary
+        case .notAvailable: return .secondary
+        case .error: return .orange
+        }
+    }
+
+    var body: some View {
+        Button(action: {
+            HapticManager.lightTap()
+            onTap()
+        }) {
+            HStack(spacing: 12) {
+                // Icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(
+                            status == .ready
+                                ? LinearGradient(colors: [.green.opacity(0.2), .green.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
+                                : LinearGradient(colors: [Color.secondary.opacity(0.15)], startPoint: .top, endPoint: .bottom)
+                        )
+                        .frame(width: 40, height: 40)
+
+                    Image(systemName: type.icon)
+                        .font(.title3)
+                        .foregroundStyle(status == .ready ? .green : .secondary)
+                }
+
+                // Content
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(type.displayName)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(status == .notAvailable ? .secondary : .primary)
+
+                        if type.isOnDevice {
+                            Text("ON-DEVICE")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(.green)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Status indicator
+                if status == .downloading {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                } else {
+                    HStack(spacing: 4) {
+                        Image(systemName: status.icon)
+                            .font(.caption)
+                            .foregroundStyle(statusColor)
+
+                        if status != .notAvailable {
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .disabled(status == .notAvailable)
+    }
+}
+
+// MARK: - Add Local Model Sheet
+struct AddLocalModelSheet: View {
+    @EnvironmentObject var settings: SharedSettings
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    // For configuring Ollama/LM Studio
+    @State private var showingLocalProviderEditor = false
+    @State private var localProviderConfig: AIProviderConfig?
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                List {
+                    // On-Device Section
+                    Section {
+                        // WhisperKit
+                        if settings.whisperKitConfig.status != .ready {
+                            NavigationLink {
+                                WhisperKitSetupView()
+                            } label: {
+                                AddLocalModelOptionLabel(
+                                    type: .whisperKit,
+                                    title: "WhisperKit",
+                                    description: "On-device speech recognition using OpenAI's Whisper model. Free and private.",
+                                    badge: "RECOMMENDED",
+                                    badgeColor: .green
+                                )
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Apple Intelligence
+                        if settings.appleIntelligenceConfig.isAvailable && !settings.appleIntelligenceConfig.isEnabled {
+                            NavigationLink {
+                                AppleIntelligenceSetupView()
+                            } label: {
+                                AddLocalModelOptionLabel(
+                                    type: .appleIntelligence,
+                                    title: "Apple Intelligence",
+                                    description: "iOS 18.5+ on-device text processing. No download required.",
+                                    badge: nil,
+                                    badgeColor: .clear
+                                )
+                            }
+                            .listRowBackground(rowBackground)
+                        }
+
+                        // Apple Translation
+                        NavigationLink {
+                            AppleTranslationSetupView()
+                        } label: {
+                            AddLocalModelOptionLabel(
+                                type: .appleTranslation,
+                                title: "Apple Translation",
+                                description: "System translation. Download language packs for offline use.",
+                                badge: nil,
+                                badgeColor: .clear
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("On-Device (Recommended)")
+                    } footer: {
+                        Text("On-device models process data locally on your iPhone. No internet required after download.")
+                    }
+
+                    // Self-Hosted Section
+                    Section {
+                        // Ollama
+                        Button(action: {
+                            configureLocalProvider(type: .ollama)
+                        }) {
+                            AddLocalModelOptionLabel(
+                                type: .ollama,
+                                title: "Ollama",
+                                description: "Connect to your self-hosted Ollama server for open-source LLMs.",
+                                badge: "POWER",
+                                badgeColor: .orange
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+
+                        // LM Studio
+                        Button(action: {
+                            configureLocalProvider(type: .lmStudio)
+                        }) {
+                            AddLocalModelOptionLabel(
+                                type: .lmStudio,
+                                title: "LM Studio",
+                                description: "Connect to LM Studio running on your Mac or PC.",
+                                badge: "POWER",
+                                badgeColor: .orange
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+
+                        // OpenAI Compatible
+                        Button(action: {
+                            configureLocalProvider(type: .openAICompatible)
+                        }) {
+                            AddLocalModelOptionLabel(
+                                type: .ollama,  // Uses same icon
+                                title: "OpenAI Compatible",
+                                description: "Connect to any server with OpenAI-compatible API.",
+                                badge: "POWER",
+                                badgeColor: .orange
+                            )
+                        }
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Self-Hosted")
+                    } footer: {
+                        Text("Self-hosted models require a server running on your local network. Power subscription required.")
+                    }
+                }
+                .listStyle(.insetGrouped)
+                .scrollContentBackground(.hidden)
+            }
+            .navigationTitle("Add Local Model")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+            .sheet(item: $localProviderConfig) { config in
+                AIProviderEditorSheet(
+                    config: config,
+                    isEditing: false,
+                    onSave: { updatedConfig in
+                        settings.addAIProvider(updatedConfig)
+                        localProviderConfig = nil
+                        dismiss()
+                    },
+                    onDelete: {
+                        localProviderConfig = nil
+                    }
+                )
+            }
+        }
+    }
+
+    private func configureLocalProvider(type: LocalProviderType) {
+        HapticManager.selection()
+        // Create a new local provider config with the selected type
+        var config = AIProviderConfig(provider: .local)
+        config.localConfig = LocalProviderConfig(
+            type: type,
+            baseURL: type.defaultURL,
+            defaultModel: type.defaultModel
+        )
+        // Set default usage categories
+        config.usageCategories = [.powerMode]
+        localProviderConfig = config
+    }
+}
+
+// MARK: - Add Local Model Option Label (for NavigationLink)
+struct AddLocalModelOptionLabel: View {
+    let type: LocalModelType
+    let title: String
+    let description: String
+    let badge: String?
+    let badgeColor: Color
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: type.icon)
+                .font(.title3)
+                .foregroundStyle(type.isOnDevice ? .green : .orange)
+                .frame(width: 40, height: 40)
+                .background((type.isOnDevice ? Color.green : Color.orange).opacity(0.15))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    if let badge = badge {
+                        Text(badge)
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1)
+                            .background(badgeColor)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Add Local Model Option Row
+struct AddLocalModelOptionRow: View {
+    let type: LocalModelType
+    let title: String
+    let description: String
+    let badge: String?
+    let badgeColor: Color
+    let colorScheme: ColorScheme
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: {
+            HapticManager.selection()
+            onTap()
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: type.icon)
+                    .font(.title3)
+                    .foregroundStyle(type.isOnDevice ? .green : .orange)
+                    .frame(width: 40, height: 40)
+                    .background((type.isOnDevice ? Color.green : Color.orange).opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Text(title)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        if let badge = badge {
+                            Text(badge)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1)
+                                .background(badgeColor)
+                                .clipShape(Capsule())
+                        }
+                    }
+
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                Image(systemName: "plus.circle.fill")
+                    .foregroundStyle(type.isOnDevice ? .green : .orange)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Default Providers View
+struct DefaultProvidersView: View {
+    @EnvironmentObject var settings: SharedSettings
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    }
+
+    var body: some View {
+        ZStack {
+            backgroundColor.ignoresSafeArea()
+
+            List {
+                // Transcription Section
+                Section {
+                    ProviderPickerRow(
+                        category: .transcription,
+                        selection: Binding(
+                            get: { settings.providerDefaults.transcription },
+                            set: { settings.providerDefaults.transcription = $0 }
+                        ),
+                        availableProviders: availableProviders(for: .transcription),
+                        colorScheme: colorScheme
+                    )
+                    .listRowBackground(rowBackground)
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "mic.fill")
+                            .foregroundStyle(.blue)
+                        Text("Transcription")
+                    }
+                } footer: {
+                    Text("Provider used for speech-to-text conversion.")
+                }
+
+                // Translation Section
+                Section {
+                    ProviderPickerRow(
+                        category: .translation,
+                        selection: Binding(
+                            get: { settings.providerDefaults.translation },
+                            set: { settings.providerDefaults.translation = $0 }
+                        ),
+                        availableProviders: availableProviders(for: .translation),
+                        colorScheme: colorScheme
+                    )
+                    .listRowBackground(rowBackground)
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "globe")
+                            .foregroundStyle(.purple)
+                        Text("Translation")
+                    }
+                } footer: {
+                    Text("Provider used for translating text between languages.")
+                }
+
+                // Power Mode Section
+                Section {
+                    ProviderPickerRow(
+                        category: .powerMode,
+                        selection: Binding(
+                            get: { settings.providerDefaults.powerMode },
+                            set: { settings.providerDefaults.powerMode = $0 }
+                        ),
+                        availableProviders: availableProviders(for: .powerMode),
+                        colorScheme: colorScheme
+                    )
+                    .listRowBackground(rowBackground)
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "bolt.fill")
+                            .foregroundStyle(.orange)
+                        Text("Power Mode")
+                    }
+                } footer: {
+                    Text("Provider used for AI formatting and Power Mode execution. Individual Power Modes can override this setting.")
+                }
+
+                // Fallback Settings
+                Section {
+                    Toggle(isOn: Binding(
+                        get: { settings.providerDefaults.useLocalWhenOffline },
+                        set: { settings.providerDefaults.useLocalWhenOffline = $0 }
+                    )) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Use local when offline")
+                                .font(.callout)
+                            Text("Automatically switch to local models when no internet")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tint(AppTheme.accent)
+                    .listRowBackground(rowBackground)
+                } header: {
+                    Text("Fallback")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+        }
+        .navigationTitle("Default Providers")
+    }
+
+    private func availableProviders(for category: ProviderUsageCategory) -> [ProviderSelection] {
+        var selections: [ProviderSelection] = []
+
+        // Add configured cloud providers that support this category
+        for config in settings.configuredAIProviders {
+            if config.usageCategories.contains(category) {
+                let model: String?
+                switch category {
+                case .transcription: model = config.transcriptionModel
+                case .translation: model = config.translationModel
+                case .powerMode: model = config.powerModeModel
+                }
+                selections.append(ProviderSelection(providerType: .cloud(config.provider), model: model))
+            }
+        }
+
+        // Add local providers
+        switch category {
+        case .transcription:
+            if settings.isWhisperKitReady {
+                selections.append(ProviderSelection(
+                    providerType: .local(.whisperKit),
+                    model: settings.whisperKitConfig.selectedModel.displayName
+                ))
+            }
+        case .translation:
+            if settings.hasLocalTranslation {
+                selections.append(ProviderSelection(providerType: .local(.appleTranslation)))
+            }
+        case .powerMode:
+            if settings.isAppleIntelligenceReady {
+                selections.append(ProviderSelection(providerType: .local(.appleIntelligence)))
+            }
+            if let localConfig = settings.getAIProviderConfig(for: .local),
+               localConfig.usageCategories.contains(.powerMode) {
+                selections.append(ProviderSelection(
+                    providerType: .local(.ollama),
+                    model: localConfig.powerModeModel
+                ))
+            }
+        }
+
+        return selections
+    }
+}
+
+// MARK: - Provider Picker Row
+struct ProviderPickerRow: View {
+    let category: ProviderUsageCategory
+    @Binding var selection: ProviderSelection?
+    let availableProviders: [ProviderSelection]
+    let colorScheme: ColorScheme
+
+    private var categoryColor: Color {
+        switch category {
+        case .transcription: return .blue
+        case .translation: return .purple
+        case .powerMode: return .orange
+        }
+    }
+
+    private var rowBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color(.systemGray6)
+    }
+
+    var body: some View {
+        if availableProviders.isEmpty {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.orange.opacity(0.15))
+                        .frame(width: 40, height: 40)
+
+                    Image(systemName: "exclamationmark.triangle")
+                        .font(.body)
+                        .foregroundStyle(.orange)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("No providers configured")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                    Text("Add a provider in AI Cloud Models")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        } else {
+            Menu {
+                // Auto option first (this is the "clear selection" option)
+                Button(action: {
+                    HapticManager.selection()
+                    selection = nil
+                }) {
+                    Label {
+                        Text("Auto (First Available)")
+                    } icon: {
+                        Image(systemName: "sparkles")
+                    }
+                }
+
+                Divider()
+
+                // Cloud providers section
+                let cloudProviders = availableProviders.filter { !$0.isLocal }
+                if !cloudProviders.isEmpty {
+                    Section("Cloud") {
+                        ForEach(cloudProviders, id: \.self) { provider in
+                            Button(action: {
+                                HapticManager.selection()
+                                selection = provider
+                            }) {
+                                Label {
+                                    Text(provider.displayName)
+                                } icon: {
+                                    Image(systemName: provider.icon)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Local providers section
+                let localProviders = availableProviders.filter { $0.isLocal }
+                if !localProviders.isEmpty {
+                    Section("On-Device") {
+                        ForEach(localProviders, id: \.self) { provider in
+                            Button(action: {
+                                HapticManager.selection()
+                                selection = provider
+                            }) {
+                                Label {
+                                    Text(provider.displayName)
+                                } icon: {
+                                    Image(systemName: provider.icon)
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    // Provider icon with colored background
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(providerIconBackground)
+                            .frame(width: 40, height: 40)
+
+                        Image(systemName: providerIcon)
+                            .font(.body)
+                            .foregroundStyle(providerIconColor)
+                    }
+
+                    // Provider info
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(providerDisplayName)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+
+                        if let selected = selection {
+                            HStack(spacing: 4) {
+                                if selected.isLocal {
+                                    Image(systemName: "lock.shield.fill")
+                                        .font(.caption2)
+                                    Text("Private")
+                                        .font(.caption)
+                                } else {
+                                    Image(systemName: "cloud.fill")
+                                        .font(.caption2)
+                                    Text("Cloud")
+                                        .font(.caption)
+                                }
+                            }
+                            .foregroundStyle(selected.isLocal ? .green : .secondary)
+                        } else {
+                            Text("Uses first configured provider")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Spacer()
+
+                    // Dropdown indicator pill
+                    HStack(spacing: 4) {
+                        Text(selection?.providerType.shortName ?? "Auto")
+                            .font(.caption.weight(.medium))
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption2)
+                    }
+                    .foregroundStyle(selection != nil ? .white : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(selection != nil ? categoryColor : rowBackground)
+                    )
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Computed Properties
+
+    private var providerIcon: String {
+        selection?.icon ?? "sparkles"
+    }
+
+    private var providerIconColor: Color {
+        if let selected = selection {
+            return selected.isLocal ? .green : categoryColor
+        }
+        return categoryColor
+    }
+
+    private var providerIconBackground: Color {
+        if let selected = selection {
+            return (selected.isLocal ? Color.green : categoryColor).opacity(0.15)
+        }
+        return categoryColor.opacity(0.15)
+    }
+
+    private var providerDisplayName: String {
+        selection?.displayName ?? "Automatic"
     }
 }
 
