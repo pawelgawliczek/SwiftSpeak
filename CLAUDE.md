@@ -48,10 +48,10 @@ Translation, auto-return, custom templates, waveform audio connection.
 ### Phase 3: Multi-Provider Support - COMPLETE ✅
 9 providers implemented: OpenAI, Anthropic, Gemini, AssemblyAI, Deepgram, Google STT, DeepL, Google Translate, Azure.
 
-### Phase 3A: Provider Help & Language Guidance - UX COMPLETE, INTEGRATION PENDING
+### Phase 3A: Provider Help & Language Guidance - COMPLETE ✅
 - [x] All UI components created (ProviderHelpSheet, StatusDashboard, LanguageSupportView, SmartLanguagePicker)
-- [ ] Integration with SettingsView (pending)
-- [ ] Integration with KeyboardView (pending)
+- [x] ProviderHelpSheet integrated with live pricing from RemoteConfigManager
+- [x] ProviderLanguageSupport refactored to use RemoteConfigManager as single source of truth
 
 ### Phase 4: Power Mode Backend - COMPLETE ✅
 - [x] Phase 4a: Conversation Contexts (ConversationContext model, ContextsView, ContextEditorSheet)
@@ -70,18 +70,42 @@ Translation, auto-return, custom templates, waveform audio connection.
 - [x] User-configurable data retention (Never, 7/30/90 days auto-delete)
 - [x] Security section in SettingsView with biometric toggle and retention picker
 
-### Phase 10: Privacy Mode & Local Provider Restructure - IN PROGRESS
+### Phase 7: Subscription Service - FOUNDATION COMPLETE ✅
+- [x] SubscriptionService with RevenueCat integration
+- [x] SubscriptionError for error handling
+- [x] Configuration.storekit for local testing
+- [x] Feature gating by tier (Free, Pro, Power)
+- [ ] PaywallView polish and A/B testing
+- [ ] App Store Connect configuration
+
+### Phase 9: Remote Configuration & Cost Analytics - COMPLETE ✅
+- [x] Phase 9a: Firebase setup (RemoteConfig.swift, RemoteConfigManager.swift)
+- [x] Phase 9b: Config change detection (ConfigChangeDetector.swift, ConfigUpdateSheet.swift)
+- [x] Phase 9c: Cost tracking (CostCalculator.swift, CostBreakdown in Models.swift)
+- [x] Phase 9d: Cost display in HistoryView (cost badge, breakdown in detail view)
+- [x] Phase 9e: Cost Analytics Dashboard (CostAnalyticsView.swift)
+- [x] Phase 9f: Integration (ProviderHelpSheet uses remote pricing, ProviderLanguageSupport uses remote config)
+- [x] Hostinger cron script (scripts/update_firebase_config.py with Claude CLI)
+- [x] Tests (RemoteConfigTests.swift, CostCalculatorTests.swift)
+
+### Phase 10: Privacy Mode & Local Provider Restructure - UI COMPLETE ✅
 - [x] Phase 10a: Provider Hierarchy (ProviderType, ProviderSelection, ProviderDefaults)
 - [x] Phase 10b: On-Device AI Views (WhisperKitSetupView, AppleIntelligenceSetupView, AppleTranslationSetupView)
 - [x] Phase 10c: WhisperKit Language Support (per-model language capabilities)
 - [x] Phase 10d: Provider UI Polish (improved dropdown, cloud/local sections)
 - [x] Phase 10e: Privacy Mode Implementation (indicator, cloud blocking, Power Mode warnings)
-- [ ] Phase 10f: Provider Integration (WhisperKit, Apple Translation, Apple Intelligence)
+- [ ] Phase 10f: SDK Integration (wire WhisperKit, Apple Translation, Apple Intelligence to orchestrators)
 
-### Next Steps
-- [ ] Phase 10f: Provider Integration (wire WhisperKit, Apple Translation to orchestrators)
-- [ ] Phase 7: StoreKit 2 subscriptions
-- [ ] Phase 9: Remote Configuration & Cost Analytics
+### Remaining Work
+| Phase | Task | Priority |
+|-------|------|----------|
+| 10f | Wire WhisperKit SDK to TranscriptionOrchestrator | High |
+| 10f | Wire Apple Translation framework to TranslationProvider | High |
+| 10f | Wire Apple Intelligence to FormattingProvider | Medium |
+| 7 | PaywallView polish and conversion optimization | Medium |
+| 7 | App Store Connect subscription configuration | Medium |
+| 4g | WebSocket real-time transcription streaming | Low (optional) |
+| - | App Store submission preparation | Future |
 
 ## iOS Keyboard Architecture Constraint
 
@@ -118,35 +142,20 @@ swiftspeak://record?mode=email&translate=false&target=es
 swiftspeak://record?mode=raw&translate=true&target=french
 ```
 
-## Implementation Phases
+## Implementation Phases Summary
 
-### Phase 0: UI/UX Prototype - COMPLETE
-All screens built with mock data, full navigation, polished animations.
-
-### Phase 1: Core Transcription - IN PROGRESS
-- Testing infrastructure (Swift Testing framework)
-- Provider abstraction layer
-- OpenAI Whisper integration (real API calls)
-- Audio recording with AVAudioRecorder
-- App Groups communication
-- URL scheme handling
-
-### Phase 2: Templates & Translation
-- Predefined templates (Email, Formal, Casual)
-- GPT-4 formatting integration
-- Translation feature
-- Custom template editor
-
-### Phase 3: Multi-Provider Support
-- Anthropic Claude, ElevenLabs, Deepgram, Ollama
-
-### Phase 4: Power Mode
-- Full-screen AI workspace with tools
-- Voice-activated AI agents
-
-### Phase 5: Monetization & Polish
-- StoreKit 2 subscriptions
-- App Store submission
+| Phase | Name | Status |
+|-------|------|--------|
+| 0 | UI/UX Prototype | ✅ Complete |
+| 1 | Core Transcription | ✅ Complete |
+| 2 | Templates & Translation | ✅ Complete |
+| 3 | Multi-Provider Support | ✅ Complete |
+| 3A | Provider Help & Language Guidance | ✅ Complete |
+| 4 | Power Mode Backend | ✅ Complete (4g optional) |
+| 6 | Security & Data Protection | ✅ Complete |
+| 7 | Subscription Service | ⚡ Foundation Complete |
+| 9 | Remote Config & Cost Analytics | ✅ Complete |
+| 10 | Privacy Mode & Local Providers | ⚡ UI Complete, SDK pending |
 
 ## Current File Structure
 
@@ -161,7 +170,7 @@ SwiftSpeak/
 │   ├── ContentView.swift                # Main app navigation
 │   ├── SharedSettings.swift             # App Groups data + settings management
 │   │
-│   ├── Services/                        # NEW - Phase 1, expanded Phase 4
+│   ├── Services/
 │   │   ├── Protocols/
 │   │   │   ├── TranscriptionProvider.swift
 │   │   │   ├── FormattingProvider.swift
@@ -177,6 +186,14 @@ SwiftSpeak/
 │   │   ├── Security/                            # Phase 6 - Security services
 │   │   │   ├── KeychainManager.swift            # Secure API key storage
 │   │   │   └── BiometricAuthManager.swift       # Face ID/Touch ID with session
+│   │   ├── Remote/                              # Phase 9 - Remote config & cost
+│   │   │   ├── RemoteConfig.swift               # Data models for provider config
+│   │   │   ├── RemoteConfigManager.swift        # Firebase fetch/cache/listen
+│   │   │   ├── ConfigChangeDetector.swift       # Detect pricing/model changes
+│   │   │   └── CostCalculator.swift             # Cost calculation logic
+│   │   ├── Subscription/                        # Phase 7 - Subscriptions
+│   │   │   ├── SubscriptionService.swift        # RevenueCat integration
+│   │   │   └── SubscriptionError.swift          # Error handling
 │   │   ├── Providers/
 │   │   │   ├── OpenAI/
 │   │   │   │   ├── OpenAITranscriptionService.swift
@@ -189,7 +206,7 @@ SwiftSpeak/
 │   │   │       ├── MockMemoryManager.swift      # Phase 4c - For testing
 │   │   │       └── MockKeychainManager.swift    # Phase 6 - For testing
 │   │   ├── Orchestration/
-│   │   │   ├── TranscriptionOrchestrator.swift
+│   │   │   ├── TranscriptionOrchestrator.swift  # Includes cost calculation
 │   │   │   ├── PowerModeOrchestrator.swift      # Phase 4c - Power Mode coordinator
 │   │   │   └── PromptContext.swift              # Phase 4c - Context builder
 │   │   ├── Network/
@@ -217,13 +234,14 @@ SwiftSpeak/
 │   │   ├── Components/
 │   │   │   ├── WaveformView.swift
 │   │   │   ├── Animations.swift
-│   │   │   ├── ProviderHelpSheet.swift         # Phase 3A - Setup guide
+│   │   │   ├── ProviderHelpSheet.swift         # Phase 3A - Setup guide (uses remote pricing)
 │   │   │   ├── ProviderStatusDashboard.swift   # Phase 3A - Status card
 │   │   │   ├── SmartLanguagePicker.swift       # Phase 3A - Language dropdown
 │   │   │   ├── IncompatibilityWarning.swift    # Phase 3A - Warning banners
 │   │   │   ├── AppAssignmentSection.swift      # App auto-enable for contexts/powermodes
 │   │   │   ├── BiometricGateView.swift         # Phase 6 - Auth wrapper for protected views
-│   │   │   └── LockedView.swift                # Phase 6 - "Unlock with Face ID" UI
+│   │   │   ├── LockedView.swift                # Phase 6 - "Unlock with Face ID" UI
+│   │   │   └── ConfigUpdateSheet.swift         # Phase 9 - "What's New" modal
 │   │   ├── Settings/                           # Phase 4a/4b - Settings views
 │   │   │   ├── ContextsView.swift              # Phase 4a - Context list
 │   │   │   ├── ContextEditorSheet.swift        # Phase 4a - Edit context
@@ -233,7 +251,8 @@ SwiftSpeak/
 │   │   │   └── AppLibraryView.swift            # App library browser with category reassignment
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
-│   │   ├── HistoryView.swift
+│   │   ├── HistoryView.swift            # Phase 9 - Cost badge and breakdown
+│   │   ├── CostAnalyticsView.swift      # Phase 9 - Usage analytics dashboard
 │   │   ├── PaywallView.swift
 │   │   ├── KeyboardPreviewView.swift
 │   │   ├── ProviderComparisonView.swift        # Phase 3A - Provider selection
