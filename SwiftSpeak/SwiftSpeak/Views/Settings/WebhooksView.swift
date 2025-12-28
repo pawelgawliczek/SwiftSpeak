@@ -2,7 +2,7 @@
 //  WebhooksView.swift
 //  SwiftSpeak
 //
-//  Phase 4: Manage webhooks for Power Mode workflows
+//  Phase 4f: Manage webhooks for Power Mode workflows
 //  - Context Sources: Fetch data before processing
 //  - Output Destinations: Send results after completion
 //  - Automation Triggers: Trigger Make/Zapier workflows
@@ -11,10 +11,16 @@
 import SwiftUI
 
 struct WebhooksView: View {
-    // Mock data - will be replaced with @ObservedObject settings
-    @State private var webhooks: [Webhook] = Webhook.samples
+    @EnvironmentObject private var settings: SharedSettings
+
     @State private var showingEditor = false
     @State private var editingWebhook: Webhook?
+    @State private var showPaywall = false
+
+    /// Whether the user has access to Webhooks (Power tier only)
+    private var hasWebhooksAccess: Bool {
+        settings.subscriptionTier == .power
+    }
 
     var body: some View {
         ScrollView {
@@ -48,6 +54,19 @@ struct WebhooksView: View {
             .padding(16)
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
+        .overlay {
+            if !hasWebhooksAccess {
+                FeatureGateOverlay(
+                    requiredTier: .power,
+                    featureName: "Webhooks",
+                    featureDescription: "Connect Power Modes to external services like Slack, Notion, Make, or Zapier",
+                    onUpgrade: { showPaywall = true }
+                )
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
         .navigationTitle("Webhooks")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -78,9 +97,19 @@ struct WebhooksView: View {
 
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Webhooks run during Power Mode workflows. All connections are outbound only.")
+            Text("Configure webhooks here, then enable them per Power Mode. All connections are outbound only.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+
+            if settings.webhooks.isEmpty {
+                Text("No webhooks configured yet.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text("\(settings.webhooks.count) webhook\(settings.webhooks.count == 1 ? "" : "s") configured")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -88,7 +117,7 @@ struct WebhooksView: View {
     // MARK: - Webhook Section
 
     private func webhookSection(title: String, subtitle: String, type: WebhookType) -> some View {
-        let sectionWebhooks = webhooks.filter { $0.type == type }
+        let sectionWebhooks = settings.webhooks.filter { $0.type == type }
 
         return VStack(alignment: .leading, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
@@ -167,23 +196,25 @@ struct WebhooksView: View {
 
     private func toggleWebhook(_ webhook: Webhook) {
         HapticManager.selection()
-        if let index = webhooks.firstIndex(where: { $0.id == webhook.id }) {
-            webhooks[index].isEnabled.toggle()
-        }
+        var updatedWebhook = webhook
+        updatedWebhook.isEnabled.toggle()
+        settings.updateWebhook(updatedWebhook)
     }
 
     private func saveWebhook(_ webhook: Webhook) {
-        if let index = webhooks.firstIndex(where: { $0.id == webhook.id }) {
-            webhooks[index] = webhook
+        if settings.webhooks.contains(where: { $0.id == webhook.id }) {
+            settings.updateWebhook(webhook)
         } else {
-            webhooks.append(webhook)
+            settings.addWebhook(webhook)
         }
+        HapticManager.success()
         showingEditor = false
         editingWebhook = nil
     }
 
     private func deleteWebhook(_ webhook: Webhook) {
-        webhooks.removeAll { $0.id == webhook.id }
+        settings.deleteWebhook(webhook.id)
+        HapticManager.lightTap()
         showingEditor = false
         editingWebhook = nil
     }
@@ -212,7 +243,7 @@ struct WebhookRowView: View {
 
                 // Info
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(webhook.name)
+                    Text(webhook.name.isEmpty ? "Untitled Webhook" : webhook.name)
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.primary)
 
@@ -221,14 +252,24 @@ struct WebhookRowView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
 
-                    if let lastTriggered = webhook.lastTriggered {
-                        Text("Last: \(timeAgo(lastTriggered))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    } else {
-                        Text("Never triggered")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                    HStack(spacing: 4) {
+                        if let lastTriggered = webhook.lastTriggered {
+                            Text("Last: \(timeAgo(lastTriggered))")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        } else {
+                            Text("Never triggered")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+
+                        if let status = webhook.lastStatus {
+                            Text("•")
+                                .foregroundStyle(.tertiary)
+                            Text(status)
+                                .font(.caption2)
+                                .foregroundStyle(status.contains("Success") ? .green : .orange)
+                        }
                     }
                 }
 
@@ -272,6 +313,7 @@ struct WebhookRowView: View {
 #Preview {
     NavigationStack {
         WebhooksView()
+            .environmentObject(SharedSettings.shared)
     }
     .preferredColorScheme(.dark)
 }

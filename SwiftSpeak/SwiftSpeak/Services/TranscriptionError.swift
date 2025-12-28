@@ -55,6 +55,9 @@ enum TranscriptionError: LocalizedError, Equatable {
     // MARK: - Cancelled
     case cancelled
 
+    // MARK: - Privacy Mode
+    case privacyModeBlocksCloudProvider(String)
+
     // MARK: - LocalizedError
 
     var errorDescription: String? {
@@ -123,6 +126,9 @@ enum TranscriptionError: LocalizedError, Equatable {
 
         case .cancelled:
             return "Operation was cancelled."
+
+        case .privacyModeBlocksCloudProvider(let provider):
+            return "Privacy Mode is on. \(provider) is blocked because it uses cloud processing."
         }
     }
 
@@ -232,6 +238,8 @@ extension TranscriptionError {
             return "hourglass"
         case .cancelled:
             return "xmark.circle.fill"
+        case .privacyModeBlocksCloudProvider:
+            return "lock.shield.fill"
         default:
             return "exclamationmark.triangle.fill"
         }

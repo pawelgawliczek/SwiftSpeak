@@ -1212,7 +1212,7 @@ Replace mock implementations with real execution:
 25. [x] Integrate with transcription providers via ProviderFactoryProtocol
 26. [x] Integrate with formatting providers for LLM generation via ProviderFactoryProtocol
 27. [x] Context/memory injection into prompts (respects active context, global/context/powerMode memory enabled states)
-28. [ ] Wire to PowerModeExecutionView (replace all mock callbacks) ← IN PROGRESS
+28. [x] Wire to PowerModeExecutionView (replace all mock callbacks)
 29. [x] Session with multiple versions working (PowerModeSession, PowerModeResult)
 30. [x] Refinement/regeneration flow working
 
@@ -1231,29 +1231,36 @@ Real-time response generation for Power Mode:
 40. [x] Cancellation support with partial result preservation
 41. [x] SSEParserTests (30 comprehensive tests)
 
-**Phase 4e: RAG System**
+**Phase 4e: RAG System** ✅ COMPLETE
 Document-based knowledge per Power Mode:
 
 37. [x] KnowledgeDocument model (name, type, sourceURL, contentHash, chunkCount)
-38. [ ] DocumentChunk model (content, embedding, metadata)
-39. [ ] DocumentParser.swift (PDF via PDFKit, text/markdown, web URL → markdown)
-40. [ ] TextChunker.swift (~500 token chunks with 50 token overlap)
-41. [ ] EmbeddingService.swift (OpenAI text-embedding-ada-002)
-42. [ ] VectorStore.swift (similarity search, in-memory + file persistence)
-43. [ ] KnowledgeBaseManager.swift (orchestrate RAG pipeline)
-44. [ ] RAG integration in PowerModeOrchestrator
-45. [ ] Wire Knowledge Base UI in PowerModeEditorView
+38. [x] DocumentChunk model (content, embedding, metadata)
+39. [x] DocumentParser.swift (PDF via PDFKit, text/markdown, web URL → markdown)
+40. [x] TextChunker.swift (configurable chunking: semantic, fixed-size, sentence)
+41. [x] EmbeddingService.swift (OpenAI text-embedding-3-small)
+42. [x] VectorStore.swift (SQLite-based with cosine similarity search)
+43. [x] RAGOrchestrator.swift (full ingestion and query pipeline)
+44. [x] RAG integration in PowerModeOrchestrator
+45. [x] Wire Knowledge Base UI in PowerModeEditorView
+46. [x] RAGSecurityManager.swift (URL whitelist, content validation)
+47. [x] RAGPrivacyWarning.swift (privacy consent UI components)
+48. [x] RAGConfiguration per Power Mode (chunk size, overlap, threshold)
+49. [x] SharedSettings persistence for knowledge documents
 
-**Phase 4f: Webhooks (Global)**
-Outbound webhooks for integrations:
+**Phase 4f: Webhooks (Global → Per Power Mode)** ✅ COMPLETE
+Global webhook configuration with per-Power Mode assignment:
 
-46. [x] Webhook model (type: contextSource/outputDestination/automationTrigger, URL, auth, payload config)
-47. [ ] WebhookExecutor.swift (GET for context sources, POST for outputs/triggers)
-48. [ ] Template picker integration (Slack, Notion, Make, Zapier, Todoist, Custom)
-49. [x] Webhook storage in SharedSettings
-50. [ ] Integration in PowerModeOrchestrator (fetch context before, send results after)
-51. [ ] Test button functionality
-52. [x] Add Webhooks section to SettingsView (UI mock)
+50. [x] Webhook model (type: contextSource/outputDestination/automationTrigger, URL, auth, payload config)
+51. [x] Add enabledWebhookIds to PowerMode model
+52. [x] Webhook storage in SharedSettings (CRUD methods, load/save, enabledWebhooks helpers)
+53. [x] WebhookExecutor.swift (GET for context sources, POST for outputs/triggers, auth handling)
+54. [x] Integration in PowerModeOrchestrator (fetch context before, send results after non-blocking)
+55. [x] Wire WebhooksView to real SharedSettings data
+56. [x] Add webhook assignment section to PowerModeEditorView (grouped by type, toggleable)
+57. [x] Test button functionality (in WebhookEditorSheet)
+58. [x] WebhooksView.swift (UI mock → real data)
+59. [x] WebhookEditorSheet.swift (UI mock)
 
 **Phase 4g: Transcription Streaming (OPTIONAL)**
 Real-time transcription as user speaks:
@@ -1324,16 +1331,17 @@ Real-time transcription as user speaks:
 2. [ ] Diff highlighting for refinements (DiffHighlighter.swift)
 3. [ ] Voice-based Power Mode creation (OPTIONAL)
 
-### Phase 6: Security & Data Protection
-1. [ ] Migrate API keys to iOS Keychain (KeychainManager.swift)
-2. [ ] Encrypt transcription history (using Data Protection)
-3. [ ] Biometric protection for History view (Face ID / Touch ID) - optional setting
-4. [ ] Biometric protection for viewing/editing API keys - optional setting
-5. [ ] Secure data deletion (complete account/data reset)
-6. [ ] Add privacy policy & data handling disclosure
-7. [ ] Audit for App Store privacy nutrition labels
+### Phase 6: Security & Data Protection - COMPLETE ✅
+1. [x] API keys stored in iOS Keychain (KeychainManager.swift) - shared between app and keyboard extension
+2. [x] Biometric protection for Settings and History views (Face ID / Touch ID) - session-based (5-min timeout)
+3. [x] User-configurable data retention (Never, 7/30/90 days auto-delete)
+4. [x] BiometricAuthManager with session-based authentication
+5. [x] BiometricGateView wrapper component for protected views
+6. [x] LockedView UI for authentication prompts
+7. [ ] Add privacy policy & data handling disclosure (future)
+8. [ ] Audit for App Store privacy nutrition labels (future)
 
-**Note:** NO biometric lock on app launch or recording flow - must remain frictionless for core UX.
+**Note:** NO biometric lock on app launch or recording flow - must remain frictionless for core UX. Session-based auth means once authenticated, access is granted for 5 minutes.
 
 ### Phase 7: Monetization & Polish
 1. [ ] StoreKit 2 / RevenueCat subscription integration
@@ -2333,6 +2341,70 @@ pip3 install requests
 
 ---
 
+### Phase 10: Privacy Mode & Local Provider Restructure - COMPLETE ✅
+
+**Goal:** Restructure provider settings to clearly separate cloud vs local providers, add on-device AI options (WhisperKit, Apple Intelligence, Apple Translation), and implement "Privacy Mode" for fully local operation.
+
+**Phase 10a: Provider Hierarchy & Settings Restructure** ✅ COMPLETE
+1. [x] Create Phase 10 data models (LocalModelType, LocalModelStatus, WhisperModel, WhisperKitConfig, AppleIntelligenceConfig, AppleTranslationConfig)
+2. [x] Create ProviderType enum (cloud vs local unification)
+3. [x] Create ProviderSelection and ProviderDefaults structures
+4. [x] Add providerOverride to PowerMode for per-mode provider selection
+5. [x] Restructure SettingsView with "AI Cloud Models" and "AI Local Models" sections
+6. [x] Create Default Providers view with beautiful picker UI
+7. [x] Show provider indicator on Power Mode cards
+
+**Phase 10b: On-Device AI Setup Views** ✅ COMPLETE
+8. [x] Create WhisperKitSetupView (model selection, download progress, storage management)
+9. [x] Create AppleIntelligenceSetupView (iOS 18.5+ detection, feature toggles)
+10. [x] Create AppleTranslationSetupView (language pack management)
+11. [x] Create LocalModelStorageView (unified storage overview)
+12. [x] Add AddLocalModelSheet with navigation to setup views
+13. [x] Wire up Ollama/LM Studio/OpenAI Compatible to existing AIProviderEditorSheet
+
+**Phase 10c: WhisperKit Language Support** ✅ COMPLETE
+14. [x] Add language support properties to WhisperModel enum
+15. [x] Add languageSupportLevel(for:) method based on model size and language
+16. [x] Add supportedLanguages, languagesWithSupport, recommendedLanguages computed properties
+17. [x] Quality tiers based on model size (tiny/base = limited, small/medium = good, large variants = excellent)
+
+**Phase 10d: Provider UI Polish** ✅ COMPLETE
+18. [x] Improve ProviderPickerRow styling (icon backgrounds, category pills, cloud/local indicators)
+19. [x] Replace "Use System Default" with "Auto (First Available)"
+20. [x] Add sections for Cloud vs On-Device providers in dropdown
+21. [x] Remove duplicate "More models" section from WhisperKitSetupView
+
+**Phase 10e: Privacy Mode Implementation** ✅ COMPLETE
+22. [x] Add `forcePrivacyMode` toggle to SharedSettings (only show when local providers available)
+23. [x] Create PrivacyModeIndicator, PrivacyModeBanner, PrivacyModeWarning components
+24. [x] Add Privacy Mode indicator to ContentView header toolbar
+25. [x] Block cloud API calls when privacy mode enabled (TranscriptionOrchestrator, PowerModeOrchestrator)
+26. [x] Add `privacyModeBlocksCloudProvider` error case to TranscriptionError
+27. [x] Show "Blocked" warning badge on Power Mode cards when privacy mode would block them
+
+**Phase 10f: Local Provider Integration** ✅ COMPLETE
+27. [x] Created LocalProviderErrors.swift with error cases for all local providers
+28. [x] Implemented WhisperKitTranscriptionService with TranscriptionProvider protocol
+29. [x] Implemented AppleTranslationService with TranslationProvider protocol (iOS 17.4+)
+30. [x] Implemented AppleIntelligenceFormattingService with StreamingFormattingProvider (iOS 26+)
+31. [x] Updated ProviderFactory with local provider creation methods
+32. [x] Added streaming support for Apple Intelligence in Power Mode
+
+**Files Created:**
+- `Services/Providers/Local/LocalProviderErrors.swift` - Error handling for local providers
+- `Services/Providers/Local/WhisperKitTranscriptionService.swift` - On-device transcription
+- `Services/Providers/Local/AppleTranslationService.swift` - On-device translation
+- `Services/Providers/Local/AppleIntelligenceFormattingService.swift` - On-device formatting
+
+**To Add WhisperKit SPM Dependency:**
+1. Open `SwiftSpeak.xcodeproj` in Xcode
+2. File → Add Package Dependencies
+3. Enter URL: `https://github.com/argmaxinc/WhisperKit.git`
+4. Select version: `0.9.0` or later
+5. Add to SwiftSpeak target
+
+---
+
 ## NOT YET IMPLEMENTED (From Original Plan)
 
 ### Views to Create:
@@ -2352,83 +2424,71 @@ pip3 install requests
 
 ---
 
-## Security Architecture (Phase 6)
+## Security Architecture (Phase 6) - IMPLEMENTED ✅
 
 ### API Key Storage: iOS Keychain
 
-**Current (INSECURE):** API keys stored in UserDefaults (plain text, extractable from backups)
+**Status:** IMPLEMENTED
 
-**Target:** Migrate to iOS Keychain with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`
+API keys are now stored securely in iOS Keychain with shared access group for keyboard extension.
 
 ```swift
-// KeychainManager.swift (NEW FILE)
-struct KeychainManager {
-    enum KeychainKey: String {
-        case openAIAPIKey = "com.swiftspeak.openai.apikey"
-        case anthropicAPIKey = "com.swiftspeak.anthropic.apikey"
-        case elevenLabsAPIKey = "com.swiftspeak.elevenlabs.apikey"
-        case deepgramAPIKey = "com.swiftspeak.deepgram.apikey"
-        case googleAPIKey = "com.swiftspeak.google.apikey"
-        case localAuthToken = "com.swiftspeak.local.authtoken"
-    }
+// KeychainManager.swift - IMPLEMENTED
+// Location: Services/Security/KeychainManager.swift
 
-    static func save(key: KeychainKey, value: String) -> Bool
-    static func get(key: KeychainKey) -> String?
-    static func delete(key: KeychainKey) -> Bool
-    static func deleteAll() -> Bool
-}
+// Key features:
+// - kSecAttrAccessibleAfterFirstUnlock for keyboard extension background access
+// - kSecAttrSynchronizable: false (no iCloud sync)
+// - Shared access group: $(AppIdentifierPrefix)group.pawelgawliczek.swiftspeak
+
+// Keychain keys (via KeychainKeys enum):
+// - swiftspeak.apikey.openai
+// - swiftspeak.apikey.anthropic
+// - swiftspeak.apikey.google
+// - swiftspeak.apikey.elevenlabs
+// - swiftspeak.apikey.deepgram
+// - swiftspeak.apikey.assemblyai
+// - swiftspeak.apikey.deepl
+// - swiftspeak.apikey.azure
+// - swiftspeak.apikey.local
 ```
 
-**Migration path:**
-1. On first launch after update, migrate keys from UserDefaults to Keychain
-2. Delete keys from UserDefaults after successful migration
-3. Update `SharedSettings` to use `KeychainManager` for API keys
-4. Keep non-sensitive settings in UserDefaults (modes, preferences)
+**Implementation details:**
+1. SharedSettings uses KeychainManager for API key storage
+2. API keys hydrated from Keychain when loading AIProviderConfig
+3. API keys saved to Keychain when updating providers
+4. Empty keys stored in UserDefaults JSON (actual keys in Keychain)
+5. Both app and keyboard extension share Keychain via access group
 
-### Biometric Authentication (Selective - History & API Keys Only)
+### Biometric Authentication - IMPLEMENTED ✅
+
+**Status:** IMPLEMENTED with session-based approach
 
 **IMPORTANT UX PRINCIPLE:** The core recording flow (keyboard → app → record → transcribe → return) must remain completely frictionless. NO Face ID prompts during normal usage.
 
-**What IS protected (optional, user-enabled):**
+**What IS protected (optional, user-enabled via Settings toggle):**
 - History tab (contains all past transcriptions)
-- Viewing/editing API keys in Settings
+- Settings tab (contains API keys, webhooks, contexts)
 
 **What is NOT protected (for speed):**
 - App launch
 - Recording flow
-- Settings (except API keys section)
 - Power Mode execution
+- Record tab
 
-**Settings UI:**
-```
-Settings → Privacy & Security
-┌─────────────────────────────────────────┐
-│ PRIVACY & SECURITY                      │
-│                                         │
-│ Protect History              ────●      │
-│ Require Face ID to view past            │
-│ transcriptions                          │
-│                                         │
-│ Protect API Keys             ────●      │
-│ Require Face ID to view or edit         │
-│ your API keys                           │
-└─────────────────────────────────────────┘
-```
+**Session-based authentication:**
+- Once authenticated, session remains valid for 5 minutes
+- Session invalidates when app goes to background
+- Single toggle controls both History and Settings protection
 
-**Implementation:**
-```swift
-// BiometricManager.swift (NEW FILE)
-import LocalAuthentication
+**Key files:**
+- `Services/Security/BiometricAuthManager.swift` - LAContext wrapper with session management
+- `Views/Components/BiometricGateView.swift` - View wrapper requiring auth
+- `Views/Components/LockedView.swift` - "Unlock with Face ID" UI
 
-struct BiometricManager {
-    static var biometricType: LABiometryType  // .faceID, .touchID, .none
-    static var isAvailable: Bool
-
-    /// Authenticate for sensitive data access
-    /// - Parameter reason: Shown to user (e.g., "Access your transcription history")
-    static func authenticate(reason: String) async -> Bool
-}
-```
+**Settings UI (in Security & Privacy section):**
+- Toggle: "Require Face ID/Touch ID" (protects Settings and History)
+- Picker: "Auto-Delete History" (Never, 7 days, 30 days, 90 days)
 
 **Flow when History is protected:**
 1. User taps History tab

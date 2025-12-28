@@ -18,11 +18,23 @@ struct SwipeablePowerModeCard: View {
     let onDelete: () -> Void
     let onShowHistory: () -> Void
 
+    @EnvironmentObject var settings: SharedSettings
     @State private var offset: CGFloat = 0
     @State private var isSwiping = false
 
     private let actionButtonWidth: CGFloat = 70
     private let swipeThreshold: CGFloat = 50
+
+    /// Whether this Power Mode is blocked by Privacy Mode
+    private var isBlockedByPrivacyMode: Bool {
+        guard settings.forcePrivacyMode else { return false }
+        // Check if the power mode uses a cloud provider
+        if let override = powerMode.providerOverride {
+            return !override.isLocal
+        }
+        // If no override, check default provider (which is typically cloud)
+        return true
+    }
 
     var body: some View {
         ZStack {
@@ -162,6 +174,28 @@ struct SwipeablePowerModeCard: View {
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue.opacity(0.8))
+                        }
+
+                        // Provider override indicator (Phase 10)
+                        if let override = powerMode.providerOverride {
+                            HStack(spacing: 4) {
+                                Image(systemName: override.icon)
+                                    .font(.caption2)
+                                Text(override.providerType.shortName)
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(override.isLocal ? .green.opacity(0.9) : .orange.opacity(0.9))
+                        }
+
+                        // Privacy Mode warning (Phase 10)
+                        if isBlockedByPrivacyMode {
+                            HStack(spacing: 4) {
+                                Image(systemName: "lock.shield.fill")
+                                    .font(.caption2)
+                                Text("Blocked")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.orange)
                         }
                     }
                 }

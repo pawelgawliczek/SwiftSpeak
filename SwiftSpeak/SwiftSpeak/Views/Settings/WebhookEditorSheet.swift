@@ -14,6 +14,7 @@ struct WebhookEditorSheet: View {
     let onDelete: () -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var settings: SharedSettings
 
     // Form state
     @State private var name: String = ""
@@ -334,25 +335,36 @@ struct WebhookEditorSheet: View {
 
     // MARK: - Actions
 
+    /// Default names for each template - used to detect if user has customized the name
+    private static let templateDefaultNames: Set<String> = [
+        "Slack Channel", "Notion Database", "Todoist Tasks",
+        "Make.com Scenario", "Zapier Webhook"
+    ]
+
+    /// Check if the current name is a template default (not customized by user)
+    private var isDefaultTemplateName: Bool {
+        name.isEmpty || Self.templateDefaultNames.contains(name)
+    }
+
     private func applyTemplate(_ template: WebhookTemplate) {
         switch template {
         case .slack:
-            name = name.isEmpty ? "Slack Channel" : name
+            if isDefaultTemplateName { name = "Slack Channel" }
             urlString = "https://hooks.slack.com/services/"
         case .notion:
-            name = name.isEmpty ? "Notion Database" : name
+            if isDefaultTemplateName { name = "Notion Database" }
             urlString = "https://api.notion.com/v1/pages"
             authType = .bearerToken
         case .todoist:
-            name = name.isEmpty ? "Todoist Tasks" : name
+            if isDefaultTemplateName { name = "Todoist Tasks" }
             urlString = "https://api.todoist.com/rest/v2/tasks"
             authType = .bearerToken
         case .make:
-            name = name.isEmpty ? "Make.com Scenario" : name
+            if isDefaultTemplateName { name = "Make.com Scenario" }
             urlString = "https://hook.make.com/"
             type = .automationTrigger
         case .zapier:
-            name = name.isEmpty ? "Zapier Webhook" : name
+            if isDefaultTemplateName { name = "Zapier Webhook" }
             urlString = "https://hooks.zapier.com/hooks/catch/"
             type = .automationTrigger
         case .custom:
@@ -361,16 +373,47 @@ struct WebhookEditorSheet: View {
     }
 
     private func testWebhook() {
-        testStatus = .testing
+        guard let url = URL(string: urlString) else {
+            testStatus = .failed("Invalid URL")
+            return
+        }
 
-        // Mock test - in real app would make actual request
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            testStatus = Bool.random() ? .success : .failed("Connection failed")
+        testStatus = .testing
+        HapticManager.lightTap()
+
+        // Build webhook from current form state
+        let testWebhookConfig = Webhook(
+            id: webhook.id,
+            name: name,
+            type: type,
+            template: template,
+            url: url,
+            isEnabled: true,
+            authType: authType,
+            authToken: authToken.isEmpty ? nil : authToken,
+            includeInput: includeInput,
+            includeOutput: includeOutput,
+            includeModeName: includeModeName,
+            includeContext: includeContext,
+            includeTimestamp: includeTimestamp
+        )
+
+        // Execute real test
+        Task {
+            let executor = WebhookExecutor(settings: settings)
+            let result = await executor.testWebhook(testWebhookConfig)
+
+            if result.success {
+                testStatus = .success
+                HapticManager.success()
+            } else {
+                testStatus = .failed(result.error ?? "Unknown error")
+                HapticManager.error()
+            }
 
             // Reset after delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-                testStatus = .idle
-            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            testStatus = .idle
         }
     }
 
@@ -433,6 +476,7 @@ private struct PayloadToggle: View {
         onSave: { _ in },
         onDelete: {}
     )
+    .environmentObject(SharedSettings.shared)
     .preferredColorScheme(.dark)
 }
 
@@ -443,5 +487,6 @@ private struct PayloadToggle: View {
         onSave: { _ in },
         onDelete: {}
     )
+    .environmentObject(SharedSettings.shared)
     .preferredColorScheme(.dark)
 }

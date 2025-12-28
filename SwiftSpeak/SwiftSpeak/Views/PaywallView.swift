@@ -36,10 +36,14 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @StateObject private var settings = SharedSettings.shared
+    @StateObject private var subscriptionService = SubscriptionService.shared
     @State private var selectedTier: SubscriptionTier = .pro
     @State private var billingPeriod: BillingPeriod = .yearly
     @State private var isPurchasing = false
+    @State private var isRestoring = false
     @State private var showSuccess = false
+    @State private var errorMessage: String?
+    @State private var showError = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -162,9 +166,23 @@ struct PaywallView: View {
                             .foregroundStyle(.primary)
 
                         if billingPeriod == .yearly {
-                            Text("Save 28% with yearly billing")
+                            HStack(spacing: 8) {
+                                Text("7-day free trial")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .background(AppTheme.accentGradient)
+                                    .clipShape(Capsule())
+
+                                Text("• Save 28%")
+                                    .font(.caption)
+                                    .foregroundStyle(.green)
+                            }
+                        } else if billingPeriod == .monthly {
+                            Text("7-day free trial included")
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(AppTheme.accent)
                         } else if billingPeriod == .lifetime {
                             Text("One-time purchase • Use forever")
                                 .font(.caption)
@@ -174,11 +192,17 @@ struct PaywallView: View {
 
                     // Legal links
                     HStack(spacing: 16) {
-                        Button("Restore Purchases") {
-                            restorePurchases()
+                        Button(action: restorePurchases) {
+                            if isRestoring {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Text("Restore Purchases")
+                            }
                         }
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                        .disabled(isRestoring)
 
                         Text("•")
                             .foregroundStyle(.secondary)
@@ -205,9 +229,18 @@ struct PaywallView: View {
 
             // Success overlay
             if showSuccess {
-                SuccessOverlay(selectedTier: selectedTier) {
+                SuccessOverlay(selectedTier: subscriptionService.currentTier) {
                     dismiss()
                 }
+            }
+        }
+        .alert("Purchase Error", isPresented: $showError) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            if let errorMessage = errorMessage {
+                Text(errorMessage)
             }
         }
     }
@@ -224,23 +257,82 @@ struct PaywallView: View {
         }
     }
 
+    /// Get the SubscriptionProduct for current selection
+    private var selectedProduct: SubscriptionProduct {
+        switch (selectedTier, billingPeriod) {
+        case (.pro, .monthly): return .proMonthly
+        case (.pro, .yearly): return .proYearly
+        case (.pro, .lifetime): return .proLifetime
+        case (.power, .monthly): return .powerMonthly
+        case (.power, .yearly): return .powerYearly
+        case (.power, .lifetime): return .powerLifetime
+        default: return .proMonthly
+        }
+    }
+
     private func purchase() {
         HapticManager.mediumTap()
         isPurchasing = true
 
-        // Mock purchase - in Phase 5, this will call RevenueCat
-        // Purchases.shared.purchase(package: selectedPackage)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
-            isPurchasing = false
-            settings.subscriptionTier = selectedTier
-            showSuccess = true
+        Task {
+            do {
+                let success = try await subscriptionService.purchase(product: selectedProduct)
+                await MainActor.run {
+                    isPurchasing = false
+                    if success {
+                        showSuccess = true
+                    }
+                }
+            } catch let error as SubscriptionError {
+                await MainActor.run {
+                    isPurchasing = false
+                    if case .purchaseCancelled = error {
+                        // User cancelled, don't show error
+                    } else {
+                        errorMessage = error.errorDescription
+                        showError = true
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    isPurchasing = false
+                    errorMessage = error.localizedDescription
+                    showError = true
+                }
+            }
         }
     }
 
     private func restorePurchases() {
         HapticManager.lightTap()
-        // Mock restore - in Phase 5, this will call RevenueCat
-        // Purchases.shared.restorePurchases()
+        isRestoring = true
+
+        Task {
+            do {
+                let success = try await subscriptionService.restorePurchases()
+                await MainActor.run {
+                    isRestoring = false
+                    if success && subscriptionService.hasActiveSubscription {
+                        showSuccess = true
+                    } else if success {
+                        errorMessage = "No previous purchases found"
+                        showError = true
+                    }
+                }
+            } catch let error as SubscriptionError {
+                await MainActor.run {
+                    isRestoring = false
+                    errorMessage = error.errorDescription
+                    showError = true
+                }
+            } catch {
+                await MainActor.run {
+                    isRestoring = false
+                    errorMessage = error.localizedDescription
+                    showError = true
+                }
+            }
+        }
     }
 }
 

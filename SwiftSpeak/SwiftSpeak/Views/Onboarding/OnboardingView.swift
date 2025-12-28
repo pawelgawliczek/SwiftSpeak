@@ -2,7 +2,7 @@
 //  OnboardingView.swift
 //  SwiftSpeak
 //
-//  Main onboarding container with 6 screens
+//  Main onboarding container with 7 screens (including upsell)
 //
 
 import SwiftUI
@@ -14,7 +14,8 @@ struct OnboardingView: View {
     @State private var isFullAccessEnabled = false
     @Binding var showOnboarding: Bool
 
-    private let totalPages = 6
+    private let totalPages = 7
+    @State private var showPaywall = false
 
     var body: some View {
         ZStack {
@@ -68,8 +69,16 @@ struct OnboardingView: View {
                     APIKeyScreen(onContinue: nextPage)
                         .tag(4)
 
+                    OnboardingUpsellScreen(
+                        onStartTrial: {
+                            showPaywall = true
+                        },
+                        onContinueFree: nextPage
+                    )
+                    .tag(5)
+
                     AllSetScreen(onComplete: completeOnboarding)
-                        .tag(5)
+                        .tag(6)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(AppTheme.smoothSpring, value: currentPage)
@@ -81,6 +90,15 @@ struct OnboardingView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             checkKeyboardStatus()
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .onDisappear {
+                    // After paywall dismissed, continue to AllSetScreen
+                    if settings.subscriptionTier != .free {
+                        nextPage()
+                    }
+                }
         }
     }
 

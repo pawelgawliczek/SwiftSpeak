@@ -32,6 +32,12 @@ struct ContextsListContent: View {
     @State private var navigateToDetail: ConversationContext?
     @State private var showingDeleteConfirmation = false
     @State private var contextToDelete: ConversationContext?
+    @State private var showPaywall = false
+
+    /// Whether the user has access to Contexts (Pro+ tier)
+    private var hasContextsAccess: Bool {
+        settings.subscriptionTier != .free
+    }
 
     var body: some View {
         ScrollView {
@@ -75,6 +81,19 @@ struct ContextsListContent: View {
             }
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
+        .overlay {
+            if !hasContextsAccess {
+                FeatureGateOverlay(
+                    requiredTier: .pro,
+                    featureName: "Contexts",
+                    featureDescription: "Create conversation contexts to personalize AI responses with your preferences and background",
+                    onUpgrade: { showPaywall = true }
+                )
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: { showingNewEditor = true }) {

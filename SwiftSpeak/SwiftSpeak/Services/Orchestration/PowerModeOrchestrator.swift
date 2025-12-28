@@ -57,12 +57,18 @@ final class PowerModeOrchestrator: ObservableObject {
     private let providerFactory: any ProviderFactoryProtocol
     private let memoryManager: any MemoryManagerProtocol
     private let ragOrchestrator: RAGOrchestrator
+    private let webhookExecutor: WebhookExecutor
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - RAG State
 
     /// Last RAG query result (used in prompt building)
     private var lastRAGResult: RAGQueryResult?
+
+    // MARK: - Webhook State
+
+    /// Context fetched from webhooks (used in prompt building)
+    private var webhookContextResults: [WebhookExecutor.ContextSourceResult] = []
 
     // MARK: - Timing
 
@@ -88,6 +94,7 @@ final class PowerModeOrchestrator: ObservableObject {
             providerFactory: ProviderFactory(settings: resolvedSettings),
             memoryManager: MemoryManager(settings: resolvedSettings),
             ragOrchestrator: RAGOrchestrator(),
+            webhookExecutor: WebhookExecutor(settings: resolvedSettings),
             setupBindings: true
         )
     }
@@ -100,6 +107,7 @@ final class PowerModeOrchestrator: ObservableObject {
         providerFactory: any ProviderFactoryProtocol,
         memoryManager: any MemoryManagerProtocol,
         ragOrchestrator: RAGOrchestrator? = nil,
+        webhookExecutor: WebhookExecutor? = nil,
         setupBindings: Bool = false
     ) {
         // Initialize all stored properties first
@@ -109,6 +117,7 @@ final class PowerModeOrchestrator: ObservableObject {
         self.providerFactory = providerFactory
         self.memoryManager = memoryManager
         self.ragOrchestrator = ragOrchestrator ?? RAGOrchestrator()
+        self.webhookExecutor = webhookExecutor ?? WebhookExecutor(settings: settings)
 
         // Setup bindings after all properties are initialized
         if setupBindings, let concreteRecorder = audioRecorder as? AudioRecorder {
@@ -182,6 +191,15 @@ final class PowerModeOrchestrator: ObservableObject {
             // Thinking phase
             state = .thinking
 
+            // Fetch context from webhooks (Phase 4f)
+            webhookContextResults = []
+            if !powerMode.enabledWebhookIds.isEmpty {
+                let contextWebhooks = settings.enabledWebhooks(for: powerMode, ofType: .contextSource)
+                if !contextWebhooks.isEmpty {
+                    webhookContextResults = await webhookExecutor.fetchContext(for: powerMode)
+                }
+            }
+
             // Query knowledge base if configured (Phase 4e - RAG)
             lastRAGResult = nil
             if !powerMode.knowledgeDocumentIds.isEmpty {
@@ -248,6 +266,27 @@ final class PowerModeOrchestrator: ObservableObject {
             // Update memory (async, non-blocking)
             Task {
                 await updateMemory(input: processedInput, output: output)
+            }
+
+            // Execute output webhooks (Phase 4f - non-blocking)
+            if !powerMode.enabledWebhookIds.isEmpty {
+                Task {
+                    let contextName = activeContext?.name
+                    // Send to output destinations
+                    _ = await webhookExecutor.sendOutput(
+                        for: powerMode,
+                        input: processedInput,
+                        output: output,
+                        contextName: contextName
+                    )
+                    // Trigger automation webhooks
+                    _ = await webhookExecutor.triggerAutomations(
+                        for: powerMode,
+                        input: processedInput,
+                        output: output,
+                        contextName: contextName
+                    )
+                }
             }
 
             // Complete
@@ -464,6 +503,11 @@ final class PowerModeOrchestrator: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
+        // Phase 10: Check privacy mode - block cloud providers
+        if settings.forcePrivacyMode && !provider.providerId.isLocalProvider {
+            throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
+        }
+
         // Build the full prompt with context and memory injection
         let systemPrompt = buildSystemPrompt(isRegeneration: isRegeneration, isRefinement: isRefinement)
 
@@ -492,6 +536,11 @@ final class PowerModeOrchestrator: ObservableObject {
               let streamingProvider = provider as? StreamingFormattingProvider,
               streamingProvider.supportsStreaming else {
             return nil
+        }
+
+        // Phase 10: Check privacy mode - block cloud providers
+        if settings.forcePrivacyMode && !provider.providerId.isLocalProvider {
+            throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
         }
 
         // Build system prompt
@@ -584,7 +633,22 @@ final class PowerModeOrchestrator: ObservableObject {
             parts.append("Use this information to inform your response when relevant.")
         }
 
-        // 6. Special instructions for regeneration/refinement
+        // 6. Webhook context injection (Phase 4f)
+        let successfulWebhookContexts = webhookContextResults.filter { $0.error == nil && $0.content != nil }
+        if !successfulWebhookContexts.isEmpty {
+            parts.append("\n## External Context (from webhooks)")
+            for result in successfulWebhookContexts {
+                parts.append("### \(result.webhookName)")
+                if let content = result.content {
+                    // Truncate very long responses
+                    let truncated = content.count > 2000 ? String(content.prefix(2000)) + "..." : content
+                    parts.append(truncated)
+                }
+                parts.append("")
+            }
+        }
+
+        // 7. Special instructions for regeneration/refinement
         if isRegeneration {
             parts.append("\n## Note")
             parts.append("This is a regeneration request. Provide a fresh perspective while maintaining quality.")

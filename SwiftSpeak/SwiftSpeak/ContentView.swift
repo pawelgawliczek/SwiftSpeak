@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var settings: SharedSettings
+    @Environment(\.scenePhase) var scenePhase
     @State private var selectedTab = 0
     @State private var showRecording = false
     @State private var translateOnRecord = false
@@ -25,13 +26,15 @@ struct ContentView: View {
                 }
                 .tag(0)
 
-            // History
-            HistoryView()
-                .tabItem {
-                    Image(systemName: "clock.fill")
-                    Text("History")
-                }
-                .tag(1)
+            // History (Phase 6: Protected by biometric auth)
+            BiometricGateView(authReason: "Access transcription history") {
+                HistoryView()
+            }
+            .tabItem {
+                Image(systemName: "clock.fill")
+                Text("History")
+            }
+            .tag(1)
 
             // Power (Modes + Contexts)
             PowerTabView()
@@ -41,13 +44,15 @@ struct ContentView: View {
                 }
                 .tag(2)
 
-            // Settings
-            SettingsView()
-                .tabItem {
-                    Image(systemName: "gear")
-                    Text("Settings")
-                }
-                .tag(3)
+            // Settings (Phase 6: Protected by biometric auth)
+            BiometricGateView(authReason: "Access settings") {
+                SettingsView()
+            }
+            .tabItem {
+                Image(systemName: "gear")
+                Text("Settings")
+            }
+            .tag(3)
         }
         .tint(AppTheme.accent)
         .fullScreenCover(isPresented: $showRecording) {
@@ -55,6 +60,12 @@ struct ContentView: View {
         }
         .onOpenURL { url in
             handleURLScheme(url)
+        }
+        // Phase 6: Invalidate biometric session when app goes to background
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .background {
+                BiometricAuthManager.shared.invalidateSession()
+            }
         }
     }
 
@@ -117,6 +128,12 @@ struct HomeView: View {
     @State private var showModePicker = false
     @State private var showDefaultsSettings = false
     @State private var showProviderSetup = false
+    @State private var showPaywall = false
+
+    /// Whether the user has access to translation (Pro+ tier)
+    private var hasTranslationAccess: Bool {
+        settings.subscriptionTier != .free
+    }
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -172,16 +189,28 @@ struct HomeView: View {
                         VStack(spacing: 24) {
                             // Two action buttons side by side
                             HStack(spacing: 32) {
-                                // Translate + Transcribe button (pink)
-                                ActionButton(
-                                    icon: "globe",
-                                    label: "Translate",
-                                    color: .pink,
-                                    size: 72
-                                ) {
-                                    HapticManager.mediumTap()
-                                    translateOnRecord = true
-                                    showRecording = true
+                                // Translate + Transcribe button (pink) - Pro+ feature
+                                ZStack(alignment: .topTrailing) {
+                                    ActionButton(
+                                        icon: "globe",
+                                        label: "Translate",
+                                        color: .pink,
+                                        size: 72
+                                    ) {
+                                        HapticManager.mediumTap()
+                                        if hasTranslationAccess {
+                                            translateOnRecord = true
+                                            showRecording = true
+                                        } else {
+                                            showPaywall = true
+                                        }
+                                    }
+
+                                    // Show PRO badge if not subscribed
+                                    if !hasTranslationAccess {
+                                        TierBadge.pro
+                                            .offset(x: 8, y: -8)
+                                    }
                                 }
 
                                 // Transcribe only button (accent)
@@ -258,6 +287,11 @@ struct HomeView: View {
             }
             .navigationTitle("SwiftSpeak")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    PrivacyModeIndicator()
+                }
+            }
             .sheet(isPresented: $showModePicker) {
                 ModePickerSheet(selectedMode: $settings.selectedMode)
                     .presentationDetents([.height(320)])
@@ -279,6 +313,9 @@ struct HomeView: View {
                     },
                     onDelete: nil
                 )
+            }
+            .sheet(isPresented: $showPaywall) {
+                PaywallView()
             }
         }
     }

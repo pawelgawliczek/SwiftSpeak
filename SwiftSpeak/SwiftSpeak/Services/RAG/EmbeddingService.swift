@@ -104,14 +104,18 @@ final class EmbeddingService {
 
     // MARK: - Initialization
 
-    init(apiKey: String, model: RAGEmbeddingModel = .openAISmall) {
+    init(apiKey: String, model: RAGEmbeddingModel = .openAISmall, session: URLSession? = nil) {
         self.apiKey = apiKey
         self.model = model
 
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 60
-        config.timeoutIntervalForResource = 120
-        self.session = URLSession(configuration: config)
+        if let session = session {
+            self.session = session
+        } else {
+            let config = URLSessionConfiguration.default
+            config.timeoutIntervalForRequest = 60
+            config.timeoutIntervalForResource = 120
+            self.session = URLSession(configuration: config)
+        }
     }
 
     /// Create from provider config

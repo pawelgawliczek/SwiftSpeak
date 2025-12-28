@@ -227,6 +227,11 @@ final class TranscriptionOrchestrator: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
+        // Phase 10: Check privacy mode - block cloud providers
+        if settings.forcePrivacyMode && !provider.providerId.isLocalProvider {
+            throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
+        }
+
         // Build prompt hint for transcription (vocabulary + language hints)
         let context = buildPromptContext()
         let promptHint = context.buildTranscriptionHint()
@@ -243,6 +248,11 @@ final class TranscriptionOrchestrator: ObservableObject {
             return text
         }
 
+        // Phase 10: Check privacy mode - block cloud providers
+        if settings.forcePrivacyMode && !provider.providerId.isLocalProvider {
+            throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
+        }
+
         // Build context for formatting (includes memory, tone, instructions)
         let context = buildPromptContext()
 
@@ -257,6 +267,11 @@ final class TranscriptionOrchestrator: ObservableObject {
         // Get translation provider via factory
         guard let provider = providerFactory.createSelectedTranslationProvider() else {
             throw TranscriptionError.providerNotConfigured
+        }
+
+        // Phase 10: Check privacy mode - block cloud providers
+        if settings.forcePrivacyMode && !provider.providerId.isLocalProvider {
+            throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
         }
 
         // Build context for translation (includes memory, tone for formality inference)

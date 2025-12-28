@@ -15,6 +15,10 @@ struct SwiftSpeakApp: App {
     init() {
         // Pre-warm audio session for instant recording (<200ms startup)
         AudioSessionManager.shared.preWarm()
+
+        // Configure subscription service (mock mode for now)
+        // TODO: Add your RevenueCat API key to Constants.swift and pass it here
+        SubscriptionService.shared.configure()
     }
 
     var body: some Scene {

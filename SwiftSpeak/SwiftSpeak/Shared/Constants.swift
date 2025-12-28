@@ -54,6 +54,20 @@ enum Constants {
 
         // Phase 4e: RAG Knowledge Documents
         static let knowledgeDocuments = "knowledgeDocuments"
+
+        // Phase 4f: Webhooks
+        static let webhooks = "webhooks"
+
+        // Phase 6: Security & Privacy
+        static let biometricProtectionEnabled = "biometricProtectionEnabled"
+        static let dataRetentionPeriod = "dataRetentionPeriod"
+
+        // Phase 10: Local Models & Provider Defaults
+        static let whisperKitConfig = "whisperKitConfig"
+        static let appleIntelligenceConfig = "appleIntelligenceConfig"
+        static let appleTranslationConfig = "appleTranslationConfig"
+        static let providerDefaults = "providerDefaults"
+        static let forcePrivacyMode = "forcePrivacyMode"
     }
 
     // MARK: - API Endpoints
@@ -94,5 +108,15 @@ enum Constants {
         static let proYearly = "com.swiftspeak.pro.yearly"
         static let powerMonthly = "com.swiftspeak.power.monthly"
         static let powerYearly = "com.swiftspeak.power.yearly"
+    }
+
+    // MARK: - RevenueCat
+    enum RevenueCat {
+        // Test API key - replace with production key before App Store release
+        static let apiKey = "YOUR_REVENUECAT_API_KEY"
+
+        // Entitlement identifiers (configure in RevenueCat dashboard)
+        static let proEntitlement = "pro"
+        static let powerEntitlement = "power"
     }
 }

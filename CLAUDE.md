@@ -53,21 +53,35 @@ Translation, auto-return, custom templates, waveform audio connection.
 - [ ] Integration with SettingsView (pending)
 - [ ] Integration with KeyboardView (pending)
 
-### Phase 4: Power Mode Backend - IN PROGRESS
+### Phase 4: Power Mode Backend - COMPLETE ✅
 - [x] Phase 4a: Conversation Contexts (ConversationContext model, ContextsView, ContextEditorSheet)
 - [x] Phase 4b: Three-Tier Memory System (MemoryManager, global/context/powerMode memory)
-- [x] Phase 4c: PowerModeOrchestrator (central coordinator, context/memory injection)
-- [x] Phase 4d: LLM Streaming (SSEParser, APIClient.streamPost, StreamingFormattingProvider, OpenAI streaming, progressive UI)
+- [x] Phase 4c: PowerModeOrchestrator (central coordinator, context/memory injection, wired to UI)
+- [x] Phase 4d: LLM Streaming (SSEParser, streaming for OpenAI/Anthropic/Gemini, progressive UI)
+- [x] Phase 4e: RAG System (DocumentParser, TextChunker, EmbeddingService, VectorStore, RAGOrchestrator)
+- [x] Phase 4f: Webhooks (WebhookExecutor, global webhooks with per-PowerMode assignment)
 - [x] App Auto-Enable: Pre-built library of 100+ apps for automatic context/powermode activation
-- [ ] Phase 4e: RAG System (document parsing, embeddings, vector store)
-- [ ] Phase 4f: Webhooks (outbound integrations)
+- [ ] Phase 4g: Transcription Streaming (OPTIONAL - WebSocket real-time transcription)
+
+### Phase 6: Security & Data Protection - COMPLETE ✅
+- [x] KeychainManager for secure API key storage (shared between app and keyboard extension)
+- [x] BiometricAuthManager with session-based Face ID/Touch ID (5-min timeout)
+- [x] BiometricGateView wrapper for protected views (Settings, History)
+- [x] User-configurable data retention (Never, 7/30/90 days auto-delete)
+- [x] Security section in SettingsView with biometric toggle and retention picker
+
+### Phase 10: Privacy Mode & Local Provider Restructure - IN PROGRESS
+- [x] Phase 10a: Provider Hierarchy (ProviderType, ProviderSelection, ProviderDefaults)
+- [x] Phase 10b: On-Device AI Views (WhisperKitSetupView, AppleIntelligenceSetupView, AppleTranslationSetupView)
+- [x] Phase 10c: WhisperKit Language Support (per-model language capabilities)
+- [x] Phase 10d: Provider UI Polish (improved dropdown, cloud/local sections)
+- [x] Phase 10e: Privacy Mode Implementation (indicator, cloud blocking, Power Mode warnings)
+- [ ] Phase 10f: Provider Integration (WhisperKit, Apple Translation, Apple Intelligence)
 
 ### Next Steps
-- [ ] Phase 4e: RAG System
-- [ ] Phase 4f: Webhooks
-- [ ] Add streaming to Anthropic/Gemini providers
-- [ ] Phase 6: Security & Data Protection (Keychain, biometric protection)
+- [ ] Phase 10f: Provider Integration (wire WhisperKit, Apple Translation to orchestrators)
 - [ ] Phase 7: StoreKit 2 subscriptions
+- [ ] Phase 9: Remote Configuration & Cost Analytics
 
 ## iOS Keyboard Architecture Constraint
 
@@ -160,6 +174,9 @@ SwiftSpeak/
 │   │   │   └── AudioRecorder.swift
 │   │   ├── Memory/
 │   │   │   └── MemoryManager.swift              # Phase 4b - Memory update/compression
+│   │   ├── Security/                            # Phase 6 - Security services
+│   │   │   ├── KeychainManager.swift            # Secure API key storage
+│   │   │   └── BiometricAuthManager.swift       # Face ID/Touch ID with session
 │   │   ├── Providers/
 │   │   │   ├── OpenAI/
 │   │   │   │   ├── OpenAITranscriptionService.swift
@@ -169,7 +186,8 @@ SwiftSpeak/
 │   │   │       ├── MockFormattingProvider.swift
 │   │   │       ├── MockAudioRecorder.swift      # Phase 4c - For testing
 │   │   │       ├── MockProviderFactory.swift    # Phase 4c - For testing
-│   │   │       └── MockMemoryManager.swift      # Phase 4c - For testing
+│   │   │       ├── MockMemoryManager.swift      # Phase 4c - For testing
+│   │   │       └── MockKeychainManager.swift    # Phase 6 - For testing
 │   │   ├── Orchestration/
 │   │   │   ├── TranscriptionOrchestrator.swift
 │   │   │   ├── PowerModeOrchestrator.swift      # Phase 4c - Power Mode coordinator
@@ -203,7 +221,9 @@ SwiftSpeak/
 │   │   │   ├── ProviderStatusDashboard.swift   # Phase 3A - Status card
 │   │   │   ├── SmartLanguagePicker.swift       # Phase 3A - Language dropdown
 │   │   │   ├── IncompatibilityWarning.swift    # Phase 3A - Warning banners
-│   │   │   └── AppAssignmentSection.swift      # App auto-enable for contexts/powermodes
+│   │   │   ├── AppAssignmentSection.swift      # App auto-enable for contexts/powermodes
+│   │   │   ├── BiometricGateView.swift         # Phase 6 - Auth wrapper for protected views
+│   │   │   └── LockedView.swift                # Phase 6 - "Unlock with Face ID" UI
 │   │   ├── Settings/                           # Phase 4a/4b - Settings views
 │   │   │   ├── ContextsView.swift              # Phase 4a - Context list
 │   │   │   ├── ContextEditorSheet.swift        # Phase 4a - Edit context
@@ -450,6 +470,8 @@ Each error includes:
 - **Unit Tests:** Swift Testing framework (@Test attribute, #expect macro)
 - **Mock Providers:** MockTranscriptionProvider, MockFormattingProvider with configurable delays and failures
 - **UI Tests:** XCTest framework for recording flow and settings
+
+**IMPORTANT:** Do NOT run tests in parallel or in background. Run tests sequentially to avoid laptop performance issues.
 
 ## Critical: AI Prompts Discussion Required
 
