@@ -18,8 +18,7 @@ This file provides guidance to Claude Code when working with this repository.
 - Main App: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeak/`
 - Keyboard Extension: `~/projects/SwiftSpeak/SwiftSpeak/SwiftSpeakKeyboard/`
 - Implementation Plan: `~/projects/SwiftSpeak/IMPLEMENTATION_PLAN.md`
-- Active Phase Plans: `PHASE4_PLAN.md` (Power Mode), `PHASE9_PLAN.md` (Remote Config)
-- Archived Plans: `archive/PHASE1_PLAN.md`, `PHASE2_PLAN.md`, `PHASE3_PLAN.md`, `PHASE3A_PLAN.md` (completed)
+- Archived Plans: `archive/` (all phase plans completed)
 
 ## Bundle IDs & Configuration
 
@@ -70,13 +69,13 @@ Translation, auto-return, custom templates, waveform audio connection.
 - [x] User-configurable data retention (Never, 7/30/90 days auto-delete)
 - [x] Security section in SettingsView with biometric toggle and retention picker
 
-### Phase 7: Subscription Service - FOUNDATION COMPLETE ✅
-- [x] SubscriptionService with RevenueCat integration
+### Phase 7: Subscription Service - COMPLETE ✅
+- [x] SubscriptionService with RevenueCat integration (configure, purchase, restore)
 - [x] SubscriptionError for error handling
 - [x] Configuration.storekit for local testing
 - [x] Feature gating by tier (Free, Pro, Power)
-- [ ] PaywallView polish and A/B testing
-- [ ] App Store Connect configuration
+- [x] PaywallView connected to SubscriptionService
+- [ ] App Store Connect configuration (deployment task)
 
 ### Phase 9: Remote Configuration & Cost Analytics - COMPLETE ✅
 - [x] Phase 9a: Firebase setup (RemoteConfig.swift, RemoteConfigManager.swift)
@@ -88,22 +87,18 @@ Translation, auto-return, custom templates, waveform audio connection.
 - [x] Hostinger cron script (scripts/update_firebase_config.py with Claude CLI)
 - [x] Tests (RemoteConfigTests.swift, CostCalculatorTests.swift)
 
-### Phase 10: Privacy Mode & Local Provider Restructure - UI COMPLETE ✅
+### Phase 10: Privacy Mode & Local Provider Restructure - COMPLETE ✅
 - [x] Phase 10a: Provider Hierarchy (ProviderType, ProviderSelection, ProviderDefaults)
 - [x] Phase 10b: On-Device AI Views (WhisperKitSetupView, AppleIntelligenceSetupView, AppleTranslationSetupView)
 - [x] Phase 10c: WhisperKit Language Support (per-model language capabilities)
 - [x] Phase 10d: Provider UI Polish (improved dropdown, cloud/local sections)
 - [x] Phase 10e: Privacy Mode Implementation (indicator, cloud blocking, Power Mode warnings)
-- [ ] Phase 10f: SDK Integration (wire WhisperKit, Apple Translation, Apple Intelligence to orchestrators)
+- [x] Phase 10f: SDK Integration (WhisperKit, Apple Translation, Apple Intelligence wired to orchestrators)
 
 ### Remaining Work
 | Phase | Task | Priority |
 |-------|------|----------|
-| 10f | Wire WhisperKit SDK to TranscriptionOrchestrator | High |
-| 10f | Wire Apple Translation framework to TranslationProvider | High |
-| 10f | Wire Apple Intelligence to FormattingProvider | Medium |
-| 7 | PaywallView polish and conversion optimization | Medium |
-| 7 | App Store Connect subscription configuration | Medium |
+| 7 | App Store Connect subscription configuration | Medium (deployment) |
 | 4g | WebSocket real-time transcription streaming | Low (optional) |
 | - | App Store submission preparation | Future |
 
@@ -153,9 +148,9 @@ swiftspeak://record?mode=raw&translate=true&target=french
 | 3A | Provider Help & Language Guidance | ✅ Complete |
 | 4 | Power Mode Backend | ✅ Complete (4g optional) |
 | 6 | Security & Data Protection | ✅ Complete |
-| 7 | Subscription Service | ⚡ Foundation Complete |
+| 7 | Subscription Service | ✅ Complete |
 | 9 | Remote Config & Cost Analytics | ✅ Complete |
-| 10 | Privacy Mode & Local Providers | ⚡ UI Complete, SDK pending |
+| 10 | Privacy Mode & Local Providers | ✅ Complete |
 
 ## Current File Structure
 
@@ -198,6 +193,11 @@ SwiftSpeak/
 │   │   │   ├── OpenAI/
 │   │   │   │   ├── OpenAITranscriptionService.swift
 │   │   │   │   └── OpenAIFormattingService.swift
+│   │   │   ├── Local/                           # Phase 10f - On-device providers
+│   │   │   │   ├── WhisperKitTranscriptionService.swift
+│   │   │   │   ├── AppleTranslationService.swift
+│   │   │   │   ├── AppleIntelligenceFormattingService.swift
+│   │   │   │   └── LocalProviderErrors.swift
 │   │   │   └── Mock/
 │   │   │       ├── MockTranscriptionProvider.swift
 │   │   │       ├── MockFormattingProvider.swift
@@ -242,13 +242,17 @@ SwiftSpeak/
 │   │   │   ├── BiometricGateView.swift         # Phase 6 - Auth wrapper for protected views
 │   │   │   ├── LockedView.swift                # Phase 6 - "Unlock with Face ID" UI
 │   │   │   └── ConfigUpdateSheet.swift         # Phase 9 - "What's New" modal
-│   │   ├── Settings/                           # Phase 4a/4b - Settings views
+│   │   ├── Settings/                           # Phase 4a/4b/10 - Settings views
 │   │   │   ├── ContextsView.swift              # Phase 4a - Context list
 │   │   │   ├── ContextEditorSheet.swift        # Phase 4a - Edit context
 │   │   │   ├── ContextDetailView.swift         # Phase 4a - View context
 │   │   │   ├── MemoryView.swift                # Phase 4b - Memory management
 │   │   │   ├── MemoryEditorSheet.swift         # Phase 4b - Edit memory
-│   │   │   └── AppLibraryView.swift            # App library browser with category reassignment
+│   │   │   ├── AppLibraryView.swift            # App library browser with category reassignment
+│   │   │   ├── WhisperKitSetupView.swift       # Phase 10b - WhisperKit setup & download
+│   │   │   ├── AppleIntelligenceSetupView.swift # Phase 10b - Apple Intelligence config
+│   │   │   ├── AppleTranslationSetupView.swift # Phase 10b - Translation languages
+│   │   │   └── LocalModelStorageView.swift     # Phase 10 - Storage management
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift            # Phase 9 - Cost badge and breakdown
@@ -432,10 +436,9 @@ xcodebuild test -project SwiftSpeak.xcodeproj -scheme SwiftSpeak -destination 'p
 ## Session Start Checklist
 
 1. Read this CLAUDE.md for context
-2. Check current phase (Phase 1 = Core Transcription in progress)
-3. Review PHASE1_PLAN.md for specific implementation steps
-4. Use Context7 for Swift/SwiftUI documentation if needed
-5. Run build to verify current state before making changes
+2. Check remaining work in the table above (Phase 7 polish, App Store prep)
+3. Use Context7 for Swift/SwiftUI documentation if needed
+4. Run build to verify current state before making changes
 
 ## App Auto-Enable Feature
 

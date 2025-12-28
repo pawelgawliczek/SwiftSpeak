@@ -283,20 +283,90 @@ struct APIKeyScreen: View {
             showError = false
         }
 
-        // Simulate API validation delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-            withAnimation(AppTheme.quickSpring) {
-                isValidating = false
+        // Validate API key and fetch available models
+        Task {
+            do {
+                // Fetch models from OpenAI - this validates the key AND gets models
+                let (sttModels, llmModels) = try await fetchOpenAIModels()
 
-                // Mock validation: accept keys starting with "sk-"
-                if apiKey.hasPrefix("sk-") && apiKey.count > 20 {
-                    isValid = true
-                    HapticManager.success()
-                } else {
-                    showError = true
-                    HapticManager.error()
+                await MainActor.run {
+                    withAnimation(AppTheme.quickSpring) {
+                        isValidating = false
+                        isValid = true
+                        HapticManager.success()
+
+                        // Cache the models in the provider config
+                        cacheModels(sttModels: sttModels, llmModels: llmModels)
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    withAnimation(AppTheme.quickSpring) {
+                        isValidating = false
+                        showError = true
+                        HapticManager.error()
+                    }
                 }
             }
+        }
+    }
+
+    /// Fetch models from OpenAI API - validates key and returns available models
+    private func fetchOpenAIModels() async throws -> (sttModels: [String], llmModels: [String]) {
+        guard let url = URL(string: "https://api.openai.com/v1/models") else {
+            throw NSError(domain: "OpenAI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
+        }
+
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 15
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+            throw NSError(domain: "OpenAI", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+        }
+
+        struct ModelsResponse: Codable {
+            struct Model: Codable {
+                let id: String
+            }
+            let data: [Model]
+        }
+
+        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        let allModels = modelsResponse.data.map { $0.id }
+
+        // Filter STT models (whisper)
+        let sttModels = allModels.filter { $0.contains("whisper") }.sorted()
+
+        // Filter LLM models (gpt, o1, o3, chatgpt)
+        let llmModels = allModels.filter {
+            $0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("chatgpt-")
+        }.sorted().reversed().map { String($0) }
+
+        return (sttModels, Array(llmModels))
+    }
+
+    /// Cache fetched models in the OpenAI provider config
+    private func cacheModels(sttModels: [String], llmModels: [String]) {
+        // Combine all models for caching
+        let allModels = sttModels + llmModels
+
+        // Update or create OpenAI provider config with cached models
+        if var config = settings.getAIProviderConfig(for: .openAI) {
+            config.cachedModels = allModels
+            // Auto-select best models if not already set
+            if config.transcriptionModel == nil, let bestSTT = sttModels.first {
+                config.transcriptionModel = bestSTT
+            }
+            if config.translationModel == nil, let bestLLM = llmModels.first {
+                config.translationModel = bestLLM
+            }
+            if config.powerModeModel == nil, let bestLLM = llmModels.first {
+                config.powerModeModel = bestLLM
+            }
+            settings.updateAIProvider(config)
         }
     }
 

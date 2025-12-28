@@ -598,7 +598,8 @@ struct SettingsView: View {
                         Text("About")
                     }
 
-                    // Debug Section (Development only)
+                    #if DEBUG
+                    // Debug Section (Development only - hidden in production)
                     Section {
                         Button(action: {
                             settings.resetOnboarding()
@@ -639,6 +640,7 @@ struct SettingsView: View {
                     } header: {
                         Text("Debug")
                     }
+                    #endif
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
@@ -1882,7 +1884,7 @@ struct AIProviderEditorSheet: View {
         } header: {
             Text("Capabilities & Models")
         } footer: {
-            Text("Enable capabilities and select which model to use for each. Tap 'Refresh Models' to fetch the latest available models from the provider.")
+            Text("Enable capabilities and select which model to use for each. Tap 'Validate & Fetch Models' to verify your API key and load the latest available models.")
         }
     }
 
@@ -1943,13 +1945,18 @@ struct AIProviderEditorSheet: View {
                     ProgressView()
                         .scaleEffect(0.8)
                 } else {
-                    Image(systemName: "arrow.clockwise")
+                    Image(systemName: "checkmark.shield")
                 }
-                Text("Refresh Models")
+                Text("Validate & Fetch Models")
                 Spacer()
                 if refreshedLLMModels != nil || refreshedSTTModels != nil {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Valid")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    }
                 }
             }
         }

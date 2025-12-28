@@ -118,10 +118,20 @@ struct OnboardingView: View {
     }
 
     private func checkKeyboardStatus() {
-        // Check if keyboard is enabled (mock for now)
-        // In real implementation, check UserDefaults for AppleKeyboards
-        isKeyboardEnabled = false // Will be true when actually enabled
-        isFullAccessEnabled = false
+        // Check if our keyboard extension is enabled in system settings
+        // iOS stores enabled keyboards in "AppleKeyboards" preference
+        let keyboardBundleID = "pawelgawliczek.SwiftSpeak.SwiftSpeakKeyboard"
+
+        if let keyboards = UserDefaults.standard.array(forKey: "AppleKeyboards") as? [String] {
+            isKeyboardEnabled = keyboards.contains(keyboardBundleID)
+        } else {
+            isKeyboardEnabled = false
+        }
+
+        // Check if Full Access is enabled via App Group shared defaults
+        // The keyboard extension writes this flag when it has Full Access
+        let sharedDefaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
+        isFullAccessEnabled = sharedDefaults?.bool(forKey: "keyboardHasFullAccess") ?? false
     }
 }
 

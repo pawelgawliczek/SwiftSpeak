@@ -16,6 +16,9 @@ class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        // Update Full Access status in shared defaults for main app to detect
+        updateFullAccessStatus()
+
         // Set up the SwiftUI keyboard view
         viewModel.textDocumentProxy = textDocumentProxy
         viewModel.hostViewController = self
@@ -45,6 +48,9 @@ class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
 
+        // Update Full Access status each time keyboard appears
+        updateFullAccessStatus()
+
         // Reload settings when keyboard appears
         viewModel.loadSettings()
         viewModel.textDocumentProxy = textDocumentProxy
@@ -66,5 +72,17 @@ class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         // Update proxy reference when text changes
         viewModel.textDocumentProxy = textDocumentProxy
+    }
+
+    // MARK: - Full Access Detection
+
+    /// Updates the shared defaults with the current Full Access status
+    /// so the main app can detect whether keyboard has required permissions
+    private func updateFullAccessStatus() {
+        // hasFullAccess is a property of UIInputViewController
+        // that indicates whether the user has granted Full Access
+        let sharedDefaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
+        sharedDefaults?.set(hasFullAccess, forKey: "keyboardHasFullAccess")
+        sharedDefaults?.synchronize()
     }
 }
