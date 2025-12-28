@@ -290,6 +290,9 @@ final class TranscriptionOrchestrator: ObservableObject {
     // MARK: - History
 
     private func saveToHistory() {
+        // Calculate cost breakdown (Phase 9)
+        let costBreakdown = calculateCostBreakdown()
+
         let record = TranscriptionRecord(
             id: UUID(),
             text: formattedText.isEmpty ? transcribedText : formattedText,
@@ -298,10 +301,65 @@ final class TranscriptionOrchestrator: ObservableObject {
             timestamp: Date(),
             duration: recordingDuration,
             translated: translateEnabled,
-            targetLanguage: translateEnabled ? targetLanguage : nil
+            targetLanguage: translateEnabled ? targetLanguage : nil,
+            powerModeId: activePowerMode?.id,
+            powerModeName: activePowerMode?.name,
+            contextId: activeContext?.id,
+            contextName: activeContext?.name,
+            contextIcon: activeContext?.icon,
+            estimatedCost: costBreakdown?.total,
+            costBreakdown: costBreakdown
         )
 
         settings.addTranscription(record)
+    }
+
+    /// Calculate cost breakdown for the current transcription operation (Phase 9)
+    private func calculateCostBreakdown() -> CostBreakdown? {
+        let costCalculator = CostCalculator()
+
+        // Get transcription provider and model
+        let transcriptionProvider = settings.selectedTranscriptionProvider
+        let transcriptionConfig = settings.selectedTranscriptionProviderConfig
+        let transcriptionModel = transcriptionConfig?.transcriptionModel ?? transcriptionProvider.defaultSTTModel ?? "default"
+
+        // Determine if formatting was applied
+        let formattingProvider: AIProvider?
+        let formattingModel: String?
+        if mode != .raw {
+            formattingProvider = settings.selectedTranslationProvider
+            let formattingConfig = settings.selectedTranslationProviderConfig
+            formattingModel = formattingConfig?.translationModel ?? settings.selectedTranslationProvider.defaultLLMModel
+        } else {
+            formattingProvider = nil
+            formattingModel = nil
+        }
+
+        // Determine if translation was applied
+        let translationProvider: AIProvider?
+        let translationModel: String?
+        if translateEnabled {
+            translationProvider = settings.selectedTranslationProvider
+            let translationConfig = settings.selectedTranslationProviderConfig
+            translationModel = translationConfig?.translationModel ?? settings.selectedTranslationProvider.defaultLLMModel
+        } else {
+            translationProvider = nil
+            translationModel = nil
+        }
+
+        // Calculate the text length for cost estimation
+        let textLength = (formattedText.isEmpty ? transcribedText : formattedText).count
+
+        return costCalculator.calculateCostBreakdown(
+            transcriptionProvider: transcriptionProvider,
+            transcriptionModel: transcriptionModel,
+            formattingProvider: formattingProvider,
+            formattingModel: formattingModel,
+            translationProvider: translationProvider,
+            translationModel: translationModel,
+            durationSeconds: recordingDuration,
+            textLength: textLength
+        )
     }
 
     // MARK: - Clipboard

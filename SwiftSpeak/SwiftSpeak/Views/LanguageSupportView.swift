@@ -278,7 +278,7 @@ struct LanguageDetailSheet: View {
 
     // Get all providers sorted by support level
     private var rankedProviders: [(AIProvider, LanguageSupportLevel, String?)] {
-        AIProvider.allCases.compactMap { provider in
+        AIProvider.allCases.compactMap { provider -> (AIProvider, LanguageSupportLevel, String?)? in
             switch capability {
             case .transcription:
                 guard provider.supportsTranscription else { return nil }
@@ -290,7 +290,7 @@ struct LanguageDetailSheet: View {
                 language: language,
                 for: capability
             )
-            let notes = ProviderLanguageDatabase.notes(for: provider, language: language)
+            let notes = ProviderLanguageDatabase.notes(for: provider)
             return (provider, level, notes)
         }
         .sorted { $0.1 > $1.1 }

@@ -10,11 +10,13 @@ import SwiftUI
 struct ContentView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.scenePhase) var scenePhase
+    @StateObject private var configManager = RemoteConfigManager.shared
     @State private var selectedTab = 0
     @State private var showRecording = false
     @State private var translateOnRecord = false
     @State private var showPowerModeExecution = false
     @State private var selectedPowerModeId: UUID?
+    @State private var showConfigUpdateSheet = false
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -65,6 +67,19 @@ struct ContentView: View {
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 BiometricAuthManager.shared.invalidateSession()
+            }
+        }
+        // Phase 9: Fetch config on launch and show update sheet if needed
+        .task {
+            await configManager.fetchConfigIfNeeded()
+            // Show update sheet if there are pending changes
+            if configManager.pendingChanges?.isEmpty == false {
+                showConfigUpdateSheet = true
+            }
+        }
+        .sheet(isPresented: $showConfigUpdateSheet) {
+            if let changes = configManager.pendingChanges {
+                ConfigUpdateSheet(changes: changes, isPresented: $showConfigUpdateSheet)
             }
         }
     }
@@ -442,7 +457,7 @@ struct DefaultsSettingsSheet: View {
                         }
 
                         // Translation Section
-                        SettingsSection(title: "TRANSLATION", icon: "globe", iconColor: .pink) {
+                        SettingsSection(title: "TRANSLATION", icon: "globe", iconColor: .purple) {
                             VStack(spacing: 12) {
                                 Button(action: {
                                     HapticManager.lightTap()

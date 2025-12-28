@@ -41,35 +41,52 @@ Add remote configuration service for dynamic pricing, capabilities, and language
 ### Backend (Hostinger KVM)
 - [ ] **Step 1:** Set up nginx with HTTPS
 - [ ] **Step 2:** Create config.json with full schema
-- [ ] **Step 3:** Create auto-update.py script
+- [ ] **Step 3:** Create auto-update.py script → Using Firebase Remote Config instead
 - [ ] **Step 4:** Set up cron job for weekly updates
 - [ ] **Step 5:** Create manual update script
 
 ### iOS App - Remote Config
-- [ ] **Step 6:** Create RemoteConfig.swift data models
-- [ ] **Step 7:** Create RemoteConfigManager.swift
-- [ ] **Step 8:** Bundle fallback config.json
-- [ ] **Step 9:** Integrate with SharedSettings
-- [ ] **Step 10:** Add refresh button to Settings
+- [x] **Step 6:** Create RemoteConfig.swift data models ✅
+- [x] **Step 7:** Create RemoteConfigManager.swift (using Firebase) ✅
+- [x] **Step 8:** Bundle fallback config.json → `fallback-provider-config.json` ✅
+- [x] **Step 9:** Integrate with SharedSettings ✅
+- [x] **Step 10:** Add refresh button to Settings → Provider Data section ✅
 
 ### iOS App - Cost Tracking
-- [ ] **Step 11:** Add estimatedCost to TranscriptionRecord
-- [ ] **Step 12:** Create CostCalculator.swift
+- [x] **Step 11:** Add estimatedCost to TranscriptionRecord ✅
+- [x] **Step 12:** Create CostCalculator.swift ✅
 - [ ] **Step 13:** Update TranscriptionOrchestrator to calculate costs
 - [ ] **Step 14:** Display costs in HistoryView
 
 ### iOS App - Cost Analytics View
-- [ ] **Step 15:** Create CostAnalyticsView.swift
-- [ ] **Step 16:** Create CostSummaryCard component
-- [ ] **Step 17:** Create ProviderCostChart (pie chart)
-- [ ] **Step 18:** Create UsageTimelineChart (line chart)
-- [ ] **Step 19:** Add navigation from Settings
+- [x] **Step 15:** Create CostAnalyticsView.swift ✅
+- [x] **Step 16:** Create CostSummaryCard component ✅
+- [x] **Step 17:** Create ProviderCostChart (horizontal bar chart) ✅
+- [x] **Step 18:** Create UsageTimelineChart (area/line chart) ✅
+- [x] **Step 19:** Add navigation from Settings ✅
+- [x] **Step 20:** Category filter (All/Transcription/Translation/Power Mode) ✅
+- [x] **Step 21:** Category donut chart ✅
 
 ### Integration & Polish
-- [ ] **Step 20:** Update ProviderHelpSheet with remote pricing
-- [ ] **Step 21:** Update provider editor with pricing info
-- [ ] **Step 22:** Add stale config warning
-- [ ] **Step 23:** Tests
+- [ ] **Step 22:** Update ProviderHelpSheet with remote pricing
+- [ ] **Step 23:** Update provider editor with pricing info
+- [x] **Step 24:** Add stale config warning ✅
+- [x] **Step 25:** Naming/color consistency review ✅
+- [ ] **Step 26:** Tests
+
+### Notes on Architecture Change
+**Original plan:** Custom nginx server on Hostinger serving static JSON
+**Actual implementation:** Firebase Remote Config
+- Firebase provides native iOS SDK with caching
+- Free tier supports 10K daily users
+- Real-time update capability
+- Zero server maintenance for config serving
+
+**Capabilities (4 total):**
+- Transcription (Blue, waveform icon)
+- Translation (Purple, globe icon)
+- Power Mode (Orange, bolt.fill icon)
+- Formatting (text templates applied after transcription)
 
 ---
 

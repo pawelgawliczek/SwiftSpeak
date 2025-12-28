@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117202F012F3B009B3FD9 /* RevenueCat */; };
 		83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 83E1172D2F013425009B3FD9 /* WhisperKit */; };
+		83E118BC2F018978009B3FD9 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */; };
 		83ED792E2EFE4D8F00880604 /* SwiftSpeakKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -113,6 +114,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				83E118BC2F018978009B3FD9 /* FirebaseRemoteConfig in Frameworks */,
 				83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */,
 				83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */,
 			);
@@ -188,6 +190,7 @@
 			packageProductDependencies = (
 				83E117202F012F3B009B3FD9 /* RevenueCat */,
 				83E1172D2F013425009B3FD9 /* WhisperKit */,
+				83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */,
 			);
 			productName = SwiftSpeak;
 			productReference = 83ED79152EFE4CB900880604 /* SwiftSpeak.app */;
@@ -299,6 +302,7 @@
 			packageReferences = (
 				83E1171F2F012F3B009B3FD9 /* XCLocalSwiftPackageReference "../RevenueCat" */,
 				83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */,
+				83E118BA2F018978009B3FD9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 83ED79162EFE4CB900880604 /* Products */;
@@ -602,6 +606,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KEYBOARD_EXTENSION;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -631,6 +636,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KEYBOARD_EXTENSION;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -782,6 +788,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		83E118BA2F018978009B3FD9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 12.7.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		83E117202F012F3B009B3FD9 /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -790,6 +807,11 @@
 		83E1172D2F013425009B3FD9 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WhisperKit;
+		};
+		83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 83E118BA2F018978009B3FD9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfig;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

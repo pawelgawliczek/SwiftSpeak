@@ -11,9 +11,64 @@ struct ProviderHelpSheet: View {
     let provider: AIProvider
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
+    @StateObject private var remoteConfig = RemoteConfigManager.shared
 
     private var guide: ProviderSetupGuide {
         ProviderHelpDatabase.guide(for: provider)
+    }
+
+    // MARK: - Remote Config Helpers
+
+    /// Get remote config for this provider
+    private var providerRemoteConfig: ProviderRemoteConfig? {
+        remoteConfig.providerConfig(for: provider)
+    }
+
+    /// Get estimated cost from remote config, falling back to static guide
+    private var estimatedCost: String {
+        // Try to get pricing from remote config
+        if let remoteProvider = providerRemoteConfig {
+            // Get the primary/default model pricing
+            if let transcription = remoteProvider.transcription,
+               let defaultModel = transcription.defaultModel,
+               let pricing = remoteProvider.pricing[defaultModel.id] {
+                return formatPricing(pricing)
+            }
+            // For providers without transcription, show LLM pricing
+            if let powerMode = remoteProvider.powerMode,
+               let defaultModel = powerMode.defaultModel,
+               let pricing = remoteProvider.pricing[defaultModel.id] {
+                return formatPricing(pricing)
+            }
+            // For translation-only providers
+            if let translation = remoteProvider.translation,
+               let defaultModel = translation.defaultModel,
+               let pricing = remoteProvider.pricing[defaultModel.id] {
+                return formatPricing(pricing)
+            }
+        }
+        // Fall back to static guide
+        return guide.estimatedCost
+    }
+
+    /// Get free credits from remote config, falling back to static guide
+    private var freeCredits: String? {
+        providerRemoteConfig?.freeCredits ?? guide.freeCredits
+    }
+
+    /// Format pricing for display
+    private func formatPricing(_ pricing: PricingRemoteConfig) -> String {
+        if let cost = pricing.cost, let unit = pricing.unit {
+            if unit == "minute" {
+                return String(format: "~$%.3f/%@", cost, unit)
+            } else if unit == "character" {
+                return String(format: "$%.5f/%@", cost, unit)
+            }
+            return String(format: "$%.4f/%@", cost, unit)
+        } else if let input = pricing.inputPerMToken, let output = pricing.outputPerMToken {
+            return String(format: "$%.2f/$%.2f per 1M tokens", input, output)
+        }
+        return "Free"
     }
 
     private var backgroundColor: Color {
@@ -205,41 +260,56 @@ struct ProviderHelpSheet: View {
     // MARK: - Cost Info Section
 
     private var costInfoSection: some View {
-        HStack(spacing: 16) {
-            // Estimated Cost
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Image(systemName: "dollarsign.circle.fill")
-                        .foregroundStyle(.green)
-                    Text("Cost")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text(guide.estimatedCost)
-                    .font(.callout.weight(.semibold))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(12)
-            .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            // Free Credits
-            if let freeCredits = guide.freeCredits {
+        VStack(spacing: 12) {
+            HStack(spacing: 16) {
+                // Estimated Cost
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 4) {
-                        Image(systemName: "gift.fill")
-                            .foregroundStyle(.purple)
-                        Text("Free")
+                        Image(systemName: "dollarsign.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Cost")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text(freeCredits)
+                    Text(estimatedCost)
                         .font(.callout.weight(.semibold))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                // Free Credits
+                if let freeCredits = freeCredits {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "gift.fill")
+                                .foregroundStyle(.purple)
+                            Text("Free")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(freeCredits)
+                            .font(.callout.weight(.semibold))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
+            }
+
+            // Remote config freshness indicator
+            if let lastFetch = remoteConfig.lastFetchDate {
+                HStack(spacing: 4) {
+                    Image(systemName: remoteConfig.isConfigStale ? "exclamationmark.circle" : "checkmark.circle")
+                        .font(.caption2)
+                        .foregroundStyle(remoteConfig.isConfigStale ? .orange : .green)
+                    Text("Pricing updated \(lastFetch.formatted(.relative(presentation: .named)))")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
         }
     }

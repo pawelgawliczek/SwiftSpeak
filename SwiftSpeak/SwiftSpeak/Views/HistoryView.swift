@@ -353,7 +353,7 @@ struct HistoryRowView: View {
                 .foregroundStyle(.primary)
                 .lineLimit(3)
 
-            // Footer with duration and provider
+            // Footer with duration, cost, and provider
             HStack {
                 HStack(spacing: 4) {
                     Image(systemName: "clock")
@@ -362,6 +362,16 @@ struct HistoryRowView: View {
                         .font(.caption2)
                 }
                 .foregroundStyle(.secondary)
+
+                // Cost badge (Phase 9)
+                if let cost = record.estimatedCost, cost > 0 {
+                    Text(cost.formattedCostCompact)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.ultraThinMaterial, in: Capsule())
+                }
 
                 Spacer()
 
@@ -431,6 +441,26 @@ struct HistoryDetailView: View {
 
                             if record.translated, let lang = record.targetLanguage {
                                 MetadataRow(icon: "globe", label: "Translated to", value: "\(lang.flag) \(lang.displayName)")
+                            }
+
+                            // Cost breakdown (Phase 9)
+                            if let cost = record.estimatedCost, cost > 0 {
+                                Divider()
+                                    .padding(.vertical, 4)
+
+                                MetadataRow(icon: "dollarsign.circle", label: "Total Cost", value: cost.formattedCost)
+
+                                if let breakdown = record.costBreakdown {
+                                    if breakdown.transcriptionCost > 0 {
+                                        MetadataRow(icon: "waveform", label: "Transcription", value: breakdown.transcriptionCost.formattedCost)
+                                    }
+                                    if breakdown.formattingCost > 0 {
+                                        MetadataRow(icon: "text.alignleft", label: "Formatting", value: breakdown.formattingCost.formattedCost)
+                                    }
+                                    if let translationCost = breakdown.translationCost, translationCost > 0 {
+                                        MetadataRow(icon: "globe", label: "Translation", value: translationCost.formattedCost)
+                                    }
+                                }
                             }
                         }
                         .padding(16)

@@ -923,6 +923,74 @@ enum Language: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Cost Breakdown (Phase 9)
+
+/// Breakdown of costs for a transcription operation
+struct CostBreakdown: Codable, Equatable {
+    let transcriptionCost: Double
+    let formattingCost: Double
+    let translationCost: Double?
+
+    // Token counts (if available from LLM responses)
+    let inputTokens: Int?
+    let outputTokens: Int?
+
+    /// Total cost of the operation
+    var total: Double {
+        transcriptionCost + formattingCost + (translationCost ?? 0)
+    }
+
+    /// Check if this breakdown has any costs
+    var hasCosts: Bool {
+        total > 0
+    }
+
+    /// Create a zero-cost breakdown
+    static var zero: CostBreakdown {
+        CostBreakdown(
+            transcriptionCost: 0,
+            formattingCost: 0,
+            translationCost: nil,
+            inputTokens: nil,
+            outputTokens: nil
+        )
+    }
+}
+
+// MARK: - Double Extensions for Cost Formatting
+
+extension Double {
+    /// Format cost with appropriate precision
+    var formattedCost: String {
+        if self == 0 {
+            return "Free"
+        } else if self < 0.0001 {
+            return "<$0.0001"
+        } else if self < 0.01 {
+            return String(format: "$%.4f", self)
+        } else if self < 1 {
+            return String(format: "$%.3f", self)
+        } else {
+            return String(format: "$%.2f", self)
+        }
+    }
+
+    /// Compact cost format for badges (e.g., "3c" or "$1.50")
+    var formattedCostCompact: String {
+        if self == 0 {
+            return "Free"
+        } else if self < 0.001 {
+            return "<0.1c"
+        } else if self < 0.01 {
+            return String(format: "%.1fc", self * 100)
+        } else if self < 1 {
+            return String(format: "%.0fc", self * 100)
+        } else {
+            return String(format: "$%.2f", self)
+        }
+    }
+}
+
 // MARK: - Transcription Record
 struct TranscriptionRecord: Codable, Identifiable {
     let id: UUID
@@ -941,6 +1009,10 @@ struct TranscriptionRecord: Codable, Identifiable {
     let contextName: String?     // Cached name for display even if context deleted
     let contextIcon: String?     // Cached icon for display
 
+    // Cost tracking (Phase 9)
+    let estimatedCost: Double?   // Total estimated cost for this transcription
+    let costBreakdown: CostBreakdown?  // Detailed cost breakdown by operation type
+
     init(
         id: UUID = UUID(),
         text: String,
@@ -954,7 +1026,9 @@ struct TranscriptionRecord: Codable, Identifiable {
         powerModeName: String? = nil,
         contextId: UUID? = nil,
         contextName: String? = nil,
-        contextIcon: String? = nil
+        contextIcon: String? = nil,
+        estimatedCost: Double? = nil,
+        costBreakdown: CostBreakdown? = nil
     ) {
         self.id = id
         self.text = text
@@ -969,6 +1043,8 @@ struct TranscriptionRecord: Codable, Identifiable {
         self.contextId = contextId
         self.contextName = contextName
         self.contextIcon = contextIcon
+        self.estimatedCost = estimatedCost
+        self.costBreakdown = costBreakdown
     }
 }
 

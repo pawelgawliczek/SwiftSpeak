@@ -5,6 +5,7 @@
 //  Created by Pawel Gawliczek on 26/12/2025.
 //
 
+import FirebaseCore
 import SwiftUI
 
 @main
@@ -13,6 +14,9 @@ struct SwiftSpeakApp: App {
     @State private var showOnboarding = true
 
     init() {
+        // Initialize Firebase for Remote Config
+        FirebaseApp.configure()
+
         // Pre-warm audio session for instant recording (<200ms startup)
         AudioSessionManager.shared.preWarm()
 

@@ -4,7 +4,11 @@
 //
 //  Language support data model and database for provider compatibility
 //
-//  SHARED: This file is used by both SwiftSpeak and SwiftSpeakKeyboard targets
+//  SINGLE SOURCE OF TRUTH: All language support data comes from RemoteConfigManager
+//  which loads from:
+//    1. Cached config (from last successful Firebase fetch)
+//    2. Firebase Remote Config (fetched on app launch)
+//    3. Bundled fallback-provider-config.json (if no cache/network)
 //
 
 import SwiftUI
@@ -105,32 +109,34 @@ struct ProviderLanguageCapability: Identifiable {
 
 // MARK: - Provider Language Database
 
-/// Static data store for language support info
+/// Data access layer for language support information
+/// All data comes from RemoteConfigManager (single source of truth)
+///
+/// Note: This is only available in the main app, not the keyboard extension.
+/// The keyboard extension doesn't need language support lookups.
+#if !KEYBOARD_EXTENSION
+
 struct ProviderLanguageDatabase {
 
     // MARK: - Lookup Methods
 
     /// Get support level for a provider + language + capability combo
+    @MainActor
     static func supportLevel(
         provider: AIProvider,
         language: Language,
         for capability: ProviderUsageCategory
     ) -> LanguageSupportLevel {
-        // Find the capability entry
-        if let entry = allCapabilities.first(where: { $0.provider == provider && $0.language == language }) {
-            return entry.supportLevel(for: capability)
-        }
-
-        // Default based on provider's general support
-        switch capability {
-        case .transcription:
-            return provider.supportsTranscription ? .limited : .unsupported
-        case .translation, .powerMode:
-            return provider.supportsTranslation ? .limited : .unsupported
-        }
+        // Query RemoteConfigManager (single source of truth)
+        return RemoteConfigManager.shared.languageSupport(
+            for: provider,
+            capability: capability,
+            language: language
+        )
     }
 
     /// Get all providers that support a language for a capability
+    @MainActor
     static func providers(
         supporting language: Language,
         for capability: ProviderUsageCategory,
@@ -143,6 +149,7 @@ struct ProviderLanguageDatabase {
     }
 
     /// Get recommended provider for a language and capability
+    @MainActor
     static func recommendedProvider(
         for language: Language,
         capability: ProviderUsageCategory
@@ -150,10 +157,7 @@ struct ProviderLanguageDatabase {
         // Find the provider with the best support for this language
         let ranked = AIProvider.allCases
             .filter { provider in
-                switch capability {
-                case .transcription: return provider.supportsTranscription
-                case .translation, .powerMode: return provider.supportsTranslation
-                }
+                RemoteConfigManager.shared.providerSupports(provider, capability: capability)
             }
             .map { provider in
                 (provider, supportLevel(provider: provider, language: language, for: capability))
@@ -164,6 +168,7 @@ struct ProviderLanguageDatabase {
     }
 
     /// Get all languages supported by a provider for a capability
+    @MainActor
     static func languages(
         supportedBy provider: AIProvider,
         for capability: ProviderUsageCategory,
@@ -175,16 +180,24 @@ struct ProviderLanguageDatabase {
         }
     }
 
-    /// Get notes for a specific provider/language combination
-    static func notes(for provider: AIProvider, language: Language) -> String? {
-        return allCapabilities
-            .first(where: { $0.provider == provider && $0.language == language })?
-            .notes
+    /// Get notes for a specific provider (from remote config)
+    @MainActor
+    static func notes(for provider: AIProvider) -> String? {
+        return RemoteConfigManager.shared.providerConfig(for: provider)?.notes
     }
 
     /// Get all capabilities for a language (for the language support view)
+    @MainActor
     static func capabilities(for language: Language) -> [ProviderLanguageCapability] {
-        return allCapabilities.filter { $0.language == language }
+        return AIProvider.allCases.map { provider in
+            ProviderLanguageCapability(
+                provider: provider,
+                language: language,
+                transcription: supportLevel(provider: provider, language: language, for: .transcription),
+                translation: supportLevel(provider: provider, language: language, for: .translation),
+                notes: notes(for: provider)
+            )
+        }
     }
 
     /// Check if a language is a "popular" language (for featured display)
@@ -192,248 +205,15 @@ struct ProviderLanguageDatabase {
         popularLanguages.contains(language)
     }
 
-    // MARK: - Static Data
+    // MARK: - Static Configuration
 
-    /// Popular languages to feature at the top
+    /// Popular languages to feature at the top (UI preference, not from remote config)
     static let popularLanguages: [Language] = [
         .english, .spanish, .french, .german, .chinese, .japanese, .korean, .arabic, .polish
     ]
-
-    /// All provider-language capabilities (hardcoded data)
-    static let allCapabilities: [ProviderLanguageCapability] = {
-        var caps: [ProviderLanguageCapability] = []
-
-        // OpenAI - Excellent across the board for most languages
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .openAI,
-                language: lang,
-                transcription: openAITranscriptionSupport(for: lang),
-                translation: openAITranslationSupport(for: lang),
-                notes: openAINotes(for: lang)
-            ))
-        }
-
-        // Anthropic - Translation only, good for major languages
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .anthropic,
-                language: lang,
-                transcription: .unsupported,
-                translation: anthropicTranslationSupport(for: lang),
-                notes: nil
-            ))
-        }
-
-        // Google - Excellent translation, good STT
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .google,
-                language: lang,
-                transcription: googleTranscriptionSupport(for: lang),
-                translation: .excellent, // Google has excellent coverage
-                notes: nil
-            ))
-        }
-
-        // Deepgram - Fast transcription, varies by language
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .deepgram,
-                language: lang,
-                transcription: deepgramTranscriptionSupport(for: lang),
-                translation: .unsupported,
-                notes: nil
-            ))
-        }
-
-        // ElevenLabs - Speech recognition, 29 languages
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .elevenLabs,
-                language: lang,
-                transcription: elevenLabsTranscriptionSupport(for: lang),
-                translation: .unsupported,
-                notes: nil
-            ))
-        }
-
-        // AssemblyAI - Transcription only
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .assemblyAI,
-                language: lang,
-                transcription: assemblyAITranscriptionSupport(for: lang),
-                translation: .unsupported,
-                notes: nil
-            ))
-        }
-
-        // DeepL - Translation only, excellent quality
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .deepL,
-                language: lang,
-                transcription: .unsupported,
-                translation: deepLTranslationSupport(for: lang),
-                notes: lang == .chinese ? "Simplified Chinese" : nil
-            ))
-        }
-
-        // Azure - Translation with excellent coverage
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .azure,
-                language: lang,
-                transcription: .unsupported,
-                translation: .excellent, // Azure has 100+ languages
-                notes: nil
-            ))
-        }
-
-        // Local - Varies by model
-        for lang in Language.allCases {
-            caps.append(ProviderLanguageCapability(
-                provider: .local,
-                language: lang,
-                transcription: localTranscriptionSupport(for: lang),
-                translation: localTranslationSupport(for: lang),
-                notes: "Quality varies by model"
-            ))
-        }
-
-        return caps
-    }()
-
-    // MARK: - Provider-Specific Support Helpers
-
-    private static func openAITranscriptionSupport(for language: Language) -> LanguageSupportLevel {
-        // Whisper supports 50+ languages with excellent quality
-        return .excellent
-    }
-
-    private static func openAITranslationSupport(for language: Language) -> LanguageSupportLevel {
-        // GPT-4 has excellent translation for most languages
-        switch language {
-        case .english, .spanish, .french, .german, .italian, .portuguese,
-             .chinese, .japanese, .korean, .russian, .arabic, .polish:
-            return .excellent
-        case .egyptianArabic:
-            return .good // Dialect may have minor issues
-        }
-    }
-
-    private static func openAINotes(for language: Language) -> String? {
-        switch language {
-        case .japanese: return "Excellent for keigo (formal) and casual"
-        case .arabic: return "Full RTL support"
-        case .chinese: return "Supports both simplified and traditional"
-        default: return nil
-        }
-    }
-
-    private static func anthropicTranslationSupport(for language: Language) -> LanguageSupportLevel {
-        switch language {
-        case .english, .spanish, .french, .german, .italian, .portuguese:
-            return .excellent
-        case .chinese, .japanese, .korean, .russian:
-            return .good
-        case .arabic, .polish:
-            return .good
-        case .egyptianArabic:
-            return .limited
-        }
-    }
-
-    private static func googleTranscriptionSupport(for language: Language) -> LanguageSupportLevel {
-        // Google Cloud STT has good support
-        switch language {
-        case .english, .spanish, .french, .german:
-            return .excellent
-        case .chinese, .japanese, .korean, .italian, .portuguese, .russian:
-            return .good
-        case .arabic, .egyptianArabic, .polish:
-            return .good
-        }
-    }
-
-    private static func deepgramTranscriptionSupport(for language: Language) -> LanguageSupportLevel {
-        switch language {
-        case .english:
-            return .excellent
-        case .spanish, .french, .german, .italian, .portuguese:
-            return .excellent
-        case .japanese, .korean, .chinese:
-            return .good
-        case .arabic:
-            return .good
-        case .russian:
-            return .good
-        case .polish, .egyptianArabic:
-            return .limited
-        }
-    }
-
-    private static func elevenLabsTranscriptionSupport(for language: Language) -> LanguageSupportLevel {
-        switch language {
-        case .english, .spanish, .french, .german:
-            return .excellent
-        case .italian, .portuguese, .japanese, .korean, .chinese:
-            return .good
-        case .arabic, .russian, .polish:
-            return .limited
-        case .egyptianArabic:
-            return .limited
-        }
-    }
-
-    private static func assemblyAITranscriptionSupport(for language: Language) -> LanguageSupportLevel {
-        // AssemblyAI supports: en, es, fr, de, it, pt, nl, hi, ja, zh, fi, ko, pl, ru, tr, uk, vi
-        switch language {
-        case .english:
-            return .excellent
-        case .spanish, .french, .german, .italian, .portuguese:
-            return .excellent
-        case .japanese, .korean, .chinese, .russian, .polish:
-            return .good
-        case .arabic, .egyptianArabic:
-            return .unsupported // Not in AssemblyAI's supported list
-        }
-    }
-
-    private static func deepLTranslationSupport(for language: Language) -> LanguageSupportLevel {
-        // DeepL has excellent quality but limited language support
-        switch language {
-        case .english, .spanish, .french, .german, .italian, .portuguese,
-             .polish, .russian, .japanese, .chinese, .korean:
-            return .excellent
-        case .arabic, .egyptianArabic:
-            return .unsupported // DeepL doesn't support Arabic
-        }
-    }
-
-    private static func localTranscriptionSupport(for language: Language) -> LanguageSupportLevel {
-        // Local providers (Whisper models) vary
-        switch language {
-        case .english, .spanish, .french, .german:
-            return .good
-        default:
-            return .limited
-        }
-    }
-
-    private static func localTranslationSupport(for language: Language) -> LanguageSupportLevel {
-        // Local LLMs vary significantly
-        switch language {
-        case .english, .spanish, .french, .german:
-            return .good
-        case .chinese, .japanese:
-            return .limited
-        default:
-            return .limited
-        }
-    }
 }
+
+#endif
 
 // MARK: - Preview Helpers
 

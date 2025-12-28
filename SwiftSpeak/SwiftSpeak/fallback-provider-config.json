@@ -1,0 +1,364 @@
+{
+  "version": "2025.12.28",
+  "lastUpdated": "2025-12-28T00:00:00Z",
+  "schemaVersion": 1,
+  "providers": {
+    "openAI": {
+      "displayName": "OpenAI",
+      "status": "operational",
+      "transcription": {
+        "enabled": true,
+        "models": [
+          {"id": "whisper-1", "name": "Whisper", "isDefault": true}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "excellent", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "ar": "excellent",
+          "hi": "good", "nl": "excellent", "sv": "excellent",
+          "tr": "good", "uk": "good", "vi": "good"
+        },
+        "features": ["languageDetection", "timestamps"]
+      },
+      "translation": {
+        "enabled": true,
+        "models": [
+          {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "isDefault": true},
+          {"id": "gpt-4o", "name": "GPT-4o"}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "excellent", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "ar": "good",
+          "hi": "good", "nl": "excellent", "sv": "excellent",
+          "tr": "good", "uk": "good", "vi": "good"
+        },
+        "features": ["contextAware", "formalityControl"]
+      },
+      "powerMode": {
+        "enabled": true,
+        "models": [
+          {"id": "gpt-4o", "name": "GPT-4o", "isDefault": true},
+          {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
+          {"id": "o1", "name": "o1 (Reasoning)", "tier": "power"}
+        ],
+        "features": ["streaming"]
+      },
+      "formatting": {
+        "enabled": true,
+        "models": [
+          {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "isDefault": true}
+        ]
+      },
+      "pricing": {
+        "whisper-1": {"unit": "minute", "cost": 0.006},
+        "gpt-4o": {"inputPerMToken": 2.50, "outputPerMToken": 10.00},
+        "gpt-4o-mini": {"inputPerMToken": 0.15, "outputPerMToken": 0.60},
+        "o1": {"inputPerMToken": 15.00, "outputPerMToken": 60.00}
+      },
+      "freeCredits": "$5 for new accounts",
+      "apiKeyUrl": "https://platform.openai.com/api-keys"
+    },
+    "anthropic": {
+      "displayName": "Anthropic Claude",
+      "status": "operational",
+      "transcription": {
+        "enabled": false
+      },
+      "translation": {
+        "enabled": true,
+        "models": [
+          {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "isDefault": true},
+          {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "good", "zh": "good",
+          "ko": "good", "pl": "good", "pt": "excellent",
+          "ru": "good", "it": "excellent", "ar": "limited"
+        },
+        "features": ["contextAware"]
+      },
+      "powerMode": {
+        "enabled": true,
+        "models": [
+          {"id": "claude-sonnet-4-20250514", "name": "Claude Sonnet 4", "isDefault": true},
+          {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"},
+          {"id": "claude-opus-4-20250514", "name": "Claude Opus 4", "tier": "power"}
+        ],
+        "features": ["streaming"]
+      },
+      "formatting": {
+        "enabled": true,
+        "models": [
+          {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku", "isDefault": true}
+        ]
+      },
+      "pricing": {
+        "claude-sonnet-4-20250514": {"inputPerMToken": 3.00, "outputPerMToken": 15.00},
+        "claude-3-5-haiku-latest": {"inputPerMToken": 0.80, "outputPerMToken": 4.00},
+        "claude-opus-4-20250514": {"inputPerMToken": 15.00, "outputPerMToken": 75.00}
+      },
+      "freeCredits": "$5 for new accounts",
+      "apiKeyUrl": "https://console.anthropic.com/settings/keys"
+    },
+    "google": {
+      "displayName": "Google Gemini",
+      "status": "operational",
+      "transcription": {
+        "enabled": true,
+        "models": [
+          {"id": "google-stt", "name": "Google Speech-to-Text", "isDefault": true}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "good", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "ar": "good",
+          "hi": "good", "nl": "excellent", "sv": "good"
+        },
+        "features": ["languageDetection", "speakerDiarization"]
+      },
+      "translation": {
+        "enabled": true,
+        "models": [
+          {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "isDefault": true},
+          {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "good", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "ar": "good"
+        },
+        "features": ["contextAware"]
+      },
+      "powerMode": {
+        "enabled": true,
+        "models": [
+          {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "isDefault": true},
+          {"id": "gemini-1.5-pro", "name": "Gemini 1.5 Pro"}
+        ],
+        "features": ["streaming"]
+      },
+      "formatting": {
+        "enabled": true,
+        "models": [
+          {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "isDefault": true}
+        ]
+      },
+      "pricing": {
+        "google-stt": {"unit": "minute", "cost": 0.006},
+        "gemini-2.0-flash": {"inputPerMToken": 0.10, "outputPerMToken": 0.40},
+        "gemini-1.5-pro": {"inputPerMToken": 1.25, "outputPerMToken": 5.00}
+      },
+      "apiKeyUrl": "https://aistudio.google.com/app/apikey"
+    },
+    "deepgram": {
+      "displayName": "Deepgram",
+      "status": "operational",
+      "transcription": {
+        "enabled": true,
+        "models": [
+          {"id": "nova-2", "name": "Nova 2", "isDefault": true},
+          {"id": "nova", "name": "Nova"},
+          {"id": "enhanced", "name": "Enhanced"}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "good", "zh": "good",
+          "ko": "good", "pl": "limited", "pt": "excellent",
+          "ru": "good", "it": "good", "ar": "good",
+          "hi": "good", "nl": "excellent"
+        },
+        "features": ["speakerDiarization", "smartFormatting", "punctuation"]
+      },
+      "translation": {
+        "enabled": false
+      },
+      "powerMode": {
+        "enabled": false
+      },
+      "pricing": {
+        "nova-2": {"unit": "minute", "cost": 0.0043},
+        "nova": {"unit": "minute", "cost": 0.0040},
+        "enhanced": {"unit": "minute", "cost": 0.0036}
+      },
+      "freeCredits": "$200 free credit",
+      "apiKeyUrl": "https://console.deepgram.com/project/api-keys"
+    },
+    "assemblyAI": {
+      "displayName": "AssemblyAI",
+      "status": "operational",
+      "transcription": {
+        "enabled": true,
+        "models": [
+          {"id": "best", "name": "Best", "isDefault": true},
+          {"id": "nano", "name": "Nano"}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "good", "zh": "good",
+          "ko": "good", "pl": "good", "pt": "excellent",
+          "ru": "good", "it": "excellent"
+        },
+        "features": ["speakerDiarization", "punctuation", "chapters"]
+      },
+      "translation": {
+        "enabled": false
+      },
+      "powerMode": {
+        "enabled": false
+      },
+      "pricing": {
+        "best": {"unit": "minute", "cost": 0.00025},
+        "nano": {"unit": "minute", "cost": 0.00012}
+      },
+      "freeCredits": "Free tier with limits",
+      "apiKeyUrl": "https://www.assemblyai.com/app/account"
+    },
+    "elevenLabs": {
+      "displayName": "ElevenLabs",
+      "status": "operational",
+      "transcription": {
+        "enabled": true,
+        "models": [
+          {"id": "scribe_v1", "name": "Scribe v1", "isDefault": true}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "good", "zh": "good",
+          "ko": "good", "pl": "good", "pt": "excellent",
+          "ru": "good", "it": "excellent"
+        },
+        "features": ["speakerDiarization"]
+      },
+      "translation": {
+        "enabled": false
+      },
+      "powerMode": {
+        "enabled": false
+      },
+      "pricing": {
+        "scribe_v1": {"unit": "minute", "cost": 0.01}
+      },
+      "notes": "Primarily known for TTS, transcription is secondary",
+      "apiKeyUrl": "https://elevenlabs.io/app/settings/api-keys"
+    },
+    "deepL": {
+      "displayName": "DeepL",
+      "status": "operational",
+      "transcription": {
+        "enabled": false
+      },
+      "translation": {
+        "enabled": true,
+        "models": [
+          {"id": "default", "name": "DeepL", "isDefault": true}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "excellent", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "nl": "excellent",
+          "sv": "excellent", "uk": "excellent"
+        },
+        "features": ["formality", "glossary"]
+      },
+      "powerMode": {
+        "enabled": false
+      },
+      "pricing": {
+        "default": {"unit": "character", "cost": 0.00002}
+      },
+      "notes": "Arabic not supported. Best quality for European languages.",
+      "freeCredits": "500,000 characters/month free",
+      "apiKeyUrl": "https://www.deepl.com/account/summary"
+    },
+    "azure": {
+      "displayName": "Azure Translator",
+      "status": "operational",
+      "transcription": {
+        "enabled": false
+      },
+      "translation": {
+        "enabled": true,
+        "models": [
+          {"id": "default", "name": "Azure Translator", "isDefault": true}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "excellent", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "ar": "excellent",
+          "hi": "good", "nl": "excellent", "sv": "excellent",
+          "tr": "excellent", "uk": "excellent", "vi": "excellent"
+        },
+        "features": ["formality", "profanityFiltering"]
+      },
+      "powerMode": {
+        "enabled": false
+      },
+      "pricing": {
+        "default": {"unit": "character", "cost": 0.00001}
+      },
+      "freeCredits": "2M characters/month free",
+      "apiKeyUrl": "https://portal.azure.com/"
+    },
+    "local": {
+      "displayName": "On-Device",
+      "status": "operational",
+      "transcription": {
+        "enabled": true,
+        "models": [
+          {"id": "whisperkit-base", "name": "WhisperKit Base", "isDefault": true},
+          {"id": "whisperkit-small", "name": "WhisperKit Small"},
+          {"id": "whisperkit-large", "name": "WhisperKit Large"}
+        ],
+        "languages": {
+          "en": "excellent", "es": "good", "fr": "good",
+          "de": "good", "ja": "limited", "zh": "limited",
+          "ko": "limited", "pl": "limited", "pt": "good",
+          "ru": "limited", "it": "good"
+        },
+        "features": ["offline", "privacyFirst"]
+      },
+      "translation": {
+        "enabled": true,
+        "models": [
+          {"id": "apple-translation", "name": "Apple Translation", "isDefault": true}
+        ],
+        "languages": {
+          "en": "excellent", "es": "excellent", "fr": "excellent",
+          "de": "excellent", "ja": "excellent", "zh": "excellent",
+          "ko": "excellent", "pl": "good", "pt": "excellent",
+          "ru": "excellent", "it": "excellent", "ar": "good"
+        },
+        "features": ["offline", "privacyFirst"]
+      },
+      "powerMode": {
+        "enabled": true,
+        "models": [
+          {"id": "apple-intelligence", "name": "Apple Intelligence", "isDefault": true}
+        ],
+        "features": ["offline", "privacyFirst", "streaming"]
+      },
+      "formatting": {
+        "enabled": true,
+        "models": [
+          {"id": "apple-intelligence", "name": "Apple Intelligence", "isDefault": true}
+        ]
+      },
+      "pricing": {
+        "whisperkit-base": {"unit": "minute", "cost": 0},
+        "whisperkit-small": {"unit": "minute", "cost": 0},
+        "whisperkit-large": {"unit": "minute", "cost": 0},
+        "apple-translation": {"unit": "character", "cost": 0},
+        "apple-intelligence": {"inputPerMToken": 0, "outputPerMToken": 0}
+      },
+      "notes": "100% on-device processing. No data leaves your device."
+    }
+  }
+}
