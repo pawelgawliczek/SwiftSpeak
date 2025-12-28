@@ -14,6 +14,11 @@ class SharedSettings: ObservableObject {
 
     private let defaults: UserDefaults?
 
+    // MARK: - Phase 6: Security Services
+
+    /// Keychain manager for secure API key storage
+    private let keychainManager: SecureStorageProtocol
+
     // MARK: - Published Properties
 
     @Published var hasCompletedOnboarding: Bool = false {
@@ -145,6 +150,22 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    // MARK: - Phase 6: Security & Privacy
+
+    /// Whether biometric protection (Face ID/Touch ID) is required for Settings and History
+    @Published var biometricProtectionEnabled: Bool = false {
+        didSet {
+            defaults?.set(biometricProtectionEnabled, forKey: Constants.Keys.biometricProtectionEnabled)
+        }
+    }
+
+    /// Auto-delete transcription history after specified period
+    @Published var dataRetentionPeriod: DataRetentionPeriod = .never {
+        didSet {
+            defaults?.set(dataRetentionPeriod.rawValue, forKey: Constants.Keys.dataRetentionPeriod)
+        }
+    }
+
     // MARK: - App Library: User Category Overrides
 
     /// User overrides for app categories (e.g., moving Notion from Work to Personal)
@@ -160,6 +181,52 @@ class SharedSettings: ObservableObject {
     @Published var knowledgeDocuments: [KnowledgeDocument] = [] {
         didSet {
             saveKnowledgeDocuments()
+        }
+    }
+
+    // MARK: - Phase 4f: Webhooks
+
+    /// Global webhook configurations (enabled per Power Mode)
+    @Published var webhooks: [Webhook] = [] {
+        didSet {
+            saveWebhooks()
+        }
+    }
+
+    // MARK: - Phase 10: Local Model Configuration
+
+    /// WhisperKit on-device transcription configuration
+    @Published var whisperKitConfig: WhisperKitSettings = .default {
+        didSet {
+            saveWhisperKitConfig()
+        }
+    }
+
+    /// Apple Intelligence on-device text processing configuration
+    @Published var appleIntelligenceConfig: AppleIntelligenceConfig = .default {
+        didSet {
+            saveAppleIntelligenceConfig()
+        }
+    }
+
+    /// Apple Translation on-device translation configuration
+    @Published var appleTranslationConfig: AppleTranslationConfig = .default {
+        didSet {
+            saveAppleTranslationConfig()
+        }
+    }
+
+    /// Global default provider settings per capability
+    @Published var providerDefaults: ProviderDefaults = .default {
+        didSet {
+            saveProviderDefaults()
+        }
+    }
+
+    /// Force all processing to use local-only models (privacy mode)
+    @Published var forcePrivacyMode: Bool = false {
+        didSet {
+            defaults?.set(forcePrivacyMode, forKey: Constants.Keys.forcePrivacyMode)
         }
     }
 
@@ -240,7 +307,18 @@ class SharedSettings: ObservableObject {
     // MARK: - Private Initialization
 
     private init() {
+        self.keychainManager = KeychainManager.shared
         defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        loadFromDefaults()
+
+        // Phase 6: Perform data retention cleanup on launch
+        performDataRetentionCleanup()
+    }
+
+    /// For testing with mock dependencies
+    init(keychainManager: SecureStorageProtocol, defaults: UserDefaults?) {
+        self.keychainManager = keychainManager
+        self.defaults = defaults
         loadFromDefaults()
     }
 
@@ -297,6 +375,23 @@ class SharedSettings: ObservableObject {
         // Load knowledge documents (Phase 4e RAG)
         loadKnowledgeDocuments()
 
+        // Load webhooks (Phase 4f)
+        loadWebhooks()
+
+        // Load Phase 10: Local models and provider defaults
+        loadWhisperKitConfig()
+        loadAppleIntelligenceConfig()
+        loadAppleTranslationConfig()
+        loadProviderDefaults()
+        forcePrivacyMode = defaults?.bool(forKey: Constants.Keys.forcePrivacyMode) ?? false
+
+        // Load security settings (Phase 6)
+        biometricProtectionEnabled = defaults?.bool(forKey: Constants.Keys.biometricProtectionEnabled) ?? false
+        if let retentionRaw = defaults?.string(forKey: Constants.Keys.dataRetentionPeriod),
+           let retention = DataRetentionPeriod(rawValue: retentionRaw) {
+            dataRetentionPeriod = retention
+        }
+
         // Load active context ID
         if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
            let contextId = UUID(uuidString: contextIdString) {
@@ -324,13 +419,27 @@ class SharedSettings: ObservableObject {
 
     private func loadConfiguredAIProviders() {
         if let data = defaults?.data(forKey: Constants.Keys.configuredAIProviders),
-           let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
+           var providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
+            // Phase 6: Hydrate API keys from Keychain
+            for i in providers.indices {
+                let keychainKey = KeychainKeys.key(for: providers[i].provider)
+                if let apiKey = try? keychainManager.retrieve(key: keychainKey), !apiKey.isEmpty {
+                    providers[i].apiKey = apiKey
+                }
+            }
             configuredAIProviders = providers
         } else {
             // Default: OpenAI with all capabilities
+            // Check if there's a legacy key in Keychain or UserDefaults
+            var apiKey = ""
+            if let keychainKey = try? keychainManager.retrieve(key: KeychainKeys.openAI), !keychainKey.isEmpty {
+                apiKey = keychainKey
+            } else if let legacyKey = openAIAPIKey, !legacyKey.isEmpty {
+                apiKey = legacyKey
+            }
             let defaultConfig = AIProviderConfig(
                 provider: .openAI,
-                apiKey: openAIAPIKey ?? "",
+                apiKey: apiKey,
                 usageCategories: [.transcription, .translation, .powerMode]
             )
             configuredAIProviders = [defaultConfig]
@@ -338,7 +447,22 @@ class SharedSettings: ObservableObject {
     }
 
     private func saveConfiguredAIProviders() {
-        if let data = try? JSONEncoder().encode(configuredAIProviders) {
+        // Phase 6: Save API keys to Keychain, store empty keys in UserDefaults
+        for config in configuredAIProviders {
+            let keychainKey = KeychainKeys.key(for: config.provider)
+            if !config.apiKey.isEmpty {
+                try? keychainManager.save(key: keychainKey, value: config.apiKey)
+            } else {
+                try? keychainManager.delete(key: keychainKey)
+            }
+        }
+
+        // Save configs without API keys to UserDefaults
+        var sanitizedConfigs = configuredAIProviders
+        for i in sanitizedConfigs.indices {
+            sanitizedConfigs[i].apiKey = "" // Clear before serialization
+        }
+        if let data = try? JSONEncoder().encode(sanitizedConfigs) {
             defaults?.set(data, forKey: Constants.Keys.configuredAIProviders)
         }
     }
@@ -460,6 +584,24 @@ class SharedSettings: ObservableObject {
 
     func clearHistory() {
         transcriptionHistory = []
+    }
+
+    // MARK: - Phase 6: Data Retention
+
+    /// Automatically delete transcription history older than the configured retention period
+    /// Called on app launch
+    private func performDataRetentionCleanup() {
+        guard let days = dataRetentionPeriod.days else { return }
+
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let originalCount = transcriptionHistory.count
+
+        transcriptionHistory = transcriptionHistory.filter { $0.timestamp > cutoffDate }
+
+        let deletedCount = originalCount - transcriptionHistory.count
+        if deletedCount > 0 {
+            print("[DataRetention] Deleted \(deletedCount) records older than \(days) days")
+        }
     }
 
     func resetOnboarding() {
@@ -908,5 +1050,217 @@ class SharedSettings: ObservableObject {
     /// Get a knowledge document by ID
     func getKnowledgeDocument(id: UUID) -> KnowledgeDocument? {
         knowledgeDocuments.first { $0.id == id }
+    }
+
+    // MARK: - Webhook Management (Phase 4f)
+
+    private func loadWebhooks() {
+        if let data = defaults?.data(forKey: Constants.Keys.webhooks),
+           let loaded = try? JSONDecoder().decode([Webhook].self, from: data) {
+            webhooks = loaded
+        }
+    }
+
+    private func saveWebhooks() {
+        if let data = try? JSONEncoder().encode(webhooks) {
+            defaults?.set(data, forKey: Constants.Keys.webhooks)
+        }
+    }
+
+    /// Add a new webhook
+    func addWebhook(_ webhook: Webhook) {
+        webhooks.append(webhook)
+    }
+
+    /// Update an existing webhook
+    func updateWebhook(_ webhook: Webhook) {
+        if let index = webhooks.firstIndex(where: { $0.id == webhook.id }) {
+            var updated = webhook
+            updated.updatedAt = Date()
+            webhooks[index] = updated
+        }
+    }
+
+    /// Delete a webhook by ID
+    func deleteWebhook(_ id: UUID) {
+        webhooks.removeAll { $0.id == id }
+        // Also remove from all Power Modes
+        for i in powerModes.indices {
+            powerModes[i].enabledWebhookIds.removeAll { $0 == id }
+        }
+    }
+
+    /// Get a webhook by ID
+    func getWebhook(id: UUID) -> Webhook? {
+        webhooks.first { $0.id == id }
+    }
+
+    /// Get webhooks by type
+    func webhooks(ofType type: WebhookType) -> [Webhook] {
+        webhooks.filter { $0.type == type }
+    }
+
+    /// Get enabled webhooks for a Power Mode
+    func enabledWebhooks(for powerMode: PowerMode) -> [Webhook] {
+        webhooks.filter { powerMode.enabledWebhookIds.contains($0.id) && $0.isEnabled }
+    }
+
+    /// Get enabled webhooks of a specific type for a Power Mode
+    func enabledWebhooks(for powerMode: PowerMode, ofType type: WebhookType) -> [Webhook] {
+        enabledWebhooks(for: powerMode).filter { $0.type == type }
+    }
+
+    /// Update webhook status after execution
+    func updateWebhookStatus(id: UUID, status: String) {
+        if let index = webhooks.firstIndex(where: { $0.id == id }) {
+            webhooks[index].lastTriggered = Date()
+            webhooks[index].lastStatus = status
+        }
+    }
+
+    // MARK: - Phase 10: WhisperKit Configuration
+
+    private func loadWhisperKitConfig() {
+        if let data = defaults?.data(forKey: Constants.Keys.whisperKitConfig),
+           let config = try? JSONDecoder().decode(WhisperKitSettings.self, from: data) {
+            whisperKitConfig = config
+        }
+    }
+
+    private func saveWhisperKitConfig() {
+        if let data = try? JSONEncoder().encode(whisperKitConfig) {
+            defaults?.set(data, forKey: Constants.Keys.whisperKitConfig)
+        }
+    }
+
+    // MARK: - Phase 10: Apple Intelligence Configuration
+
+    private func loadAppleIntelligenceConfig() {
+        if let data = defaults?.data(forKey: Constants.Keys.appleIntelligenceConfig),
+           let config = try? JSONDecoder().decode(AppleIntelligenceConfig.self, from: data) {
+            appleIntelligenceConfig = config
+        }
+    }
+
+    private func saveAppleIntelligenceConfig() {
+        if let data = try? JSONEncoder().encode(appleIntelligenceConfig) {
+            defaults?.set(data, forKey: Constants.Keys.appleIntelligenceConfig)
+        }
+    }
+
+    // MARK: - Phase 10: Apple Translation Configuration
+
+    private func loadAppleTranslationConfig() {
+        if let data = defaults?.data(forKey: Constants.Keys.appleTranslationConfig),
+           let config = try? JSONDecoder().decode(AppleTranslationConfig.self, from: data) {
+            appleTranslationConfig = config
+        }
+    }
+
+    private func saveAppleTranslationConfig() {
+        if let data = try? JSONEncoder().encode(appleTranslationConfig) {
+            defaults?.set(data, forKey: Constants.Keys.appleTranslationConfig)
+        }
+    }
+
+    // MARK: - Phase 10: Provider Defaults Configuration
+
+    private func loadProviderDefaults() {
+        if let data = defaults?.data(forKey: Constants.Keys.providerDefaults),
+           let config = try? JSONDecoder().decode(ProviderDefaults.self, from: data) {
+            providerDefaults = config
+        }
+    }
+
+    private func saveProviderDefaults() {
+        if let data = try? JSONEncoder().encode(providerDefaults) {
+            defaults?.set(data, forKey: Constants.Keys.providerDefaults)
+        }
+    }
+
+    // MARK: - Phase 10: Local Model Helpers
+
+    /// Whether WhisperKit is ready to use
+    var isWhisperKitReady: Bool {
+        whisperKitConfig.status == .ready && whisperKitConfig.isEnabled
+    }
+
+    /// Whether Apple Intelligence is ready to use
+    var isAppleIntelligenceReady: Bool {
+        appleIntelligenceConfig.isAvailable && appleIntelligenceConfig.isEnabled
+    }
+
+    /// Whether any local transcription provider is available
+    var hasLocalTranscription: Bool {
+        isWhisperKitReady
+    }
+
+    /// Whether any local formatting provider is available
+    var hasLocalFormatting: Bool {
+        isAppleIntelligenceReady || (getAIProviderConfig(for: .local)?.isLocalProviderConfigured ?? false)
+    }
+
+    /// Whether any local translation provider is available
+    var hasLocalTranslation: Bool {
+        appleTranslationConfig.isAvailable && !appleTranslationConfig.downloadedLanguages.isEmpty
+    }
+
+    /// Whether privacy mode can be enabled (requires local providers)
+    var canEnablePrivacyMode: Bool {
+        hasLocalTranscription && (hasLocalFormatting || hasLocalTranslation)
+    }
+
+    /// Get the list of configured local model types
+    var configuredLocalModels: [LocalModelType] {
+        var models: [LocalModelType] = []
+
+        if whisperKitConfig.status == .ready {
+            models.append(.whisperKit)
+        }
+        if appleIntelligenceConfig.isAvailable && appleIntelligenceConfig.isEnabled {
+            models.append(.appleIntelligence)
+        }
+        if appleTranslationConfig.isAvailable && !appleTranslationConfig.downloadedLanguages.isEmpty {
+            models.append(.appleTranslation)
+        }
+        if getAIProviderConfig(for: .local)?.isLocalProviderConfigured ?? false {
+            if let localConfig = localProviderConfig {
+                switch localConfig.type {
+                case .ollama: models.append(.ollama)
+                case .lmStudio: models.append(.lmStudio)
+                case .openAICompatible: models.append(.ollama) // Group as Ollama
+                }
+            }
+        }
+
+        return models
+    }
+
+    /// Calculate total storage used by local models in bytes
+    var localModelStorageBytes: Int {
+        var total = 0
+
+        // WhisperKit model size
+        if whisperKitConfig.status == .ready {
+            total += whisperKitConfig.selectedModel.sizeBytes
+        }
+
+        // Apple Translation languages
+        for lang in appleTranslationConfig.downloadedLanguages where !lang.isSystem {
+            total += lang.sizeBytes
+        }
+
+        return total
+    }
+
+    var localModelStorageFormatted: String {
+        let bytes = Double(localModelStorageBytes)
+        if bytes < 1024 * 1024 {
+            return String(format: "%.0f KB", bytes / 1024)
+        } else if bytes < 1024 * 1024 * 1024 {
+            return String(format: "%.1f MB", bytes / (1024 * 1024))
+        } else {
+            return String(format: "%.1f GB", bytes / (1024 * 1024 * 1024))
+        }
     }
 }

@@ -27,8 +27,39 @@ enum SubscriptionTier: String, Codable, CaseIterable {
     var price: String {
         switch self {
         case .free: return "$0"
-        case .pro: return "$4.99/mo"
-        case .power: return "$9.99/mo"
+        case .pro: return "$6.99/mo"
+        case .power: return "$12.99/mo"
+        }
+    }
+}
+
+// MARK: - Phase 6: Data Retention
+
+/// Options for automatic transcription history cleanup
+enum DataRetentionPeriod: String, Codable, CaseIterable, Identifiable {
+    case never = "never"
+    case sevenDays = "7days"
+    case thirtyDays = "30days"
+    case ninetyDays = "90days"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .never: return "Keep Forever"
+        case .sevenDays: return "7 Days"
+        case .thirtyDays: return "30 Days"
+        case .ninetyDays: return "90 Days"
+        }
+    }
+
+    /// Number of days before data is deleted, nil for never
+    var days: Int? {
+        switch self {
+        case .never: return nil
+        case .sevenDays: return 7
+        case .thirtyDays: return 30
+        case .ninetyDays: return 90
         }
     }
 }
@@ -101,6 +132,20 @@ enum LocalProviderType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .ollama: return "/api/generate"
         case .lmStudio, .openAICompatible: return "/v1/completions"
+        }
+    }
+
+    /// Alias for defaultEndpoint for consistency
+    var defaultURL: String {
+        defaultEndpoint
+    }
+
+    /// Default model suggestion for this provider type
+    var defaultModel: String {
+        switch self {
+        case .ollama: return "llama3.2"
+        case .lmStudio: return "local-model"
+        case .openAICompatible: return "gpt-3.5-turbo"
         }
     }
 }
@@ -950,7 +995,8 @@ enum RecordingState: Equatable {
     }
 }
 
-// MARK: - Custom Template
+// MARK: - Custom Template (LEGACY - No UI, kept for data compatibility)
+@available(*, deprecated, message: "CustomTemplate is legacy. Use Power Modes instead.")
 struct CustomTemplate: Codable, Identifiable {
     let id: UUID
     var name: String
@@ -1717,6 +1763,12 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // App auto-enable assignment
     var appAssignment: AppAssignment    // Apps/categories that auto-enable this power mode
 
+    // Phase 4f: Enabled webhook IDs (global webhooks enabled for this Power Mode)
+    var enabledWebhookIds: [UUID]
+
+    // Phase 10: Provider override (nil = use global default)
+    var providerOverride: ProviderSelection?
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -1734,7 +1786,9 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         knowledgeDocumentIds: [UUID] = [],
         ragConfiguration: RAGConfiguration = .default,
         isArchived: Bool = false,
-        appAssignment: AppAssignment = AppAssignment()
+        appAssignment: AppAssignment = AppAssignment(),
+        enabledWebhookIds: [UUID] = [],
+        providerOverride: ProviderSelection? = nil
     ) {
         self.id = id
         self.name = name
@@ -1753,6 +1807,8 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.ragConfiguration = ragConfiguration
         self.isArchived = isArchived
         self.appAssignment = appAssignment
+        self.enabledWebhookIds = enabledWebhookIds
+        self.providerOverride = providerOverride
     }
 
     /// Preset power modes for new users
@@ -1991,6 +2047,502 @@ struct PowerModeSession: Codable, Identifiable, Equatable {
     mutating func addResult(_ result: PowerModeResult) {
         results.append(result)
         currentVersionIndex = results.count - 1
+    }
+}
+
+// MARK: - Phase 10: Local Provider Types
+
+/// Types of local/on-device AI providers
+enum LocalModelType: String, Codable, CaseIterable, Identifiable {
+    case whisperKit = "whisperkit"
+    case appleIntelligence = "apple_intelligence"
+    case appleTranslation = "apple_translation"
+    case ollama = "ollama"
+    case lmStudio = "lm_studio"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .whisperKit: return "WhisperKit"
+        case .appleIntelligence: return "Apple Intelligence"
+        case .appleTranslation: return "Apple Translation"
+        case .ollama: return "Ollama"
+        case .lmStudio: return "LM Studio"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .whisperKit: return "mic.fill"
+        case .appleIntelligence: return "brain.head.profile"
+        case .appleTranslation: return "globe"
+        case .ollama: return "desktopcomputer"
+        case .lmStudio: return "display"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .whisperKit: return "On-device speech recognition"
+        case .appleIntelligence: return "On-device text processing"
+        case .appleTranslation: return "On-device translation"
+        case .ollama: return "Self-hosted open-source LLMs"
+        case .lmStudio: return "Local AI server with GUI"
+        }
+    }
+
+    /// Whether this type runs on-device (vs self-hosted on network)
+    var isOnDevice: Bool {
+        switch self {
+        case .whisperKit, .appleIntelligence, .appleTranslation: return true
+        case .ollama, .lmStudio: return false
+        }
+    }
+
+    /// Capabilities this local model type supports
+    var supportedCategories: Set<ProviderUsageCategory> {
+        switch self {
+        case .whisperKit: return [.transcription]
+        case .appleIntelligence: return [.powerMode]  // Formatting
+        case .appleTranslation: return [.translation]
+        case .ollama, .lmStudio: return [.transcription, .translation, .powerMode]
+        }
+    }
+}
+
+/// Status of a local model
+enum LocalModelStatus: String, Codable {
+    case notConfigured = "not_configured"
+    case downloading = "downloading"
+    case ready = "ready"
+    case notAvailable = "not_available"  // Device/OS doesn't support
+    case error = "error"
+
+    var displayName: String {
+        switch self {
+        case .notConfigured: return "Not Set Up"
+        case .downloading: return "Downloading"
+        case .ready: return "Ready"
+        case .notAvailable: return "Not Available"
+        case .error: return "Error"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .notConfigured: return "circle.dashed"
+        case .downloading: return "arrow.down.circle"
+        case .ready: return "checkmark.circle.fill"
+        case .notAvailable: return "xmark.circle"
+        case .error: return "exclamationmark.triangle"
+        }
+    }
+}
+
+// MARK: - Phase 10: WhisperKit Models
+
+/// Available WhisperKit model sizes
+enum WhisperModel: String, Codable, CaseIterable, Identifiable {
+    case tinyEn = "tiny.en"
+    case tiny = "tiny"
+    case base = "base"
+    case small = "small"
+    case medium = "medium"
+    case large = "large"
+    case largeV2 = "large-v2"
+    case largeV3 = "large-v3"
+    case largeV3Turbo = "large-v3-turbo"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .tinyEn: return "tiny.en"
+        case .tiny: return "tiny"
+        case .base: return "base"
+        case .small: return "small"
+        case .medium: return "medium"
+        case .large: return "large"
+        case .largeV2: return "large-v2"
+        case .largeV3: return "large-v3"
+        case .largeV3Turbo: return "large-v3-turbo"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .tinyEn: return "English only · Fastest"
+        case .tiny: return "All languages · Fastest"
+        case .base: return "All languages · Fast"
+        case .small: return "All languages · Balanced"
+        case .medium: return "All languages · Good accuracy"
+        case .large: return "All languages · High accuracy"
+        case .largeV2: return "All languages · Higher accuracy"
+        case .largeV3: return "All languages · Best accuracy"
+        case .largeV3Turbo: return "All languages · Fast & accurate"
+        }
+    }
+
+    /// Approximate model size in bytes
+    var sizeBytes: Int {
+        switch self {
+        case .tinyEn: return 39 * 1024 * 1024      // 39 MB
+        case .tiny: return 39 * 1024 * 1024        // 39 MB
+        case .base: return 142 * 1024 * 1024       // 142 MB
+        case .small: return 466 * 1024 * 1024      // 466 MB
+        case .medium: return 1500 * 1024 * 1024    // 1.5 GB
+        case .large: return 2900 * 1024 * 1024     // 2.9 GB
+        case .largeV2: return 2900 * 1024 * 1024   // 2.9 GB
+        case .largeV3: return 1500 * 1024 * 1024   // 1.5 GB (optimized)
+        case .largeV3Turbo: return 809 * 1024 * 1024 // 809 MB
+        }
+    }
+
+    var sizeFormatted: String {
+        let mb = Double(sizeBytes) / (1024 * 1024)
+        if mb >= 1000 {
+            return String(format: "%.1f GB", mb / 1024)
+        } else {
+            return String(format: "%.0f MB", mb)
+        }
+    }
+
+    /// Whether this model supports English only
+    var isEnglishOnly: Bool {
+        self == .tinyEn
+    }
+
+    /// Minimum chip generation recommended for this model
+    /// A12 = iPhone XR/XS, A14 = iPhone 12, A15 = iPhone 13, A16 = iPhone 14 Pro, A17 = iPhone 15 Pro
+    var minimumChipGeneration: Int {
+        switch self {
+        case .tinyEn, .tiny: return 12    // A12+
+        case .base: return 12             // A12+
+        case .small: return 14            // A14+
+        case .medium: return 15           // A15+
+        case .large, .largeV2: return 17  // A17 Pro+
+        case .largeV3: return 16          // A16+
+        case .largeV3Turbo: return 15     // A15+
+        }
+    }
+
+    /// Whether this model is recommended for the current device
+    func isRecommendedForChip(_ chipGeneration: Int) -> Bool {
+        chipGeneration >= minimumChipGeneration
+    }
+
+    /// Whether this model may have performance issues on the device
+    func mayHavePerformanceIssues(_ chipGeneration: Int) -> Bool {
+        chipGeneration < minimumChipGeneration && chipGeneration >= minimumChipGeneration - 1
+    }
+
+    /// Whether this model is not recommended for the device
+    func isNotRecommended(_ chipGeneration: Int) -> Bool {
+        chipGeneration < minimumChipGeneration - 1
+    }
+
+    /// Default model for a given chip generation
+    static func recommendedModel(forChipGeneration chipGeneration: Int) -> WhisperModel {
+        switch chipGeneration {
+        case 17...: return .largeV3        // A17 Pro+
+        case 16: return .largeV3           // A16
+        case 15: return .largeV3Turbo      // A15
+        case 14: return .small             // A14
+        default: return .tinyEn            // A12-A13
+        }
+    }
+
+    // MARK: - Language Support
+
+    /// Languages supported by this model
+    /// Whisper supports 99 languages, but quality varies
+    /// English-only models only support English
+    var supportedLanguages: [Language] {
+        if isEnglishOnly {
+            return [.english]
+        }
+        return Language.allCases
+    }
+
+    /// Get support level for a specific language
+    /// Based on OpenAI Whisper model benchmarks
+    func languageSupportLevel(for language: Language) -> LanguageSupportLevel {
+        if isEnglishOnly {
+            return language == .english ? .excellent : .unsupported
+        }
+
+        // Larger models have better accuracy across all languages
+        let baseLevel = modelQualityTier
+
+        // Language-specific adjustments based on Whisper training data representation
+        switch language {
+        case .english:
+            return .excellent  // English is always excellent for non-EN models too
+        case .spanish, .french, .german, .italian, .portuguese:
+            return baseLevel   // Well-represented in training
+        case .chinese, .japanese, .korean:
+            return baseLevel == .excellent ? .excellent : .good
+        case .russian, .polish:
+            return baseLevel == .excellent ? .excellent : .good
+        case .arabic:
+            return baseLevel == .excellent ? .good : .limited
+        case .egyptianArabic:
+            return baseLevel == .excellent ? .limited : .limited
+        }
+    }
+
+    /// Quality tier based on model size
+    private var modelQualityTier: LanguageSupportLevel {
+        switch self {
+        case .tinyEn, .tiny:
+            return .limited
+        case .base:
+            return .limited
+        case .small:
+            return .good
+        case .medium:
+            return .good
+        case .large, .largeV2, .largeV3, .largeV3Turbo:
+            return .excellent
+        }
+    }
+
+    /// Check if a language is supported
+    func supportsLanguage(_ language: Language) -> Bool {
+        languageSupportLevel(for: language) != .unsupported
+    }
+
+    /// All languages with at least limited support
+    var languagesWithSupport: [Language] {
+        Language.allCases.filter { languageSupportLevel(for: $0) != .unsupported }
+    }
+
+    /// Languages with excellent or good support (recommended for use)
+    var recommendedLanguages: [Language] {
+        Language.allCases.filter {
+            let level = languageSupportLevel(for: $0)
+            return level == .excellent || level == .good
+        }
+    }
+}
+
+/// Configuration for WhisperKit on-device transcription
+/// Note: Named "Settings" to avoid conflict with WhisperKit library's WhisperKitConfig class
+struct WhisperKitSettings: Codable, Equatable {
+    var selectedModel: WhisperModel
+    var status: LocalModelStatus
+    var downloadProgress: Double  // 0.0 - 1.0
+    var downloadedBytes: Int
+    var lastDownloadDate: Date?
+    var isEnabled: Bool
+
+    init(
+        selectedModel: WhisperModel = .largeV3,
+        status: LocalModelStatus = .notConfigured,
+        downloadProgress: Double = 0,
+        downloadedBytes: Int = 0,
+        lastDownloadDate: Date? = nil,
+        isEnabled: Bool = false
+    ) {
+        self.selectedModel = selectedModel
+        self.status = status
+        self.downloadProgress = downloadProgress
+        self.downloadedBytes = downloadedBytes
+        self.lastDownloadDate = lastDownloadDate
+        self.isEnabled = isEnabled
+    }
+
+    static var `default`: WhisperKitSettings {
+        WhisperKitSettings()
+    }
+}
+
+// MARK: - Phase 10: Apple Intelligence
+
+/// Configuration for Apple Intelligence on-device text processing
+struct AppleIntelligenceConfig: Codable, Equatable {
+    var isEnabled: Bool
+    var isAvailable: Bool  // Determined by device/OS check
+    var unavailableReason: String?  // "Requires iPhone 15 Pro" etc.
+
+    init(
+        isEnabled: Bool = false,
+        isAvailable: Bool = false,
+        unavailableReason: String? = nil
+    ) {
+        self.isEnabled = isEnabled
+        self.isAvailable = isAvailable
+        self.unavailableReason = unavailableReason
+    }
+
+    static var `default`: AppleIntelligenceConfig {
+        AppleIntelligenceConfig()
+    }
+}
+
+// MARK: - Phase 10: Apple Translation
+
+/// Downloaded language for Apple Translation
+struct DownloadedTranslationLanguage: Codable, Identifiable, Equatable {
+    var id: String { language.rawValue }
+    var language: Language
+    var sizeBytes: Int
+    var isSystem: Bool  // System language, can't be removed
+
+    var sizeFormatted: String {
+        let mb = Double(sizeBytes) / (1024 * 1024)
+        return String(format: "%.0f MB", mb)
+    }
+}
+
+/// Configuration for Apple Translation
+struct AppleTranslationConfig: Codable, Equatable {
+    var isAvailable: Bool  // iOS 17.4+
+    var downloadedLanguages: [DownloadedTranslationLanguage]
+
+    init(
+        isAvailable: Bool = true,
+        downloadedLanguages: [DownloadedTranslationLanguage] = []
+    ) {
+        self.isAvailable = isAvailable
+        self.downloadedLanguages = downloadedLanguages
+    }
+
+    static var `default`: AppleTranslationConfig {
+        AppleTranslationConfig()
+    }
+}
+
+// MARK: - Phase 10: Provider Selection
+
+/// A provider + model selection pair
+struct ProviderSelection: Codable, Equatable, Hashable {
+    var providerType: ProviderType
+    var model: String?  // Optional model override, nil = use provider default
+
+    init(providerType: ProviderType, model: String? = nil) {
+        self.providerType = providerType
+        self.model = model
+    }
+
+    var displayName: String {
+        if let model = model {
+            return "\(providerType.displayName) \(model)"
+        }
+        return providerType.displayName
+    }
+
+    var icon: String {
+        providerType.icon
+    }
+
+    var isLocal: Bool {
+        providerType.isLocal
+    }
+}
+
+/// Unified provider type that covers both cloud and local providers
+enum ProviderType: Codable, Equatable, Hashable {
+    case cloud(AIProvider)
+    case local(LocalModelType)
+
+    var displayName: String {
+        switch self {
+        case .cloud(let provider): return provider.displayName
+        case .local(let type): return type.displayName
+        }
+    }
+
+    var shortName: String {
+        switch self {
+        case .cloud(let provider): return provider.shortName
+        case .local(let type): return type.displayName
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .cloud(let provider): return provider.icon
+        case .local(let type): return type.icon
+        }
+    }
+
+    var isLocal: Bool {
+        if case .local = self { return true }
+        return false
+    }
+
+    var isCloud: Bool {
+        if case .cloud = self { return true }
+        return false
+    }
+
+    /// Check if this provider type supports a given capability
+    func supports(_ category: ProviderUsageCategory) -> Bool {
+        switch self {
+        case .cloud(let provider):
+            return provider.supportedCategories.contains(category)
+        case .local(let type):
+            return type.supportedCategories.contains(category)
+        }
+    }
+}
+
+// Custom Codable for ProviderType
+extension ProviderType {
+    enum CodingKeys: String, CodingKey {
+        case type, cloudProvider, localType
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let type = try container.decode(String.self, forKey: .type)
+
+        if type == "cloud" {
+            let provider = try container.decode(AIProvider.self, forKey: .cloudProvider)
+            self = .cloud(provider)
+        } else {
+            let localType = try container.decode(LocalModelType.self, forKey: .localType)
+            self = .local(localType)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        switch self {
+        case .cloud(let provider):
+            try container.encode("cloud", forKey: .type)
+            try container.encode(provider, forKey: .cloudProvider)
+        case .local(let localType):
+            try container.encode("local", forKey: .type)
+            try container.encode(localType, forKey: .localType)
+        }
+    }
+}
+
+/// Global default provider settings per capability
+struct ProviderDefaults: Codable, Equatable {
+    var transcription: ProviderSelection?
+    var translation: ProviderSelection?
+    var powerMode: ProviderSelection?
+    var useLocalWhenOffline: Bool
+
+    init(
+        transcription: ProviderSelection? = nil,
+        translation: ProviderSelection? = nil,
+        powerMode: ProviderSelection? = nil,
+        useLocalWhenOffline: Bool = true
+    ) {
+        self.transcription = transcription
+        self.translation = translation
+        self.powerMode = powerMode
+        self.useLocalWhenOffline = useLocalWhenOffline
+    }
+
+    static var `default`: ProviderDefaults {
+        ProviderDefaults()
     }
 }
 

@@ -3,12 +3,14 @@
 //  SwiftSpeak
 //
 //  Unified factory for creating provider instances
+//  Phase 10f: Added local provider support (WhisperKit, Apple Translation, Apple Intelligence)
 //
 
 import Foundation
 
 /// Central factory for creating provider instances based on configuration
 /// Supports all Phase 3 providers for transcription, translation, and power mode
+/// Phase 10f: Added local on-device provider support
 @MainActor
 struct ProviderFactory {
 
@@ -58,8 +60,8 @@ struct ProviderFactory {
             )
 
         case .local:
-            // TODO: Implement local transcription provider (Whisper via Ollama/etc)
-            return nil
+            // Phase 10f: WhisperKit on-device transcription
+            return createWhisperKitProvider()
 
         case .elevenLabs:
             // TODO: Implement ElevenLabs transcription (Phase 3 scope but lower priority)
@@ -119,8 +121,8 @@ struct ProviderFactory {
             )
 
         case .local:
-            // TODO: Implement local translation provider
-            return nil
+            // Phase 10f: Apple Translation on-device
+            return createAppleTranslationProvider()
 
         case .assemblyAI, .deepgram, .elevenLabs:
             // These providers don't support translation
@@ -163,8 +165,8 @@ struct ProviderFactory {
             )
 
         case .local:
-            // TODO: Implement local formatting provider
-            return nil
+            // Phase 10f: Apple Intelligence on-device formatting
+            return createAppleIntelligenceProvider()
 
         case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure:
             // These providers don't support power mode
@@ -207,9 +209,17 @@ struct ProviderFactory {
             // Azure requires region
             return config.azureRegion?.isEmpty == false
 
-        case (.local, _):
-            // Local requires valid base URL
-            return config.localConfig?.baseURL.isEmpty == false
+        case (.local, .transcription):
+            // WhisperKit requires model downloaded and enabled
+            return settings.isWhisperKitReady
+
+        case (.local, .translation):
+            // Apple Translation requires iOS 17.4+ and languages downloaded
+            return settings.hasLocalTranslation
+
+        case (.local, .powerMode):
+            // Apple Intelligence requires iOS 26+ and enabled
+            return settings.isAppleIntelligenceReady
 
         default:
             return true
@@ -228,6 +238,68 @@ struct ProviderFactory {
                 return provider.supportsPowerMode && isProviderConfigured(provider, for: category)
             }
         }
+    }
+
+    // MARK: - Phase 10f: Local Provider Factory Methods
+
+    /// Create WhisperKit transcription provider
+    private func createWhisperKitProvider() -> TranscriptionProvider? {
+        guard settings.isWhisperKitReady else { return nil }
+        return WhisperKitTranscriptionService(config: settings.whisperKitConfig)
+    }
+
+    /// Create Apple Translation provider
+    private func createAppleTranslationProvider() -> TranslationProvider? {
+        guard settings.hasLocalTranslation else { return nil }
+
+        if #available(iOS 17.4, *) {
+            return AppleTranslationService(config: settings.appleTranslationConfig)
+        }
+        return nil
+    }
+
+    /// Create Apple Intelligence formatting provider
+    private func createAppleIntelligenceProvider() -> FormattingProvider? {
+        guard settings.isAppleIntelligenceReady else { return nil }
+
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return AppleIntelligenceFormattingService(config: settings.appleIntelligenceConfig)
+        }
+        return AppleIntelligenceFormattingServiceFallback()
+    }
+
+    /// Create streaming formatting provider for Power Mode
+    /// Returns a StreamingFormattingProvider if available, otherwise falls back to regular
+    func createStreamingFormattingProvider(for provider: AIProvider) -> StreamingFormattingProvider? {
+        switch provider {
+        case .openAI:
+            guard let config = settings.getAIProviderConfig(for: provider) else { return nil }
+            return OpenAIFormattingService(config: config)
+
+        case .anthropic:
+            guard let config = settings.getAIProviderConfig(for: provider),
+                  !config.apiKey.isEmpty else { return nil }
+            return AnthropicService(
+                apiKey: config.apiKey,
+                model: config.powerModeModel ?? "claude-3-5-sonnet-latest"
+            )
+
+        case .local:
+            // Apple Intelligence supports streaming
+            guard settings.isAppleIntelligenceReady else { return nil }
+            if #available(iOS 26.0, macOS 26.0, *) {
+                return AppleIntelligenceFormattingService(config: settings.appleIntelligenceConfig)
+            }
+            return nil
+
+        default:
+            return nil
+        }
+    }
+
+    /// Create the currently selected streaming provider for Power Mode
+    func createSelectedStreamingFormattingProvider() -> StreamingFormattingProvider? {
+        createStreamingFormattingProvider(for: settings.selectedPowerModeProvider)
     }
 }
 

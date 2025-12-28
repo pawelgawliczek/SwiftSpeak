@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117202F012F3B009B3FD9 /* RevenueCat */; };
+		83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 83E1172D2F013425009B3FD9 /* WhisperKit */; };
 		83ED792E2EFE4D8F00880604 /* SwiftSpeakKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -111,6 +113,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */,
+				83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -182,6 +186,8 @@
 			);
 			name = SwiftSpeak;
 			packageProductDependencies = (
+				83E117202F012F3B009B3FD9 /* RevenueCat */,
+				83E1172D2F013425009B3FD9 /* WhisperKit */,
 			);
 			productName = SwiftSpeak;
 			productReference = 83ED79152EFE4CB900880604 /* SwiftSpeak.app */;
@@ -290,6 +296,10 @@
 			);
 			mainGroup = 83ED790C2EFE4CB900880604;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				83E1171F2F012F3B009B3FD9 /* XCLocalSwiftPackageReference "../RevenueCat" */,
+				83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 83ED79162EFE4CB900880604 /* Products */;
 			projectDirPath = "";
@@ -760,6 +770,28 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		83E1171F2F012F3B009B3FD9 /* XCLocalSwiftPackageReference "../RevenueCat" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../RevenueCat;
+		};
+		83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../WhisperKit-Package";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		83E117202F012F3B009B3FD9 /* RevenueCat */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = RevenueCat;
+		};
+		83E1172D2F013425009B3FD9 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = WhisperKit;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 83ED790D2EFE4CB900880604 /* Project object */;
 }
