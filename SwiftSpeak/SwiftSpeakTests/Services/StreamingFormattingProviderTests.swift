@@ -12,8 +12,7 @@ import Foundation
 // MARK: - Mock Streaming Provider
 
 /// A mock provider that supports streaming for testing
-@MainActor
-private class MockStreamingProvider: StreamingFormattingProvider {
+private final class MockStreamingProvider: StreamingFormattingProvider, @unchecked Sendable {
     var providerId: AIProvider { .openAI }
     var isConfigured: Bool { true }
     var model: String { "test-model" }
@@ -72,8 +71,7 @@ private class MockStreamingProvider: StreamingFormattingProvider {
 }
 
 /// A mock provider that does NOT support streaming (uses default implementation)
-@MainActor
-private class MockNonStreamingProvider: StreamingFormattingProvider {
+private final class MockNonStreamingProvider: StreamingFormattingProvider, @unchecked Sendable {
     var providerId: AIProvider { .openAI }
     var isConfigured: Bool { true }
     var model: String { "test-model" }

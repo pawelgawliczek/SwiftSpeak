@@ -15,8 +15,13 @@ struct CostCalculator {
 
     private let configManager: RemoteConfigManager
 
-    init(configManager: RemoteConfigManager = .shared) {
+    init(configManager: RemoteConfigManager) {
         self.configManager = configManager
+    }
+
+    /// Convenience initializer using shared RemoteConfigManager
+    init() {
+        self.configManager = RemoteConfigManager.shared
     }
 
     // MARK: - Transcription Cost

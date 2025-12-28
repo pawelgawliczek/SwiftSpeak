@@ -132,7 +132,8 @@ struct EmbeddingServiceAPITests {
         defer { MockEmbeddingURLProtocol.handlers.removeValue(forKey: url) }
 
         let session = createTestSession()
-        let service = EmbeddingService(apiKey: "test-key", session: session)
+        // Create service to verify initialization works with our test session
+        _ = EmbeddingService(apiKey: "test-key", session: session)
 
         // Use a modified embed that uses our test URL (we'll need to test via batch)
         // Since we can't modify the base URL, let's test the validation only

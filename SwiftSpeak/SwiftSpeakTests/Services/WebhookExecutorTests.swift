@@ -12,7 +12,7 @@ import Foundation
 // MARK: - Mock URL Protocol
 
 /// Thread-safe mock URL protocol for testing
-final class MockWebhookURLProtocol: URLProtocol, @unchecked Sendable {
+final class MockWebhookURLProtocol: URLProtocol {
     // Use the URL path as key to avoid collisions between parallel tests
     nonisolated(unsafe) static var mockResponses: [String: (Data?, URLResponse?, Error?)] = [:]
     nonisolated(unsafe) static var capturedRequests: [URLRequest] = []
