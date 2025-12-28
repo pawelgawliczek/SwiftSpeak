@@ -94,73 +94,24 @@ final class AppleTranslationService: TranslationProvider {
             }
         }
 
-        do {
-            // Convert to Locale.Language
-            let targetLocale = localeLanguage(for: targetLanguage)
-            let sourceLocale = sourceLanguage.map { localeLanguage(for: $0) }
-
-            // Use TranslationSession for iOS 18+
-            if #available(iOS 18.0, *) {
-                return try await translateWithSession(
-                    text: text,
-                    from: sourceLocale,
-                    to: targetLocale
-                )
-            } else {
-                // Fallback for iOS 17.4-17.x
-                // On older iOS, we need to use the translationTask SwiftUI modifier
-                // For now, throw an error indicating the limitation
-                throw LocalProviderError.appleTranslationFailed(
-                    reason: "Direct translation API requires iOS 18.0+. Use translationTask modifier in SwiftUI."
-                )
-            }
-        } catch let error as LocalProviderError {
-            throw error
-        } catch {
-            throw LocalProviderError.appleTranslationFailed(reason: error.localizedDescription)
+        // Use LocalTranslationManager to bridge to SwiftUI's translationTask
+        // The manager coordinates with a SwiftUI view that has .localTranslationHandler()
+        if #available(iOS 18.0, *) {
+            return try await LocalTranslationManager.shared.requestTranslation(
+                text: text,
+                from: sourceLanguage,
+                to: targetLanguage
+            )
+        } else {
+            // iOS 17.4-17.x: TranslationSession requires iOS 18+
+            throw LocalProviderError.appleTranslationFailed(
+                reason: "On-device translation requires iOS 18.0 or later."
+            )
         }
         #else
         throw LocalProviderError.appleTranslationNotAvailable
         #endif
     }
-
-    // MARK: - iOS 18+ Translation
-
-    #if canImport(Translation)
-    @available(iOS 18.0, *)
-    private func translateWithSession(
-        text: String,
-        from source: Locale.Language?,
-        to target: Locale.Language
-    ) async throws -> String {
-        // Create translation configuration
-        let configuration = TranslationSession.Configuration(
-            source: source,
-            target: target
-        )
-
-        // We need to use the translation session within a SwiftUI context
-        // For non-SwiftUI usage, we create a temporary session
-        return try await withCheckedThrowingContinuation { continuation in
-            Task { @MainActor in
-                // Create a temporary translation task
-                // Note: This approach uses a workaround since TranslationSession
-                // is designed for SwiftUI's translationTask modifier
-                do {
-                    // For programmatic usage outside SwiftUI, we need a different approach
-                    // The Translation framework is primarily designed for SwiftUI
-                    // We'll use a placeholder that works with the translationTask flow
-
-                    // Since TranslationSession requires SwiftUI context,
-                    // we throw an error suggesting the proper usage pattern
-                    continuation.resume(throwing: LocalProviderError.appleTranslationFailed(
-                        reason: "Translation requires SwiftUI context. Use translationTask modifier."
-                    ))
-                }
-            }
-        }
-    }
-    #endif
 
     // MARK: - Language Availability
 

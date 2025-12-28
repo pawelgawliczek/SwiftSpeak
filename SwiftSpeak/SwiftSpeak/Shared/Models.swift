@@ -1072,7 +1072,8 @@ enum RecordingState: Equatable {
 }
 
 // MARK: - Custom Template (LEGACY - No UI, kept for data compatibility)
-@available(*, deprecated, message: "CustomTemplate is legacy. Use Power Modes instead.")
+// NOTE: CustomTemplate is legacy code kept for backwards compatibility with existing user data.
+// New features should use Power Modes instead. Do not add new functionality to this type.
 struct CustomTemplate: Codable, Identifiable {
     let id: UUID
     var name: String

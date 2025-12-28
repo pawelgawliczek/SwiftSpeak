@@ -10,6 +10,7 @@ import Foundation
 // MARK: - Cost Calculator
 
 /// Calculates estimated costs for transcription, translation, and formatting operations
+@MainActor
 struct CostCalculator {
 
     private let configManager: RemoteConfigManager

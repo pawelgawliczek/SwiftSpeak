@@ -196,6 +196,7 @@ SwiftSpeak/
 │   │   │   ├── Local/                           # Phase 10f - On-device providers
 │   │   │   │   ├── WhisperKitTranscriptionService.swift
 │   │   │   │   ├── AppleTranslationService.swift
+│   │   │   │   ├── LocalTranslationManager.swift    # Bridge for SwiftUI translationTask
 │   │   │   │   ├── AppleIntelligenceFormattingService.swift
 │   │   │   │   └── LocalProviderErrors.swift
 │   │   │   └── Mock/

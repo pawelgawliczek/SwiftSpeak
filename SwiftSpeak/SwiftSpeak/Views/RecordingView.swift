@@ -100,6 +100,8 @@ struct RecordingView: View {
         .onDisappear {
             orchestrator.cancel()
         }
+        // Phase 10f: Enable on-device translation via Apple Translation framework
+        .localTranslationHandler()
     }
 
     private func showCard() {
