@@ -611,4 +611,342 @@ struct ProviderFactorySelectedTests {
         settings.configuredAIProviders = originalProviders
         settings.selectedPowerModeProvider = originalSelected
     }
+
+    @Test("Creates selected text formatting provider")
+    @MainActor
+    func createsSelectedTextFormattingProvider() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+        let originalSelected = settings.selectedTranslationProvider
+
+        let config = AIProviderConfig(
+            provider: .openAI,
+            apiKey: "test-key",
+            usageCategories: [.translation, .powerMode],
+            translationModel: "gpt-4o-mini"
+        )
+        settings.configuredAIProviders = [config]
+        settings.selectedTranslationProvider = .openAI
+
+        let factory = ProviderFactory(settings: settings)
+        let provider = factory.createSelectedTextFormattingProvider()
+
+        #expect(provider != nil)
+        #expect(provider?.providerId == .openAI)
+
+        settings.configuredAIProviders = originalProviders
+        settings.selectedTranslationProvider = originalSelected
+    }
+}
+
+// MARK: - Streaming Provider Tests
+
+@Suite("ProviderFactory - Streaming Providers")
+struct ProviderFactoryStreamingTests {
+
+    @Test("Creates OpenAI streaming formatting provider")
+    @MainActor
+    func createsOpenAIStreamingProvider() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+
+        let config = AIProviderConfig(
+            provider: .openAI,
+            apiKey: "test-key",
+            usageCategories: [.powerMode],
+            powerModeModel: "gpt-4o"
+        )
+        settings.configuredAIProviders = [config]
+
+        let factory = ProviderFactory(settings: settings)
+        let provider = factory.createStreamingFormattingProvider(for: .openAI)
+
+        #expect(provider != nil)
+        #expect(provider?.providerId == .openAI)
+
+        settings.configuredAIProviders = originalProviders
+    }
+
+    @Test("Creates Anthropic streaming formatting provider")
+    @MainActor
+    func createsAnthropicStreamingProvider() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+
+        let config = AIProviderConfig(
+            provider: .anthropic,
+            apiKey: "test-key",
+            usageCategories: [.powerMode],
+            powerModeModel: "claude-3-5-sonnet-latest"
+        )
+        settings.configuredAIProviders = [config]
+
+        let factory = ProviderFactory(settings: settings)
+        let provider = factory.createStreamingFormattingProvider(for: .anthropic)
+
+        #expect(provider != nil)
+        #expect(provider?.providerId == .anthropic)
+
+        settings.configuredAIProviders = originalProviders
+    }
+
+    @Test("Returns nil for non-streaming providers")
+    @MainActor
+    func returnsNilForNonStreamingProviders() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        // Gemini doesn't support streaming in our implementation
+        let provider = factory.createStreamingFormattingProvider(for: .google)
+        #expect(provider == nil)
+    }
+
+    @Test("Creates selected streaming formatting provider")
+    @MainActor
+    func createsSelectedStreamingProvider() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+        let originalSelected = settings.selectedPowerModeProvider
+
+        let config = AIProviderConfig(
+            provider: .openAI,
+            apiKey: "test-key",
+            usageCategories: [.powerMode],
+            powerModeModel: "gpt-4o"
+        )
+        settings.configuredAIProviders = [config]
+        settings.selectedPowerModeProvider = .openAI
+
+        let factory = ProviderFactory(settings: settings)
+        let provider = factory.createSelectedStreamingFormattingProvider()
+
+        #expect(provider != nil)
+        #expect(provider?.providerId == .openAI)
+
+        settings.configuredAIProviders = originalProviders
+        settings.selectedPowerModeProvider = originalSelected
+    }
+}
+
+// MARK: - Local Provider Tests
+
+@Suite("ProviderFactory - Local Providers")
+struct ProviderFactoryLocalProviderTests {
+
+    @Test("Returns nil for local transcription when WhisperKit not ready")
+    @MainActor
+    func returnsNilWhenWhisperKitNotReady() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        // Without WhisperKit configured, should return nil
+        if !settings.isWhisperKitReady {
+            let provider = factory.createTranscriptionProvider(for: .local)
+            #expect(provider == nil)
+        }
+    }
+
+    @Test("Returns nil for local translation when Apple Translation not available")
+    @MainActor
+    func returnsNilWhenAppleTranslationNotAvailable() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        // Without Apple Translation configured, should return nil
+        if !settings.hasLocalTranslation {
+            let provider = factory.createTranslationProvider(for: .local)
+            #expect(provider == nil)
+        }
+    }
+
+    @Test("Returns nil for local power mode when Apple Intelligence not ready")
+    @MainActor
+    func returnsNilWhenAppleIntelligenceNotReady() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        // Without Apple Intelligence configured, should return nil
+        if !settings.isAppleIntelligenceReady {
+            let provider = factory.createFormattingProvider(for: .local)
+            #expect(provider == nil)
+        }
+    }
+
+    @Test("Local provider validation for transcription")
+    @MainActor
+    func localProviderValidationForTranscription() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        let isConfigured = factory.isProviderConfigured(.local, for: .transcription)
+        #expect(isConfigured == settings.isWhisperKitReady)
+    }
+
+    @Test("Local provider validation for translation")
+    @MainActor
+    func localProviderValidationForTranslation() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        let isConfigured = factory.isProviderConfigured(.local, for: .translation)
+        #expect(isConfigured == settings.hasLocalTranslation)
+    }
+
+    @Test("Local provider validation for power mode")
+    @MainActor
+    func localProviderValidationForPowerMode() {
+        let settings = SharedSettings.shared
+        let factory = ProviderFactory(settings: settings)
+
+        let isConfigured = factory.isProviderConfigured(.local, for: .powerMode)
+        #expect(isConfigured == settings.isAppleIntelligenceReady)
+    }
+}
+
+// MARK: - Edge Cases Tests
+
+@Suite("ProviderFactory - Edge Cases")
+struct ProviderFactoryEdgeCaseTests {
+
+    @Test("Factory works with default settings")
+    @MainActor
+    func factoryWorksWithDefaultSettings() {
+        let factory = ProviderFactory()
+        // Should not crash
+        _ = factory.configuredProviders(for: .transcription)
+        _ = factory.configuredProviders(for: .translation)
+        _ = factory.configuredProviders(for: .powerMode)
+    }
+
+    @Test("Factory handles empty provider list")
+    @MainActor
+    func factoryHandlesEmptyProviderList() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+
+        settings.configuredAIProviders = []
+
+        let factory = ProviderFactory(settings: settings)
+        let providers = factory.configuredProviders(for: .transcription)
+
+        // May still include local if configured
+        #expect(providers.isEmpty || providers == [.local])
+
+        settings.configuredAIProviders = originalProviders
+    }
+
+    @Test("Factory handles multiple capabilities per provider")
+    @MainActor
+    func factoryHandlesMultipleCapabilities() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+
+        let config = AIProviderConfig(
+            provider: .openAI,
+            apiKey: "test-key",
+            usageCategories: [.transcription, .translation, .powerMode],
+            transcriptionModel: "whisper-1",
+            translationModel: "gpt-4o-mini",
+            powerModeModel: "gpt-4o"
+        )
+        settings.configuredAIProviders = [config]
+
+        let factory = ProviderFactory(settings: settings)
+
+        // Should be configured for all capabilities
+        #expect(factory.isProviderConfigured(.openAI, for: .transcription))
+        #expect(factory.isProviderConfigured(.openAI, for: .translation))
+        #expect(factory.isProviderConfigured(.openAI, for: .powerMode))
+
+        settings.configuredAIProviders = originalProviders
+    }
+
+    @Test("Factory returns nil for empty API key")
+    @MainActor
+    func factoryReturnsNilForEmptyAPIKey() {
+        let settings = SharedSettings.shared
+        let originalProviders = settings.configuredAIProviders
+
+        let config = AIProviderConfig(
+            provider: .anthropic,
+            apiKey: "",  // Empty API key
+            usageCategories: [.powerMode]
+        )
+        settings.configuredAIProviders = [config]
+
+        let factory = ProviderFactory(settings: settings)
+        let provider = factory.createFormattingProvider(for: .anthropic)
+
+        #expect(provider == nil)
+
+        settings.configuredAIProviders = originalProviders
+    }
+
+    @Test("Provider capabilities are correctly checked")
+    @MainActor
+    func providerCapabilitiesCorrectlyChecked() {
+        let factory = ProviderFactory()
+
+        // DeepL only supports translation
+        #expect(factory.createTranscriptionProvider(for: .deepL) == nil)
+        #expect(factory.createFormattingProvider(for: .deepL) == nil)
+
+        // Deepgram only supports transcription
+        #expect(factory.createTranslationProvider(for: .deepgram) == nil)
+        #expect(factory.createFormattingProvider(for: .deepgram) == nil)
+    }
+}
+
+// MARK: - Provider Capability Tests
+
+@Suite("ProviderFactory - Capability Matrix")
+struct ProviderFactoryCapabilityTests {
+
+    @Test("OpenAI supports all capabilities")
+    @MainActor
+    func openAISupportsAllCapabilities() {
+        #expect(AIProvider.openAI.supportsTranscription == true)
+        #expect(AIProvider.openAI.supportsTranslation == true)
+        #expect(AIProvider.openAI.supportsPowerMode == true)
+    }
+
+    @Test("Anthropic supports translation and power mode")
+    @MainActor
+    func anthropicSupportsTranslationAndPowerMode() {
+        #expect(AIProvider.anthropic.supportsTranscription == false)
+        #expect(AIProvider.anthropic.supportsTranslation == true)
+        #expect(AIProvider.anthropic.supportsPowerMode == true)
+    }
+
+    @Test("DeepL only supports translation")
+    @MainActor
+    func deepLOnlySupportsTranslation() {
+        #expect(AIProvider.deepL.supportsTranscription == false)
+        #expect(AIProvider.deepL.supportsTranslation == true)
+        #expect(AIProvider.deepL.supportsPowerMode == false)
+    }
+
+    @Test("Deepgram only supports transcription")
+    @MainActor
+    func deepgramOnlySupportsTranscription() {
+        #expect(AIProvider.deepgram.supportsTranscription == true)
+        #expect(AIProvider.deepgram.supportsTranslation == false)
+        #expect(AIProvider.deepgram.supportsPowerMode == false)
+    }
+
+    @Test("AssemblyAI only supports transcription")
+    @MainActor
+    func assemblyAIOnlySupportsTranscription() {
+        #expect(AIProvider.assemblyAI.supportsTranscription == true)
+        #expect(AIProvider.assemblyAI.supportsTranslation == false)
+        #expect(AIProvider.assemblyAI.supportsPowerMode == false)
+    }
+
+    @Test("Local provider supports all capabilities")
+    @MainActor
+    func localProviderSupportsAllCapabilities() {
+        #expect(AIProvider.local.supportsTranscription == true)
+        #expect(AIProvider.local.supportsTranslation == true)
+        #expect(AIProvider.local.supportsPowerMode == true)
+    }
 }

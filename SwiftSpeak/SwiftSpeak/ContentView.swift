@@ -141,9 +141,15 @@ struct HomeView: View {
     @Environment(\.colorScheme) var colorScheme
 
     @State private var showModePicker = false
+    @State private var showContextPicker = false
     @State private var showDefaultsSettings = false
     @State private var showProviderSetup = false
     @State private var showPaywall = false
+
+    /// Whether the user has access to Pro features (contexts, modes, translation)
+    private var hasProAccess: Bool {
+        settings.subscriptionTier != .free
+    }
 
     /// Whether the user has access to translation (Pro+ tier)
     private var hasTranslationAccess: Bool {
@@ -181,20 +187,61 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     Spacer()
 
-                    // Mode Selector - Beautiful centered dropdown
-                    VStack(spacing: 12) {
-                        Text("MODE")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .tracking(1.5)
+                    // Context & Mode Selectors - Beautiful stacked dropdowns
+                    VStack(spacing: 20) {
+                        // Context Selector (Pro feature)
+                        VStack(spacing: 10) {
+                            HStack(spacing: 6) {
+                                Text("CONTEXT")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .tracking(1.5)
 
-                        ModeSelector(
-                            selectedMode: $settings.selectedMode,
-                            onTap: {
-                                HapticManager.lightTap()
-                                showModePicker = true
+                                if !hasProAccess {
+                                    TierBadge.pro
+                                }
                             }
-                        )
+
+                            ContextSelector(
+                                activeContext: hasProAccess ? settings.activeContext : nil,
+                                isLocked: !hasProAccess,
+                                onTap: {
+                                    HapticManager.lightTap()
+                                    if hasProAccess {
+                                        showContextPicker = true
+                                    } else {
+                                        showPaywall = true
+                                    }
+                                }
+                            )
+                        }
+
+                        // Mode Selector (Pro feature for non-raw modes)
+                        VStack(spacing: 10) {
+                            HStack(spacing: 6) {
+                                Text("MODE")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .tracking(1.5)
+
+                                if !hasProAccess {
+                                    TierBadge.pro
+                                }
+                            }
+
+                            ModeSelector(
+                                selectedMode: $settings.selectedMode,
+                                isLocked: !hasProAccess && settings.selectedMode != .raw,
+                                onTap: {
+                                    HapticManager.lightTap()
+                                    if hasProAccess {
+                                        showModePicker = true
+                                    } else {
+                                        showPaywall = true
+                                    }
+                                }
+                            )
+                        }
                     }
 
                     Spacer()
@@ -311,6 +358,10 @@ struct HomeView: View {
                 ModePickerSheet(selectedMode: $settings.selectedMode)
                     .presentationDetents([.height(320)])
             }
+            .sheet(isPresented: $showContextPicker) {
+                ContextPickerSheet()
+                    .presentationDetents([.medium, .large])
+            }
             .sheet(isPresented: $showDefaultsSettings) {
                 DefaultsSettingsSheet()
                     .presentationDetents([.medium])
@@ -336,9 +387,10 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Mode Selector (Beautiful Dropdown)
-struct ModeSelector: View {
-    @Binding var selectedMode: FormattingMode
+// MARK: - Context Selector (Beautiful Dropdown)
+struct ContextSelector: View {
+    let activeContext: ConversationContext?
+    var isLocked: Bool = false
     let onTap: () -> Void
     @Environment(\.colorScheme) var colorScheme
 
@@ -346,27 +398,377 @@ struct ModeSelector: View {
         colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
     }
 
+    private var contextColor: Color {
+        if isLocked { return .secondary }
+        if let context = activeContext {
+            return context.color.color
+        }
+        return .secondary
+    }
+
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                Image(systemName: selectedMode.icon)
-                    .font(.title3)
-                    .foregroundStyle(selectedMode == .raw ? .secondary : AppTheme.accent)
+                // Context icon with color ring
+                ZStack {
+                    Circle()
+                        .stroke(contextColor.opacity(0.3), lineWidth: 2)
+                        .frame(width: 32, height: 32)
 
-                Text(selectedMode.displayName)
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.primary)
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    } else if let context = activeContext {
+                        Text(context.icon)
+                            .font(.system(size: 16))
+                    } else {
+                        Image(systemName: "person.crop.circle.dashed")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
-                Image(systemName: "chevron.down")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isLocked ? "Unlock Contexts" : (activeContext?.name ?? "No Context"))
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(isLocked ? .secondary : .primary)
+
+                    Text(isLocked ? "Upgrade to Pro" : (activeContext?.description ?? "Tap to select"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: isLocked ? "lock.fill" : "chevron.down")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: 280)
             .background(pillBackground)
-            .clipShape(Capsule())
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(activeContext != nil && !isLocked ? contextColor.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Context Picker Sheet
+struct ContextPickerSheet: View {
+    @EnvironmentObject var settings: SharedSettings
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: 16) {
+                        // "No Context" option
+                        ContextOptionCard(
+                            icon: "person.crop.circle.dashed",
+                            iconIsEmoji: false,
+                            name: "No Context",
+                            description: "Use default settings without context",
+                            color: .secondary,
+                            isSelected: settings.activeContextId == nil,
+                            onTap: {
+                                HapticManager.selection()
+                                settings.setActiveContext(nil)
+                                dismiss()
+                            }
+                        )
+
+                        if !settings.contexts.isEmpty {
+                            // Divider with label
+                            HStack {
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(height: 1)
+
+                                Text("YOUR CONTEXTS")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .tracking(1)
+
+                                Rectangle()
+                                    .fill(Color.secondary.opacity(0.3))
+                                    .frame(height: 1)
+                            }
+                            .padding(.vertical, 8)
+
+                            // Context list
+                            ForEach(settings.contexts) { context in
+                                ContextOptionCard(
+                                    icon: context.icon,
+                                    iconIsEmoji: true,
+                                    name: context.name,
+                                    description: context.description,
+                                    color: context.color.color,
+                                    isSelected: settings.activeContextId == context.id,
+                                    memoryEnabled: context.memoryEnabled,
+                                    onTap: {
+                                        HapticManager.selection()
+                                        settings.setActiveContext(context)
+                                        dismiss()
+                                    }
+                                )
+                            }
+                        }
+
+                        // Empty state or create new
+                        if settings.contexts.isEmpty {
+                            VStack(spacing: 12) {
+                                Image(systemName: "person.2.circle")
+                                    .font(.system(size: 40))
+                                    .foregroundStyle(.secondary)
+
+                                Text("No Contexts Yet")
+                                    .font(.headline)
+                                    .foregroundStyle(.primary)
+
+                                Text("Create contexts for different people or situations")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.center)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 32)
+                        }
+
+                        // Create new context link
+                        NavigationLink {
+                            ContextEditorSheet(
+                                context: ConversationContext(
+                                    name: "",
+                                    icon: "person.circle",
+                                    color: .blue,
+                                    description: ""
+                                ),
+                                isNew: true,
+                                onSave: { newContext in
+                                    settings.addContext(newContext)
+                                    settings.setActiveContext(newContext)
+                                },
+                                onDelete: { }
+                            )
+                        } label: {
+                            HStack(spacing: 12) {
+                                ZStack {
+                                    Circle()
+                                        .fill(AppTheme.accent.opacity(0.15))
+                                        .frame(width: 44, height: 44)
+
+                                    Image(systemName: "plus")
+                                        .font(.title3.weight(.semibold))
+                                        .foregroundStyle(AppTheme.accent)
+                                }
+
+                                Text("Create New Context")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(AppTheme.accent)
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(16)
+                            .background(cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                    .padding(20)
+                }
+            }
+            .navigationTitle("Select Context")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Context Option Card
+struct ContextOptionCard: View {
+    let icon: String
+    let iconIsEmoji: Bool
+    let name: String
+    let description: String
+    let color: Color
+    let isSelected: Bool
+    var memoryEnabled: Bool = false
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                // Icon with color ring
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.15))
+                        .frame(width: 48, height: 48)
+
+                    Circle()
+                        .stroke(color.opacity(isSelected ? 1 : 0.3), lineWidth: isSelected ? 2.5 : 1.5)
+                        .frame(width: 48, height: 48)
+
+                    if iconIsEmoji {
+                        Text(icon)
+                            .font(.system(size: 22))
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 20))
+                            .foregroundStyle(color)
+                    }
+                }
+
+                // Text content
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 6) {
+                        Text(name)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(.primary)
+
+                        if memoryEnabled {
+                            Image(systemName: "brain")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Text(description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer()
+
+                // Selection indicator
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(color)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
+            .padding(14)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? color : Color.clear, lineWidth: 2)
+            )
+            .animation(AppTheme.quickSpring, value: isSelected)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Mode Selector (Beautiful Dropdown - matching Context style)
+struct ModeSelector: View {
+    @Binding var selectedMode: FormattingMode
+    var isLocked: Bool = false
+    let onTap: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    private var pillBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.12) : Color.black.opacity(0.06)
+    }
+
+    private var modeColor: Color {
+        if isLocked { return .secondary }
+        return selectedMode == .raw ? .secondary : AppTheme.accent
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Mode icon with color ring (matching Context style)
+                ZStack {
+                    Circle()
+                        .stroke(modeColor.opacity(0.3), lineWidth: 2)
+                        .frame(width: 32, height: 32)
+
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Image(systemName: selectedMode.icon)
+                            .font(.system(size: 14))
+                            .foregroundStyle(modeColor)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isLocked ? "Unlock AI Modes" : selectedMode.displayName)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(isLocked ? .secondary : .primary)
+
+                    Text(isLocked ? "Upgrade to Pro" : modeDescription(selectedMode))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                Image(systemName: isLocked ? "lock.fill" : "chevron.down")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .frame(maxWidth: 280)
+            .background(pillBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(selectedMode != .raw && !isLocked ? modeColor.opacity(0.3) : Color.clear, lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func modeDescription(_ mode: FormattingMode) -> String {
+        switch mode {
+        case .raw: return "No AI formatting"
+        case .email: return "Professional email format"
+        case .formal: return "Business tone"
+        case .casual: return "Friendly & conversational"
+        }
     }
 }
 
