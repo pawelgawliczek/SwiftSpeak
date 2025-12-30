@@ -46,3 +46,7 @@ Carthage/Build/
 *.xcconfig
 secrets/
 .env
+
+# External Dependencies
+RevenueCat/
+WhisperKit-Package/
