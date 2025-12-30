@@ -116,12 +116,24 @@ Critical security and reliability improvements for the transcription/formatting 
 - RAG Chunks: 2000 tokens (document content)
 - User Input: 4000 tokens (transcribed text)
 
+### App Store Submission Preparation - COMPLETE ✅
+- [x] Fixed iOS deployment target (26.2 → 17.0)
+- [x] Added microphone privacy description to build settings
+- [x] Registered URL scheme in build settings
+- [x] Created privacy manifests (PrivacyInfo.xcprivacy for both targets)
+- [x] Implemented unified logging system (SharedLogManager, LogSanitizer, LogExporter)
+- [x] Created DiagnosticsView for log viewing/export
+- [x] Converted all print() statements to privacy-safe logging
+- [x] Fixed force unwraps in WhisperKit and RAG services
+- [x] iOS 18 availability: Apple Translation uses runtime `#available` checks (gracefully disabled on iOS 17)
+- [x] RecordingView uses `localTranslationHandlerIfAvailable()` extension for backward compatibility
+
 ### Remaining Work
 | Phase | Task | Priority |
 |-------|------|----------|
 | 7 | App Store Connect subscription configuration | Medium (deployment) |
 | 4g | WebSocket real-time transcription streaming | Low (optional) |
-| - | App Store submission preparation | Future |
+| - | RevenueCat production API key | High (before submission) |
 
 ## iOS Keyboard Architecture Constraint
 
@@ -173,6 +185,7 @@ swiftspeak://record?mode=raw&translate=true&target=french
 | 9 | Remote Config & Cost Analytics | ✅ Complete |
 | 10 | Privacy Mode & Local Providers | ✅ Complete |
 | 11 | Orchestration Security & Reliability | ✅ Complete |
+| - | App Store Submission Preparation | ✅ Complete |
 
 ## Current File Structure
 
@@ -241,6 +254,9 @@ SwiftSpeak/
 │   │   │   └── RetryPolicy.swift                # Phase 11e - Exponential backoff retry
 │   │   ├── Webhooks/
 │   │   │   └── WebhookCircuitBreaker.swift      # Phase 11g - Webhook circuit breaker
+│   │   ├── Logging/                             # App Store Prep - Unified logging
+│   │   │   ├── Logging.swift                    # Logger extensions for os.log
+│   │   │   └── LogExporter.swift                # Export logs to shareable .txt file
 │   │   ├── ProviderFactory.swift
 │   │   └── TranscriptionError.swift
 │   │
@@ -284,7 +300,8 @@ SwiftSpeak/
 │   │   │   ├── AppleTranslationSetupView.swift # Phase 10b - Translation languages
 │   │   │   ├── LocalModelStorageView.swift     # Phase 10 - Storage management
 │   │   │   ├── AdvancedTokenLimitsView.swift   # Phase 11 - Token limit configuration
-│   │   │   └── PendingAudioListView.swift      # Phase 11 - Pending recordings management
+│   │   │   ├── PendingAudioListView.swift      # Phase 11 - Pending recordings management
+│   │   │   └── DiagnosticsView.swift           # App Store Prep - Log viewer & export
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift            # Phase 9 - Cost badge and breakdown
@@ -300,17 +317,41 @@ SwiftSpeak/
 │       ├── Theme.swift                  # AppTheme, HapticManager
 │       ├── ProviderLanguageSupport.swift       # Phase 3A - Language support data
 │       ├── ProviderHelpContent.swift           # Phase 3A - Setup guides
-│       └── AppLibrary.swift             # Pre-built database of 100+ apps for auto-enable
+│       ├── AppLibrary.swift             # Pre-built database of 100+ apps for auto-enable
+│       ├── LogSanitizer.swift           # App Store Prep - Sanitize sensitive data from logs
+│       ├── SharedLogManager.swift       # App Store Prep - App Groups file logging (shared with keyboard)
+│       └── PrivacyInfo.xcprivacy        # App Store Prep - Privacy manifest
 │
 ├── SwiftSpeakKeyboard/                  # Keyboard Extension
 │   ├── KeyboardViewController.swift
 │   ├── KeyboardView.swift
+│   ├── LogSanitizer.swift               # Copy of Shared/LogSanitizer.swift (separate target)
+│   ├── SharedLogManager.swift           # Copy of Shared/SharedLogManager.swift (separate target)
 │   ├── Components/
 │   │   └── (keyboard UI components)
-│   └── Info.plist                       # RequestsOpenAccess = YES
+│   ├── Info.plist                       # RequestsOpenAccess = YES
+│   └── PrivacyInfo.xcprivacy            # App Store Prep - Privacy manifest
 │
 ├── SwiftSpeakTests/                     # Unit Tests
-│   └── (test files)
+│   ├── Models/
+│   │   ├── AIProviderTests.swift
+│   │   ├── FormattingModeTests.swift
+│   │   ├── LanguageTests.swift
+│   │   └── ProcessingMetadataTests.swift
+│   ├── Services/
+│   │   ├── RetryPolicyTests.swift              # Phase 11 - Retry logic tests
+│   │   ├── PromptSanitizerTests.swift          # Phase 11 - Injection protection tests
+│   │   ├── TokenCounterTests.swift             # Phase 11 - Token counting tests
+│   │   ├── ProviderHealthTrackerTests.swift    # Phase 11 - Circuit breaker tests
+│   │   ├── WebhookCircuitBreakerTests.swift    # Phase 11 - Webhook timeout tests
+│   │   ├── MemoryUpdateCoordinatorTests.swift  # Phase 11 - Serialization tests
+│   │   ├── LocalTranslationManagerTests.swift  # Phase 10 - iOS 18+ translation tests
+│   │   └── (other service tests)
+│   └── Integration/                            # Phase 11 - Integration tests
+│       ├── ConcurrencyTests.swift
+│       ├── ErrorRecoveryTests.swift
+│       ├── TranscriptionFlowIntegrationTests.swift
+│       └── PowerModeFlowIntegrationTests.swift
 │
 └── SwiftSpeakUITests/                   # UI Tests
     └── (test files)
@@ -434,6 +475,74 @@ sharedDefaults?.set(transcribedText, forKey: "lastTranscription")
 // Read from keyboard
 let text = sharedDefaults?.string(forKey: "lastTranscription")
 ```
+
+## Unified Logging System
+
+Both the main app and keyboard extension write to a shared log file via App Groups for unified debugging.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  SharedLogManager (actor, thread-safe)                  │
+│  └── Writes to: App Groups/swiftspeak_logs.jsonl        │
+└─────────────────────────────────────────────────────────┘
+         ↑                              ↑
+    appLog(...)                   keyboardLog(...)
+         ↑                              ↑
+┌────────────────┐            ┌────────────────┐
+│   Main App     │            │   Keyboard     │
+│   - Recording  │            │   - Actions    │
+│   - Formatting │            │   - Lifecycle  │
+│   - Navigation │            │   - Auto-insert│
+└────────────────┘            └────────────────┘
+```
+
+### Key Components
+
+| File | Purpose |
+|------|---------|
+| `LogSanitizer.swift` | Removes API keys, user content, PII from logs |
+| `SharedLogManager.swift` | Actor-based file logging to App Groups |
+| `LogExporter.swift` | Exports logs with device info header |
+| `DiagnosticsView.swift` | UI for viewing/exporting logs |
+| `Logging.swift` | os.log Logger extensions (categories) |
+
+### Privacy-Safe Logging
+
+**NEVER log (sanitized out):**
+- API keys → `"sk-***"` or `"configured"`
+- Transcription text → `"[text: 42 chars]"`
+- User dictation → `"[audio: 30.2s]"`
+- Custom prompts → `"[custom template]"`
+- Error messages with user content → truncated
+
+**SAFE to log:**
+- Timestamps, action types, provider names
+- Mode names, duration/counts, success/failure
+- Language codes, error codes (not full messages)
+
+### Usage
+
+```swift
+// From main app
+appLog("Recording started (mode: email)", category: "Transcription")
+appLog("API error: \(LogSanitizer.sanitizeError(error))", category: "API", level: .error)
+
+// From keyboard extension
+keyboardLog("Transcription requested", category: "Action")
+keyboardLog("Keyboard appeared", category: "Lifecycle")
+```
+
+### Log Categories
+
+- `Transcription` - Recording, transcription, formatting, translation
+- `Navigation` - URL scheme handling, view transitions
+- `Subscription` - RevenueCat configuration, tier changes
+- `Audio` - Audio session management
+- `RAG` - Document processing, vector search
+- `Lifecycle` - Keyboard load/appear
+- `Action` - User actions in keyboard
 
 ## Performance Targets
 
