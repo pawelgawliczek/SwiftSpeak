@@ -5,6 +5,7 @@
 //  App settings and configuration
 //
 
+import AVFoundation
 import SwiftUI
 
 struct SettingsView: View {
@@ -15,6 +16,7 @@ struct SettingsView: View {
     @State private var showAddLocalModel = false
     @State private var editingAIProviderConfig: AIProviderConfig?
     @State private var isAddingNewAIProvider = false
+    @State private var showResetAllConfirmation = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -32,6 +34,26 @@ struct SettingsView: View {
             return "\(count) webhook\(count == 1 ? "" : "s") configured"
         }
     }
+
+    #if DEBUG
+    private var microphonePermissionStatus: String {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: return "Granted"
+        case .denied: return "Denied"
+        case .undetermined: return "Not Asked"
+        @unknown default: return "Unknown"
+        }
+    }
+
+    private var microphonePermissionColor: Color {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: return .green
+        case .denied: return .red
+        case .undetermined: return .orange
+        @unknown default: return .gray
+        }
+    }
+    #endif
 
     // MARK: - Phase 10: Local Model Helpers
 
@@ -141,216 +163,13 @@ struct SettingsView: View {
                     }
 
                     // Unified AI Models Section
-                    Section {
-                        // Configured AI providers
-                        ForEach(settings.configuredAIProviders) { config in
-                            ConfiguredAIProviderRow(
-                                config: config,
-                                colorScheme: colorScheme
-                            ) {
-                                isAddingNewAIProvider = false
-                                editingAIProviderConfig = config
-                            }
-                            .listRowBackground(rowBackground)
-                        }
+                    aiCloudModelsSection
 
-                        // Add AI Provider button
-                        if !settings.availableProvidersToAdd.isEmpty {
-                            Button(action: {
-                                if settings.subscriptionTier == .free && settings.configuredAIProviders.count >= 1 {
-                                    showPaywall = true
-                                } else {
-                                    showAddAIProvider = true
-                                }
-                            }) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "plus.circle.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(AppTheme.accent)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        HStack {
-                                            Text("Add AI Provider")
-                                                .font(.callout.weight(.medium))
-                                                .foregroundStyle(.primary)
-
-                                            if settings.configuredAIProviders.count >= 1 {
-                                                Text("PRO")
-                                                    .font(.caption2.weight(.bold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(Color.purple)
-                                                    .clipShape(Capsule())
-                                            }
-                                        }
-
-                                        Text("Add transcription, translation & power mode providers")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    Spacer()
-
-                                    if settings.subscriptionTier == .free && settings.configuredAIProviders.count >= 1 {
-                                        Image(systemName: "lock.fill")
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-                    } header: {
-                        Text("AI Cloud Models")
-                    } footer: {
-                        Text("Configure cloud AI providers. Requires internet connection and API keys.")
-                    }
-
-                    // AI Local Models Section (Phase 10)
-                    Section {
-                        // Only show WhisperKit if configured (ready or downloading)
-                        if settings.whisperKitConfig.status == .ready || settings.whisperKitConfig.status == .downloading {
-                            NavigationLink {
-                                WhisperKitSetupView()
-                            } label: {
-                                LocalModelRow(
-                                    type: .whisperKit,
-                                    status: settings.whisperKitConfig.status,
-                                    subtitle: whisperKitSubtitle,
-                                    colorScheme: colorScheme
-                                ) { }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        // Only show Apple Intelligence if enabled
-                        if settings.appleIntelligenceConfig.isEnabled {
-                            NavigationLink {
-                                AppleIntelligenceSetupView()
-                            } label: {
-                                LocalModelRow(
-                                    type: .appleIntelligence,
-                                    status: appleIntelligenceStatus,
-                                    subtitle: appleIntelligenceSubtitle,
-                                    colorScheme: colorScheme
-                                ) { }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        // Only show Apple Translation if there are downloaded languages
-                        if !settings.appleTranslationConfig.downloadedLanguages.isEmpty {
-                            NavigationLink {
-                                AppleTranslationSetupView()
-                            } label: {
-                                LocalModelRow(
-                                    type: .appleTranslation,
-                                    status: appleTranslationStatus,
-                                    subtitle: appleTranslationSubtitle,
-                                    colorScheme: colorScheme
-                                ) { }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        // Ollama/LM Studio (if configured)
-                        if let localConfig = settings.getAIProviderConfig(for: .local)?.localConfig {
-                            LocalModelRow(
-                                type: localModelTypeFromConfig(localConfig),
-                                status: .ready,
-                                subtitle: localConfig.baseURL,
-                                colorScheme: colorScheme
-                            ) {
-                                // Edit existing local provider
-                                isAddingNewAIProvider = false
-                                editingAIProviderConfig = settings.getAIProviderConfig(for: .local)
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        // Add Local Model button
-                        Button(action: {
-                            showAddLocalModel = true
-                        }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.title2)
-                                    .foregroundStyle(.green)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Add Local Model")
-                                        .font(.callout.weight(.medium))
-                                        .foregroundStyle(.primary)
-
-                                    Text("Set up on-device or self-hosted AI")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Spacer()
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("AI Local Models")
-                    } footer: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if hasAnyLocalModel {
-                                Text("Process data on-device for privacy. No internet required once downloaded.")
-                                if settings.localModelStorageBytes > 0 {
-                                    Text("Storage used: \(settings.localModelStorageFormatted)")
-                                        .fontWeight(.medium)
-                                }
-                            } else {
-                                Text("Add on-device models for privacy and offline use.")
-                            }
-                        }
-                    }
+                    // AI Local Models Section (Phase 10) - Requires Power tier
+                    aiLocalModelsSection
 
                     // Default Providers Section (Phase 10)
-                    Section {
-                        NavigationLink {
-                            DefaultProvidersView()
-                        } label: {
-                            SettingsRow(
-                                icon: "slider.horizontal.3",
-                                iconColor: .indigo,
-                                title: "Default Providers",
-                                subtitle: defaultProvidersSubtitle
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        // Only show Privacy Mode toggle when local providers are available
-                        if settings.canEnablePrivacyMode {
-                            Toggle(isOn: $settings.forcePrivacyMode) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "lock.shield.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(.green)
-                                        .frame(width: 32)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text("Privacy Mode")
-                                            .font(.callout)
-                                        Text("Force local-only processing")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .tint(.green)
-                            .listRowBackground(rowBackground)
-                        }
-                    } header: {
-                        Text("Provider Preferences")
-                    } footer: {
-                        if settings.forcePrivacyMode {
-                            Text("All processing will use local models. Cloud providers are disabled.")
-                        } else {
-                            Text("Choose which provider to use for each capability. Power Modes can override these settings.")
-                        }
-                    }
+                    providerPreferencesSection
 
                     // Provider Configuration Section (Phase 9)
                     Section {
@@ -362,400 +181,64 @@ struct SettingsView: View {
                         Text("Syncs pricing, models, languages, and capabilities from cloud. Auto-updates weekly.")
                     }
 
-                    // Language Section
-                    Section {
-                        NavigationLink {
-                            LanguagePickerView(selectedLanguage: $settings.selectedTargetLanguage)
-                        } label: {
-                            HStack {
-                                SettingsRow(
-                                    icon: "globe",
-                                    iconColor: .purple,
-                                    title: "Translation Language",
-                                    subtitle: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTargetLanguage.displayName)"
-                                )
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Translation")
-                    }
+                    // Dictation Language Section
+                    dictationSection
+
+                    // Language Section - Requires Pro tier
+                    translationSection
 
                     // Vocabulary Section
-                    Section {
-                        NavigationLink {
-                            VocabularyView()
-                        } label: {
-                            SettingsRow(
-                                icon: "character.book.closed.fill",
-                                iconColor: .teal,
-                                title: "Vocabulary",
-                                subtitle: settings.vocabulary.isEmpty ? "Add words to improve recognition" : "\(settings.vocabulary.count) words"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Recognition")
-                    } footer: {
-                        Text("Add names, companies, acronyms, and slang to improve transcription accuracy.")
-                    }
+                    vocabularySection
 
-                    // Memory Section
-                    Section {
-                        NavigationLink {
-                            MemoryView()
-                        } label: {
-                            SettingsRow(
-                                icon: "brain.head.profile",
-                                iconColor: .pink,
-                                title: "Memory",
-                                subtitle: "History, workflow & context memory"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Memory")
-                    } footer: {
-                        Text("View and manage AI memory for history, Power Modes, and Contexts.")
-                    }
+                    // Memory Section - Requires Power tier
+                    memorySection
 
-                    // App Library Section
-                    Section {
-                        NavigationLink {
-                            AppLibraryView()
-                        } label: {
-                            SettingsRow(
-                                icon: "square.grid.2x2",
-                                iconColor: .indigo,
-                                title: "App Library",
-                                subtitle: "Manage app categories for auto-enable"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Apps")
-                    } footer: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Reassign apps to different categories. Contexts and Power Modes can auto-enable based on app categories.")
-                            Text("Manual selection always takes precedence over app auto-enable.")
-                                .fontWeight(.medium)
-                        }
-                    }
+                    // App Library Section - Requires Pro tier
+                    appLibrarySection
 
-                    // Webhooks Section
-                    Section {
-                        NavigationLink {
-                            WebhooksView()
-                        } label: {
-                            SettingsRow(
-                                icon: "link",
-                                iconColor: .cyan,
-                                title: "Webhooks",
-                                subtitle: webhooksSubtitle
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Integrations")
-                    } footer: {
-                        Text("Connect Power Modes to external services like Slack, Notion, Make, or Zapier.")
-                    }
+                    // Webhooks Section - Requires Power tier
+                    webhooksSection
 
                     // Behavior Section
-                    Section {
-                        Toggle(isOn: $settings.autoReturnEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-return after transcription")
-                                    .font(.callout)
-                                Text("Automatically dismiss after copying to clipboard")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tint(AppTheme.accent)
-                        .listRowBackground(rowBackground)
+                    behaviorSection
 
-                        Toggle(isOn: $settings.powerModeStreamingEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Stream Power Mode responses")
-                                    .font(.callout)
-                                Text("Show text as it's generated instead of waiting for completion")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tint(AppTheme.powerAccent)
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Behavior")
-                    }
+                    // Advanced Section
+                    advancedSection
 
-                    // Retry Settings Section (Phase 11)
-                    Section {
-                        Toggle(isOn: $settings.autoRetryEnabled) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Auto-Retry on Failure")
-                                    .font(.callout)
-                                Text("Automatically retry failed transcriptions")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tint(AppTheme.accent)
-                        .listRowBackground(rowBackground)
-
-                        if settings.autoRetryEnabled {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Maximum Retries")
-                                        .font(.callout)
-                                    Text("Retry up to \(settings.maxRetryCount) times")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Stepper("", value: $settings.maxRetryCount, in: 1...10)
-                                    .labelsHidden()
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        Toggle(isOn: $settings.keepFailedRecordings) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Keep Failed Recordings")
-                                    .font(.callout)
-                                Text("Save audio for manual retry")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .tint(AppTheme.accent)
-                        .listRowBackground(rowBackground)
-
-                        if settings.keepFailedRecordings {
-                            Picker(selection: $settings.pendingAudioRetentionDays) {
-                                Text("Never delete").tag(0)
-                                Text("1 day").tag(1)
-                                Text("7 days").tag(7)
-                                Text("30 days").tag(30)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Auto-Delete After")
-                                        .font(.callout)
-                                }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        if !settings.pendingAudioQueue.isEmpty {
-                            NavigationLink {
-                                PendingAudioListView()
-                            } label: {
-                                SettingsRow(
-                                    icon: "waveform.badge.exclamationmark",
-                                    iconColor: .orange,
-                                    title: "Pending Recordings",
-                                    subtitle: "\(settings.pendingAudioQueue.count) recording\(settings.pendingAudioQueue.count == 1 ? "" : "s") pending"
-                                )
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-                    } header: {
-                        Text("Retry Settings")
-                    } footer: {
-                        Text("Failed transcriptions retry with exponential backoff (1s, 2s, 4s...).")
-                    }
-
-                    // Advanced Settings Section (Phase 11)
-                    Section {
-                        NavigationLink {
-                            AdvancedTokenLimitsView()
-                        } label: {
-                            SettingsRow(
-                                icon: "slider.horizontal.3",
-                                iconColor: .purple,
-                                title: "Token Limits",
-                                subtitle: "Configure AI context window usage"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        NavigationLink {
-                            DiagnosticsView()
-                        } label: {
-                            SettingsRow(
-                                icon: "stethoscope",
-                                iconColor: .teal,
-                                title: "Diagnostics",
-                                subtitle: "View and export activity logs"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Advanced")
-                    } footer: {
-                        Text("Fine-tune AI settings and export logs for troubleshooting.")
-                    }
-
-                    // Security Section (Phase 6)
-                    Section {
-                        Toggle(isOn: $settings.biometricProtectionEnabled) {
-                            HStack(spacing: 12) {
-                                Image(systemName: biometricIcon)
-                                    .font(.title2)
-                                    .foregroundStyle(AppTheme.accent)
-                                    .frame(width: 32)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Require \(biometricName)")
-                                        .font(.callout)
-                                    Text("Protect Settings and History")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .disabled(!biometricAvailable)
-                        .tint(AppTheme.accent)
-                        .listRowBackground(rowBackground)
-
-                        Picker(selection: $settings.dataRetentionPeriod) {
-                            ForEach(DataRetentionPeriod.allCases) { period in
-                                Text(period.displayName).tag(period)
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .font(.title2)
-                                    .foregroundStyle(.orange)
-                                    .frame(width: 32)
-
-                                Text("Auto-Delete History")
-                                    .font(.callout)
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Security & Privacy")
-                    } footer: {
-                        if !biometricAvailable {
-                            Text("Biometric authentication is not available on this device.")
-                        } else {
-                            Text("When enabled, \(biometricName) is required to access Settings and History.")
-                        }
-                    }
-
-                    // Usage & Costs Section (Phase 9)
-                    Section {
-                        NavigationLink {
-                            CostAnalyticsView()
-                        } label: {
-                            SettingsRow(
-                                icon: "chart.pie.fill",
-                                iconColor: .green,
-                                title: "Cost Analytics",
-                                subtitle: "View usage costs and statistics"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Usage & Costs")
-                    } footer: {
-                        Text("Track your API usage costs across providers.")
-                    }
+                    // Usage & Costs Section
+                    usageCostsSection
 
                     // About Section
-                    Section {
-                        SettingsRow(
-                            icon: "info.circle",
-                            iconColor: .blue,
-                            title: "Version",
-                            subtitle: "1.0.0 (Build 1)"
-                        )
-                        .listRowBackground(rowBackground)
-
-                        Button(action: {
-                            if let url = URL(string: "https://swiftspeak.app/privacy") {
-                                UIApplication.shared.open(url)
-                            }
-                        }) {
-                            SettingsRow(
-                                icon: "hand.raised",
-                                iconColor: .green,
-                                title: "Privacy Policy",
-                                subtitle: nil
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        Button(action: {
-                            if let url = URL(string: "https://swiftspeak.app/terms") {
-                                UIApplication.shared.open(url)
-                            }
-                        }) {
-                            SettingsRow(
-                                icon: "doc.plaintext",
-                                iconColor: .gray,
-                                title: "Terms of Service",
-                                subtitle: nil
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("About")
-                    }
+                    aboutSection
 
                     #if DEBUG
-                    // Debug Section (Development only - hidden in production)
-                    Section {
-                        Button(action: {
-                            settings.resetOnboarding()
-                        }) {
-                            SettingsRow(
-                                icon: "arrow.counterclockwise",
-                                iconColor: .red,
-                                title: "Reset Onboarding",
-                                subtitle: "Show onboarding again"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        Button(action: {
-                            addMockHistory()
-                        }) {
-                            SettingsRow(
-                                icon: "plus.circle",
-                                iconColor: .green,
-                                title: "Add Mock History",
-                                subtitle: "Add sample transcriptions"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        NavigationLink {
-                            KeyboardPreviewView()
-                        } label: {
-                            SettingsRow(
-                                icon: "keyboard",
-                                iconColor: .blue,
-                                title: "Keyboard Preview",
-                                subtitle: "See how the keyboard looks"
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                    } header: {
-                        Text("Debug")
-                    }
+                    // Debug Section
+                    debugSection
                     #endif
                 }
                 .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.large)
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
+            }
+            .sheet(isPresented: $showAddAIProvider) {
+                AddAIProviderSheet(
+                    availableProviders: settings.availableProvidersToAdd,
+                    currentTier: settings.subscriptionTier,
+                    onSelect: { provider in
+                        showAddAIProvider = false
+                        isAddingNewAIProvider = true
+                        editingAIProviderConfig = AIProviderConfig(provider: provider)
+                    },
+                    onShowPaywall: {
+                        showPaywall = true
+                    }
+                )
+            }
+            .sheet(isPresented: $showAddLocalModel) {
+                AddLocalModelSheet()
             }
             .sheet(item: $editingAIProviderConfig) { config in
                 AIProviderEditorSheet(
@@ -767,39 +250,860 @@ struct SettingsView: View {
                         } else {
                             settings.updateAIProvider(updatedConfig)
                         }
+                        editingAIProviderConfig = nil
                     },
                     onDelete: isAddingNewAIProvider ? nil : {
-                        settings.removeAIProvider(config.provider)
-                    }
-                )
-            }
-            .sheet(isPresented: $showAddAIProvider) {
-                AddAIProviderSheet(
-                    availableProviders: settings.availableProvidersToAdd,
-                    currentTier: settings.subscriptionTier,
-                    onSelect: { provider in
-                        showAddAIProvider = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            isAddingNewAIProvider = true
-                            editingAIProviderConfig = AIProviderConfig(provider: provider)
+                        if let config = editingAIProviderConfig {
+                            settings.removeAIProvider(config.provider)
                         }
-                    },
-                    onShowPaywall: {
-                        showPaywall = true
+                        editingAIProviderConfig = nil
                     }
                 )
-            }
-            .sheet(isPresented: $showAddLocalModel) {
-                AddLocalModelSheet()
             }
         }
     }
 
-    private func addMockHistory() {
+    // MARK: - AI Cloud Models Section
+
+    private var aiCloudModelsSection: some View {
+        Section {
+            if settings.subscriptionTier == .free {
+                // Free tier: Show OpenAI and Gemini directly
+                let hasConfiguredProvider = settings.configuredAIProviders.contains {
+                    ($0.provider == .openAI || $0.provider == .google) && !$0.apiKey.isEmpty
+                }
+                let configuredProvider = settings.configuredAIProviders.first {
+                    ($0.provider == .openAI || $0.provider == .google) && !$0.apiKey.isEmpty
+                }?.provider
+
+                // OpenAI row
+                FreeProviderRow(
+                    provider: .openAI,
+                    existingConfig: settings.getAIProviderConfig(for: .openAI),
+                    isDisabled: hasConfiguredProvider && configuredProvider != .openAI,
+                    colorScheme: colorScheme,
+                    onTap: {
+                        if hasConfiguredProvider && configuredProvider != .openAI {
+                            showPaywall = true
+                        } else {
+                            isAddingNewAIProvider = settings.getAIProviderConfig(for: .openAI) == nil
+                            editingAIProviderConfig = settings.getAIProviderConfig(for: .openAI) ?? AIProviderConfig(provider: .openAI)
+                        }
+                    }
+                )
+                .listRowBackground(rowBackground)
+
+                // Gemini row
+                FreeProviderRow(
+                    provider: .google,
+                    existingConfig: settings.getAIProviderConfig(for: .google),
+                    isDisabled: hasConfiguredProvider && configuredProvider != .google,
+                    colorScheme: colorScheme,
+                    onTap: {
+                        if hasConfiguredProvider && configuredProvider != .google {
+                            showPaywall = true
+                        } else {
+                            isAddingNewAIProvider = settings.getAIProviderConfig(for: .google) == nil
+                            editingAIProviderConfig = settings.getAIProviderConfig(for: .google) ?? AIProviderConfig(provider: .google)
+                        }
+                    }
+                )
+                .listRowBackground(rowBackground)
+            } else {
+                // Pro/Power tier: Show all configured providers + Add button
+                ForEach(settings.configuredAIProviders) { config in
+                    ConfiguredAIProviderRow(
+                        config: config,
+                        colorScheme: colorScheme
+                    ) {
+                        isAddingNewAIProvider = false
+                        editingAIProviderConfig = config
+                    }
+                    .listRowBackground(rowBackground)
+                }
+
+                // Add AI Provider button
+                if !settings.availableProvidersToAdd.isEmpty {
+                    Button(action: {
+                        showAddAIProvider = true
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.title2)
+                                .foregroundStyle(AppTheme.accent)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Add AI Provider")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.primary)
+
+                                Text("Add transcription, translation & power mode providers")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+                        }
+                    }
+                    .listRowBackground(rowBackground)
+                }
+            }
+        } header: {
+            Text("AI Cloud Models")
+        } footer: {
+            if settings.subscriptionTier == .free {
+                Text("Free tier includes one provider. Upgrade to Pro for multiple providers.")
+            } else {
+                Text("Configure cloud AI providers. Requires internet connection and API keys.")
+            }
+        }
+    }
+
+    // MARK: - AI Local Models Section
+
+    private var aiLocalModelsSection: some View {
+        Section {
+            if settings.subscriptionTier == .power {
+                // Only show WhisperKit if configured (ready or downloading)
+                if settings.whisperKitConfig.status == .ready || settings.whisperKitConfig.status == .downloading {
+                    NavigationLink {
+                        WhisperKitSetupView()
+                    } label: {
+                        LocalModelRow(
+                            type: .whisperKit,
+                            status: settings.whisperKitConfig.status,
+                            subtitle: whisperKitSubtitle,
+                            colorScheme: colorScheme
+                        ) { }
+                    }
+                    .listRowBackground(rowBackground)
+                }
+
+                // Only show Apple Intelligence if enabled
+                if settings.appleIntelligenceConfig.isEnabled {
+                    NavigationLink {
+                        AppleIntelligenceSetupView()
+                    } label: {
+                        LocalModelRow(
+                            type: .appleIntelligence,
+                            status: appleIntelligenceStatus,
+                            subtitle: appleIntelligenceSubtitle,
+                            colorScheme: colorScheme
+                        ) { }
+                    }
+                    .listRowBackground(rowBackground)
+                }
+
+                // Only show Apple Translation if there are downloaded languages
+                if !settings.appleTranslationConfig.downloadedLanguages.isEmpty {
+                    NavigationLink {
+                        AppleTranslationSetupView()
+                    } label: {
+                        LocalModelRow(
+                            type: .appleTranslation,
+                            status: appleTranslationStatus,
+                            subtitle: appleTranslationSubtitle,
+                            colorScheme: colorScheme
+                        ) { }
+                    }
+                    .listRowBackground(rowBackground)
+                }
+
+                // Ollama/LM Studio (if configured)
+                if let localConfig = settings.getAIProviderConfig(for: .local)?.localConfig {
+                    LocalModelRow(
+                        type: localModelTypeFromConfig(localConfig),
+                        status: .ready,
+                        subtitle: localConfig.baseURL,
+                        colorScheme: colorScheme
+                    ) {
+                        isAddingNewAIProvider = false
+                        editingAIProviderConfig = settings.getAIProviderConfig(for: .local)
+                    }
+                    .listRowBackground(rowBackground)
+                }
+
+                // Add Local Model button
+                Button(action: {
+                    showAddLocalModel = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.title2)
+                            .foregroundStyle(.green)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Add Local Model")
+                                .font(.callout.weight(.medium))
+                                .foregroundStyle(.primary)
+
+                            Text("Set up on-device or self-hosted AI")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                }
+                .listRowBackground(rowBackground)
+            } else {
+                // Locked state for non-Power users
+                Button(action: {
+                    showPaywall = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "cpu")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                            .background(Color.secondary.opacity(0.15))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Local Models")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                Text("POWER")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange)
+                                    .clipShape(Capsule())
+                            }
+
+                            Text("On-device AI for privacy and offline use")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("AI Local Models")
+        } footer: {
+            if settings.subscriptionTier == .power {
+                VStack(alignment: .leading, spacing: 4) {
+                    if hasAnyLocalModel {
+                        Text("Process data on-device for privacy. No internet required once downloaded.")
+                        if settings.localModelStorageBytes > 0 {
+                            Text("Storage used: \(settings.localModelStorageFormatted)")
+                                .fontWeight(.medium)
+                        }
+                    } else {
+                        Text("Add on-device models for privacy and offline use.")
+                    }
+                }
+            } else {
+                Text("Upgrade to Power to use on-device AI models for privacy and offline transcription.")
+            }
+        }
+    }
+
+    // MARK: - Provider Preferences Section
+
+    private var providerPreferencesSection: some View {
+        Section {
+            NavigationLink {
+                DefaultProvidersView()
+            } label: {
+                SettingsRow(
+                    icon: "slider.horizontal.3",
+                    iconColor: .indigo,
+                    title: "Default Providers",
+                    subtitle: defaultProvidersSubtitle
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Only show Privacy Mode toggle when local providers are available
+            if settings.canEnablePrivacyMode {
+                Toggle(isOn: $settings.forcePrivacyMode) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "lock.shield.fill")
+                            .font(.title2)
+                            .foregroundStyle(.green)
+                            .frame(width: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Privacy Mode")
+                                .font(.callout)
+                            Text("Force local-only processing")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .tint(.green)
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Provider Preferences")
+        } footer: {
+            if settings.forcePrivacyMode {
+                Text("All processing will use local models. Cloud providers are disabled.")
+            } else {
+                Text("Choose which provider to use for each capability. Power Modes can override these settings.")
+            }
+        }
+    }
+
+    // MARK: - Dictation Section
+
+    private var dictationSection: some View {
+        Section {
+            NavigationLink {
+                DictationLanguagePickerView(selectedLanguage: Binding(
+                    get: { settings.selectedDictationLanguage },
+                    set: { settings.selectedDictationLanguage = $0 }
+                ))
+            } label: {
+                SettingsRow(
+                    icon: "mic",
+                    iconColor: .blue,
+                    title: "Dictation Language",
+                    subtitle: settings.selectedDictationLanguage?.displayName ?? "Auto-detect"
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Dictation")
+        } footer: {
+            Text("Set your primary speaking language for more accurate transcription. Auto-detect works best for multilingual speakers.")
+        }
+    }
+
+    // MARK: - Translation Section
+
+    private var translationSection: some View {
+        Section {
+            if settings.subscriptionTier != .free {
+                NavigationLink {
+                    LanguagePickerView(selectedLanguage: $settings.selectedTargetLanguage)
+                } label: {
+                    HStack {
+                        SettingsRow(
+                            icon: "globe",
+                            iconColor: .purple,
+                            title: "Translation Language",
+                            subtitle: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTargetLanguage.displayName)"
+                        )
+                    }
+                }
+                .listRowBackground(rowBackground)
+            } else {
+                // Locked state for free users
+                Button(action: {
+                    showPaywall = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "globe")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Translation")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                Text("PRO")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AppTheme.accent)
+                                    .clipShape(Capsule())
+                            }
+
+                            Text("Translate transcriptions to 50+ languages")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Translation")
+        } footer: {
+            if settings.subscriptionTier == .free {
+                Text("Upgrade to Pro to translate your transcriptions to 50+ languages.")
+            }
+        }
+    }
+
+    // MARK: - Vocabulary Section
+
+    private var vocabularySection: some View {
+        Section {
+            NavigationLink {
+                VocabularyView()
+            } label: {
+                SettingsRow(
+                    icon: "character.book.closed.fill",
+                    iconColor: .teal,
+                    title: "Vocabulary",
+                    subtitle: settings.vocabulary.isEmpty ? "Add words to improve recognition" : "\(settings.vocabulary.count) words"
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Recognition")
+        } footer: {
+            Text("Add names, companies, acronyms, and slang to improve transcription accuracy.")
+        }
+    }
+
+    // MARK: - Memory Section
+
+    private var memorySection: some View {
+        Section {
+            if settings.subscriptionTier == .power {
+                NavigationLink {
+                    MemoryView()
+                } label: {
+                    SettingsRow(
+                        icon: "brain.head.profile",
+                        iconColor: .pink,
+                        title: "Memory",
+                        subtitle: "History, workflow & context memory"
+                    )
+                }
+                .listRowBackground(rowBackground)
+            } else {
+                // Locked state for non-Power users
+                Button(action: {
+                    showPaywall = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "brain.head.profile")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Memory")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                Text("POWER")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange)
+                                    .clipShape(Capsule())
+                            }
+
+                            Text("AI remembers context across conversations")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Memory")
+        } footer: {
+            if settings.subscriptionTier == .power {
+                Text("View and manage AI memory for history, Power Modes, and Contexts.")
+            } else {
+                Text("Upgrade to Power for AI memory that learns your preferences and context.")
+            }
+        }
+    }
+
+    // MARK: - App Library Section
+
+    private var appLibrarySection: some View {
+        Section {
+            if settings.subscriptionTier != .free {
+                NavigationLink {
+                    AppLibraryView()
+                } label: {
+                    SettingsRow(
+                        icon: "square.grid.2x2",
+                        iconColor: .indigo,
+                        title: "App Library",
+                        subtitle: "Manage app categories for auto-enable"
+                    )
+                }
+                .listRowBackground(rowBackground)
+            } else {
+                // Locked state for free users
+                Button(action: {
+                    showPaywall = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "square.grid.2x2")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("App Library")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                Text("PRO")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(AppTheme.accent)
+                                    .clipShape(Capsule())
+                            }
+
+                            Text("Auto-enable modes based on which app you're in")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Apps")
+        } footer: {
+            if settings.subscriptionTier != .free {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Reassign apps to different categories. Contexts and Power Modes can auto-enable based on app categories.")
+                    Text("Manual selection always takes precedence over app auto-enable.")
+                        .fontWeight(.medium)
+                }
+            } else {
+                Text("Upgrade to Pro for automatic mode switching based on which app you're using.")
+            }
+        }
+    }
+
+    // MARK: - Webhooks Section
+
+    private var webhooksSection: some View {
+        Section {
+            if settings.subscriptionTier == .power {
+                NavigationLink {
+                    WebhooksView()
+                } label: {
+                    SettingsRow(
+                        icon: "link",
+                        iconColor: .cyan,
+                        title: "Webhooks",
+                        subtitle: webhooksSubtitle
+                    )
+                }
+                .listRowBackground(rowBackground)
+            } else {
+                // Locked state for non-Power users
+                Button(action: {
+                    showPaywall = true
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "link")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 6) {
+                                Text("Webhooks")
+                                    .font(.callout.weight(.medium))
+                                    .foregroundStyle(.secondary)
+
+                                Text("POWER")
+                                    .font(.caption2.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.orange)
+                                    .clipShape(Capsule())
+                            }
+
+                            Text("Connect to Slack, Notion, Make, or Zapier")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Integrations")
+        } footer: {
+            if settings.subscriptionTier == .power {
+                Text("Connect Power Modes to external services like Slack, Notion, Make, or Zapier.")
+            } else {
+                Text("Upgrade to Power to automate workflows with webhooks and integrations.")
+            }
+        }
+    }
+
+    // MARK: - Behavior Section
+
+    private var behaviorSection: some View {
+        Section {
+            Toggle(isOn: $settings.autoReturnEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-return after transcription")
+                        .font(.callout)
+                    Text("Automatically dismiss after copying to clipboard")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            Toggle(isOn: $settings.powerModeStreamingEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Stream Power Mode responses")
+                        .font(.callout)
+                    Text("Show text as it's generated instead of waiting for completion")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(AppTheme.powerAccent)
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Behavior")
+        }
+    }
+
+    // MARK: - Advanced Section
+
+    private var advancedSection: some View {
+        Section {
+            // Retry Settings
+            NavigationLink {
+                RetrySettingsView()
+            } label: {
+                SettingsRow(
+                    icon: "arrow.clockwise",
+                    iconColor: .blue,
+                    title: "Retry Settings",
+                    subtitle: settings.autoRetryEnabled ? "Auto-retry enabled" : "Auto-retry disabled"
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Token Limits
+            NavigationLink {
+                AdvancedTokenLimitsView()
+            } label: {
+                SettingsRow(
+                    icon: "slider.horizontal.3",
+                    iconColor: .purple,
+                    title: "Token Limits",
+                    subtitle: "Configure AI context window usage"
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Diagnostics
+            NavigationLink {
+                DiagnosticsView()
+            } label: {
+                SettingsRow(
+                    icon: "stethoscope",
+                    iconColor: .teal,
+                    title: "Diagnostics",
+                    subtitle: "View and export activity logs"
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Security & Privacy
+            NavigationLink {
+                SecurityPrivacyView()
+            } label: {
+                SettingsRow(
+                    icon: "lock.shield",
+                    iconColor: .green,
+                    title: "Security & Privacy",
+                    subtitle: settings.biometricProtectionEnabled ? "\(biometricName) enabled" : "Tap to configure"
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Advanced")
+        } footer: {
+            Text("Fine-tune retry behavior, AI limits, diagnostics, and security settings.")
+        }
+    }
+
+    // MARK: - Usage & Costs Section
+
+    private var usageCostsSection: some View {
+        Section {
+            NavigationLink {
+                CostAnalyticsView()
+            } label: {
+                SettingsRow(
+                    icon: "chart.pie.fill",
+                    iconColor: .green,
+                    title: "Cost Analytics",
+                    subtitle: "View usage costs and statistics"
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Usage & Costs")
+        } footer: {
+            Text("Track your API usage costs across providers.")
+        }
+    }
+
+    // MARK: - About Section
+
+    private var aboutSection: some View {
+        Section {
+            SettingsRow(
+                icon: "info.circle",
+                iconColor: .blue,
+                title: "Version",
+                subtitle: "1.0.0 (Build 1)"
+            )
+            .listRowBackground(rowBackground)
+
+            Button(action: {
+                if let url = URL(string: "https://swiftspeak.app/privacy") {
+                    UIApplication.shared.open(url)
+                }
+            }) {
+                SettingsRow(
+                    icon: "hand.raised",
+                    iconColor: .green,
+                    title: "Privacy Policy",
+                    subtitle: nil
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            Button(action: {
+                if let url = URL(string: "https://swiftspeak.app/terms") {
+                    UIApplication.shared.open(url)
+                }
+            }) {
+                SettingsRow(
+                    icon: "doc.plaintext",
+                    iconColor: .gray,
+                    title: "Terms of Service",
+                    subtitle: nil
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("About")
+        }
+    }
+
+    // MARK: - Debug Section
+
+    #if DEBUG
+    private var debugSection: some View {
+        Section {
+            // Microphone Permission
+            HStack {
+                SettingsRow(
+                    icon: "mic.fill",
+                    iconColor: microphonePermissionColor,
+                    title: "Microphone Permission",
+                    subtitle: microphonePermissionStatus
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Subscription Override
+            Picker(selection: $settings.subscriptionTier) {
+                ForEach(SubscriptionTier.allCases, id: \.self) { tier in
+                    Text(tier.displayName).tag(tier)
+                }
+            } label: {
+                SettingsRow(
+                    icon: "crown.fill",
+                    iconColor: .yellow,
+                    title: "Subscription (Debug)",
+                    subtitle: nil
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Add mock transcriptions
+            Button(action: addMockTranscriptions) {
+                SettingsRow(
+                    icon: "doc.text.fill",
+                    iconColor: .orange,
+                    title: "Add Mock Transcriptions",
+                    subtitle: "Add 5 sample entries to history"
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Reset all data
+            Button(action: {
+                showResetAllConfirmation = true
+            }) {
+                SettingsRow(
+                    icon: "trash.fill",
+                    iconColor: .red,
+                    title: "Reset All Data",
+                    subtitle: "Clear all settings and history"
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Debug")
+        }
+        .alert("Reset All Data?", isPresented: $showResetAllConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                settings.resetAllSettings()
+            }
+        } message: {
+            Text("This will clear all settings, history, and configured providers. This action cannot be undone.")
+        }
+    }
+
+    private func addMockTranscriptions() {
         let mockTexts = [
-            "Hey team, just wanted to follow up on our discussion from yesterday. I think we should move forward with the new design.",
-            "Don't forget to pick up milk and eggs from the grocery store on your way home.",
-            "The quarterly report shows a 15% increase in user engagement compared to last quarter.",
+            "Just finished the quarterly report and sent it to the team. Need to follow up with Sarah about the budget review meeting tomorrow.",
+            "Note to self: pick up groceries on the way home. Milk, bread, eggs, and coffee.",
+            "Great meeting with the client today! They approved the new design mockups and want to proceed with phase two next week.",
+            "Reminder: call Mom for her birthday on Saturday. Don't forget to order the flowers from that new shop downtown.",
             "I'll be working from home tomorrow. Please reach out via Slack if you need anything urgent."
         ]
 
@@ -814,2963 +1118,11 @@ struct SettingsView: View {
             settings.addTranscription(record)
         }
     }
-}
-
-// MARK: - Subscription Card
-struct SubscriptionCard: View {
-    let tier: SubscriptionTier
-    let onUpgrade: () -> Void
-    @Environment(\.colorScheme) var colorScheme
-
-    private var cardBackground: LinearGradient {
-        if tier == .free {
-            return LinearGradient(
-                colors: colorScheme == .dark ?
-                    [Color.white.opacity(0.1), Color.white.opacity(0.05)] :
-                    [Color.black.opacity(0.05), Color.black.opacity(0.02)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        } else {
-            return LinearGradient(
-                colors: [AppTheme.accent.opacity(0.3), AppTheme.accentSecondary.opacity(0.3)],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-
-    var body: some View {
-        VStack(spacing: 16) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Current Plan")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    HStack(spacing: 8) {
-                        Text(tier.displayName)
-                            .font(.title2.weight(.bold))
-                            .foregroundStyle(.primary)
-
-                        if tier != .free {
-                            Image(systemName: "checkmark.seal.fill")
-                                .foregroundStyle(AppTheme.accent)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                if tier == .free {
-                    Button(action: {
-                        HapticManager.lightTap()
-                        onUpgrade()
-                    }) {
-                        Text("Upgrade")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(AppTheme.accentGradient)
-                            .clipShape(Capsule())
-                    }
-                } else if tier == .pro {
-                    Button(action: {
-                        HapticManager.lightTap()
-                        onUpgrade()
-                    }) {
-                        Text("Go Power")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(AppTheme.accent)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 6)
-                            .background(AppTheme.accent.opacity(0.15))
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-
-            // Different messages based on tier
-            switch tier {
-            case .free:
-                Text("Unlock unlimited transcriptions, multiple providers, and more!")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            case .pro:
-                Text("Unlimited transcriptions & multiple providers unlocked!")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            case .power:
-                Text("All features unlocked. Thank you for your support!")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(20)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-    }
-}
-
-// MARK: - Configured AI Provider Row
-struct ConfiguredAIProviderRow: View {
-    let config: AIProviderConfig
-    let colorScheme: ColorScheme
-    let onEdit: () -> Void
-
-    var body: some View {
-        Button(action: {
-            HapticManager.lightTap()
-            onEdit()
-        }) {
-            HStack(spacing: 12) {
-                // Provider icon
-                Image(systemName: config.provider.icon)
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 32, height: 32)
-                    .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-
-                // Provider info
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(config.provider.displayName)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.primary)
-
-                        if config.provider.requiresPowerTier {
-                            Text("POWER")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color.orange)
-                                .clipShape(Capsule())
-                        }
-
-                        if config.provider.requiresAPIKey {
-                            Circle()
-                                .fill(config.apiKey.isEmpty ? .orange : .green)
-                                .frame(width: 6, height: 6)
-                        }
-                    }
-
-                    // Show model per category
-                    HStack(spacing: 6) {
-                        ForEach(config.detailedModelSummary, id: \.0) { category, model in
-                            HStack(spacing: 3) {
-                                Image(systemName: category.icon)
-                                    .font(.caption2)
-                                Text(model)
-                                    .font(.caption2)
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(categoryColor(for: category))
-                            .clipShape(Capsule())
-                        }
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func categoryColor(for category: ProviderUsageCategory) -> Color {
-        switch category {
-        case .transcription: return .blue
-        case .translation: return .purple
-        case .powerMode: return .orange
-        }
-    }
-}
-
-// MARK: - Add AI Provider Sheet
-struct AddAIProviderSheet: View {
-    let availableProviders: [AIProvider]
-    let currentTier: SubscriptionTier
-    let onSelect: (AIProvider) -> Void
-    let onShowPaywall: () -> Void
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    // Filter state - nil means "All"
-    @State private var selectedFilter: ProviderUsageCategory? = nil
-    @State private var selectedLanguage: Language? = nil
-    @State private var showLanguagePicker = false
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    private func isProviderLocked(_ provider: AIProvider) -> Bool {
-        provider.requiresPowerTier && currentTier != .power
-    }
-
-    private var filteredProviders: [AIProvider] {
-        var providers = availableProviders
-
-        // Filter by capability
-        if let filter = selectedFilter {
-            providers = providers.filter { $0.supportedCategories.contains(filter) }
-        }
-
-        // Filter by language support (only when a language is selected)
-        if let language = selectedLanguage, let capability = selectedFilter {
-            providers = providers.filter { provider in
-                let level = ProviderLanguageDatabase.supportLevel(
-                    provider: provider,
-                    language: language,
-                    for: capability
-                )
-                return level >= .limited
-            }
-        }
-
-        return providers
-    }
-
-    /// Get language support level for display
-    private func languageSupport(for provider: AIProvider) -> LanguageSupportLevel? {
-        guard let language = selectedLanguage, let capability = selectedFilter else {
-            return nil
-        }
-        return ProviderLanguageDatabase.supportLevel(provider: provider, language: language, for: capability)
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                backgroundColor.ignoresSafeArea()
-
-                List {
-                    // Filter Section
-                    Section {
-                        capabilityFilterView
-
-                        // Language filter (shown when a capability is selected)
-                        if selectedFilter != nil {
-                            languageFilterRow
-                        }
-                    }
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-
-                    Section {
-                        ForEach(filteredProviders) { provider in
-                            let isLocked = isProviderLocked(provider)
-
-                            Button(action: {
-                                HapticManager.selection()
-                                if isLocked {
-                                    dismiss()
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        onShowPaywall()
-                                    }
-                                } else {
-                                    onSelect(provider)
-                                }
-                            }) {
-                                HStack(spacing: 12) {
-                                    Image(systemName: provider.icon)
-                                        .font(.title3)
-                                        .foregroundStyle(isLocked ? .secondary : AppTheme.accent)
-                                        .frame(width: 40, height: 40)
-                                        .background((isLocked ? Color.secondary : AppTheme.accent).opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack(spacing: 6) {
-                                            Text(provider.displayName)
-                                                .font(.callout.weight(.medium))
-                                                .foregroundStyle(isLocked ? .secondary : .primary)
-
-                                            if provider.requiresPowerTier {
-                                                Text("POWER")
-                                                    .font(.caption2.weight(.bold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(Color.orange)
-                                                    .clipShape(Capsule())
-                                            }
-                                        }
-
-                                        Text(provider.description)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(2)
-
-                                        // Show capabilities
-                                        HStack(spacing: 4) {
-                                            ForEach(Array(provider.supportedCategories).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { category in
-                                                HStack(spacing: 2) {
-                                                    Image(systemName: category.icon)
-                                                        .font(.caption2)
-                                                }
-                                                .foregroundStyle(isLocked ? .secondary : categoryColor(for: category))
-                                            }
-                                        }
-                                    }
-
-                                    Spacer()
-
-                                    // Language support indicator (when language is selected)
-                                    if let level = languageSupport(for: provider) {
-                                        LanguageSupportBadge(level: level)
-                                    }
-
-                                    if isLocked {
-                                        Image(systemName: "lock.fill")
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Image(systemName: "plus.circle.fill")
-                                            .foregroundStyle(AppTheme.accent)
-                                    }
-                                }
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-                    } header: {
-                        Text("Available Providers")
-                    } footer: {
-                        Text("Add an AI provider to use for transcription, translation, or Power Mode. Local AI (Ollama, LM Studio, OpenAI-compatible) requires a Power subscription.")
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle("Add AI Provider")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Capability Filter View
-
-    private var capabilityFilterView: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                // "All" filter chip
-                FilterChip(
-                    title: "All",
-                    icon: "square.grid.2x2",
-                    color: AppTheme.accent,
-                    isSelected: selectedFilter == nil,
-                    count: availableProviders.count
-                ) {
-                    HapticManager.selection()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        selectedFilter = nil
-                        selectedLanguage = nil
-                    }
-                }
-
-                // Category filter chips
-                ForEach(ProviderUsageCategory.allCases) { category in
-                    let count = availableProviders.filter { $0.supportedCategories.contains(category) }.count
-                    FilterChip(
-                        title: category.displayName,
-                        icon: category.icon,
-                        color: categoryColor(for: category),
-                        isSelected: selectedFilter == category,
-                        count: count
-                    ) {
-                        HapticManager.selection()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            selectedFilter = category
-                            // Clear language when switching categories
-                            if category != selectedFilter {
-                                selectedLanguage = nil
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-        }
-    }
-
-    // MARK: - Language Filter Row
-
-    private var languageFilterRow: some View {
-        VStack(spacing: 0) {
-            Button(action: {
-                HapticManager.selection()
-                showLanguagePicker = true
-            }) {
-                HStack(spacing: 12) {
-                    Image(systemName: "globe")
-                        .font(.body.weight(.medium))
-                        .foregroundStyle(selectedLanguage != nil ? .white : .secondary)
-                        .frame(width: 32, height: 32)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .fill(selectedLanguage != nil ? categoryColor(for: selectedFilter ?? .translation) : Color.secondary.opacity(0.15))
-                        )
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Filter by Language")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.primary)
-
-                        if let lang = selectedLanguage {
-                            Text("\(lang.flag) \(lang.displayName)")
-                                .font(.caption)
-                                .foregroundStyle(categoryColor(for: selectedFilter ?? .translation))
-                        } else {
-                            Text("Show providers supporting a specific language")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    if selectedLanguage != nil {
-                        Button(action: {
-                            HapticManager.selection()
-                            withAnimation {
-                                selectedLanguage = nil
-                            }
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-            }
-            .buttonStyle(.plain)
-        }
-        .background(colorScheme == .dark ? Color.white.opacity(0.05) : Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.bottom, 8)
-        .sheet(isPresented: $showLanguagePicker) {
-            LanguageFilterPicker(
-                selectedLanguage: $selectedLanguage,
-                capability: selectedFilter ?? .translation
-            )
-        }
-    }
-
-    private func categoryColor(for category: ProviderUsageCategory) -> Color {
-        switch category {
-        case .transcription: return .blue
-        case .translation: return .purple
-        case .powerMode: return .orange
-        }
-    }
-}
-
-// MARK: - Filter Chip Component
-private struct FilterChip: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let isSelected: Bool
-    let count: Int
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.caption.weight(.semibold))
-
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-
-                Text("\(count)")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(isSelected ? Color.white.opacity(0.25) : color.opacity(0.15))
-                    .clipShape(Capsule())
-            }
-            .foregroundStyle(isSelected ? .white : color)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(isSelected ? color : color.opacity(0.1))
-            )
-            .overlay(
-                Capsule()
-                    .strokeBorder(isSelected ? Color.clear : color.opacity(0.3), lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Language Support Badge
-private struct LanguageSupportBadge: View {
-    let level: LanguageSupportLevel
-
-    var body: some View {
-        HStack(spacing: 3) {
-            Image(systemName: level.icon)
-                .font(.caption2)
-            Text(level.shortLabel)
-                .font(.caption2.weight(.medium))
-        }
-        .foregroundStyle(level.color)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(level.color.opacity(0.15))
-        .clipShape(Capsule())
-    }
-}
-
-// MARK: - Language Filter Picker
-private struct LanguageFilterPicker: View {
-    @Binding var selectedLanguage: Language?
-    let capability: ProviderUsageCategory
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    /// Languages sorted by provider support count (most supported first)
-    private var sortedLanguages: [Language] {
-        Language.allCases.sorted { lang1, lang2 in
-            let count1 = ProviderLanguageDatabase.providers(supporting: lang1, for: capability, minimumLevel: .limited).count
-            let count2 = ProviderLanguageDatabase.providers(supporting: lang2, for: capability, minimumLevel: .limited).count
-            return count1 > count2
-        }
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                backgroundColor.ignoresSafeArea()
-
-                List {
-                    // Popular languages section
-                    Section {
-                        ForEach(ProviderLanguageDatabase.popularLanguages, id: \.self) { language in
-                            languageRow(for: language)
-                        }
-                    } header: {
-                        Text("Popular")
-                    }
-
-                    // All languages section
-                    Section {
-                        ForEach(sortedLanguages.filter { !ProviderLanguageDatabase.popularLanguages.contains($0) }, id: \.self) { language in
-                            languageRow(for: language)
-                        }
-                    } header: {
-                        Text("All Languages")
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle("Select Language")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                if selectedLanguage != nil {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Clear") {
-                            selectedLanguage = nil
-                            dismiss()
-                        }
-                        .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private func languageRow(for language: Language) -> some View {
-        let providerCount = ProviderLanguageDatabase.providers(
-            supporting: language,
-            for: capability,
-            minimumLevel: .limited
-        ).count
-
-        let excellentCount = ProviderLanguageDatabase.providers(
-            supporting: language,
-            for: capability,
-            minimumLevel: .excellent
-        ).count
-
-        return Button(action: {
-            HapticManager.selection()
-            selectedLanguage = language
-            dismiss()
-        }) {
-            HStack(spacing: 12) {
-                Text(language.flag)
-                    .font(.title2)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(language.displayName)
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.primary)
-
-                    HStack(spacing: 8) {
-                        Text("\(providerCount) provider\(providerCount == 1 ? "" : "s")")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        if excellentCount > 0 {
-                            HStack(spacing: 2) {
-                                Image(systemName: "star.fill")
-                                    .font(.caption2)
-                                Text("\(excellentCount) excellent")
-                                    .font(.caption)
-                            }
-                            .foregroundStyle(.green)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                if selectedLanguage == language {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(AppTheme.accent)
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .listRowBackground(rowBackground)
-    }
-}
-
-// MARK: - AI Provider Editor Sheet
-struct AIProviderEditorSheet: View {
-    let config: AIProviderConfig
-    let isEditing: Bool
-    let onSave: (AIProviderConfig) -> Void
-    let onDelete: (() -> Void)?
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    @State private var apiKey: String = ""
-    @State private var endpoint: String = ""
-    @State private var usageCategories: Set<ProviderUsageCategory> = []
-    @State private var transcriptionModel: String = ""
-    @State private var translationModel: String = ""
-    @State private var powerModeModel: String = ""
-    @State private var showDeleteConfirmation = false
-    @State private var showInstructions = false
-
-    // Provider-specific configuration
-    @State private var googleProjectId: String = ""
-    @State private var azureRegion: AzureRegion = .eastUS
-    // Refresh models state
-    @State private var isRefreshingModels = false
-    @State private var refreshedSTTModels: [String]? = nil
-    @State private var refreshedLLMModels: [String]? = nil
-    @State private var refreshError: String? = nil
-
-    // Local provider configuration state
-    @State private var localProviderType: LocalProviderType = .ollama
-    @State private var localServerURL: String = ""
-    @State private var localAuthToken: String = ""
-    @State private var useAuthToken: Bool = false
-    @State private var streamingEnabled: Bool = true
-    @State private var timeoutSeconds: Int = 10
-    @State private var showAdvancedOptions: Bool = false
-
-    // Connection test state
-    @State private var isTestingConnection = false
-    @State private var connectionTestResult: LocalProviderConnectionResult? = nil
-    @State private var cachedModels: [String] = []
-
-    init(config: AIProviderConfig, isEditing: Bool, onSave: @escaping (AIProviderConfig) -> Void, onDelete: (() -> Void)? = nil) {
-        self.config = config
-        self.isEditing = isEditing
-        self.onSave = onSave
-        self.onDelete = onDelete
-    }
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    private var canSave: Bool {
-        // Must have at least one capability enabled
-        guard !usageCategories.isEmpty else { return false }
-
-        if config.provider.isLocalProvider {
-            // For local providers, need a valid URL
-            return !localServerURL.isEmpty
-        } else if config.provider.requiresAPIKey {
-            guard !apiKey.isEmpty else { return false }
-        }
-
-        // Provider-specific validation
-        switch config.provider {
-        case .google:
-            // Google STT requires Project ID
-            if usageCategories.contains(.transcription) && googleProjectId.isEmpty {
-                return false
-            }
-        case .azure:
-            // Azure always has a region selected (has default), so no additional validation needed
-            break
-        default:
-            break
-        }
-
-        return true
-    }
-
-    // MARK: - Body (broken into sub-views for type-checker performance)
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                backgroundColor.ignoresSafeArea()
-
-                List {
-                    providerInfoHeaderSection
-                    configurationSection
-                    capabilitiesSection
-                    setupInstructionsSection
-                    deleteSection
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle(isEditing ? "Edit Provider" : "Add Provider")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        saveProvider()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!canSave)
-                }
-            }
-            .onAppear {
-                loadConfig()
-            }
-            .alert("Remove Provider?", isPresented: $showDeleteConfirmation) {
-                Button("Cancel", role: .cancel) { }
-                Button("Remove", role: .destructive) {
-                    onDelete?()
-                    dismiss()
-                }
-            } message: {
-                Text("This will remove \(config.provider.displayName) from your configured providers.")
-            }
-        }
-    }
-
-    // MARK: - Provider Info Header Section
-
-    private var providerInfoHeaderSection: some View {
-        Section {
-            HStack(spacing: 16) {
-                Image(systemName: config.provider.icon)
-                    .font(.title)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 56, height: 56)
-                    .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(config.provider.displayName)
-                        .font(.title3.weight(.semibold))
-
-                    Text(config.provider.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16))
-        }
-    }
-
-    // MARK: - Configuration Section
-
-    @ViewBuilder
-    private var configurationSection: some View {
-        if config.provider.isLocalProvider {
-            localProviderTypeSection
-            serverConfigurationSection
-            testConnectionSection
-            advancedOptionsSection
-        } else {
-            cloudProviderConfigSection
-        }
-    }
-
-    // MARK: - Local Provider Type Section
-
-    private var localProviderTypeSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(LocalProviderType.allCases) { type in
-                    localProviderTypeButton(for: type)
-                }
-            }
-            .listRowBackground(rowBackground)
-            .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-        } header: {
-            Text("Provider Type")
-        }
-    }
-
-    private func localProviderTypeButton(for type: LocalProviderType) -> some View {
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                localProviderType = type
-                if localServerURL.isEmpty || localServerURL == LocalProviderType.ollama.defaultEndpoint ||
-                   localServerURL == LocalProviderType.lmStudio.defaultEndpoint ||
-                   localServerURL == LocalProviderType.openAICompatible.defaultEndpoint {
-                    localServerURL = type.defaultEndpoint
-                }
-                connectionTestResult = nil
-                cachedModels = []
-            }
-            HapticManager.selection()
-        } label: {
-            localProviderTypeButtonLabel(for: type)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func localProviderTypeButtonLabel(for type: LocalProviderType) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: type.icon)
-                .font(.body.weight(.medium))
-                .foregroundStyle(localProviderType == type ? .white : .secondary)
-                .frame(width: 32, height: 32)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(localProviderType == type ? AppTheme.accentGradient : LinearGradient(colors: [Color.secondary.opacity(0.15)], startPoint: .top, endPoint: .bottom))
-                )
-
-            VStack(alignment: .leading, spacing: 1) {
-                Text(type.displayName)
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(colorScheme == .dark ? .white : .primary)
-
-                Text(type.description)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer()
-
-            if localProviderType == type {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(AppTheme.accent)
-                    .font(.body)
-            }
-        }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(localProviderType == type ?
-                      (colorScheme == .dark ? Color.white.opacity(0.06) : AppTheme.accent.opacity(0.08)) :
-                      (colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(localProviderType == type ? AppTheme.accent.opacity(0.4) : Color.clear, lineWidth: 1.5)
-        )
-    }
-
-    // MARK: - Server Configuration Section
-
-    private var serverConfigurationSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                TextField(localProviderType.placeholderEndpoint, text: $localServerURL)
-                    .textContentType(.URL)
-                    .autocapitalization(.none)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-                    .font(.body)
-
-                Text("IP address or hostname with port (e.g., 192.168.1.50:11434)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-            .listRowBackground(rowBackground)
-
-            Toggle(isOn: $useAuthToken) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Use API Token")
-                        .font(.callout)
-                    Text("For secured servers requiring authentication")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tint(AppTheme.accent)
-            .listRowBackground(rowBackground)
-
-            if useAuthToken {
-                VStack(alignment: .leading, spacing: 8) {
-                    SecureField("Bearer token", text: $localAuthToken)
-                        .textContentType(.password)
-                        .autocorrectionDisabled()
-                        .font(.body)
-                }
-                .listRowBackground(rowBackground)
-            }
-        } header: {
-            Text("Server URL")
-        }
-    }
-
-    // MARK: - Test Connection Section
-
-    private var testConnectionSection: some View {
-        Section {
-            Button(action: {
-                testConnection()
-            }) {
-                HStack {
-                    if isTestingConnection {
-                        ProgressView()
-                            .scaleEffect(0.8)
-                    } else {
-                        Image(systemName: "network")
-                    }
-                    Text("Test Connection")
-                    Spacer()
-
-                    connectionTestResultIndicator
-                }
-            }
-            .disabled(isTestingConnection || localServerURL.isEmpty)
-            .listRowBackground(rowBackground)
-
-            connectionErrorRow
-            connectionModelsRow
-        } header: {
-            Text("Connection")
-        } footer: {
-            Text("Test your connection to fetch available models. Models will be auto-populated after a successful connection.")
-        }
-    }
-
-    @ViewBuilder
-    private var connectionTestResultIndicator: some View {
-        if let result = connectionTestResult {
-            if result.success {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                    if let latency = result.latencyMs {
-                        Text("\(latency) ms")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            } else {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.red)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var connectionErrorRow: some View {
-        if let result = connectionTestResult, !result.success, let error = result.errorMessage {
-            HStack(spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .listRowBackground(rowBackground)
-        }
-    }
-
-    @ViewBuilder
-    private var connectionModelsRow: some View {
-        if let result = connectionTestResult, result.success, !result.availableModels.isEmpty {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("\(result.availableModels.count) models available")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.green)
-
-                Text(result.availableModels.prefix(5).joined(separator: ", ") +
-                     (result.availableModels.count > 5 ? "..." : ""))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-            .listRowBackground(rowBackground)
-        }
-    }
-
-    // MARK: - Advanced Options Section
-
-    private var advancedOptionsSection: some View {
-        Section {
-            DisclosureGroup("Advanced Options", isExpanded: $showAdvancedOptions) {
-                Toggle(isOn: $streamingEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Enable Streaming")
-                            .font(.callout)
-                        Text("Stream responses in real-time")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .padding(.top, 8)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Request Timeout")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    Picker("Timeout", selection: $timeoutSeconds) {
-                        ForEach(LocalProviderConfig.timeoutOptions, id: \.self) { seconds in
-                            Text("\(seconds)s").tag(seconds)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                }
-                .padding(.top, 8)
-            }
-        }
-        .listRowBackground(rowBackground)
-    }
-
-    // MARK: - Cloud Provider Config Section
-
-    private var cloudProviderConfigSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("API Key")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-
-                SecureField("Enter your API key", text: $apiKey)
-                    .textContentType(.password)
-                    .autocorrectionDisabled()
-            }
-            .listRowBackground(rowBackground)
-
-            // Google Cloud - Project ID (required for STT)
-            if config.provider == .google && usageCategories.contains(.transcription) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Project ID")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-
-                        Text("Required for Speech-to-Text")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.orange.opacity(0.15))
-                            .clipShape(Capsule())
-                    }
-
-                    TextField("your-gcp-project-id", text: $googleProjectId)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-
-                    Text("Find this in Google Cloud Console → Project Settings")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .listRowBackground(rowBackground)
-            }
-
-            // Azure - Region (required for Translator)
-            if config.provider == .azure {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Region")
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(.secondary)
-
-                        Text("Required")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.blue.opacity(0.15))
-                            .clipShape(Capsule())
-                    }
-
-                    Picker("Azure Region", selection: $azureRegion) {
-                        ForEach(AzureRegion.allCases) { region in
-                            Text(region.displayName).tag(region)
-                        }
-                    }
-                    .pickerStyle(.menu)
-
-                    Text("Select the region where your Azure Translator resource is deployed")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-                .listRowBackground(rowBackground)
-            }
-        } header: {
-            Text("Configuration")
-        }
-    }
-
-    // MARK: - Capabilities Section
-
-    private var capabilitiesSection: some View {
-        Section {
-            ForEach(ProviderUsageCategory.allCases) { category in
-                if config.provider.supportedCategories.contains(category) {
-                    categoryRow(for: category)
-                }
-            }
-
-            refreshModelsButton
-            refreshErrorRow
-        } header: {
-            Text("Capabilities & Models")
-        } footer: {
-            Text("Enable capabilities and select which model to use for each. Tap 'Validate & Fetch Models' to verify your API key and load the latest available models.")
-        }
-    }
-
-    private func categoryRow(for category: ProviderUsageCategory) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Button(action: {
-                HapticManager.selection()
-                if usageCategories.contains(category) {
-                    usageCategories.remove(category)
-                } else {
-                    usageCategories.insert(category)
-                }
-            }) {
-                HStack {
-                    Image(systemName: category.icon)
-                        .font(.body)
-                        .foregroundStyle(categoryColor(for: category))
-                        .frame(width: 24)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(category.displayName)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.primary)
-
-                        Text(category.description)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Image(systemName: usageCategories.contains(category) ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(usageCategories.contains(category) ? categoryColor(for: category) : Color.secondary.opacity(0.3))
-                }
-            }
-            .buttonStyle(.plain)
-
-            if usageCategories.contains(category) {
-                Picker("Model", selection: modelBinding(for: category)) {
-                    ForEach(availableModels(for: category), id: \.self) { model in
-                        Text(model).tag(model)
-                    }
-                }
-                .pickerStyle(.menu)
-                .padding(.leading, 32)
-            }
-        }
-        .listRowBackground(rowBackground)
-    }
-
-    private var refreshModelsButton: some View {
-        Button(action: {
-            refreshModels()
-        }) {
-            HStack {
-                if isRefreshingModels {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                } else {
-                    Image(systemName: "checkmark.shield")
-                }
-                Text("Validate & Fetch Models")
-                Spacer()
-                if refreshedLLMModels != nil || refreshedSTTModels != nil {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                        Text("Valid")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
-                }
-            }
-        }
-        .disabled(isRefreshingModels || apiKey.isEmpty)
-        .listRowBackground(rowBackground)
-    }
-
-    @ViewBuilder
-    private var refreshErrorRow: some View {
-        if let error = refreshError {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            .listRowBackground(rowBackground)
-        }
-    }
-
-    // MARK: - Setup Instructions Section
-
-    private var setupInstructionsSection: some View {
-        Section {
-            DisclosureGroup("How to get your API key", isExpanded: $showInstructions) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(config.provider.setupInstructions)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-
-                    if let helpURL = config.provider.apiKeyHelpURL {
-                        Button(action: {
-                            UIApplication.shared.open(helpURL)
-                        }) {
-                            HStack {
-                                Image(systemName: "arrow.up.right.square")
-                                Text("Open \(config.provider.shortName) Dashboard")
-                            }
-                            .font(.subheadline.weight(.medium))
-                            .foregroundStyle(AppTheme.accent)
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-                .padding(.vertical, 8)
-            }
-            .listRowBackground(rowBackground)
-        }
-    }
-
-    // MARK: - Delete Section
-
-    @ViewBuilder
-    private var deleteSection: some View {
-        if isEditing && config.provider != .openAI && onDelete != nil {
-            Section {
-                Button(role: .destructive, action: {
-                    showDeleteConfirmation = true
-                }) {
-                    HStack {
-                        Spacer()
-                        Text("Remove Provider")
-                        Spacer()
-                    }
-                }
-                .listRowBackground(rowBackground)
-            }
-        }
-    }
-
-    private func categoryColor(for category: ProviderUsageCategory) -> Color {
-        switch category {
-        case .transcription: return .blue
-        case .translation: return .purple
-        case .powerMode: return .orange
-        }
-    }
-
-    private func modelBinding(for category: ProviderUsageCategory) -> Binding<String> {
-        switch category {
-        case .transcription:
-            return $transcriptionModel
-        case .translation:
-            return $translationModel
-        case .powerMode:
-            return $powerModeModel
-        }
-    }
-
-    private func loadConfig() {
-        apiKey = config.apiKey
-        endpoint = config.endpoint ?? ""
-        usageCategories = config.usageCategories
-        transcriptionModel = config.transcriptionModel ?? config.provider.defaultSTTModel ?? ""
-        translationModel = config.translationModel ?? config.provider.defaultLLMModel ?? ""
-        powerModeModel = config.powerModeModel ?? config.provider.defaultLLMModel ?? ""
-
-        // Load provider-specific configuration
-        googleProjectId = config.googleProjectId ?? ""
-        if let regionString = config.azureRegion,
-           let region = AzureRegion(rawValue: regionString) {
-            azureRegion = region
-        }
-
-        // Load local provider config
-        if config.provider.isLocalProvider {
-            if let localConfig = config.localConfig {
-                localProviderType = localConfig.type
-                localServerURL = localConfig.baseURL
-                localAuthToken = localConfig.authToken ?? ""
-                useAuthToken = localConfig.authToken?.isEmpty == false
-                streamingEnabled = localConfig.streamingEnabled
-                timeoutSeconds = localConfig.timeoutSeconds
-            } else {
-                localProviderType = .ollama
-                localServerURL = LocalProviderType.ollama.defaultEndpoint
-            }
-            // Load cached models
-            cachedModels = config.cachedModels ?? []
-        }
-    }
-
-    private func saveProvider() {
-        var updatedConfig = config
-        updatedConfig.apiKey = apiKey
-        updatedConfig.usageCategories = usageCategories
-        updatedConfig.transcriptionModel = usageCategories.contains(.transcription) ? transcriptionModel : nil
-        updatedConfig.translationModel = usageCategories.contains(.translation) ? translationModel : nil
-        updatedConfig.powerModeModel = usageCategories.contains(.powerMode) ? powerModeModel : nil
-
-        // Save provider-specific configuration
-        if config.provider == .google {
-            updatedConfig.googleProjectId = googleProjectId.isEmpty ? nil : googleProjectId
-        }
-        if config.provider == .azure {
-            updatedConfig.azureRegion = azureRegion.rawValue
-        }
-
-        if config.provider.isLocalProvider {
-            // Save local provider configuration
-            updatedConfig.localConfig = LocalProviderConfig(
-                type: localProviderType,
-                baseURL: localServerURL,
-                authToken: useAuthToken ? localAuthToken : nil,
-                defaultModel: nil,
-                streamingEnabled: streamingEnabled,
-                timeoutSeconds: timeoutSeconds
-            )
-            // Save cached models from connection test
-            if !cachedModels.isEmpty {
-                updatedConfig.cachedModels = cachedModels
-            }
-            // Legacy endpoint for backward compatibility
-            updatedConfig.endpoint = localServerURL
-        }
-
-        onSave(updatedConfig)
-        dismiss()
-    }
-
-    // MARK: - Test Connection
-
-    private func testConnection() {
-        isTestingConnection = true
-        connectionTestResult = nil
-
-        Task {
-            let startTime = Date()
-
-            do {
-                let models = try await fetchLocalModels()
-                let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
-
-                await MainActor.run {
-                    cachedModels = models
-                    connectionTestResult = .success(latencyMs: latencyMs, models: models)
-                    isTestingConnection = false
-                    HapticManager.success()
-
-                    // Auto-select first model if none selected
-                    if transcriptionModel.isEmpty, let firstSTT = models.first(where: { $0.lowercased().contains("whisper") }) ?? models.first {
-                        transcriptionModel = firstSTT
-                    }
-                    if translationModel.isEmpty, let firstLLM = models.first(where: { !$0.lowercased().contains("whisper") }) ?? models.first {
-                        translationModel = firstLLM
-                    }
-                    if powerModeModel.isEmpty, let firstLLM = models.first(where: { !$0.lowercased().contains("whisper") }) ?? models.first {
-                        powerModeModel = firstLLM
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    connectionTestResult = .failure(error.localizedDescription)
-                    isTestingConnection = false
-                    HapticManager.error()
-                }
-            }
-        }
-    }
-
-    private func fetchLocalModels() async throws -> [String] {
-        let baseURL = localServerURL.trimmingCharacters(in: .whitespaces)
-        guard !baseURL.isEmpty else {
-            throw NSError(domain: "LocalProvider", code: 1, userInfo: [NSLocalizedDescriptionKey: "Server URL is empty"])
-        }
-
-        let endpoint = localProviderType.modelsEndpoint
-        guard let url = URL(string: baseURL + endpoint) else {
-            throw NSError(domain: "LocalProvider", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
-        }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = TimeInterval(timeoutSeconds)
-
-        // Add auth header if configured
-        if useAuthToken && !localAuthToken.isEmpty {
-            request.setValue("Bearer \(localAuthToken)", forHTTPHeaderField: "Authorization")
-        }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw NSError(domain: "LocalProvider", code: 3, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            throw NSError(domain: "LocalProvider", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "Server returned \(httpResponse.statusCode)"])
-        }
-
-        // Parse response based on provider type
-        switch localProviderType {
-        case .ollama:
-            return try parseOllamaModels(data)
-        case .lmStudio, .openAICompatible:
-            return try parseOpenAICompatibleModels(data)
-        }
-    }
-
-    private func parseOllamaModels(_ data: Data) throws -> [String] {
-        struct OllamaModelsResponse: Codable {
-            struct Model: Codable {
-                let name: String
-            }
-            let models: [Model]
-        }
-
-        let response = try JSONDecoder().decode(OllamaModelsResponse.self, from: data)
-        return response.models.map { $0.name }
-    }
-
-    private func parseOpenAICompatibleModels(_ data: Data) throws -> [String] {
-        struct OpenAIModelsResponse: Codable {
-            struct Model: Codable {
-                let id: String
-            }
-            let data: [Model]
-        }
-
-        let response = try JSONDecoder().decode(OpenAIModelsResponse.self, from: data)
-        return response.data.map { $0.id }
-    }
-
-    /// Get available models for a category, preferring refreshed/cached models if available
-    private func availableModels(for category: ProviderUsageCategory) -> [String] {
-        // For local providers, use cached models from connection test
-        if config.provider.isLocalProvider && !cachedModels.isEmpty {
-            switch category {
-            case .transcription:
-                let whisperModels = cachedModels.filter { $0.lowercased().contains("whisper") }
-                return whisperModels.isEmpty ? cachedModels : whisperModels
-            case .translation, .powerMode:
-                let llmModels = cachedModels.filter { !$0.lowercased().contains("whisper") }
-                return llmModels.isEmpty ? cachedModels : llmModels
-            }
-        }
-
-        // For cloud providers, use refreshed models if available
-        switch category {
-        case .transcription:
-            return refreshedSTTModels ?? config.provider.availableSTTModels
-        case .translation, .powerMode:
-            return refreshedLLMModels ?? config.provider.availableLLMModels
-        }
-    }
-
-    /// Fetch available models from the provider's API
-    private func refreshModels() {
-        isRefreshingModels = true
-        refreshError = nil
-
-        Task {
-            do {
-                let (sttModels, llmModels) = try await fetchModelsFromAPI()
-                await MainActor.run {
-                    refreshedSTTModels = sttModels.isEmpty ? nil : sttModels
-                    refreshedLLMModels = llmModels.isEmpty ? nil : llmModels
-                    isRefreshingModels = false
-                    HapticManager.success()
-                }
-            } catch {
-                await MainActor.run {
-                    refreshError = error.localizedDescription
-                    isRefreshingModels = false
-                    HapticManager.error()
-                }
-            }
-        }
-    }
-
-    /// Fetch models from provider API
-    private func fetchModelsFromAPI() async throws -> (sttModels: [String], llmModels: [String]) {
-        switch config.provider {
-        case .openAI:
-            return try await fetchOpenAIModels()
-        case .anthropic:
-            // Anthropic doesn't have a models endpoint, return defaults
-            return ([], config.provider.availableLLMModels)
-        case .google:
-            return try await fetchGoogleModels()
-        case .local:
-            return try await fetchLocalProviderModels()
-        case .elevenLabs:
-            // ElevenLabs doesn't expose models via API
-            return (config.provider.availableSTTModels, [])
-        case .deepgram:
-            // Deepgram models are documented, not via API
-            return (config.provider.availableSTTModels, [])
-        case .assemblyAI:
-            // AssemblyAI models are documented, not via API
-            return (config.provider.availableSTTModels, [])
-        case .deepL:
-            // DeepL doesn't have model selection
-            return ([], config.provider.availableLLMModels)
-        case .azure:
-            // Azure Translator doesn't have model selection
-            return ([], config.provider.availableLLMModels)
-        }
-    }
-
-    private func fetchOpenAIModels() async throws -> (sttModels: [String], llmModels: [String]) {
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw NSError(domain: "OpenAI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch models"])
-        }
-
-        struct ModelsResponse: Codable {
-            struct Model: Codable {
-                let id: String
-            }
-            let data: [Model]
-        }
-
-        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
-        let allModels = modelsResponse.data.map { $0.id }
-
-        // Filter STT models (whisper)
-        let sttModels = allModels.filter { $0.contains("whisper") }.sorted()
-
-        // Filter LLM models (gpt, o1)
-        let llmModels = allModels.filter {
-            $0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("chatgpt-")
-        }.sorted().reversed().map { String($0) }
-
-        return (sttModels, Array(llmModels))
-    }
-
-    private func fetchGoogleModels() async throws -> (sttModels: [String], llmModels: [String]) {
-        let request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1/models?key=\(apiKey)")!)
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw NSError(domain: "Google", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch models"])
-        }
-
-        struct ModelsResponse: Codable {
-            struct Model: Codable {
-                let name: String
-            }
-            let models: [Model]
-        }
-
-        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
-        let allModels = modelsResponse.models.map { $0.name.replacingOccurrences(of: "models/", with: "") }
-
-        // Google doesn't have STT, only LLM
-        let llmModels = allModels.filter { $0.contains("gemini") }
-
-        return ([], llmModels)
-    }
-
-    private func fetchLocalProviderModels() async throws -> (sttModels: [String], llmModels: [String]) {
-        // Use the local provider config
-        let baseURL = localServerURL.isEmpty ? localProviderType.defaultEndpoint : localServerURL
-        let modelsEndpoint = localProviderType.modelsEndpoint
-
-        guard let url = URL(string: "\(baseURL)\(modelsEndpoint)") else {
-            throw NSError(domain: "LocalProvider", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid URL"])
-        }
-
-        var request = URLRequest(url: url)
-        request.timeoutInterval = TimeInterval(timeoutSeconds)
-
-        // Add auth header if configured
-        if useAuthToken && !localAuthToken.isEmpty {
-            request.setValue("Bearer \(localAuthToken)", forHTTPHeaderField: "Authorization")
-        }
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw NSError(domain: "LocalProvider", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to fetch models"])
-        }
-
-        var allModels: [String] = []
-
-        switch localProviderType {
-        case .ollama:
-            allModels = try parseOllamaModels(data)
-        case .lmStudio, .openAICompatible:
-            allModels = try parseOpenAICompatibleModels(data)
-        }
-
-        // Filter models for STT (whisper) and LLM
-        let sttModels = allModels.filter { $0.lowercased().contains("whisper") }
-        let llmModels = allModels.filter { !$0.lowercased().contains("whisper") }
-
-        return (sttModels, llmModels)
-    }
-}
-
-// MARK: - Settings Row
-struct SettingsRow: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let subtitle: String?
-
-    var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: icon)
-                .font(.callout)
-                .foregroundStyle(iconColor)
-                .frame(width: 28, height: 28)
-                .background(iconColor.opacity(0.2))
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-
-                if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Language Picker View
-struct LanguagePickerView: View {
-    @Binding var selectedLanguage: Language
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    var body: some View {
-        ZStack {
-            backgroundColor.ignoresSafeArea()
-
-            List {
-                ForEach(Language.allCases) { language in
-                    Button(action: {
-                        HapticManager.selection()
-                        selectedLanguage = language
-                        dismiss()
-                    }) {
-                        HStack {
-                            Text(language.flag)
-                                .font(.title2)
-
-                            Text(language.displayName)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            if selectedLanguage == language {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(AppTheme.accent)
-                            }
-                        }
-                    }
-                    .listRowBackground(rowBackground)
-                }
-            }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-        }
-        .navigationTitle("Target Language")
-    }
-}
-
-// MARK: - Vocabulary View
-struct VocabularyView: View {
-    @EnvironmentObject var settings: SharedSettings
-    @Environment(\.colorScheme) var colorScheme
-    @State private var showAddSheet = false
-    @State private var editingEntry: VocabularyEntry?
-    @State private var showDeleteConfirmation = false
-    @State private var entryToDelete: VocabularyEntry?
-    @State private var searchText = ""
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    private var filteredEntries: [VocabularyEntry] {
-        if searchText.isEmpty {
-            return settings.vocabulary.sorted { $0.category.rawValue < $1.category.rawValue }
-        }
-        return settings.vocabulary.filter {
-            $0.recognizedWord.localizedCaseInsensitiveContains(searchText) ||
-            $0.replacementWord.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    private var groupedEntries: [(VocabularyCategory, [VocabularyEntry])] {
-        let grouped = Dictionary(grouping: filteredEntries) { $0.category }
-        return VocabularyCategory.allCases.compactMap { category in
-            guard let entries = grouped[category], !entries.isEmpty else { return nil }
-            return (category, entries)
-        }
-    }
-
-    var body: some View {
-        ZStack {
-            backgroundColor.ignoresSafeArea()
-
-            if settings.vocabulary.isEmpty {
-                emptyStateView
-            } else {
-                List {
-                    ForEach(groupedEntries, id: \.0) { category, entries in
-                        Section {
-                            ForEach(entries) { entry in
-                                VocabularyEntryRow(
-                                    entry: entry,
-                                    colorScheme: colorScheme,
-                                    onToggle: {
-                                        settings.toggleVocabularyEntry(entry)
-                                    },
-                                    onEdit: {
-                                        editingEntry = entry
-                                    }
-                                )
-                                .listRowBackground(rowBackground)
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        entryToDelete = entry
-                                        showDeleteConfirmation = true
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        } header: {
-                            HStack(spacing: 6) {
-                                Image(systemName: category.icon)
-                                    .font(.caption)
-                                    .foregroundStyle(category.color)
-                                Text(category.displayName)
-                            }
-                        }
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-                .searchable(text: $searchText, prompt: "Search vocabulary")
-            }
-        }
-        .navigationTitle("Vocabulary")
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button(action: {
-                    showAddSheet = true
-                }) {
-                    Image(systemName: "plus")
-                        .font(.body.weight(.semibold))
-                }
-            }
-        }
-        .sheet(isPresented: $showAddSheet) {
-            VocabularyEditorSheet(
-                entry: nil,
-                onSave: { entry in
-                    settings.addVocabularyEntry(entry)
-                }
-            )
-        }
-        .sheet(item: $editingEntry) { entry in
-            VocabularyEditorSheet(
-                entry: entry,
-                onSave: { updatedEntry in
-                    settings.updateVocabularyEntry(updatedEntry)
-                }
-            )
-        }
-        .alert("Delete Word?", isPresented: $showDeleteConfirmation) {
-            Button("Cancel", role: .cancel) {
-                entryToDelete = nil
-            }
-            Button("Delete", role: .destructive) {
-                if let entry = entryToDelete {
-                    settings.removeVocabularyEntry(entry)
-                }
-                entryToDelete = nil
-            }
-        } message: {
-            if let entry = entryToDelete {
-                Text("This will remove \"\(entry.recognizedWord)\" from your vocabulary.")
-            }
-        }
-    }
-
-    private var emptyStateView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "character.book.closed.fill")
-                .font(.system(size: 50))
-                .foregroundStyle(.teal.opacity(0.5))
-
-            Text("No Vocabulary Words")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.primary)
-
-            Text("Add names, companies, acronyms, and slang\nto improve transcription accuracy")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
-            Button(action: {
-                showAddSheet = true
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                    Text("Add Word")
-                }
-                .font(.callout.weight(.semibold))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(.teal)
-                .clipShape(Capsule())
-            }
-            .padding(.top, 8)
-        }
-        .padding()
-    }
-}
-
-// MARK: - Vocabulary Entry Row
-struct VocabularyEntryRow: View {
-    let entry: VocabularyEntry
-    let colorScheme: ColorScheme
-    let onToggle: () -> Void
-    let onEdit: () -> Void
-
-    var body: some View {
-        Button(action: onEdit) {
-            HStack(spacing: 12) {
-                // Enable/disable toggle
-                Button(action: {
-                    HapticManager.selection()
-                    onToggle()
-                }) {
-                    Image(systemName: entry.isEnabled ? "checkmark.circle.fill" : "circle")
-                        .font(.title3)
-                        .foregroundStyle(entry.isEnabled ? entry.category.color : Color.secondary.opacity(0.3))
-                }
-                .buttonStyle(.plain)
-
-                // Content
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(entry.recognizedWord)
-                            .font(.callout)
-                            .foregroundStyle(entry.isEnabled ? .secondary : .tertiary)
-                            .strikethrough(!entry.isEnabled)
-
-                        Image(systemName: "arrow.right")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-
-                        Text(entry.replacementWord)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(entry.isEnabled ? .primary : .secondary)
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Vocabulary Editor Sheet
-struct VocabularyEditorSheet: View {
-    let entry: VocabularyEntry?
-    let onSave: (VocabularyEntry) -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    @State private var recognizedWord: String = ""
-    @State private var replacementWord: String = ""
-    @State private var selectedCategory: VocabularyCategory = .name
-    @State private var isEnabled: Bool = true
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    private var isValid: Bool {
-        !recognizedWord.trimmingCharacters(in: .whitespaces).isEmpty &&
-        !replacementWord.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    private var isEditing: Bool {
-        entry != nil
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                backgroundColor.ignoresSafeArea()
-
-                List {
-                    // Words Section
-                    Section {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Recognized As")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-
-                            TextField("e.g., john doe", text: $recognizedWord)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                        }
-                        .listRowBackground(rowBackground)
-
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Replace With")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-
-                            TextField("e.g., John Doe", text: $replacementWord)
-                                .autocorrectionDisabled()
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Word Replacement")
-                    } footer: {
-                        Text("The recognized word is what the transcription might produce. The replacement is the correct form.")
-                    }
-
-                    // Category Section
-                    Section {
-                        ForEach(VocabularyCategory.allCases) { category in
-                            Button(action: {
-                                HapticManager.selection()
-                                selectedCategory = category
-                            }) {
-                                HStack {
-                                    Image(systemName: category.icon)
-                                        .font(.body)
-                                        .foregroundStyle(category.color)
-                                        .frame(width: 24)
-
-                                    Text(category.displayName)
-                                        .foregroundStyle(.primary)
-
-                                    Spacer()
-
-                                    if selectedCategory == category {
-                                        Image(systemName: "checkmark")
-                                            .foregroundStyle(.teal)
-                                    }
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .listRowBackground(rowBackground)
-                        }
-                    } header: {
-                        Text("Category")
-                    }
-
-                    // Enable Section
-                    Section {
-                        Toggle("Enabled", isOn: $isEnabled)
-                            .listRowBackground(rowBackground)
-                    } footer: {
-                        Text("Disabled words will not be replaced during transcription.")
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle(isEditing ? "Edit Word" : "Add Word")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Save") {
-                        saveEntry()
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(!isValid)
-                }
-            }
-            .onAppear {
-                if let entry = entry {
-                    recognizedWord = entry.recognizedWord
-                    replacementWord = entry.replacementWord
-                    selectedCategory = entry.category
-                    isEnabled = entry.isEnabled
-                }
-            }
-        }
-    }
-
-    private func saveEntry() {
-        let savedEntry = VocabularyEntry(
-            id: entry?.id ?? UUID(),
-            recognizedWord: recognizedWord.trimmingCharacters(in: .whitespaces),
-            replacementWord: replacementWord.trimmingCharacters(in: .whitespaces),
-            category: selectedCategory,
-            isEnabled: isEnabled,
-            createdAt: entry?.createdAt ?? Date(),
-            updatedAt: Date()
-        )
-        onSave(savedEntry)
-        dismiss()
-    }
-}
-
-// MARK: - Local Model Row
-struct LocalModelRow: View {
-    let type: LocalModelType
-    let status: LocalModelStatus
-    let subtitle: String
-    let colorScheme: ColorScheme
-    let onTap: () -> Void
-
-    private var statusColor: Color {
-        switch status {
-        case .ready: return .green
-        case .downloading: return .blue
-        case .notConfigured: return .secondary
-        case .notAvailable: return .secondary
-        case .error: return .orange
-        }
-    }
-
-    var body: some View {
-        Button(action: {
-            HapticManager.lightTap()
-            onTap()
-        }) {
-            HStack(spacing: 12) {
-                // Icon
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(
-                            status == .ready
-                                ? LinearGradient(colors: [.green.opacity(0.2), .green.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing)
-                                : LinearGradient(colors: [Color.secondary.opacity(0.15)], startPoint: .top, endPoint: .bottom)
-                        )
-                        .frame(width: 40, height: 40)
-
-                    Image(systemName: type.icon)
-                        .font(.title3)
-                        .foregroundStyle(status == .ready ? .green : .secondary)
-                }
-
-                // Content
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(type.displayName)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(status == .notAvailable ? .secondary : .primary)
-
-                        if type.isOnDevice {
-                            Text("ON-DEVICE")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(.green)
-                                .clipShape(Capsule())
-                        }
-                    }
-
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                // Status indicator
-                if status == .downloading {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                } else {
-                    HStack(spacing: 4) {
-                        Image(systemName: status.icon)
-                            .font(.caption)
-                            .foregroundStyle(statusColor)
-
-                        if status != .notAvailable {
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(status == .notAvailable)
-    }
-}
-
-// MARK: - Add Local Model Sheet
-struct AddLocalModelSheet: View {
-    @EnvironmentObject var settings: SharedSettings
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    // For configuring Ollama/LM Studio
-    @State private var showingLocalProviderEditor = false
-    @State private var localProviderConfig: AIProviderConfig?
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                backgroundColor.ignoresSafeArea()
-
-                List {
-                    // On-Device Section
-                    Section {
-                        // WhisperKit
-                        if settings.whisperKitConfig.status != .ready {
-                            NavigationLink {
-                                WhisperKitSetupView()
-                            } label: {
-                                AddLocalModelOptionLabel(
-                                    type: .whisperKit,
-                                    title: "WhisperKit",
-                                    description: "On-device speech recognition using OpenAI's Whisper model. Free and private.",
-                                    badge: "RECOMMENDED",
-                                    badgeColor: .green
-                                )
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        // Apple Intelligence
-                        if settings.appleIntelligenceConfig.isAvailable && !settings.appleIntelligenceConfig.isEnabled {
-                            NavigationLink {
-                                AppleIntelligenceSetupView()
-                            } label: {
-                                AddLocalModelOptionLabel(
-                                    type: .appleIntelligence,
-                                    title: "Apple Intelligence",
-                                    description: "iOS 18.5+ on-device text processing. No download required.",
-                                    badge: nil,
-                                    badgeColor: .clear
-                                )
-                            }
-                            .listRowBackground(rowBackground)
-                        }
-
-                        // Apple Translation
-                        NavigationLink {
-                            AppleTranslationSetupView()
-                        } label: {
-                            AddLocalModelOptionLabel(
-                                type: .appleTranslation,
-                                title: "Apple Translation",
-                                description: "System translation. Download language packs for offline use.",
-                                badge: nil,
-                                badgeColor: .clear
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("On-Device (Recommended)")
-                    } footer: {
-                        Text("On-device models process data locally on your iPhone. No internet required after download.")
-                    }
-
-                    // Self-Hosted Section
-                    Section {
-                        // Ollama
-                        Button(action: {
-                            configureLocalProvider(type: .ollama)
-                        }) {
-                            AddLocalModelOptionLabel(
-                                type: .ollama,
-                                title: "Ollama",
-                                description: "Connect to your self-hosted Ollama server for open-source LLMs.",
-                                badge: "POWER",
-                                badgeColor: .orange
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        // LM Studio
-                        Button(action: {
-                            configureLocalProvider(type: .lmStudio)
-                        }) {
-                            AddLocalModelOptionLabel(
-                                type: .lmStudio,
-                                title: "LM Studio",
-                                description: "Connect to LM Studio running on your Mac or PC.",
-                                badge: "POWER",
-                                badgeColor: .orange
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-
-                        // OpenAI Compatible
-                        Button(action: {
-                            configureLocalProvider(type: .openAICompatible)
-                        }) {
-                            AddLocalModelOptionLabel(
-                                type: .ollama,  // Uses same icon
-                                title: "OpenAI Compatible",
-                                description: "Connect to any server with OpenAI-compatible API.",
-                                badge: "POWER",
-                                badgeColor: .orange
-                            )
-                        }
-                        .listRowBackground(rowBackground)
-                    } header: {
-                        Text("Self-Hosted")
-                    } footer: {
-                        Text("Self-hosted models require a server running on your local network. Power subscription required.")
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle("Add Local Model")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-            .sheet(item: $localProviderConfig) { config in
-                AIProviderEditorSheet(
-                    config: config,
-                    isEditing: false,
-                    onSave: { updatedConfig in
-                        settings.addAIProvider(updatedConfig)
-                        localProviderConfig = nil
-                        dismiss()
-                    },
-                    onDelete: {
-                        localProviderConfig = nil
-                    }
-                )
-            }
-        }
-    }
-
-    private func configureLocalProvider(type: LocalProviderType) {
-        HapticManager.selection()
-        // Create a new local provider config with the selected type
-        var config = AIProviderConfig(provider: .local)
-        config.localConfig = LocalProviderConfig(
-            type: type,
-            baseURL: type.defaultURL,
-            defaultModel: type.defaultModel
-        )
-        // Set default usage categories
-        config.usageCategories = [.powerMode]
-        localProviderConfig = config
-    }
-}
-
-// MARK: - Add Local Model Option Label (for NavigationLink)
-struct AddLocalModelOptionLabel: View {
-    let type: LocalModelType
-    let title: String
-    let description: String
-    let badge: String?
-    let badgeColor: Color
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: type.icon)
-                .font(.title3)
-                .foregroundStyle(type.isOnDevice ? .green : .orange)
-                .frame(width: 40, height: 40)
-                .background((type.isOnDevice ? Color.green : Color.orange).opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(title)
-                        .font(.callout.weight(.medium))
-                        .foregroundStyle(.primary)
-
-                    if let badge = badge {
-                        Text(badge)
-                            .font(.caption2.weight(.bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 1)
-                            .background(badgeColor)
-                            .clipShape(Capsule())
-                    }
-                }
-
-                Text(description)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
-
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Add Local Model Option Row
-struct AddLocalModelOptionRow: View {
-    let type: LocalModelType
-    let title: String
-    let description: String
-    let badge: String?
-    let badgeColor: Color
-    let colorScheme: ColorScheme
-    let onTap: () -> Void
-
-    var body: some View {
-        Button(action: {
-            HapticManager.selection()
-            onTap()
-        }) {
-            HStack(spacing: 12) {
-                Image(systemName: type.icon)
-                    .font(.title3)
-                    .foregroundStyle(type.isOnDevice ? .green : .orange)
-                    .frame(width: 40, height: 40)
-                    .background((type.isOnDevice ? Color.green : Color.orange).opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(title)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.primary)
-
-                        if let badge = badge {
-                            Text(badge)
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(badgeColor)
-                                .clipShape(Capsule())
-                        }
-                    }
-
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer()
-
-                Image(systemName: "plus.circle.fill")
-                    .foregroundStyle(type.isOnDevice ? .green : .orange)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - Default Providers View
-struct DefaultProvidersView: View {
-    @EnvironmentObject var settings: SharedSettings
-    @Environment(\.colorScheme) var colorScheme
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    var body: some View {
-        ZStack {
-            backgroundColor.ignoresSafeArea()
-
-            List {
-                // Transcription Section
-                Section {
-                    ProviderPickerRow(
-                        category: .transcription,
-                        selection: Binding(
-                            get: { settings.providerDefaults.transcription },
-                            set: { settings.providerDefaults.transcription = $0 }
-                        ),
-                        availableProviders: availableProviders(for: .transcription),
-                        colorScheme: colorScheme
-                    )
-                    .listRowBackground(rowBackground)
-                } header: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "mic.fill")
-                            .foregroundStyle(.blue)
-                        Text("Transcription")
-                    }
-                } footer: {
-                    Text("Provider used for speech-to-text conversion.")
-                }
-
-                // Translation Section
-                Section {
-                    ProviderPickerRow(
-                        category: .translation,
-                        selection: Binding(
-                            get: { settings.providerDefaults.translation },
-                            set: { settings.providerDefaults.translation = $0 }
-                        ),
-                        availableProviders: availableProviders(for: .translation),
-                        colorScheme: colorScheme
-                    )
-                    .listRowBackground(rowBackground)
-                } header: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "globe")
-                            .foregroundStyle(.purple)
-                        Text("Translation")
-                    }
-                } footer: {
-                    Text("Provider used for translating text between languages.")
-                }
-
-                // Power Mode Section
-                Section {
-                    ProviderPickerRow(
-                        category: .powerMode,
-                        selection: Binding(
-                            get: { settings.providerDefaults.powerMode },
-                            set: { settings.providerDefaults.powerMode = $0 }
-                        ),
-                        availableProviders: availableProviders(for: .powerMode),
-                        colorScheme: colorScheme
-                    )
-                    .listRowBackground(rowBackground)
-                } header: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "bolt.fill")
-                            .foregroundStyle(.orange)
-                        Text("Power Mode")
-                    }
-                } footer: {
-                    Text("Provider used for AI formatting and Power Mode execution. Individual Power Modes can override this setting.")
-                }
-
-                // Fallback Settings
-                Section {
-                    Toggle(isOn: Binding(
-                        get: { settings.providerDefaults.useLocalWhenOffline },
-                        set: { settings.providerDefaults.useLocalWhenOffline = $0 }
-                    )) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Use local when offline")
-                                .font(.callout)
-                            Text("Automatically switch to local models when no internet")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .tint(AppTheme.accent)
-                    .listRowBackground(rowBackground)
-                } header: {
-                    Text("Fallback")
-                }
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-        }
-        .navigationTitle("Default Providers")
-    }
-
-    private func availableProviders(for category: ProviderUsageCategory) -> [ProviderSelection] {
-        var selections: [ProviderSelection] = []
-
-        // Add configured cloud providers that support this category
-        for config in settings.configuredAIProviders {
-            if config.usageCategories.contains(category) {
-                let model: String?
-                switch category {
-                case .transcription: model = config.transcriptionModel
-                case .translation: model = config.translationModel
-                case .powerMode: model = config.powerModeModel
-                }
-                selections.append(ProviderSelection(providerType: .cloud(config.provider), model: model))
-            }
-        }
-
-        // Add local providers
-        switch category {
-        case .transcription:
-            if settings.isWhisperKitReady {
-                selections.append(ProviderSelection(
-                    providerType: .local(.whisperKit),
-                    model: settings.whisperKitConfig.selectedModel.displayName
-                ))
-            }
-        case .translation:
-            if settings.hasLocalTranslation {
-                selections.append(ProviderSelection(providerType: .local(.appleTranslation)))
-            }
-        case .powerMode:
-            if settings.isAppleIntelligenceReady {
-                selections.append(ProviderSelection(providerType: .local(.appleIntelligence)))
-            }
-            if let localConfig = settings.getAIProviderConfig(for: .local),
-               localConfig.usageCategories.contains(.powerMode) {
-                selections.append(ProviderSelection(
-                    providerType: .local(.ollama),
-                    model: localConfig.powerModeModel
-                ))
-            }
-        }
-
-        return selections
-    }
-}
-
-// MARK: - Provider Picker Row
-struct ProviderPickerRow: View {
-    let category: ProviderUsageCategory
-    @Binding var selection: ProviderSelection?
-    let availableProviders: [ProviderSelection]
-    let colorScheme: ColorScheme
-
-    private var categoryColor: Color {
-        switch category {
-        case .transcription: return .blue
-        case .translation: return .purple
-        case .powerMode: return .orange
-        }
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.08) : Color(.systemGray6)
-    }
-
-    var body: some View {
-        if availableProviders.isEmpty {
-            HStack(spacing: 12) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.orange.opacity(0.15))
-                        .frame(width: 40, height: 40)
-
-                    Image(systemName: "exclamationmark.triangle")
-                        .font(.body)
-                        .foregroundStyle(.orange)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("No providers configured")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                    Text("Add a provider in AI Cloud Models")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-        } else {
-            Menu {
-                // Auto option first (this is the "clear selection" option)
-                Button(action: {
-                    HapticManager.selection()
-                    selection = nil
-                }) {
-                    Label {
-                        Text("Auto (First Available)")
-                    } icon: {
-                        Image(systemName: "sparkles")
-                    }
-                }
-
-                Divider()
-
-                // Cloud providers section
-                let cloudProviders = availableProviders.filter { !$0.isLocal }
-                if !cloudProviders.isEmpty {
-                    Section("Cloud") {
-                        ForEach(cloudProviders, id: \.self) { provider in
-                            Button(action: {
-                                HapticManager.selection()
-                                selection = provider
-                            }) {
-                                Label {
-                                    Text(provider.displayName)
-                                } icon: {
-                                    Image(systemName: provider.icon)
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // Local providers section
-                let localProviders = availableProviders.filter { $0.isLocal }
-                if !localProviders.isEmpty {
-                    Section("On-Device") {
-                        ForEach(localProviders, id: \.self) { provider in
-                            Button(action: {
-                                HapticManager.selection()
-                                selection = provider
-                            }) {
-                                Label {
-                                    Text(provider.displayName)
-                                } icon: {
-                                    Image(systemName: provider.icon)
-                                }
-                            }
-                        }
-                    }
-                }
-            } label: {
-                HStack(spacing: 12) {
-                    // Provider icon with colored background
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(providerIconBackground)
-                            .frame(width: 40, height: 40)
-
-                        Image(systemName: providerIcon)
-                            .font(.body)
-                            .foregroundStyle(providerIconColor)
-                    }
-
-                    // Provider info
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(providerDisplayName)
-                            .font(.callout.weight(.medium))
-                            .foregroundStyle(.primary)
-
-                        if let selected = selection {
-                            HStack(spacing: 4) {
-                                if selected.isLocal {
-                                    Image(systemName: "lock.shield.fill")
-                                        .font(.caption2)
-                                    Text("Private")
-                                        .font(.caption)
-                                } else {
-                                    Image(systemName: "cloud.fill")
-                                        .font(.caption2)
-                                    Text("Cloud")
-                                        .font(.caption)
-                                }
-                            }
-                            .foregroundStyle(selected.isLocal ? .green : .secondary)
-                        } else {
-                            Text("Uses first configured provider")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Dropdown indicator pill
-                    HStack(spacing: 4) {
-                        Text(selection?.providerType.shortName ?? "Auto")
-                            .font(.caption.weight(.medium))
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.caption2)
-                    }
-                    .foregroundStyle(selection != nil ? .white : .secondary)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 6)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(selection != nil ? categoryColor : rowBackground)
-                    )
-                }
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    // MARK: - Computed Properties
-
-    private var providerIcon: String {
-        selection?.icon ?? "sparkles"
-    }
-
-    private var providerIconColor: Color {
-        if let selected = selection {
-            return selected.isLocal ? .green : categoryColor
-        }
-        return categoryColor
-    }
-
-    private var providerIconBackground: Color {
-        if let selected = selection {
-            return (selected.isLocal ? Color.green : categoryColor).opacity(0.15)
-        }
-        return categoryColor.opacity(0.15)
-    }
-
-    private var providerDisplayName: String {
-        selection?.displayName ?? "Automatic"
-    }
-}
-
-// MARK: - Provider Configuration Row
-
-struct ProviderConfigurationRow: View {
-    @StateObject private var configManager = RemoteConfigManager.shared
-    @State private var isRefreshing = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Status row
-            HStack(spacing: 12) {
-                Image(systemName: statusIcon)
-                    .font(.title2)
-                    .foregroundStyle(statusColor)
-                    .frame(width: 32)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Provider Configuration")
-                        .font(.callout.weight(.medium))
-
-                    if let lastFetch = configManager.lastFetchDate {
-                        Text("Updated \(lastFetch, format: .relative(presentation: .named))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Using bundled defaults")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                if configManager.isLoading || isRefreshing {
-                    ProgressView()
-                        .scaleEffect(0.8)
-                } else {
-                    Button {
-                        refreshConfig()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(.blue)
-                    }
-                }
-            }
-
-            // What gets synced
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Syncs from cloud:")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                HStack(spacing: 8) {
-                    SyncBadge(icon: "dollarsign.circle", label: "Prices", color: .green)
-                    SyncBadge(icon: "cpu", label: "Models", color: .blue)
-                    SyncBadge(icon: "globe", label: "Languages", color: .purple)
-                    SyncBadge(icon: "gearshape", label: "Features", color: .orange)
-                }
-            }
-
-            // Version info
-            if let version = configManager.config?.version {
-                HStack {
-                    Text("Config v\(version)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-
-                    if configManager.isConfigStale {
-                        Text("• Stale")
-                            .font(.caption2)
-                            .foregroundStyle(.orange)
-                    }
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-
-    private var statusIcon: String {
-        if configManager.isConfigStale {
-            return "exclamationmark.triangle.fill"
-        } else if configManager.lastFetchDate != nil {
-            return "checkmark.circle.fill"
-        } else {
-            return "arrow.down.circle"
-        }
-    }
-
-    private var statusColor: Color {
-        if configManager.isConfigStale {
-            return .orange
-        } else if configManager.lastFetchDate != nil {
-            return .green
-        } else {
-            return .secondary
-        }
-    }
-
-    private func refreshConfig() {
-        Task {
-            isRefreshing = true
-            HapticManager.lightTap()
-            await configManager.forceRefresh()
-            isRefreshing = false
-            HapticManager.success()
-        }
-    }
-}
-
-private struct SyncBadge: View {
-    let icon: String
-    let label: String
-    let color: Color
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.caption2)
-            Text(label)
-                .font(.caption2)
-        }
-        .foregroundStyle(color)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(color.opacity(0.15), in: Capsule())
-    }
+    #endif
 }
 
 // MARK: - Preview Helper
+
 struct SettingsPreviewWrapper: View {
     let tier: SubscriptionTier
     let colorScheme: ColorScheme
@@ -3801,38 +1153,4 @@ struct SettingsPreviewWrapper: View {
 
 #Preview("Power - Dark") {
     SettingsPreviewWrapper(tier: .power, colorScheme: .dark)
-}
-
-#Preview("AI Provider Editor - OpenAI") {
-    AIProviderEditorSheet(
-        config: AIProviderConfig(
-            provider: .openAI,
-            apiKey: "sk-xxx",
-            usageCategories: [.transcription, .translation, .powerMode],
-            transcriptionModel: "whisper-1",
-            translationModel: "gpt-4o-mini",
-            powerModeModel: "gpt-4o"
-        ),
-        isEditing: true,
-        onSave: { _ in },
-        onDelete: nil
-    )
-}
-
-#Preview("AI Provider Editor - Anthropic (New)") {
-    AIProviderEditorSheet(
-        config: AIProviderConfig(provider: .anthropic),
-        isEditing: false,
-        onSave: { _ in },
-        onDelete: nil
-    )
-}
-
-#Preview("Add AI Provider Sheet") {
-    AddAIProviderSheet(
-        availableProviders: [.anthropic, .google, .elevenLabs, .deepgram, .local],
-        currentTier: .power,
-        onSelect: { _ in },
-        onShowPaywall: { }
-    )
 }
