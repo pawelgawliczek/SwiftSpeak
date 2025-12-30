@@ -82,11 +82,16 @@ struct HistoryView: View {
                                         }
                                 }
 
-                                HistoryRowView(record: record, colorScheme: colorScheme) {
-                                    // Tap to copy output
-                                    UIPasteboard.general.string = record.text
-                                    HapticManager.success()
-                                }
+                                HistoryRowView(
+                                    record: record,
+                                    colorScheme: colorScheme,
+                                    onCopy: {
+                                        UIPasteboard.general.string = record.text
+                                    },
+                                    onDetails: {
+                                        selectedRecord = record
+                                    }
+                                )
                                 .onTapGesture {
                                     if isSelecting {
                                         HapticManager.lightTap()
@@ -294,76 +299,131 @@ struct HistoryRowView: View {
     let record: TranscriptionRecord
     let colorScheme: ColorScheme
     let onCopy: () -> Void
+    let onDetails: () -> Void
 
     @State private var showCopied = false
+    @State private var copyScale: CGFloat = 1.0
 
     private var cardBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Header with mode, power mode, context, translation, and time
-            headerBadges
+        ZStack {
+            VStack(alignment: .leading, spacing: 12) {
+                // Header with mode, power mode, context, translation, and time
+                headerBadges
 
-            // Input text (if different from output)
-            if record.hasTransformation {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Input")
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(.tertiary)
-                    Text(record.rawTranscribedText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
-                }
-            }
-
-            // Output text (larger, tappable to copy)
-            VStack(alignment: .leading, spacing: 4) {
+                // Input text (if different from output)
                 if record.hasTransformation {
-                    HStack {
-                        Text("Output")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Input")
                             .font(.caption2.weight(.medium))
                             .foregroundStyle(.tertiary)
-                        Spacer()
-                        if showCopied {
-                            Label("Copied", systemImage: "checkmark")
+                        Text(record.rawTranscribedText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+
+                // Output text (larger, tappable to copy)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        if record.hasTransformation {
+                            Text("Output")
                                 .font(.caption2.weight(.medium))
-                                .foregroundStyle(.green)
-                        } else {
-                            Label("Tap to copy", systemImage: "doc.on.doc")
-                                .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
+                        Spacer()
+                        Label("Tap to copy", systemImage: "doc.on.doc")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                            .opacity(showCopied ? 0 : 1)
                     }
+                    Text(record.text)
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
                 }
-                Text(record.text)
-                    .font(.subheadline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                onCopy()
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showCopied = true
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    triggerCopyAnimation()
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showCopied = false
-                    }
-                }
-            }
 
-            // Footer with duration, cost badges, and provider
-            costAndProviderFooter
+                // Footer with duration, cost badges, provider, and details button
+                HStack(spacing: 8) {
+                    costAndProviderFooter
+
+                    // Details button
+                    Button(action: {
+                        HapticManager.lightTap()
+                        onDetails()
+                    }) {
+                        HStack(spacing: 4) {
+                            Text("Details")
+                                .font(.caption2.weight(.medium))
+                            Image(systemName: "chevron.right")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .foregroundStyle(AppTheme.accent)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(AppTheme.accent.opacity(0.12))
+                        .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(16)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
+            .padding(.vertical, 4)
+
+            // Copy success overlay
+            if showCopied {
+                copiedOverlay
+            }
         }
-        .padding(16)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
-        .padding(.vertical, 4)
+    }
+
+    // MARK: - Copy Animation
+
+    private func triggerCopyAnimation() {
+        onCopy()
+        HapticManager.success()
+
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.6)) {
+            showCopied = true
+            copyScale = 1.2
+        }
+
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.8).delay(0.1)) {
+            copyScale = 1.0
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            withAnimation(.easeOut(duration: 0.3)) {
+                showCopied = false
+            }
+        }
+    }
+
+    private var copiedOverlay: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 44))
+                .foregroundStyle(.green)
+                .scaleEffect(copyScale)
+
+            Text("Copied!")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.primary)
+        }
+        .padding(24)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .transition(.scale.combined(with: .opacity))
     }
 
     // MARK: - Header Badges
@@ -742,6 +802,57 @@ struct HistoryDetailView: View {
 
     private var providersSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Settings Used (Context, Power Mode, Translation)
+            if hasSettingsUsed {
+                SectionHeader(title: "SETTINGS USED")
+
+                VStack(spacing: 0) {
+                    // Mode
+                    SettingsUsedRow(
+                        icon: record.mode.icon,
+                        iconColor: AppTheme.accent,
+                        label: "Formatting Mode",
+                        value: record.mode.displayName
+                    )
+
+                    // Context
+                    if let contextName = record.contextName {
+                        Divider().padding(.leading, 44)
+                        SettingsUsedRow(
+                            icon: record.contextIcon ?? "person.crop.circle",
+                            iconColor: .purple,
+                            label: "Context",
+                            value: contextName
+                        )
+                    }
+
+                    // Power Mode
+                    if let powerModeName = record.powerModeName {
+                        Divider().padding(.leading, 44)
+                        SettingsUsedRow(
+                            icon: "bolt.fill",
+                            iconColor: .orange,
+                            label: "Power Mode",
+                            value: powerModeName
+                        )
+                    }
+
+                    // Translation
+                    if record.translated, let lang = record.targetLanguage {
+                        Divider().padding(.leading, 44)
+                        SettingsUsedRow(
+                            icon: "globe",
+                            iconColor: .teal,
+                            label: "Translation",
+                            value: "\(lang.flag) \(lang.displayName)"
+                        )
+                    }
+                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
             // Providers & Models
             SectionHeader(title: "PROVIDERS & MODELS")
 
@@ -773,72 +884,73 @@ struct HistoryDetailView: View {
                 // Legacy: show basic provider info
                 VStack(spacing: 12) {
                     MetadataRow(icon: record.provider.icon, label: "Transcription", value: record.provider.displayName)
-                    MetadataRow(icon: record.mode.icon, label: "Mode", value: record.mode.displayName)
-                    if record.translated, let lang = record.targetLanguage {
-                        MetadataRow(icon: "globe", label: "Translated to", value: "\(lang.flag) \(lang.displayName)")
-                    }
                 }
                 .padding(16)
                 .background(cardBackground)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
 
-            // Parameters
-            SectionHeader(title: "PARAMETERS")
+            // Parameters (vocabulary, memory sources, etc.)
+            if hasParameters {
+                SectionHeader(title: "PARAMETERS")
 
-            VStack(spacing: 12) {
-                if let metadata = record.processingMetadata {
-                    if let sourceHint = metadata.sourceLanguageHint {
-                        MetadataRow(icon: "character.bubble", label: "Source Language", value: sourceHint.displayName)
-                    }
+                VStack(spacing: 12) {
+                    if let metadata = record.processingMetadata {
+                        if let sourceHint = metadata.sourceLanguageHint {
+                            MetadataRow(icon: "character.bubble", label: "Source Language", value: sourceHint.displayName)
+                        }
 
-                    if let vocab = metadata.vocabularyApplied, !vocab.isEmpty {
-                        HStack(alignment: .top) {
-                            Image(systemName: "text.word.spacing")
-                                .font(.subheadline)
-                                .foregroundStyle(AppTheme.accent)
-                                .frame(width: 24)
-                            Text("Vocabulary")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(vocab.joined(separator: ", "))
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.trailing)
+                        if let vocab = metadata.vocabularyApplied, !vocab.isEmpty {
+                            HStack(alignment: .top) {
+                                Image(systemName: "text.word.spacing")
+                                    .font(.subheadline)
+                                    .foregroundStyle(AppTheme.accent)
+                                    .frame(width: 24)
+                                Text("Vocabulary")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(vocab.joined(separator: ", "))
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.trailing)
+                            }
+                        }
+
+                        if let memory = metadata.memorySourcesUsed, !memory.isEmpty {
+                            HStack(alignment: .top) {
+                                Image(systemName: "brain")
+                                    .font(.subheadline)
+                                    .foregroundStyle(AppTheme.accent)
+                                    .frame(width: 24)
+                                Text("Memory Sources")
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(memory.joined(separator: ", "))
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.trailing)
+                            }
                         }
                     }
-
-                    if let memory = metadata.memorySourcesUsed, !memory.isEmpty {
-                        HStack(alignment: .top) {
-                            Image(systemName: "brain")
-                                .font(.subheadline)
-                                .foregroundStyle(AppTheme.accent)
-                                .frame(width: 24)
-                            Text("Memory Sources")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text(memory.joined(separator: ", "))
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.trailing)
-                        }
-                    }
                 }
-
-                if let contextName = record.contextName {
-                    MetadataRow(icon: "person.crop.circle", label: "Context", value: "\(record.contextIcon ?? "") \(contextName)")
-                }
-
-                if let powerModeName = record.powerModeName {
-                    MetadataRow(icon: "bolt.fill", label: "Power Mode", value: powerModeName)
-                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
-            .padding(16)
-            .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
+    }
+
+    private var hasSettingsUsed: Bool {
+        true // Always show at least the mode
+    }
+
+    private var hasParameters: Bool {
+        guard let metadata = record.processingMetadata else { return false }
+        return metadata.sourceLanguageHint != nil ||
+               (metadata.vocabularyApplied?.isEmpty == false) ||
+               (metadata.memorySourcesUsed?.isEmpty == false)
     }
 
     // MARK: - Prompts Section
@@ -1097,41 +1209,229 @@ struct MetadataRow: View {
     }
 }
 
+// MARK: - Settings Used Row (Prominent display for settings)
+
+struct SettingsUsedRow: View {
+    let icon: String
+    let iconColor: Color
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 32, height: 32)
+
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(iconColor)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(label)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(value)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+            }
+
+            Spacer()
+        }
+        .padding(.vertical, 4)
+    }
+}
+
 // MARK: - Preview Helpers
 extension TranscriptionRecord {
     static var sampleData: [TranscriptionRecord] {
-        [
+        let now = Date()
+
+        // Sample processing metadata for email formatting
+        let emailMetadata = ProcessingMetadata(
+            steps: [
+                ProcessingStepInfo(
+                    stepType: .transcription,
+                    provider: .openAI,
+                    modelName: "whisper-1",
+                    startTime: now.addingTimeInterval(-2),
+                    endTime: now.addingTimeInterval(-1.153),
+                    cost: 0.0012,
+                    prompt: "Language: English\nVocabulary: SwiftSpeak, iOS"
+                ),
+                ProcessingStepInfo(
+                    stepType: .formatting,
+                    provider: .anthropic,
+                    modelName: "claude-3-5-haiku-latest",
+                    startTime: now.addingTimeInterval(-1.153),
+                    endTime: now.addingTimeInterval(-0.630),
+                    inputTokens: 127,
+                    outputTokens: 89,
+                    cost: 0.0,
+                    prompt: "Format as professional email..."
+                )
+            ],
+            totalProcessingTime: 1.370,
+            sourceLanguageHint: .english,
+            vocabularyApplied: ["SwiftSpeak", "iOS"]
+        )
+
+        // Sample processing metadata for translation
+        let translationMetadata = ProcessingMetadata(
+            steps: [
+                ProcessingStepInfo(
+                    stepType: .transcription,
+                    provider: .openAI,
+                    modelName: "whisper-1",
+                    startTime: now.addingTimeInterval(-1.5),
+                    endTime: now.addingTimeInterval(-0.8),
+                    cost: 0.0008,
+                    prompt: nil
+                ),
+                ProcessingStepInfo(
+                    stepType: .translation,
+                    provider: .deepL,
+                    modelName: "deepl-translate",
+                    startTime: now.addingTimeInterval(-0.8),
+                    endTime: now.addingTimeInterval(-0.488),
+                    inputTokens: 45,
+                    outputTokens: 52,
+                    cost: 0.0005,
+                    prompt: "Translate to Spanish"
+                )
+            ],
+            totalProcessingTime: 1.012
+        )
+
+        // Sample for Power Mode
+        let powerModeMetadata = ProcessingMetadata(
+            steps: [
+                ProcessingStepInfo(
+                    stepType: .transcription,
+                    provider: .openAI,
+                    modelName: "whisper-1",
+                    startTime: now.addingTimeInterval(-3),
+                    endTime: now.addingTimeInterval(-2.2),
+                    cost: 0.0015,
+                    prompt: nil
+                ),
+                ProcessingStepInfo(
+                    stepType: .powerMode,
+                    provider: .anthropic,
+                    modelName: "claude-3-5-sonnet-latest",
+                    startTime: now.addingTimeInterval(-2.2),
+                    endTime: now.addingTimeInterval(-0.5),
+                    inputTokens: 850,
+                    outputTokens: 420,
+                    cost: 0.0089,
+                    prompt: "You are a professional meeting notes assistant..."
+                )
+            ],
+            totalProcessingTime: 2.5,
+            memorySourcesUsed: ["Global Memory", "Work Context"]
+        )
+
+        return [
+            // 1. Raw transcription (no transformation)
             TranscriptionRecord(
-                text: "Hello, this is a test transcription. I'm speaking naturally and the app is converting my speech to text in real time.",
+                rawTranscribedText: "hello this is a test transcription im speaking naturally and the app is converting my speech to text in real time",
+                text: "hello this is a test transcription im speaking naturally and the app is converting my speech to text in real time",
                 mode: .raw,
                 provider: .openAI,
-                duration: 12.5
+                duration: 12.5,
+                estimatedCost: 0.0012,
+                costBreakdown: CostBreakdown(
+                    transcriptionCost: 0.0012,
+                    formattingCost: 0,
+                    translationCost: nil,
+                    inputTokens: nil,
+                    outputTokens: nil
+                )
             ),
+
+            // 2. Email formatted (shows input vs output transformation)
             TranscriptionRecord(
-                text: "Dear Mr. Johnson, I hope this email finds you well. I wanted to follow up on our meeting last week regarding the Q4 roadmap.",
+                rawTranscribedText: "hey can you send me the report from last week thanks also let me know when youre free for a call",
+                text: "Hey, could you please send me the report from last week? Thanks! Also, let me know when you're free for a call.",
                 mode: .email,
                 provider: .openAI,
-                duration: 25.3
+                duration: 25.3,
+                contextId: UUID(),
+                contextName: "Work",
+                contextIcon: "briefcase.fill",
+                estimatedCost: 0.0012,
+                costBreakdown: CostBreakdown(
+                    transcriptionCost: 0.0012,
+                    formattingCost: 0,
+                    translationCost: nil,
+                    inputTokens: 127,
+                    outputTokens: 89
+                ),
+                processingMetadata: emailMetadata
             ),
+
+            // 3. Translated transcription
             TranscriptionRecord(
-                text: "Hola, esto es una prueba de traducción al español.",
+                rawTranscribedText: "this is a translation test hello how are you today",
+                text: "Esto es una prueba de traducción. ¡Hola! ¿Cómo estás hoy?",
                 mode: .raw,
                 provider: .openAI,
                 duration: 8.2,
                 translated: true,
-                targetLanguage: .spanish
+                targetLanguage: .spanish,
+                estimatedCost: 0.0013,
+                costBreakdown: CostBreakdown(
+                    transcriptionCost: 0.0008,
+                    formattingCost: 0,
+                    translationCost: 0.0005,
+                    inputTokens: 45,
+                    outputTokens: 52
+                ),
+                processingMetadata: translationMetadata
             ),
+
+            // 4. Casual mode
             TranscriptionRecord(
-                text: "Quick voice memo: Remember to call the doctor tomorrow at 3pm and pick up groceries on the way home.",
+                rawTranscribedText: "reminder call doctor tomorrow 3pm pick up groceries on way home",
+                text: "Quick reminder: Call the doctor tomorrow at 3pm and pick up groceries on the way home.",
                 mode: .casual,
                 provider: .openAI,
-                duration: 6.1
+                duration: 6.1,
+                estimatedCost: 0.0006,
+                costBreakdown: CostBreakdown(
+                    transcriptionCost: 0.0006,
+                    formattingCost: 0,
+                    translationCost: nil,
+                    inputTokens: 32,
+                    outputTokens: 45
+                )
             ),
+
+            // 5. Power Mode with full metadata
             TranscriptionRecord(
-                text: "The committee hereby resolves to adopt the proposed amendments to the bylaws, effective immediately upon ratification.",
-                mode: .formal,
+                rawTranscribedText: "meeting notes from today we discussed the q4 roadmap john mentioned we need to prioritize the mobile app sarah will handle the backend integration deadline is end of november",
+                text: "# Meeting Notes - Q4 Roadmap Discussion\n\n**Date:** Today\n\n## Key Points\n- Q4 roadmap was the main topic\n- Mobile app prioritization required\n\n## Action Items\n- [ ] Sarah: Handle backend integration\n- [ ] Team: Mobile app prioritization\n\n## Deadline\n- End of November",
+                mode: .raw,
                 provider: .openAI,
-                duration: 15.7
+                duration: 15.7,
+                powerModeId: UUID(),
+                powerModeName: "Meeting Notes",
+                contextId: UUID(),
+                contextName: "Work",
+                contextIcon: "briefcase.fill",
+                estimatedCost: 0.0104,
+                costBreakdown: CostBreakdown(
+                    transcriptionCost: 0.0015,
+                    formattingCost: 0,
+                    translationCost: nil,
+                    powerModeCost: 0.0089,
+                    ragCost: nil,
+                    inputTokens: 850,
+                    outputTokens: 420
+                ),
+                processingMetadata: powerModeMetadata
             )
         ]
     }
