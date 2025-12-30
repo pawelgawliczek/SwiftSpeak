@@ -230,6 +230,89 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    // MARK: - Phase 11: Retry & Processing Status
+
+    /// Enable automatic retry on network/provider failure
+    @Published var autoRetryEnabled: Bool = true {
+        didSet {
+            defaults?.set(autoRetryEnabled, forKey: "autoRetryEnabled")
+        }
+    }
+
+    /// Maximum number of retry attempts
+    @Published var maxRetryCount: Int = 3 {
+        didSet {
+            defaults?.set(maxRetryCount, forKey: "maxRetryCount")
+        }
+    }
+
+    /// Keep audio files for failed transcriptions (for manual retry)
+    @Published var keepFailedRecordings: Bool = true {
+        didSet {
+            defaults?.set(keepFailedRecordings, forKey: "keepFailedRecordings")
+        }
+    }
+
+    /// Days to retain pending audio before auto-cleanup (0 = never)
+    @Published var pendingAudioRetentionDays: Int = 7 {
+        didSet {
+            defaults?.set(pendingAudioRetentionDays, forKey: "pendingAudioRetentionDays")
+        }
+    }
+
+    /// Queue of audio files awaiting retry
+    @Published var pendingAudioQueue: [PendingAudio] = [] {
+        didSet {
+            savePendingAudioQueue()
+        }
+    }
+
+    /// Current processing status (shared with keyboard extension)
+    var processingStatus: ProcessingStatus {
+        get {
+            guard let data = defaults?.data(forKey: "processingStatus"),
+                  let status = try? JSONDecoder().decode(ProcessingStatus.self, from: data) else {
+                return .idle
+            }
+            return status
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults?.set(data, forKey: "processingStatus")
+            }
+        }
+    }
+
+    // MARK: - Phase 11: Advanced Token Limits
+
+    /// Maximum tokens for global memory in prompts
+    @Published var tokenLimitGlobalMemory: Int = 500 {
+        didSet {
+            defaults?.set(tokenLimitGlobalMemory, forKey: "tokenLimitGlobalMemory")
+        }
+    }
+
+    /// Maximum tokens for context memory in prompts
+    @Published var tokenLimitContextMemory: Int = 400 {
+        didSet {
+            defaults?.set(tokenLimitContextMemory, forKey: "tokenLimitContextMemory")
+        }
+    }
+
+    /// Maximum tokens for RAG chunks in prompts
+    @Published var tokenLimitRAGChunks: Int = 2000 {
+        didSet {
+            defaults?.set(tokenLimitRAGChunks, forKey: "tokenLimitRAGChunks")
+        }
+    }
+
+    /// Maximum tokens for user input
+    @Published var tokenLimitUserInput: Int = 4000 {
+        didSet {
+            defaults?.set(tokenLimitUserInput, forKey: "tokenLimitUserInput")
+        }
+    }
+
     // MARK: - Non-Published Properties
 
     var openAIAPIKey: String? {
@@ -413,6 +496,40 @@ class SharedSettings: ObservableObject {
            let provider = AIProvider(rawValue: powerModeProviderRaw) {
             selectedPowerModeProvider = provider
         }
+
+        // Phase 11: Load retry settings
+        if defaults?.object(forKey: "autoRetryEnabled") != nil {
+            autoRetryEnabled = defaults?.bool(forKey: "autoRetryEnabled") ?? true
+        }
+        maxRetryCount = defaults?.integer(forKey: "maxRetryCount") ?? 3
+        if maxRetryCount == 0 { maxRetryCount = 3 } // Handle unset defaults
+
+        if defaults?.object(forKey: "keepFailedRecordings") != nil {
+            keepFailedRecordings = defaults?.bool(forKey: "keepFailedRecordings") ?? true
+        }
+        pendingAudioRetentionDays = defaults?.integer(forKey: "pendingAudioRetentionDays") ?? 7
+        if pendingAudioRetentionDays == 0 && defaults?.object(forKey: "pendingAudioRetentionDays") == nil {
+            pendingAudioRetentionDays = 7
+        }
+
+        // Phase 11: Load token limits
+        tokenLimitGlobalMemory = defaults?.integer(forKey: "tokenLimitGlobalMemory") ?? 500
+        if tokenLimitGlobalMemory == 0 { tokenLimitGlobalMemory = 500 }
+
+        tokenLimitContextMemory = defaults?.integer(forKey: "tokenLimitContextMemory") ?? 400
+        if tokenLimitContextMemory == 0 { tokenLimitContextMemory = 400 }
+
+        tokenLimitRAGChunks = defaults?.integer(forKey: "tokenLimitRAGChunks") ?? 2000
+        if tokenLimitRAGChunks == 0 { tokenLimitRAGChunks = 2000 }
+
+        tokenLimitUserInput = defaults?.integer(forKey: "tokenLimitUserInput") ?? 4000
+        if tokenLimitUserInput == 0 { tokenLimitUserInput = 4000 }
+
+        // Load pending audio queue
+        loadPendingAudioQueue()
+
+        // Clean up expired pending audio on launch
+        cleanupExpiredPendingAudio()
     }
 
     // MARK: - AI Provider Management
@@ -600,7 +717,7 @@ class SharedSettings: ObservableObject {
 
         let deletedCount = originalCount - transcriptionHistory.count
         if deletedCount > 0 {
-            print("[DataRetention] Deleted \(deletedCount) records older than \(days) days")
+            appLog("Data retention cleanup: deleted \(deletedCount) records older than \(days) days", category: "Data")
         }
     }
 
@@ -1175,6 +1292,62 @@ class SharedSettings: ObservableObject {
     private func saveProviderDefaults() {
         if let data = try? JSONEncoder().encode(providerDefaults) {
             defaults?.set(data, forKey: Constants.Keys.providerDefaults)
+        }
+    }
+
+    // MARK: - Phase 11: Pending Audio Queue Persistence
+
+    private func savePendingAudioQueue() {
+        if let data = try? JSONEncoder().encode(pendingAudioQueue) {
+            defaults?.set(data, forKey: "pendingAudioQueue")
+        }
+    }
+
+    private func loadPendingAudioQueue() {
+        guard let data = defaults?.data(forKey: "pendingAudioQueue"),
+              let queue = try? JSONDecoder().decode([PendingAudio].self, from: data) else {
+            return
+        }
+        pendingAudioQueue = queue
+    }
+
+    /// Add audio to pending queue
+    func addToPendingQueue(_ audio: PendingAudio) {
+        var queue = pendingAudioQueue
+        queue.append(audio)
+        pendingAudioQueue = queue
+    }
+
+    /// Remove audio from pending queue
+    func removeFromPendingQueue(_ id: UUID) {
+        pendingAudioQueue.removeAll { $0.id == id }
+    }
+
+    /// Update status of pending audio
+    func updatePendingAudioStatus(_ id: UUID, status: PendingAudioStatus, error: String? = nil) {
+        if let index = pendingAudioQueue.firstIndex(where: { $0.id == id }) {
+            var audio = pendingAudioQueue[index]
+            audio.status = status
+            audio.lastError = error
+            audio.lastAttemptAt = Date()
+            audio.retryCount += 1
+            pendingAudioQueue[index] = audio
+        }
+    }
+
+    /// Clean up old pending audio files based on retention settings
+    func cleanupExpiredPendingAudio() {
+        guard pendingAudioRetentionDays > 0 else { return }
+
+        let cutoffDate = Calendar.current.date(byAdding: .day, value: -pendingAudioRetentionDays, to: Date()) ?? Date()
+        let expiredIds = pendingAudioQueue.filter { $0.createdAt < cutoffDate }.map { $0.id }
+
+        for id in expiredIds {
+            if let audio = pendingAudioQueue.first(where: { $0.id == id }) {
+                // Delete the audio file
+                try? FileManager.default.removeItem(at: audio.audioFileURL)
+            }
+            removeFromPendingQueue(id)
         }
     }
 

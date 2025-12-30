@@ -930,6 +930,8 @@ struct CostBreakdown: Codable, Equatable {
     let transcriptionCost: Double
     let formattingCost: Double
     let translationCost: Double?
+    let powerModeCost: Double?  // Phase 11 - Separate Power Mode LLM cost
+    let ragCost: Double?        // Phase 11 - RAG embedding query cost
 
     // Token counts (if available from LLM responses)
     let inputTokens: Int?
@@ -937,7 +939,7 @@ struct CostBreakdown: Codable, Equatable {
 
     /// Total cost of the operation
     var total: Double {
-        transcriptionCost + formattingCost + (translationCost ?? 0)
+        transcriptionCost + formattingCost + (translationCost ?? 0) + (powerModeCost ?? 0) + (ragCost ?? 0)
     }
 
     /// Check if this breakdown has any costs
@@ -951,9 +953,207 @@ struct CostBreakdown: Codable, Equatable {
             transcriptionCost: 0,
             formattingCost: 0,
             translationCost: nil,
+            powerModeCost: nil,
+            ragCost: nil,
             inputTokens: nil,
             outputTokens: nil
         )
+    }
+
+    // Backward-compatible initializer (without new fields)
+    init(
+        transcriptionCost: Double,
+        formattingCost: Double,
+        translationCost: Double?,
+        inputTokens: Int?,
+        outputTokens: Int?
+    ) {
+        self.transcriptionCost = transcriptionCost
+        self.formattingCost = formattingCost
+        self.translationCost = translationCost
+        self.powerModeCost = nil
+        self.ragCost = nil
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+    }
+
+    // Full initializer with all fields
+    init(
+        transcriptionCost: Double,
+        formattingCost: Double,
+        translationCost: Double?,
+        powerModeCost: Double?,
+        ragCost: Double?,
+        inputTokens: Int?,
+        outputTokens: Int?
+    ) {
+        self.transcriptionCost = transcriptionCost
+        self.formattingCost = formattingCost
+        self.translationCost = translationCost
+        self.powerModeCost = powerModeCost
+        self.ragCost = ragCost
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+    }
+}
+
+// MARK: - Processing Step Type (Phase 11 - History Enhancement)
+
+/// Type of processing step in the transcription pipeline
+enum ProcessingStepType: String, Codable, CaseIterable {
+    case transcription
+    case formatting
+    case translation
+    case powerMode
+    case ragQuery
+    case webhookContext
+
+    var displayName: String {
+        switch self {
+        case .transcription: return "Transcription"
+        case .formatting: return "Formatting"
+        case .translation: return "Translation"
+        case .powerMode: return "Power Mode"
+        case .ragQuery: return "Knowledge Query"
+        case .webhookContext: return "Webhook Context"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .transcription: return "waveform"
+        case .formatting: return "text.alignleft"
+        case .translation: return "globe"
+        case .powerMode: return "bolt.fill"
+        case .ragQuery: return "doc.text.magnifyingglass"
+        case .webhookContext: return "arrow.triangle.2.circlepath"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .transcription: return .blue
+        case .formatting: return .purple
+        case .translation: return .teal
+        case .powerMode: return .orange
+        case .ragQuery: return .indigo
+        case .webhookContext: return .green
+        }
+    }
+}
+
+// MARK: - Processing Step Info
+
+/// Metadata for a single processing step
+struct ProcessingStepInfo: Codable, Equatable, Identifiable {
+    let id: UUID
+    let stepType: ProcessingStepType
+    let provider: AIProvider
+    let modelName: String
+    let startTime: Date
+    let endTime: Date
+    let inputTokens: Int?
+    let outputTokens: Int?
+    let cost: Double
+    let prompt: String?
+
+    /// Response time in milliseconds
+    var responseTimeMs: Int {
+        Int((endTime.timeIntervalSince(startTime)) * 1000)
+    }
+
+    /// Response time formatted for display
+    var responseTimeFormatted: String {
+        let ms = responseTimeMs
+        if ms < 1000 {
+            return "\(ms)ms"
+        } else {
+            return String(format: "%.1fs", Double(ms) / 1000.0)
+        }
+    }
+
+    init(
+        id: UUID = UUID(),
+        stepType: ProcessingStepType,
+        provider: AIProvider,
+        modelName: String,
+        startTime: Date,
+        endTime: Date,
+        inputTokens: Int? = nil,
+        outputTokens: Int? = nil,
+        cost: Double,
+        prompt: String? = nil
+    ) {
+        self.id = id
+        self.stepType = stepType
+        self.provider = provider
+        self.modelName = modelName
+        self.startTime = startTime
+        self.endTime = endTime
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cost = cost
+        self.prompt = prompt
+    }
+}
+
+// MARK: - Processing Metadata
+
+/// Complete processing metadata for a transcription operation
+struct ProcessingMetadata: Codable, Equatable {
+    let steps: [ProcessingStepInfo]
+    let totalProcessingTime: TimeInterval
+
+    // Parameters used during processing
+    let sourceLanguageHint: Language?
+    let vocabularyApplied: [String]?
+    let memorySourcesUsed: [String]?
+    let ragDocumentsQueried: [String]?
+    let webhooksExecuted: [String]?
+
+    /// Get step by type
+    func step(ofType type: ProcessingStepType) -> ProcessingStepInfo? {
+        steps.first { $0.stepType == type }
+    }
+
+    /// Get all prompts for debugging display
+    var allPrompts: [(stepType: ProcessingStepType, prompt: String)] {
+        steps.compactMap { step in
+            guard let prompt = step.prompt else { return nil }
+            return (step.stepType, prompt)
+        }
+    }
+
+    /// Total response time in milliseconds
+    var totalResponseTimeMs: Int {
+        Int(totalProcessingTime * 1000)
+    }
+
+    /// Total tokens used across all steps
+    var totalInputTokens: Int {
+        steps.compactMap { $0.inputTokens }.reduce(0, +)
+    }
+
+    var totalOutputTokens: Int {
+        steps.compactMap { $0.outputTokens }.reduce(0, +)
+    }
+
+    init(
+        steps: [ProcessingStepInfo],
+        totalProcessingTime: TimeInterval,
+        sourceLanguageHint: Language? = nil,
+        vocabularyApplied: [String]? = nil,
+        memorySourcesUsed: [String]? = nil,
+        ragDocumentsQueried: [String]? = nil,
+        webhooksExecuted: [String]? = nil
+    ) {
+        self.steps = steps
+        self.totalProcessingTime = totalProcessingTime
+        self.sourceLanguageHint = sourceLanguageHint
+        self.vocabularyApplied = vocabularyApplied
+        self.memorySourcesUsed = memorySourcesUsed
+        self.ragDocumentsQueried = ragDocumentsQueried
+        self.webhooksExecuted = webhooksExecuted
     }
 }
 
@@ -992,9 +1192,13 @@ extension Double {
 }
 
 // MARK: - Transcription Record
-struct TranscriptionRecord: Codable, Identifiable {
+struct TranscriptionRecord: Identifiable {
     let id: UUID
-    let text: String
+
+    // Text content - Phase 11: Store both raw and final
+    let rawTranscribedText: String  // Raw text before formatting (new)
+    let text: String                // Final formatted/translated text
+
     let mode: FormattingMode
     let provider: AIProvider
     let timestamp: Date
@@ -1013,8 +1217,27 @@ struct TranscriptionRecord: Codable, Identifiable {
     let estimatedCost: Double?   // Total estimated cost for this transcription
     let costBreakdown: CostBreakdown?  // Detailed cost breakdown by operation type
 
+    // Processing metadata (Phase 11 - History Enhancement)
+    let processingMetadata: ProcessingMetadata?
+
+    /// Whether this record has detailed processing info
+    var hasProcessingDetails: Bool {
+        processingMetadata != nil && !(processingMetadata?.steps.isEmpty ?? true)
+    }
+
+    /// Whether formatting was applied (mode != raw or power mode used)
+    var formattingWasApplied: Bool {
+        mode != .raw || powerModeId != nil
+    }
+
+    /// Whether there's a difference between input and output
+    var hasTransformation: Bool {
+        rawTranscribedText != text
+    }
+
     init(
         id: UUID = UUID(),
+        rawTranscribedText: String? = nil,  // Optional for backward compatibility
         text: String,
         mode: FormattingMode,
         provider: AIProvider,
@@ -1028,9 +1251,12 @@ struct TranscriptionRecord: Codable, Identifiable {
         contextName: String? = nil,
         contextIcon: String? = nil,
         estimatedCost: Double? = nil,
-        costBreakdown: CostBreakdown? = nil
+        costBreakdown: CostBreakdown? = nil,
+        processingMetadata: ProcessingMetadata? = nil
     ) {
         self.id = id
+        // For migration: if rawTranscribedText is nil, use text as raw
+        self.rawTranscribedText = rawTranscribedText ?? text
         self.text = text
         self.mode = mode
         self.provider = provider
@@ -1045,6 +1271,66 @@ struct TranscriptionRecord: Codable, Identifiable {
         self.contextIcon = contextIcon
         self.estimatedCost = estimatedCost
         self.costBreakdown = costBreakdown
+        self.processingMetadata = processingMetadata
+    }
+}
+
+// MARK: - TranscriptionRecord Codable (Backward Compatible)
+
+extension TranscriptionRecord: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, text, mode, provider, timestamp, duration, translated, targetLanguage
+        case powerModeId, powerModeName, contextId, contextName, contextIcon
+        case estimatedCost, costBreakdown
+        case rawTranscribedText, processingMetadata  // New fields
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        text = try container.decode(String.self, forKey: .text)
+        mode = try container.decode(FormattingMode.self, forKey: .mode)
+        provider = try container.decode(AIProvider.self, forKey: .provider)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        duration = try container.decode(TimeInterval.self, forKey: .duration)
+        translated = try container.decode(Bool.self, forKey: .translated)
+        targetLanguage = try container.decodeIfPresent(Language.self, forKey: .targetLanguage)
+        powerModeId = try container.decodeIfPresent(UUID.self, forKey: .powerModeId)
+        powerModeName = try container.decodeIfPresent(String.self, forKey: .powerModeName)
+        contextId = try container.decodeIfPresent(UUID.self, forKey: .contextId)
+        contextName = try container.decodeIfPresent(String.self, forKey: .contextName)
+        contextIcon = try container.decodeIfPresent(String.self, forKey: .contextIcon)
+        estimatedCost = try container.decodeIfPresent(Double.self, forKey: .estimatedCost)
+        costBreakdown = try container.decodeIfPresent(CostBreakdown.self, forKey: .costBreakdown)
+
+        // Handle migration: rawTranscribedText might not exist in old records
+        rawTranscribedText = try container.decodeIfPresent(String.self, forKey: .rawTranscribedText) ?? text
+
+        // Handle migration: processingMetadata might not exist
+        processingMetadata = try container.decodeIfPresent(ProcessingMetadata.self, forKey: .processingMetadata)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(provider, forKey: .provider)
+        try container.encode(timestamp, forKey: .timestamp)
+        try container.encode(duration, forKey: .duration)
+        try container.encode(translated, forKey: .translated)
+        try container.encodeIfPresent(targetLanguage, forKey: .targetLanguage)
+        try container.encodeIfPresent(powerModeId, forKey: .powerModeId)
+        try container.encodeIfPresent(powerModeName, forKey: .powerModeName)
+        try container.encodeIfPresent(contextId, forKey: .contextId)
+        try container.encodeIfPresent(contextName, forKey: .contextName)
+        try container.encodeIfPresent(contextIcon, forKey: .contextIcon)
+        try container.encodeIfPresent(estimatedCost, forKey: .estimatedCost)
+        try container.encodeIfPresent(costBreakdown, forKey: .costBreakdown)
+        try container.encode(rawTranscribedText, forKey: .rawTranscribedText)
+        try container.encodeIfPresent(processingMetadata, forKey: .processingMetadata)
     }
 }
 
@@ -1055,6 +1341,7 @@ enum RecordingState: Equatable {
     case processing
     case formatting
     case translating
+    case retrying(attempt: Int, maxAttempts: Int, reason: String)  // Phase 11e
     case complete(String)
     case error(String)
 
@@ -1065,9 +1352,162 @@ enum RecordingState: Equatable {
         case .processing: return "Transcribing..."
         case .formatting: return "Formatting..."
         case .translating: return "Translating..."
+        case .retrying(let attempt, let max, _):
+            return "Retrying (\(attempt)/\(max))..."
         case .complete: return "Done!"
         case .error(let message): return message
         }
+    }
+
+    /// Whether the state represents active processing
+    var isActive: Bool {
+        switch self {
+        case .recording, .processing, .formatting, .translating, .retrying:
+            return true
+        case .idle, .complete, .error:
+            return false
+        }
+    }
+}
+
+// MARK: - Phase 11: Pending Audio & Retry
+
+/// Status of a pending audio file in the retry queue
+enum PendingAudioStatus: String, Codable {
+    case pending       // Awaiting retry
+    case processing    // Currently being processed
+    case partialSuccess // Transcription OK, formatting failed
+    case failed        // All retries exhausted
+}
+
+/// Represents an audio file waiting for retry
+struct PendingAudio: Codable, Identifiable, Equatable {
+    let id: UUID
+    let audioFileURL: URL
+    let createdAt: Date
+    let duration: TimeInterval
+    let mode: FormattingMode
+    let translateEnabled: Bool
+    let targetLanguage: Language?
+    let customTemplateId: UUID?
+    var status: PendingAudioStatus
+    var rawTranscription: String?  // Preserved if transcription succeeded but formatting failed
+    var retryCount: Int
+    var lastError: String?
+    var lastAttemptAt: Date?
+
+    init(
+        id: UUID = UUID(),
+        audioFileURL: URL,
+        createdAt: Date = Date(),
+        duration: TimeInterval,
+        mode: FormattingMode,
+        translateEnabled: Bool = false,
+        targetLanguage: Language? = nil,
+        customTemplateId: UUID? = nil,
+        status: PendingAudioStatus = .pending,
+        rawTranscription: String? = nil,
+        retryCount: Int = 0,
+        lastError: String? = nil,
+        lastAttemptAt: Date? = nil
+    ) {
+        self.id = id
+        self.audioFileURL = audioFileURL
+        self.createdAt = createdAt
+        self.duration = duration
+        self.mode = mode
+        self.translateEnabled = translateEnabled
+        self.targetLanguage = targetLanguage
+        self.customTemplateId = customTemplateId
+        self.status = status
+        self.rawTranscription = rawTranscription
+        self.retryCount = retryCount
+        self.lastError = lastError
+        self.lastAttemptAt = lastAttemptAt
+    }
+
+    /// Whether this pending audio can be retried
+    var canRetry: Bool {
+        status == .pending || status == .failed || status == .partialSuccess
+    }
+
+    /// Age of this pending audio
+    var age: TimeInterval {
+        Date().timeIntervalSince(createdAt)
+    }
+}
+
+/// Step in the processing pipeline
+enum ProcessingStep: String, Codable {
+    case idle
+    case recording
+    case transcribing
+    case formatting
+    case translating
+    case retrying
+    case complete
+    case failed
+
+    var displayName: String {
+        switch self {
+        case .idle: return "Ready"
+        case .recording: return "Recording"
+        case .transcribing: return "Transcribing"
+        case .formatting: return "Formatting"
+        case .translating: return "Translating"
+        case .retrying: return "Retrying"
+        case .complete: return "Complete"
+        case .failed: return "Failed"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .idle: return "circle"
+        case .recording: return "mic.fill"
+        case .transcribing: return "waveform"
+        case .formatting: return "text.alignleft"
+        case .translating: return "globe"
+        case .retrying: return "arrow.clockwise"
+        case .complete: return "checkmark.circle.fill"
+        case .failed: return "xmark.circle.fill"
+        }
+    }
+}
+
+/// Processing status shared between main app and keyboard extension
+struct ProcessingStatus: Codable, Equatable {
+    var isProcessing: Bool
+    var currentStep: ProcessingStep
+    var retryAttempt: Int
+    var maxRetries: Int
+    var errorMessage: String?
+    var pendingAutoInsert: Bool
+    var lastCompletedText: String?
+    var lastUpdateAt: Date?
+
+    static var idle: ProcessingStatus {
+        ProcessingStatus(
+            isProcessing: false,
+            currentStep: .idle,
+            retryAttempt: 0,
+            maxRetries: 3,
+            errorMessage: nil,
+            pendingAutoInsert: false,
+            lastCompletedText: nil,
+            lastUpdateAt: nil
+        )
+    }
+
+    /// Whether text is ready to be auto-inserted
+    var hasTextToInsert: Bool {
+        pendingAutoInsert && lastCompletedText != nil && !lastCompletedText!.isEmpty
+    }
+
+    /// Progress through retries (0.0 - 1.0)
+    var retryProgress: Double {
+        guard maxRetries > 0 else { return 0 }
+        return Double(retryAttempt) / Double(maxRetries)
     }
 }
 

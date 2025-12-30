@@ -5,10 +5,13 @@
 //  Phase 10f: Tests for LocalTranslationManager - the bridge between
 //  service layer and SwiftUI's translationTask
 //
+//  Note: These tests require iOS 18.0+ and will skip on older versions
 
 import Testing
 import Foundation
 @testable import SwiftSpeak
+
+// MARK: - LocalTranslationManager Tests (iOS 18.0+)
 
 @MainActor
 struct LocalTranslationManagerTests {
@@ -17,6 +20,10 @@ struct LocalTranslationManagerTests {
 
     @Test("Shared instance is singleton")
     func testSharedInstance() {
+        guard #available(iOS 18.0, *) else {
+            // Skip test on older iOS versions
+            return
+        }
         let instance1 = LocalTranslationManager.shared
         let instance2 = LocalTranslationManager.shared
 
@@ -27,6 +34,7 @@ struct LocalTranslationManagerTests {
 
     @Test("Initial state is not translating")
     func testInitialState() {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         #expect(manager.isTranslating == false)
@@ -37,6 +45,7 @@ struct LocalTranslationManagerTests {
 
     @Test("Cancel resets state")
     func testCancelResetsState() {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         // Set up some state by starting a request (but don't await it)
@@ -50,6 +59,7 @@ struct LocalTranslationManagerTests {
 
     @Test("Request sets pending text")
     func testRequestSetsPendingText() async {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         // We need to test the request without actually waiting for completion
@@ -80,6 +90,7 @@ struct LocalTranslationManagerTests {
 
     @Test("Complete translation with success")
     func testCompleteTranslationSuccess() async {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         var result: String?
@@ -115,6 +126,7 @@ struct LocalTranslationManagerTests {
 
     @Test("Complete translation with failure")
     func testCompleteTranslationFailure() async {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         var result: String?
@@ -151,6 +163,7 @@ struct LocalTranslationManagerTests {
 
     @Test("Concurrent translation requests are blocked")
     func testConcurrentRequestsBlocked() async {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         var firstError: Error?
@@ -214,8 +227,8 @@ struct LocalTranslationManagerTests {
 struct LocalTranslationManagerConfigurationTests {
 
     @Test("Configuration is set when translation requested")
-    @available(iOS 18.0, *)
     func testConfigurationSet() async {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         // Start a request
@@ -239,8 +252,8 @@ struct LocalTranslationManagerConfigurationTests {
     }
 
     @Test("Configuration is cleared after completion")
-    @available(iOS 18.0, *)
     func testConfigurationClearedAfterCompletion() async {
+        guard #available(iOS 18.0, *) else { return }
         let manager = LocalTranslationManager.shared
 
         // Start a request

@@ -196,7 +196,7 @@ import SwiftUI
 ///         translatedText = result.targetText
 ///     }
 /// ```
-@available(iOS 17.4, *)
+@available(iOS 18.0, *)
 struct TranslationHelper {
     /// Translate text using the SwiftUI translation task
     /// This is the recommended way to use Apple Translation

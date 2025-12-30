@@ -24,6 +24,10 @@ import Translation
 /// 2. SwiftUI view observes `configuration` and has `.translationTask` attached
 /// 3. When translation completes, `completeTranslation(with:)` is called
 /// 4. The original caller receives the result via async/await
+///
+/// Note: Requires iOS 18.0+ for full functionality. On earlier versions,
+/// use cloud-based translation providers instead.
+@available(iOS 18.0, *)
 @MainActor
 @Observable
 final class LocalTranslationManager {
@@ -179,29 +183,22 @@ final class LocalTranslationManager {
 /// RecordingView()
 ///     .localTranslationHandler()
 /// ```
-@available(iOS 17.4, *)
+@available(iOS 18.0, *)
 struct LocalTranslationModifier: ViewModifier {
     @State private var manager = LocalTranslationManager.shared
 
     func body(content: Content) -> some View {
         #if canImport(Translation)
-        if #available(iOS 18.0, *) {
-            content
-                .translationTask(manager.configuration) { session in
-                    await performTranslation(session: session)
-                }
-        } else {
-            // iOS 17.4-17.x: Translation API exists but TranslationSession
-            // can only be used with .translationPresentation (UI-based)
-            content
-        }
+        content
+            .translationTask(manager.configuration) { session in
+                await performTranslation(session: session)
+            }
         #else
         content
         #endif
     }
 
     #if canImport(Translation)
-    @available(iOS 18.0, *)
     private func performTranslation(session: TranslationSession) async {
         guard let text = manager.textToTranslate else {
             manager.completeTranslation(with: .failure(
@@ -222,7 +219,7 @@ struct LocalTranslationModifier: ViewModifier {
     #endif
 }
 
-@available(iOS 17.4, *)
+@available(iOS 18.0, *)
 extension View {
     /// Adds Apple Translation support to this view
     ///

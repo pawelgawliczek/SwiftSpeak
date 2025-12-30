@@ -16,6 +16,8 @@ class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        keyboardLog("Keyboard loaded", category: "Lifecycle")
+
         // Update Full Access status in shared defaults for main app to detect
         updateFullAccessStatus()
 
@@ -48,6 +50,8 @@ class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
 
+        keyboardLog("Keyboard appeared", category: "Lifecycle")
+
         // Update Full Access status each time keyboard appears
         updateFullAccessStatus()
 
@@ -55,6 +59,9 @@ class KeyboardViewController: UIInputViewController {
         viewModel.loadSettings()
         viewModel.textDocumentProxy = textDocumentProxy
         viewModel.hostViewController = self
+
+        // Phase 11: Check for auto-insert after main app completes transcription
+        viewModel.checkAutoInsert()
     }
 
     override func viewWillLayoutSubviews() {
@@ -82,7 +89,13 @@ class KeyboardViewController: UIInputViewController {
         // hasFullAccess is a property of UIInputViewController
         // that indicates whether the user has granted Full Access
         let sharedDefaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
+        let previousStatus = sharedDefaults?.bool(forKey: "keyboardHasFullAccess") ?? false
         sharedDefaults?.set(hasFullAccess, forKey: "keyboardHasFullAccess")
         sharedDefaults?.synchronize()
+
+        // Log only when status changes
+        if previousStatus != hasFullAccess {
+            keyboardLog("Full Access status changed: \(hasFullAccess)", category: "Lifecycle")
+        }
     }
 }

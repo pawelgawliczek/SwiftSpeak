@@ -222,10 +222,13 @@ extension WhisperKitTranscriptionService {
             _ = try await WhisperKit(whisperConfig)
 
             // Return the model directory
-            let modelDir = FileManager.default.urls(
+            guard let documentsDir = FileManager.default.urls(
                 for: .documentDirectory,
                 in: .userDomainMask
-            ).first!.appendingPathComponent("whisperkit-models/\(model.rawValue)")
+            ).first else {
+                throw LocalProviderError.modelDownloadFailed(reason: "Could not find documents directory")
+            }
+            let modelDir = documentsDir.appendingPathComponent("whisperkit-models/\(model.rawValue)")
 
             return modelDir
         } catch {

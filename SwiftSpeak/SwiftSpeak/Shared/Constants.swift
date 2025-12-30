@@ -119,4 +119,53 @@ enum Constants {
         static let proEntitlement = "pro"
         static let powerEntitlement = "power"
     }
+
+    // MARK: - Phase 11j: Audio Validation
+    enum AudioValidation {
+        /// Minimum recording duration (seconds) - below this produces garbage
+        static let minDuration: TimeInterval = 0.5
+
+        /// Maximum recording duration (seconds) - providers may timeout
+        static let maxDuration: TimeInterval = 600  // 10 minutes
+
+        /// Warning threshold for long recordings (seconds)
+        static let warnDuration: TimeInterval = 300  // 5 minutes
+
+        /// Maximum file size (bytes) for upload
+        static let maxFileSize: Int64 = 25 * 1024 * 1024  // 25 MB
+
+        /// Validation result - simple type usable by both app and keyboard extension
+        enum ValidationResult: Equatable {
+            case valid
+            case tooShort(duration: TimeInterval)
+            case tooLong(duration: TimeInterval)
+            case fileTooLarge(sizeMB: Double, maxSizeMB: Double)
+        }
+
+        /// Validate duration is within acceptable range
+        static func validateDuration(_ duration: TimeInterval) -> ValidationResult {
+            if duration < minDuration {
+                return .tooShort(duration: duration)
+            }
+            if duration > maxDuration {
+                return .tooLong(duration: duration)
+            }
+            return .valid
+        }
+
+        /// Validate file size
+        static func validateFileSize(_ bytes: Int64) -> ValidationResult {
+            if bytes > maxFileSize {
+                let sizeMB = Double(bytes) / (1024 * 1024)
+                let maxMB = Double(maxFileSize) / (1024 * 1024)
+                return .fileTooLarge(sizeMB: sizeMB, maxSizeMB: maxMB)
+            }
+            return .valid
+        }
+
+        /// Check if duration warrants a warning (long but not error)
+        static func shouldWarnDuration(_ duration: TimeInterval) -> Bool {
+            duration > warnDuration && duration <= maxDuration
+        }
+    }
 }

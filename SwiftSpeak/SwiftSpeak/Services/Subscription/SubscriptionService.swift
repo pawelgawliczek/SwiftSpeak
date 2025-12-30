@@ -192,13 +192,13 @@ final class SubscriptionService: ObservableObject {
         let key = apiKey ?? Constants.RevenueCat.apiKey
 
         if isMockMode {
-            print("[SubscriptionService] Running in MOCK MODE (test API key detected)")
+            appLog("Running in MOCK MODE (test API key detected)", category: "Subscription")
             setupMockPackages()
             isConfigured = true
             // Sync from SharedSettings in mock mode
             currentTier = SharedSettings.shared.subscriptionTier
         } else {
-            print("[SubscriptionService] Configuring RevenueCat with production key")
+            appLog("Configuring RevenueCat with production key", category: "Subscription")
 
             // Configure RevenueCat
             Purchases.logLevel = .debug
@@ -249,17 +249,17 @@ final class SubscriptionService: ObservableObject {
 
                 await MainActor.run {
                     self.availablePackages = packages
-                    print("[SubscriptionService] Loaded \(packages.count) packages from RevenueCat")
+                    appLog("Loaded \(packages.count) packages from RevenueCat", category: "Subscription")
                 }
             } else {
-                print("[SubscriptionService] No current offering found")
+                appLog("No current offering found", category: "Subscription", level: .warning)
                 // Fall back to mock packages if no offerings
                 await MainActor.run {
                     self.setupMockPackages()
                 }
             }
         } catch {
-            print("[SubscriptionService] Failed to fetch offerings: \(error)")
+            appLog("Failed to fetch offerings: \(LogSanitizer.sanitizeError(error))", category: "Subscription", level: .error)
             errorMessage = "Failed to load subscription options"
             // Fall back to mock packages on error
             await MainActor.run {
@@ -276,7 +276,7 @@ final class SubscriptionService: ObservableObject {
             let customerInfo = try await Purchases.shared.customerInfo()
             updateTierFromCustomerInfo(customerInfo)
         } catch {
-            print("[SubscriptionService] Failed to refresh customer info: \(error)")
+            appLog("Failed to refresh customer info: \(LogSanitizer.sanitizeError(error))", category: "Subscription", level: .error)
         }
     }
 
@@ -287,13 +287,13 @@ final class SubscriptionService: ObservableObject {
 
         if info.entitlements[powerEntitlement]?.isActive == true {
             currentTier = .power
-            print("[SubscriptionService] User has Power tier")
+            appLog("User has Power tier", category: "Subscription")
         } else if info.entitlements[proEntitlement]?.isActive == true {
             currentTier = .pro
-            print("[SubscriptionService] User has Pro tier")
+            appLog("User has Pro tier", category: "Subscription")
         } else {
             currentTier = .free
-            print("[SubscriptionService] User has Free tier")
+            appLog("User has Free tier", category: "Subscription")
         }
 
         // Sync to SharedSettings
@@ -337,7 +337,7 @@ final class SubscriptionService: ObservableObject {
             currentTier = package.product.tier
             SharedSettings.shared.subscriptionTier = currentTier
 
-            print("[SubscriptionService] Mock purchase success: \(package.product.displayName)")
+            appLog("Mock purchase success: \(package.product.displayName)", category: "Subscription")
             return true
         } else {
             guard let rcPackage = package.rcPackage else {
@@ -352,12 +352,12 @@ final class SubscriptionService: ObservableObject {
                 }
 
                 updateTierFromCustomerInfo(result.customerInfo)
-                print("[SubscriptionService] Purchase success: \(package.product.displayName)")
+                appLog("Purchase success: \(package.product.displayName)", category: "Subscription")
                 return true
             } catch let error as SubscriptionError {
                 throw error
             } catch {
-                print("[SubscriptionService] Purchase failed: \(error)")
+                appLog("Purchase failed: \(LogSanitizer.sanitizeError(error))", category: "Subscription", level: .error)
                 throw SubscriptionError.purchaseFailed(underlying: error)
             }
         }
@@ -388,7 +388,7 @@ final class SubscriptionService: ObservableObject {
             // Simulate network delay
             try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
 
-            print("[SubscriptionService] Mock restore completed")
+            appLog("Mock restore completed", category: "Subscription")
             return true
         } else {
             do {
@@ -396,10 +396,10 @@ final class SubscriptionService: ObservableObject {
                 updateTierFromCustomerInfo(customerInfo)
 
                 let hasSubscription = currentTier != .free
-                print("[SubscriptionService] Restore completed. Has subscription: \(hasSubscription)")
+                appLog("Restore completed. Has subscription: \(hasSubscription)", category: "Subscription")
                 return hasSubscription
             } catch {
-                print("[SubscriptionService] Restore failed: \(error)")
+                appLog("Restore failed: \(LogSanitizer.sanitizeError(error))", category: "Subscription", level: .error)
                 throw SubscriptionError.restoreFailed(underlying: error)
             }
         }

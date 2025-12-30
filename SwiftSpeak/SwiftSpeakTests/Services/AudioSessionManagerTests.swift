@@ -276,7 +276,8 @@ struct AudioSessionManagerErrorHandlingTests {
     @Test("Permission undetermined error is correct type")
     func testPermissionUndeterminedError() {
         let error = TranscriptionError.microphonePermissionNotDetermined
-        #expect(error.isUserRecoverable == true)
+        // Not user-recoverable - requires triggering the permission dialog first
+        #expect(error.isUserRecoverable == false)
     }
 }
 

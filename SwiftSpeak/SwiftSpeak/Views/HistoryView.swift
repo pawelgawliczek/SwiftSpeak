@@ -82,21 +82,37 @@ struct HistoryView: View {
                                         }
                                 }
 
-                                HistoryRowView(record: record, colorScheme: colorScheme)
-                                    .onTapGesture {
-                                        if isSelecting {
-                                            HapticManager.lightTap()
-                                            toggleSelection(record.id)
-                                        } else {
-                                            HapticManager.lightTap()
-                                            selectedRecord = record
-                                        }
+                                HistoryRowView(record: record, colorScheme: colorScheme) {
+                                    // Tap to copy output
+                                    UIPasteboard.general.string = record.text
+                                    HapticManager.success()
+                                }
+                                .onTapGesture {
+                                    if isSelecting {
+                                        HapticManager.lightTap()
+                                        toggleSelection(record.id)
                                     }
+                                }
                             }
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    deleteRecord(record)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                                Button {
+                                    HapticManager.lightTap()
+                                    selectedRecord = record
+                                } label: {
+                                    Label("Details", systemImage: "info.circle")
+                                }
+                                .tint(AppTheme.accent)
+                            }
                         }
-                        .onDelete(perform: deleteRecords)
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
@@ -237,6 +253,11 @@ struct HistoryView: View {
         settings.transcriptionHistory.removeAll { recordsToDelete.contains($0.id) }
     }
 
+    private func deleteRecord(_ record: TranscriptionRecord) {
+        HapticManager.mediumTap()
+        settings.transcriptionHistory.removeAll { $0.id == record.id }
+    }
+
     private func deleteSelectedRecords() {
         HapticManager.success()
         settings.transcriptionHistory.removeAll { selectedRecords.contains($0.id) }
@@ -272,6 +293,9 @@ struct EmptyHistoryView: View {
 struct HistoryRowView: View {
     let record: TranscriptionRecord
     let colorScheme: ColorScheme
+    let onCopy: () -> Void
+
+    @State private var showCopied = false
 
     private var cardBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
@@ -279,116 +303,191 @@ struct HistoryRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Header with mode, power mode, context, and time
-            HStack {
-                // Mode badge
-                HStack(spacing: 4) {
-                    Image(systemName: record.mode.icon)
-                        .font(.caption2)
-                    Text(record.mode.displayName)
+            // Header with mode, power mode, context, translation, and time
+            headerBadges
+
+            // Input text (if different from output)
+            if record.hasTransformation {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Input")
                         .font(.caption2.weight(.medium))
-                }
-                .foregroundStyle(AppTheme.accent)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(AppTheme.accent.opacity(0.15))
-                .clipShape(Capsule())
-
-                // Power Mode badge
-                if let powerModeName = record.powerModeName {
-                    HStack(spacing: 4) {
-                        Image(systemName: "bolt.fill")
-                            .font(.caption2)
-                        Text(powerModeName)
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(.orange)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.orange.opacity(0.15))
-                    .clipShape(Capsule())
-                }
-
-                // Context badge
-                if let contextName = record.contextName {
-                    HStack(spacing: 4) {
-                        if let icon = record.contextIcon {
-                            Text(icon)
-                                .font(.caption2)
-                        }
-                        Text(contextName)
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(.purple)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.purple.opacity(0.15))
-                    .clipShape(Capsule())
-                }
-
-                if record.translated {
-                    HStack(spacing: 4) {
-                        Image(systemName: "globe")
-                            .font(.caption2)
-                        Text(record.targetLanguage?.displayName ?? "")
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(.teal)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.teal.opacity(0.15))
-                    .clipShape(Capsule())
-                }
-
-                Spacer()
-
-                Text(formattedDate)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Text preview
-            Text(record.text)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
-                .lineLimit(3)
-
-            // Footer with duration, cost, and provider
-            HStack {
-                HStack(spacing: 4) {
-                    Image(systemName: "clock")
-                        .font(.caption2)
-                    Text(formattedDuration)
-                        .font(.caption2)
-                }
-                .foregroundStyle(.secondary)
-
-                // Cost badge (Phase 9)
-                if let cost = record.estimatedCost, cost > 0 {
-                    Text(cost.formattedCostCompact)
-                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.tertiary)
+                    Text(record.rawTranscribedText)
+                        .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .lineLimit(2)
                 }
-
-                Spacer()
-
-                HStack(spacing: 4) {
-                    Image(systemName: record.provider.icon)
-                        .font(.caption2)
-                    Text(record.provider.displayName)
-                        .font(.caption2)
-                }
-                .foregroundStyle(.secondary)
             }
+
+            // Output text (larger, tappable to copy)
+            VStack(alignment: .leading, spacing: 4) {
+                if record.hasTransformation {
+                    HStack {
+                        Text("Output")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.tertiary)
+                        Spacer()
+                        if showCopied {
+                            Label("Copied", systemImage: "checkmark")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.green)
+                        } else {
+                            Label("Tap to copy", systemImage: "doc.on.doc")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                Text(record.text)
+                    .font(.subheadline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onCopy()
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showCopied = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showCopied = false
+                    }
+                }
+            }
+
+            // Footer with duration, cost badges, and provider
+            costAndProviderFooter
         }
         .padding(16)
         .background(cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Header Badges
+
+    private var headerBadges: some View {
+        HStack {
+            // Mode badge
+            HStack(spacing: 4) {
+                Image(systemName: record.mode.icon)
+                    .font(.caption2)
+                Text(record.mode.displayName)
+                    .font(.caption2.weight(.medium))
+            }
+            .foregroundStyle(AppTheme.accent)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(AppTheme.accent.opacity(0.15))
+            .clipShape(Capsule())
+
+            // Power Mode badge
+            if let powerModeName = record.powerModeName {
+                HStack(spacing: 4) {
+                    Image(systemName: "bolt.fill")
+                        .font(.caption2)
+                    Text(powerModeName)
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.orange.opacity(0.15))
+                .clipShape(Capsule())
+            }
+
+            // Context badge
+            if let contextName = record.contextName {
+                HStack(spacing: 4) {
+                    if let icon = record.contextIcon {
+                        Text(icon)
+                            .font(.caption2)
+                    }
+                    Text(contextName)
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.purple)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.purple.opacity(0.15))
+                .clipShape(Capsule())
+            }
+
+            // Translation badge
+            if record.translated {
+                HStack(spacing: 4) {
+                    Image(systemName: "globe")
+                        .font(.caption2)
+                    Text(record.targetLanguage?.displayName ?? "")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.teal)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.teal.opacity(0.15))
+                .clipShape(Capsule())
+            }
+
+            Spacer()
+
+            Text(formattedDate)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: - Cost and Provider Footer
+
+    private var costAndProviderFooter: some View {
+        HStack(spacing: 8) {
+            // Duration
+            HStack(spacing: 4) {
+                Image(systemName: "clock")
+                    .font(.caption2)
+                Text(formattedDuration)
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+
+            // Cost badges per capability
+            if let breakdown = record.costBreakdown {
+                // Transcription cost
+                if breakdown.transcriptionCost > 0 {
+                    CostBadge(icon: "waveform", cost: breakdown.transcriptionCost)
+                }
+
+                // Translation cost
+                if let translationCost = breakdown.translationCost, translationCost > 0 {
+                    CostBadge(icon: "globe", cost: translationCost)
+                }
+
+                // Power Mode cost
+                if let powerModeCost = breakdown.powerModeCost, powerModeCost > 0 {
+                    CostBadge(icon: "bolt.fill", cost: powerModeCost)
+                }
+            } else if let cost = record.estimatedCost, cost > 0 {
+                // Fallback for legacy records
+                Text(cost.formattedCostCompact)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.ultraThinMaterial, in: Capsule())
+            }
+
+            Spacer()
+
+            // Provider
+            HStack(spacing: 4) {
+                Image(systemName: record.provider.icon)
+                    .font(.caption2)
+                Text(record.provider.shortName)
+                    .font(.caption2)
+            }
+            .foregroundStyle(.secondary)
+        }
     }
 
     private var formattedDate: String {
@@ -407,15 +506,34 @@ struct HistoryRowView: View {
     }
 }
 
-// MARK: - History Detail View
+// MARK: - Cost Badge Component
+
+private struct CostBadge: View {
+    let icon: String
+    let cost: Double
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 8))
+            Text(cost.formattedCostCompact)
+                .font(.caption2.weight(.medium))
+        }
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(.ultraThinMaterial, in: Capsule())
+    }
+}
+
+// MARK: - History Detail View (Redesigned with Tabs)
 struct HistoryDetailView: View {
     let record: TranscriptionRecord
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
     @EnvironmentObject var settings: SharedSettings
     @State private var copied = false
-    @State private var isReprocessing = false
-    @State private var selectedMode: FormattingMode?
+    @State private var selectedTab = 0
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -431,125 +549,35 @@ struct HistoryDetailView: View {
                 backgroundColor.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        // Metadata
-                        VStack(spacing: 16) {
-                            MetadataRow(icon: "calendar", label: "Date", value: formattedFullDate)
-                            MetadataRow(icon: "clock", label: "Duration", value: formattedDuration)
-                            MetadataRow(icon: record.mode.icon, label: "Mode", value: record.mode.displayName)
-                            MetadataRow(icon: record.provider.icon, label: "Provider", value: record.provider.displayName)
+                    VStack(alignment: .leading, spacing: 20) {
+                        // Text Content Section
+                        textContentSection
 
-                            if record.translated, let lang = record.targetLanguage {
-                                MetadataRow(icon: "globe", label: "Translated to", value: "\(lang.flag) \(lang.displayName)")
-                            }
+                        // Copy Button
+                        copyButton
 
-                            // Cost breakdown (Phase 9)
-                            if let cost = record.estimatedCost, cost > 0 {
-                                Divider()
-                                    .padding(.vertical, 4)
+                        // Tabbed Details
+                        Picker("Details", selection: $selectedTab) {
+                            Text("Timing").tag(0)
+                            Text("Providers").tag(1)
+                            Text("Prompts").tag(2)
+                            Text("Costs").tag(3)
+                        }
+                        .pickerStyle(.segmented)
 
-                                MetadataRow(icon: "dollarsign.circle", label: "Total Cost", value: cost.formattedCost)
-
-                                if let breakdown = record.costBreakdown {
-                                    if breakdown.transcriptionCost > 0 {
-                                        MetadataRow(icon: "waveform", label: "Transcription", value: breakdown.transcriptionCost.formattedCost)
-                                    }
-                                    if breakdown.formattingCost > 0 {
-                                        MetadataRow(icon: "text.alignleft", label: "Formatting", value: breakdown.formattingCost.formattedCost)
-                                    }
-                                    if let translationCost = breakdown.translationCost, translationCost > 0 {
-                                        MetadataRow(icon: "globe", label: "Translation", value: translationCost.formattedCost)
-                                    }
-                                }
+                        // Tab Content
+                        Group {
+                            switch selectedTab {
+                            case 0: timingSection
+                            case 1: providersSection
+                            case 2: promptsSection
+                            case 3: costsSection
+                            default: EmptyView()
                             }
                         }
-                        .padding(16)
-                        .background(cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
-
-                        // Text content
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Transcription")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-
-                            Text(record.text)
-                                .font(.body)
-                                .foregroundStyle(.primary)
-                                .textSelection(.enabled)
-                        }
-                        .padding(16)
-                        .background(cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
-
-                        // Reprocess with different mode
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Reprocess with Different Mode")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.secondary)
-
-                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                                ForEach(FormattingMode.allCases.filter { $0 != record.mode }) { mode in
-                                    Button(action: {
-                                        reprocessWithMode(mode)
-                                    }) {
-                                        HStack(spacing: 8) {
-                                            Image(systemName: mode.icon)
-                                                .font(.caption)
-                                            Text(mode.displayName)
-                                                .font(.footnote.weight(.medium))
-                                        }
-                                        .foregroundStyle(selectedMode == mode ? .white : AppTheme.accent)
-                                        .frame(maxWidth: .infinity)
-                                        .frame(minHeight: 40)
-                                        .background(
-                                            selectedMode == mode
-                                                ? AppTheme.accent
-                                                : AppTheme.accent.opacity(0.15)
-                                        )
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    }
-                                    .buttonStyle(.plain)
-                                    .disabled(isReprocessing)
-                                }
-                            }
-
-                            if isReprocessing {
-                                HStack {
-                                    ProgressView()
-                                        .scaleEffect(0.8)
-                                    Text("Reprocessing...")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.top, 8)
-                            }
-                        }
-                        .padding(16)
-                        .background(cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shadow(color: .black.opacity(colorScheme == .dark ? 0.3 : 0.1), radius: 8, y: 2)
-
-                        // Copy button
-                        Button(action: copyText) {
-                            HStack {
-                                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                Text(copied ? "Copied!" : "Copy to Clipboard")
-                            }
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 50)
-                            .background(copied ? Color.green : AppTheme.accent)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .shadow(color: (copied ? Color.green : AppTheme.accent).opacity(0.3), radius: 8, y: 4)
-                        }
-                        .buttonStyle(.plain)
+                        .animation(.easeInOut(duration: 0.2), value: selectedTab)
                     }
-                    .padding(24)
+                    .padding(20)
                 }
             }
             .navigationTitle("Details")
@@ -562,39 +590,413 @@ struct HistoryDetailView: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
         .presentationDragIndicator(.visible)
     }
 
-    private func reprocessWithMode(_ mode: FormattingMode) {
-        HapticManager.mediumTap()
-        selectedMode = mode
-        isReprocessing = true
+    // MARK: - Text Content Section
 
-        // Simulate reprocessing delay (in real app, this would call the formatting API)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            // Create new record with the new mode
-            let newRecord = TranscriptionRecord(
-                text: record.text, // In real app, this would be reformatted text from API
-                mode: mode,
-                provider: record.provider,
-                duration: record.duration,
-                translated: record.translated,
-                targetLanguage: record.targetLanguage
-            )
+    private var textContentSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Input (if different from output)
+            if record.hasTransformation {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "mic.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text("Raw Transcription")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(record.rawTranscribedText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
 
-            // Add to history
-            settings.transcriptionHistory.insert(newRecord, at: 0)
+            // Output (prominent)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Image(systemName: "text.alignleft")
+                        .font(.caption)
+                        .foregroundStyle(AppTheme.accent)
+                    Text("Final Output")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(AppTheme.accent)
+                }
+                Text(record.text)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+                    .textSelection(.enabled)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.08), radius: 8, y: 2)
+        }
+    }
 
-            HapticManager.success()
-            isReprocessing = false
+    // MARK: - Copy Button
 
-            // Dismiss after short delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                dismiss()
+    private var copyButton: some View {
+        Button(action: copyText) {
+            HStack {
+                Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                Text(copied ? "Copied!" : "Copy to Clipboard")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .background(copied ? Color.green : AppTheme.accent)
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Timing Section
+
+    private var timingSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Processing Timeline
+            SectionHeader(title: "PROCESSING TIMELINE")
+
+            if let metadata = record.processingMetadata, !metadata.steps.isEmpty {
+                VStack(spacing: 12) {
+                    ForEach(metadata.steps) { step in
+                        HStack {
+                            Image(systemName: step.stepType.icon)
+                                .font(.caption)
+                                .foregroundStyle(step.stepType.color)
+                                .frame(width: 24)
+
+                            Text(step.stepType.displayName)
+                                .font(.subheadline)
+
+                            Spacer()
+
+                            Text(step.responseTimeFormatted)
+                                .font(.subheadline.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    Divider()
+
+                    HStack {
+                        Text("Total Processing")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text("\(metadata.totalResponseTimeMs)ms")
+                            .font(.subheadline.weight(.bold).monospacedDigit())
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                legacyTimingCard
+            }
+
+            // Audio Info
+            SectionHeader(title: "AUDIO INFO")
+
+            VStack(spacing: 12) {
+                MetadataRow(icon: "calendar", label: "Date", value: formattedFullDate)
+                MetadataRow(icon: "clock", label: "Recording Duration", value: formattedDuration)
+            }
+            .padding(16)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    private var legacyTimingCard: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.title2)
+                .foregroundStyle(.tertiary)
+            Text("Detailed timing not available")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Text("This record was created before enhanced tracking was added.")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Providers Section
+
+    private var providersSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Providers & Models
+            SectionHeader(title: "PROVIDERS & MODELS")
+
+            if let metadata = record.processingMetadata, !metadata.steps.isEmpty {
+                VStack(spacing: 12) {
+                    ForEach(metadata.steps) { step in
+                        HStack {
+                            Image(systemName: step.provider.icon)
+                                .font(.caption)
+                                .foregroundStyle(step.stepType.color)
+                                .frame(width: 24)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(step.stepType.displayName)
+                                    .font(.subheadline)
+                                Text("\(step.provider.displayName) - \(step.modelName)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+                        }
+                    }
+                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                // Legacy: show basic provider info
+                VStack(spacing: 12) {
+                    MetadataRow(icon: record.provider.icon, label: "Transcription", value: record.provider.displayName)
+                    MetadataRow(icon: record.mode.icon, label: "Mode", value: record.mode.displayName)
+                    if record.translated, let lang = record.targetLanguage {
+                        MetadataRow(icon: "globe", label: "Translated to", value: "\(lang.flag) \(lang.displayName)")
+                    }
+                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+
+            // Parameters
+            SectionHeader(title: "PARAMETERS")
+
+            VStack(spacing: 12) {
+                if let metadata = record.processingMetadata {
+                    if let sourceHint = metadata.sourceLanguageHint {
+                        MetadataRow(icon: "character.bubble", label: "Source Language", value: sourceHint.displayName)
+                    }
+
+                    if let vocab = metadata.vocabularyApplied, !vocab.isEmpty {
+                        HStack(alignment: .top) {
+                            Image(systemName: "text.word.spacing")
+                                .font(.subheadline)
+                                .foregroundStyle(AppTheme.accent)
+                                .frame(width: 24)
+                            Text("Vocabulary")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(vocab.joined(separator: ", "))
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+
+                    if let memory = metadata.memorySourcesUsed, !memory.isEmpty {
+                        HStack(alignment: .top) {
+                            Image(systemName: "brain")
+                                .font(.subheadline)
+                                .foregroundStyle(AppTheme.accent)
+                                .frame(width: 24)
+                            Text("Memory Sources")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Text(memory.joined(separator: ", "))
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                    }
+                }
+
+                if let contextName = record.contextName {
+                    MetadataRow(icon: "person.crop.circle", label: "Context", value: "\(record.contextIcon ?? "") \(contextName)")
+                }
+
+                if let powerModeName = record.powerModeName {
+                    MetadataRow(icon: "bolt.fill", label: "Power Mode", value: powerModeName)
+                }
+            }
+            .padding(16)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+    }
+
+    // MARK: - Prompts Section
+
+    private var promptsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "PROMPTS SENT")
+
+            if let metadata = record.processingMetadata {
+                let prompts = metadata.allPrompts
+                if !prompts.isEmpty {
+                    ForEach(Array(prompts.enumerated()), id: \.offset) { _, item in
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: item.stepType.icon)
+                                    .font(.caption)
+                                    .foregroundStyle(item.stepType.color)
+                                Text(item.stepType.displayName.uppercased())
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(item.stepType.color)
+                            }
+
+                            ScrollView {
+                                Text(item.prompt)
+                                    .font(.system(.caption, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxHeight: 150)
+                        }
+                        .padding(12)
+                        .background(Color.primary.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                } else {
+                    noPromptsCard
+                }
+            } else {
+                noPromptsCard
             }
         }
     }
+
+    private var noPromptsCard: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "doc.text")
+                .font(.title2)
+                .foregroundStyle(.tertiary)
+            Text("No prompts recorded")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Text("Prompt logging was added in a later version.")
+                .font(.caption2)
+                .foregroundStyle(.quaternary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(24)
+        .background(cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    // MARK: - Costs Section
+
+    private var costsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            SectionHeader(title: "COST BREAKDOWN")
+
+            if let breakdown = record.costBreakdown, breakdown.hasCosts {
+                VStack(spacing: 12) {
+                    CostDetailRow(icon: "waveform", label: "Transcription", cost: breakdown.transcriptionCost)
+
+                    if record.mode != .raw {
+                        CostDetailRow(
+                            icon: "text.alignleft",
+                            label: "Formatting",
+                            cost: breakdown.formattingCost,
+                            note: breakdown.formattingCost == 0 ? "Local" : nil
+                        )
+                    }
+
+                    if let translationCost = breakdown.translationCost {
+                        CostDetailRow(icon: "globe", label: "Translation", cost: translationCost)
+                    }
+
+                    if let powerModeCost = breakdown.powerModeCost {
+                        CostDetailRow(icon: "bolt.fill", label: "Power Mode", cost: powerModeCost)
+                    }
+
+                    Divider()
+
+                    HStack {
+                        Text("Total")
+                            .font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(breakdown.total.formattedCost)
+                            .font(.headline.weight(.bold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Token Usage
+                if let metadata = record.processingMetadata,
+                   (metadata.totalInputTokens > 0 || metadata.totalOutputTokens > 0) {
+                    SectionHeader(title: "TOKEN USAGE")
+
+                    VStack(spacing: 12) {
+                        HStack {
+                            Label("\(metadata.totalInputTokens)", systemImage: "arrow.right.circle")
+                                .font(.subheadline)
+                            Text("input tokens")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        HStack {
+                            Label("\(metadata.totalOutputTokens)", systemImage: "arrow.left.circle")
+                                .font(.subheadline)
+                            Text("output tokens")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        Divider()
+                        HStack {
+                            Text("Total Tokens")
+                                .font(.subheadline)
+                            Spacer()
+                            Text("\(metadata.totalInputTokens + metadata.totalOutputTokens)")
+                                .font(.subheadline.weight(.semibold).monospacedDigit())
+                        }
+                    }
+                    .padding(16)
+                    .background(cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "dollarsign.circle")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text("No cost data")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(24)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
+    }
+
+    // MARK: - Helpers
 
     private var formattedFullDate: String {
         let formatter = DateFormatter()
@@ -622,6 +1024,50 @@ struct HistoryDetailView: View {
             withAnimation(AppTheme.quickSpring) {
                 copied = false
             }
+        }
+    }
+}
+
+// MARK: - Supporting Views for Detail View
+
+private struct SectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.top, 8)
+    }
+}
+
+private struct CostDetailRow: View {
+    let icon: String
+    let label: String
+    let cost: Double
+    var note: String? = nil
+
+    var body: some View {
+        HStack {
+            Image(systemName: icon)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(width: 24)
+
+            Text(label)
+                .font(.subheadline)
+
+            if let note = note {
+                Text("(\(note))")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            Text(cost.formattedCost)
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(cost == 0 ? .tertiary : .primary)
         }
     }
 }

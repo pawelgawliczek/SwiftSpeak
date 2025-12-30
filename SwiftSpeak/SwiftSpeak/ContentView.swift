@@ -88,6 +88,8 @@ struct ContentView: View {
         // Handle swiftspeak:// URL scheme from keyboard
         guard url.scheme == Constants.urlScheme else { return }
 
+        appLog("URL scheme received: \(url.host ?? "unknown")", category: "Navigation")
+
         // Parse parameters
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems ?? []
@@ -99,6 +101,7 @@ struct ContentView: View {
                let modeId = UUID(uuidString: modeIdString) {
                 selectedPowerModeId = modeId
                 selectedTab = 2 // Switch to Power tab
+                appLog("Power Mode launch requested (from keyboard)", category: "Navigation")
                 // The PowerModeListView will handle the autostart
             }
             return
@@ -127,6 +130,9 @@ struct ContentView: View {
         } else {
             settings.selectedCustomTemplate = nil
         }
+
+        // Log the recording request
+        appLog("Recording requested (mode: \(settings.selectedMode.rawValue), translate: \(translateOnRecord))", category: "Navigation")
 
         // Show recording view
         showRecording = true

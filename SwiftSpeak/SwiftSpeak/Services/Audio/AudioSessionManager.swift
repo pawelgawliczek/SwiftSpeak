@@ -123,7 +123,7 @@ final class AudioSessionManager {
             isSessionActive = false
         } catch {
             // Log but don't throw - deactivation failure is not critical
-            print("AudioSessionManager: Failed to deactivate session: \(error)")
+            appLog("Failed to deactivate session: \(LogSanitizer.sanitizeError(error))", category: "Audio", level: .warning)
         }
     }
 
@@ -134,7 +134,7 @@ final class AudioSessionManager {
             try configureForRecording()
             // Don't activate yet - just configure
         } catch {
-            print("AudioSessionManager: Pre-warm failed: \(error)")
+            appLog("Pre-warm failed: \(LogSanitizer.sanitizeError(error))", category: "Audio", level: .warning)
         }
     }
 

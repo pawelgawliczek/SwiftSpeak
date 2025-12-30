@@ -101,7 +101,7 @@ struct RecordingView: View {
             orchestrator.cancel()
         }
         // Phase 10f: Enable on-device translation via Apple Translation framework
-        .localTranslationHandler()
+        .localTranslationHandlerIfAvailable()
     }
 
     private func showCard() {
@@ -176,6 +176,21 @@ struct RecordingView: View {
             }
         default:
             break
+        }
+    }
+}
+
+// MARK: - iOS Version Compatibility
+
+extension View {
+    /// Applies localTranslationHandler only on iOS 18.0+
+    /// On older iOS versions, the view is returned unchanged (Apple Translation unavailable)
+    @ViewBuilder
+    func localTranslationHandlerIfAvailable() -> some View {
+        if #available(iOS 18.0, *) {
+            self.localTranslationHandler()
+        } else {
+            self
         }
     }
 }
@@ -258,6 +273,12 @@ struct RecordingCard: View {
                 case .processing, .formatting, .translating:
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: AppTheme.accent))
+                        .scaleEffect(1.5)
+
+                case .retrying:
+                    // Retry spinner with orange tint
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: .orange))
                         .scaleEffect(1.5)
 
                 case .complete:
@@ -393,6 +414,8 @@ struct RecordingCard: View {
             return "Applying \(mode.displayName) mode..."
         case .translating:
             return "Translating to \(targetLanguage.displayName)..."
+        case .retrying(let attempt, let maxAttempts, let reason):
+            return "Retrying (\(attempt)/\(maxAttempts))...\n\(reason)"
         case .complete:
             return "Done!"
         case .error(let message):

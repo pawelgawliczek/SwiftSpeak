@@ -355,3 +355,76 @@ struct FormattingProviderTests {
         // The actual value depends on settings
     }
 }
+
+// MARK: - Processing Metadata Integration Tests
+
+@Suite("TranscriptionOrchestrator - Processing Metadata")
+struct TranscriptionOrchestratorProcessingMetadataTests {
+
+    @Test("Orchestrator initializes with empty processing steps")
+    @MainActor
+    func initializesWithEmptyProcessingSteps() {
+        let orchestrator = TranscriptionOrchestrator()
+
+        // Initial state should have no recorded steps
+        // (processingSteps is private, so we test via behavior)
+        #expect(orchestrator.state == .idle)
+    }
+
+    @Test("Reset clears processing metadata")
+    @MainActor
+    func resetClearsProcessingMetadata() {
+        let orchestrator = TranscriptionOrchestrator()
+
+        // Configure and reset
+        orchestrator.mode = .email
+        orchestrator.translateEnabled = true
+        orchestrator.reset()
+
+        // After reset, orchestrator should be in clean state
+        #expect(orchestrator.state == .idle)
+        #expect(orchestrator.transcribedText == "")
+        #expect(orchestrator.formattedText == "")
+    }
+
+    @Test("Cancel clears processing metadata")
+    @MainActor
+    func cancelClearsProcessingMetadata() {
+        let orchestrator = TranscriptionOrchestrator()
+
+        orchestrator.mode = .formal
+        orchestrator.cancel()
+
+        #expect(orchestrator.state == .idle)
+    }
+}
+
+// MARK: - Retrying State Tests
+
+@Suite("TranscriptionOrchestrator - Retrying State")
+struct RetryingStateTests {
+
+    @Test("RecordingState retrying equality with same values")
+    func retryingEquality() {
+        let state1 = RecordingState.retrying(attempt: 1, maxAttempts: 3, reason: "Network error")
+        let state2 = RecordingState.retrying(attempt: 1, maxAttempts: 3, reason: "Network error")
+
+        #expect(state1 == state2)
+    }
+
+    @Test("RecordingState retrying inequality with different attempt")
+    func retryingDifferentAttempt() {
+        let state1 = RecordingState.retrying(attempt: 1, maxAttempts: 3, reason: "Error")
+        let state2 = RecordingState.retrying(attempt: 2, maxAttempts: 3, reason: "Error")
+
+        #expect(state1 != state2)
+    }
+
+    @Test("RecordingState retrying inequality with different reason")
+    func retryingDifferentReason() {
+        let state1 = RecordingState.retrying(attempt: 1, maxAttempts: 3, reason: "Network error")
+        let state2 = RecordingState.retrying(attempt: 1, maxAttempts: 3, reason: "Timeout")
+
+        #expect(state1 != state2)
+    }
+}

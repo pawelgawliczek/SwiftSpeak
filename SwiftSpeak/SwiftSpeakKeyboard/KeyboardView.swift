@@ -14,6 +14,65 @@ import SwiftUI
 import UIKit
 import Combine
 
+// MARK: - Status Banner (Phase 11)
+struct StatusBanner: View {
+    let status: KeyboardProcessingStatus
+    let onDismiss: () -> Void
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            // Icon with animation for processing states
+            if status.currentStep == "transcribing" || status.currentStep == "formatting" ||
+               status.currentStep == "translating" || status.currentStep == "retrying" {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: status.color))
+                    .scaleEffect(0.8)
+            } else {
+                Image(systemName: status.icon)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(status.color)
+            }
+
+            Text(status.displayText)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            // Action buttons
+            if status.currentStep == "failed" {
+                Button(action: onRetry) {
+                    Text("Retry")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
+                }
+
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            } else if status.currentStep == "complete" {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(status.color.opacity(0.15))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .padding(.horizontal, 16)
+    }
+}
+
 // MARK: - Keyboard View
 struct KeyboardView: View {
     @ObservedObject var viewModel: KeyboardViewModel
@@ -22,8 +81,31 @@ struct KeyboardView: View {
     @State private var showPowerModePicker = false
     @State private var showContextPicker = false
 
+    private var shouldShowStatusBanner: Bool {
+        let step = viewModel.processingStatus.currentStep
+        return step == "transcribing" || step == "formatting" ||
+               step == "translating" || step == "retrying" ||
+               step == "complete" || step == "failed"
+    }
+
     var body: some View {
         VStack(spacing: 12) {
+            // Phase 11: Status Banner
+            if shouldShowStatusBanner {
+                StatusBanner(
+                    status: viewModel.processingStatus,
+                    onDismiss: {
+                        KeyboardHaptics.lightTap()
+                        viewModel.dismissError()
+                    },
+                    onRetry: {
+                        KeyboardHaptics.mediumTap()
+                        viewModel.startTranscription()
+                    }
+                )
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+
             // Provider indicator (if configured)
             if let provider = viewModel.transcriptionProvider, provider.isConfigured {
                 HStack(spacing: 4) {
@@ -130,8 +212,28 @@ struct KeyboardView: View {
 
                 Spacer()
 
-                // Quick insert last transcription
-                if let lastText = viewModel.lastTranscription, !lastText.isEmpty {
+                // Phase 11: Pending audio indicator OR Insert Last button
+                if viewModel.pendingAudioCount > 0 {
+                    Button(action: {
+                        KeyboardHaptics.warning()
+                        // Open main app to pending recordings
+                        if let url = URL(string: "swiftspeak://pending") {
+                            viewModel.openAppURL(url)
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "waveform.badge.exclamationmark")
+                                .font(.footnote)
+                            Text("\(viewModel.pendingAudioCount) pending")
+                                .font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.orange.opacity(0.15))
+                        .clipShape(Capsule())
+                    }
+                } else if let lastText = viewModel.lastTranscription, !lastText.isEmpty {
                     Button(action: {
                         KeyboardHaptics.lightTap()
                         viewModel.insertLastTranscription()
@@ -594,6 +696,48 @@ struct KeyboardContext: Identifiable {
     let icon: String
 }
 
+// MARK: - Keyboard Processing Status (Phase 11)
+struct KeyboardProcessingStatus: Codable, Equatable {
+    var isProcessing: Bool = false
+    var currentStep: String = "idle"  // idle, recording, transcribing, formatting, translating, retrying, complete, failed
+    var retryAttempt: Int = 0
+    var maxRetries: Int = 3
+    var errorMessage: String?
+    var pendingAutoInsert: Bool = false
+    var lastCompletedText: String?
+
+    var displayText: String {
+        switch currentStep {
+        case "transcribing": return "Transcribing..."
+        case "formatting": return "Formatting..."
+        case "translating": return "Translating..."
+        case "retrying": return "Retrying (\(retryAttempt)/\(maxRetries))..."
+        case "complete": return "Done!"
+        case "failed": return errorMessage ?? "Failed"
+        default: return ""
+        }
+    }
+
+    var icon: String {
+        switch currentStep {
+        case "transcribing", "formatting", "translating": return "circle.dotted"
+        case "retrying": return "arrow.clockwise"
+        case "complete": return "checkmark.circle.fill"
+        case "failed": return "xmark.circle.fill"
+        default: return ""
+        }
+    }
+
+    var color: Color {
+        switch currentStep {
+        case "transcribing", "formatting", "translating", "retrying": return .blue
+        case "complete": return .green
+        case "failed": return .red
+        default: return .clear
+        }
+    }
+}
+
 // MARK: - Keyboard ViewModel
 class KeyboardViewModel: ObservableObject {
     @Published var selectedMode: FormattingMode = .raw
@@ -608,11 +752,56 @@ class KeyboardViewModel: ObservableObject {
     @Published var contexts: [KeyboardContext] = []
     @Published var activeContext: KeyboardContext?
 
+    // Phase 11: Processing status and pending audio
+    @Published var processingStatus: KeyboardProcessingStatus = KeyboardProcessingStatus()
+    @Published var pendingAudioCount: Int = 0
+
     weak var textDocumentProxy: UITextDocumentProxy?
     weak var hostViewController: UIViewController?
 
     init() {
         loadSettings()
+    }
+
+    /// Check for auto-insert when keyboard appears (Phase 11)
+    func checkAutoInsert() {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Load processing status
+        if let data = defaults?.data(forKey: "processingStatus"),
+           let status = try? JSONDecoder().decode(KeyboardProcessingStatus.self, from: data) {
+            processingStatus = status
+
+            // Auto-insert if pending
+            if status.pendingAutoInsert, let text = status.lastCompletedText, !text.isEmpty {
+                keyboardLog("Auto-inserting text (\(text.count) chars)", category: "Action")
+                textDocumentProxy?.insertText(text)
+
+                // Clear the auto-insert flag
+                var updatedStatus = status
+                updatedStatus.pendingAutoInsert = false
+                updatedStatus.lastCompletedText = nil
+                saveProcessingStatus(updatedStatus)
+                processingStatus = updatedStatus
+            }
+        }
+    }
+
+    private func saveProcessingStatus(_ status: KeyboardProcessingStatus) {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        if let data = try? JSONEncoder().encode(status) {
+            defaults?.set(data, forKey: "processingStatus")
+        }
+    }
+
+    /// Dismiss error banner
+    func dismissError() {
+        var updatedStatus = processingStatus
+        updatedStatus.isProcessing = false
+        updatedStatus.currentStep = "idle"
+        updatedStatus.errorMessage = nil
+        saveProcessingStatus(updatedStatus)
+        processingStatus = updatedStatus
     }
 
     /// All mode options for dropdown (built-in modes + custom templates for Pro users)
@@ -686,6 +875,29 @@ class KeyboardViewModel: ObservableObject {
         // Load contexts (Pro only)
         if isPro {
             loadContexts(from: defaults)
+        }
+
+        // Phase 11: Load pending audio count
+        loadPendingAudioCount(from: defaults)
+    }
+
+    private func loadPendingAudioCount(from defaults: UserDefaults?) {
+        // Decode pending audio queue to get count
+        guard let data = defaults?.data(forKey: "pendingAudioQueue") else {
+            pendingAudioCount = 0
+            return
+        }
+
+        // Simple struct just to decode the array
+        struct SimplePendingAudio: Codable {
+            let id: UUID
+        }
+
+        do {
+            let queue = try JSONDecoder().decode([SimplePendingAudio].self, from: data)
+            pendingAudioCount = queue.count
+        } catch {
+            pendingAudioCount = 0
         }
     }
 
@@ -824,6 +1036,8 @@ class KeyboardViewModel: ObservableObject {
 
     func startTranscription() {
         saveSettings()
+        keyboardLog("Transcription requested (mode: \(selectedMode.rawValue))", category: "Action")
+
         var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=false"
 
         // Add custom template ID if selected
@@ -839,6 +1053,8 @@ class KeyboardViewModel: ObservableObject {
     func startTranslation() {
         guard isPro else { return }
         saveSettings()
+        keyboardLog("Translation requested (mode: \(selectedMode.rawValue), target: \(selectedLanguage.rawValue))", category: "Action")
+
         var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=true&target=\(selectedLanguage.rawValue)"
 
         // Add custom template ID if selected
@@ -853,6 +1069,8 @@ class KeyboardViewModel: ObservableObject {
 
     func startPowerMode(_ powerMode: KeyboardPowerMode) {
         guard isPower else { return }
+        keyboardLog("Power Mode requested: \(powerMode.name)", category: "Action")
+
         let urlString = "swiftspeak://powermode?id=\(powerMode.id.uuidString)&autostart=true"
         if let url = URL(string: urlString) {
             openURL(url)
@@ -861,12 +1079,18 @@ class KeyboardViewModel: ObservableObject {
 
     func insertLastTranscription() {
         if let text = lastTranscription {
+            keyboardLog("Inserting last transcription (\(text.count) chars)", category: "Action")
             textDocumentProxy?.insertText(text)
         }
     }
 
     func deleteBackward() {
         textDocumentProxy?.deleteBackward()
+    }
+
+    /// Open a URL from the keyboard (used for pending recordings, main app, etc)
+    func openAppURL(_ url: URL) {
+        openURL(url)
     }
 
     private func openURL(_ url: URL) {

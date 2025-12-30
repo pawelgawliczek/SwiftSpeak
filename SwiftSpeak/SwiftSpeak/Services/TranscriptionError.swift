@@ -24,6 +24,10 @@ enum TranscriptionError: LocalizedError, Equatable {
     case audioFileNotFound
     case fileTooLarge(sizeMB: Double, maxSizeMB: Double)
 
+    // MARK: - Phase 11j: Audio Duration Errors
+    case audioTooShort(duration: TimeInterval, minDuration: TimeInterval)
+    case audioTooLong(duration: TimeInterval, maxDuration: TimeInterval)
+
     // MARK: - Network Errors
     case networkUnavailable
     case networkTimeout
@@ -82,6 +86,11 @@ enum TranscriptionError: LocalizedError, Equatable {
             return "The recorded audio file could not be found."
         case .fileTooLarge(let sizeMB, let maxSizeMB):
             return String(format: "Audio file is too large (%.1f MB). Maximum size is %.0f MB.", sizeMB, maxSizeMB)
+
+        case .audioTooShort(let duration, let minDuration):
+            return String(format: "Recording too short (%.1fs). Minimum is %.1f seconds.", duration, minDuration)
+        case .audioTooLong(let duration, let maxDuration):
+            return String(format: "Recording too long (%.0fs). Maximum is %.0f seconds.", duration, maxDuration)
 
         case .networkUnavailable:
             return "No internet connection. Please check your network settings."
@@ -181,6 +190,10 @@ enum TranscriptionError: LocalizedError, Equatable {
              (.languageNotSupported(let a), .languageNotSupported(let b)):
             return a == b
         case (.fileTooLarge(let a1, let a2), .fileTooLarge(let b1, let b2)):
+            return a1 == b1 && a2 == b2
+        case (.audioTooShort(let a1, let a2), .audioTooShort(let b1, let b2)):
+            return a1 == b1 && a2 == b2
+        case (.audioTooLong(let a1, let a2), .audioTooLong(let b1, let b2)):
             return a1 == b1 && a2 == b2
         case (.rateLimited(let a), .rateLimited(let b)):
             return a == b

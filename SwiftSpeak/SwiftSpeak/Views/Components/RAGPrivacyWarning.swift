@@ -348,7 +348,7 @@ struct RAGURLWarning: View {
     Text("Preview")
         .sheet(isPresented: .constant(true)) {
             RAGPrivacySheet(isPresented: .constant(true)) {
-                print("Accepted")
+                // Preview: User accepted privacy notice
             }
         }
 }

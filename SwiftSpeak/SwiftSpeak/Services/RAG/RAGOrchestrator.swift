@@ -159,7 +159,10 @@ final class RAGOrchestrator: ObservableObject {
 
             // Stage 3: Embed
             updateProgress(.embedding, 0.5, "Generating embeddings...", handler: progressHandler)
-            chunks = try await embeddingService!.embedChunks(chunks)
+            guard let service = embeddingService else {
+                throw RAGOrchestratorError.notConfigured
+            }
+            chunks = try await service.embedChunks(chunks)
 
             // Stage 4: Store
             updateProgress(.storing, 0.8, "Storing in knowledge base...", handler: progressHandler)
@@ -227,7 +230,10 @@ final class RAGOrchestrator: ObservableObject {
 
             // Stage 3: Embed
             updateProgress(.embedding, 0.6, "Generating embeddings...", handler: progressHandler)
-            chunks = try await embeddingService!.embedChunks(chunks)
+            guard let service = embeddingService else {
+                throw RAGOrchestratorError.notConfigured
+            }
+            chunks = try await service.embedChunks(chunks)
 
             // Stage 4: Store
             updateProgress(.storing, 0.85, "Storing in knowledge base...", handler: progressHandler)
@@ -265,7 +271,10 @@ final class RAGOrchestrator: ObservableObject {
 
         do {
             // Get query embedding
-            let queryEmbedding = try await embeddingService!.embed(text: queryText)
+            guard let service = embeddingService else {
+                throw RAGOrchestratorError.notConfigured
+            }
+            let queryEmbedding = try await service.embed(text: queryText)
 
             // Search for similar chunks
             let config = powerMode.ragConfiguration
@@ -337,7 +346,10 @@ final class RAGOrchestrator: ObservableObject {
         let parsed = try await parser.parseRemoteContent(content, from: sourceURL)
         let chunker = TextChunker(powerMode: powerMode)
         var chunks = chunker.chunk(document: parsed, documentId: document.id)
-        chunks = try await embeddingService!.embedChunks(chunks)
+        guard let service = embeddingService else {
+            throw RAGOrchestratorError.notConfigured
+        }
+        chunks = try await service.embedChunks(chunks)
         try vectorStore.storeChunks(chunks)
 
         var updated = document

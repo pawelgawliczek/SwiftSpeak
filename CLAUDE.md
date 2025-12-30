@@ -30,6 +30,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 **Technical Requirements:**
 - iOS 17.0+ minimum deployment target
+- iOS 18.0+ for Apple Translation (gracefully disabled on older versions)
 - Xcode 15+ for development
 - SwiftUI for all UI components
 
@@ -95,6 +96,26 @@ Translation, auto-return, custom templates, waveform audio connection.
 - [x] Phase 10e: Privacy Mode Implementation (indicator, cloud blocking, Power Mode warnings)
 - [x] Phase 10f: SDK Integration (WhisperKit, Apple Translation, Apple Intelligence wired to orchestrators)
 
+### Phase 11: Orchestration Security, Reliability & UX - COMPLETE ✅
+Critical security and reliability improvements for the transcription/formatting pipeline:
+
+- [x] Phase 11a: PromptSanitizer (injection protection for vocabularies, contexts, webhooks, RAG)
+- [x] Phase 11b: Formatting provider verification (confirmed correct behavior)
+- [x] Phase 11c: MemoryUpdateCoordinator (actor-based serialization, prevents race conditions)
+- [x] Phase 11d: TokenCounter + PromptLimits (configurable token budgets per component)
+- [x] Phase 11e: RetryPolicy + PendingAudio queue (exponential backoff, audio preservation)
+- [x] Phase 11f: ProviderHealthTracker (circuit breaker for provider failover)
+- [x] Phase 11g: WebhookCircuitBreaker (parallel webhook execution, timeout handling)
+- [x] Phase 11j: Audio duration validation (min 0.5s, max 10 minutes, file size limits)
+- [x] Settings UI: Retry settings section + Advanced Token Limits view with descriptions
+- [x] Keyboard UI: Status banner, pending audio indicator, auto-insert on return
+
+**Key Token Limits (user-configurable in Advanced Settings):**
+- Global Memory: 500 tokens (AI's persistent memory)
+- Context Memory: 400 tokens (per-context memory)
+- RAG Chunks: 2000 tokens (document content)
+- User Input: 4000 tokens (transcribed text)
+
 ### Remaining Work
 | Phase | Task | Priority |
 |-------|------|----------|
@@ -151,6 +172,7 @@ swiftspeak://record?mode=raw&translate=true&target=french
 | 7 | Subscription Service | ✅ Complete |
 | 9 | Remote Config & Cost Analytics | ✅ Complete |
 | 10 | Privacy Mode & Local Providers | ✅ Complete |
+| 11 | Orchestration Security & Reliability | ✅ Complete |
 
 ## Current File Structure
 
@@ -177,10 +199,12 @@ SwiftSpeak/
 │   │   │   ├── AudioSessionManager.swift
 │   │   │   └── AudioRecorder.swift
 │   │   ├── Memory/
-│   │   │   └── MemoryManager.swift              # Phase 4b - Memory update/compression
-│   │   ├── Security/                            # Phase 6 - Security services
+│   │   │   ├── MemoryManager.swift              # Phase 4b - Memory update/compression
+│   │   │   └── MemoryUpdateCoordinator.swift    # Phase 11c - Actor-based serialization
+│   │   ├── Security/                            # Phase 6 + 11 - Security services
 │   │   │   ├── KeychainManager.swift            # Secure API key storage
-│   │   │   └── BiometricAuthManager.swift       # Face ID/Touch ID with session
+│   │   │   ├── BiometricAuthManager.swift       # Face ID/Touch ID with session
+│   │   │   └── PromptSanitizer.swift            # Phase 11a - Prompt injection protection
 │   │   ├── Remote/                              # Phase 9 - Remote config & cost
 │   │   │   ├── RemoteConfig.swift               # Data models for provider config
 │   │   │   ├── RemoteConfigManager.swift        # Firebase fetch/cache/listen
@@ -199,19 +223,24 @@ SwiftSpeak/
 │   │   │   │   ├── LocalTranslationManager.swift    # Bridge for SwiftUI translationTask
 │   │   │   │   ├── AppleIntelligenceFormattingService.swift
 │   │   │   │   └── LocalProviderErrors.swift
-│   │   │   └── Mock/
-│   │   │       ├── MockTranscriptionProvider.swift
-│   │   │       ├── MockFormattingProvider.swift
-│   │   │       ├── MockAudioRecorder.swift      # Phase 4c - For testing
-│   │   │       ├── MockProviderFactory.swift    # Phase 4c - For testing
-│   │   │       ├── MockMemoryManager.swift      # Phase 4c - For testing
-│   │   │       └── MockKeychainManager.swift    # Phase 6 - For testing
+│   │   │   ├── Mock/
+│   │   │   │   ├── MockTranscriptionProvider.swift
+│   │   │   │   ├── MockFormattingProvider.swift
+│   │   │   │   ├── MockAudioRecorder.swift      # Phase 4c - For testing
+│   │   │   │   ├── MockProviderFactory.swift    # Phase 4c - For testing
+│   │   │   │   ├── MockMemoryManager.swift      # Phase 4c - For testing
+│   │   │   │   └── MockKeychainManager.swift    # Phase 6 - For testing
+│   │   │   ├── TokenCounter.swift               # Phase 11d - Token estimation & limits
+│   │   │   └── ProviderHealthTracker.swift      # Phase 11f - Provider circuit breaker
 │   │   ├── Orchestration/
 │   │   │   ├── TranscriptionOrchestrator.swift  # Includes cost calculation
 │   │   │   ├── PowerModeOrchestrator.swift      # Phase 4c - Power Mode coordinator
 │   │   │   └── PromptContext.swift              # Phase 4c - Context builder
 │   │   ├── Network/
-│   │   │   └── APIClient.swift
+│   │   │   ├── APIClient.swift
+│   │   │   └── RetryPolicy.swift                # Phase 11e - Exponential backoff retry
+│   │   ├── Webhooks/
+│   │   │   └── WebhookCircuitBreaker.swift      # Phase 11g - Webhook circuit breaker
 │   │   ├── ProviderFactory.swift
 │   │   └── TranscriptionError.swift
 │   │
@@ -243,7 +272,7 @@ SwiftSpeak/
 │   │   │   ├── BiometricGateView.swift         # Phase 6 - Auth wrapper for protected views
 │   │   │   ├── LockedView.swift                # Phase 6 - "Unlock with Face ID" UI
 │   │   │   └── ConfigUpdateSheet.swift         # Phase 9 - "What's New" modal
-│   │   ├── Settings/                           # Phase 4a/4b/10 - Settings views
+│   │   ├── Settings/                           # Phase 4a/4b/10/11 - Settings views
 │   │   │   ├── ContextsView.swift              # Phase 4a - Context list
 │   │   │   ├── ContextEditorSheet.swift        # Phase 4a - Edit context
 │   │   │   ├── ContextDetailView.swift         # Phase 4a - View context
@@ -253,7 +282,9 @@ SwiftSpeak/
 │   │   │   ├── WhisperKitSetupView.swift       # Phase 10b - WhisperKit setup & download
 │   │   │   ├── AppleIntelligenceSetupView.swift # Phase 10b - Apple Intelligence config
 │   │   │   ├── AppleTranslationSetupView.swift # Phase 10b - Translation languages
-│   │   │   └── LocalModelStorageView.swift     # Phase 10 - Storage management
+│   │   │   ├── LocalModelStorageView.swift     # Phase 10 - Storage management
+│   │   │   ├── AdvancedTokenLimitsView.swift   # Phase 11 - Token limit configuration
+│   │   │   └── PendingAudioListView.swift      # Phase 11 - Pending recordings management
 │   │   ├── RecordingView.swift          # Uses real TranscriptionOrchestrator
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift            # Phase 9 - Cost badge and breakdown
@@ -264,8 +295,8 @@ SwiftSpeak/
 │   │   └── LanguageSupportView.swift           # Phase 3A - Language matrix
 │   │
 │   └── Shared/
-│       ├── Constants.swift              # API endpoints, timeouts
-│       ├── Models.swift                 # AIProvider, FormattingMode, Language, etc.
+│       ├── Constants.swift              # API endpoints, timeouts, AudioValidation (Phase 11j)
+│       ├── Models.swift                 # AIProvider, FormattingMode, Language, PendingAudio, ProcessingStatus (Phase 11)
 │       ├── Theme.swift                  # AppTheme, HapticManager
 │       ├── ProviderLanguageSupport.swift       # Phase 3A - Language support data
 │       ├── ProviderHelpContent.swift           # Phase 3A - Setup guides

@@ -41,9 +41,9 @@ struct AIProviderTests {
         #expect(!provider.supportsPowerMode)
     }
 
-    @Test func googleSupportsTranslationAndPowerMode() {
+    @Test func googleSupportsAllCapabilities() {
         let provider = AIProvider.google
-        #expect(!provider.supportsTranscription)
+        #expect(provider.supportsTranscription)  // Google STT
         #expect(provider.supportsTranslation)
         #expect(provider.supportsPowerMode)
     }

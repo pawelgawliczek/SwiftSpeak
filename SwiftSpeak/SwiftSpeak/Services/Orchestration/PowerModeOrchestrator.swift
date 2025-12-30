@@ -218,7 +218,7 @@ final class PowerModeOrchestrator: ObservableObject {
                     }
                 } catch {
                     // RAG failure is non-fatal - continue without RAG context
-                    print("RAG query failed: \(error.localizedDescription)")
+                    appLog("RAG query failed (non-fatal): \(LogSanitizer.sanitizeError(error))", category: "RAG", level: .warning)
                 }
             }
 

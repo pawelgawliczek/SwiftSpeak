@@ -205,7 +205,7 @@ struct KnowledgeBaseView: View {
         do {
             try ragOrchestrator.deleteDocument(document.id)
         } catch {
-            print("Failed to delete from vector store: \(error)")
+            appLog("Failed to delete document from vector store: \(LogSanitizer.sanitizeError(error))", category: "RAG", level: .error)
         }
 
         // Remove from settings
