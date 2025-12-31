@@ -355,10 +355,11 @@ struct KeyboardView: View {
                     .frame(height: 25)
             }
 
-            // SwiftLink Streaming Overlay
-            if viewModel.isSwiftLinkStreaming || viewModel.swiftLinkProcessingStatus == "streaming" {
+            // SwiftLink Streaming Overlay (shows during streaming AND processing)
+            if viewModel.isSwiftLinkStreaming || viewModel.swiftLinkProcessingStatus == "streaming" || viewModel.swiftLinkProcessingStatus == "processing" {
                 SwiftLinkStreamingOverlay(
                     transcript: viewModel.swiftLinkStreamingTranscript,
+                    isProcessing: viewModel.swiftLinkProcessingStatus == "processing",
                     onStop: {
                         KeyboardHaptics.mediumTap()
                         viewModel.stopSwiftLinkRecording()
@@ -373,9 +374,11 @@ struct KeyboardView: View {
 // MARK: - SwiftLink Streaming Overlay
 struct SwiftLinkStreamingOverlay: View {
     let transcript: String
+    let isProcessing: Bool
     let onStop: () -> Void
 
     @State private var pulseScale: CGFloat = 1.0
+    @State private var processingRotation: Double = 0
 
     var body: some View {
         ZStack {
@@ -384,18 +387,31 @@ struct SwiftLinkStreamingOverlay: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
-                // LIVE indicator
+                // Status indicator
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.white)
-                        .frame(width: 10, height: 10)
-                        .scaleEffect(pulseScale)
-                        .animation(
-                            .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
-                            value: pulseScale
-                        )
+                    if isProcessing {
+                        // Processing spinner
+                        Image(systemName: "arrow.trianglehead.2.clockwise")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                            .rotationEffect(.degrees(processingRotation))
+                            .animation(
+                                .linear(duration: 1).repeatForever(autoreverses: false),
+                                value: processingRotation
+                            )
+                    } else {
+                        // Live pulsing dot
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 10, height: 10)
+                            .scaleEffect(pulseScale)
+                            .animation(
+                                .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
+                                value: pulseScale
+                            )
+                    }
 
-                    Text("LIVE")
+                    Text(isProcessing ? "PROCESSING" : "LIVE")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(.white)
                 }
@@ -405,7 +421,7 @@ struct SwiftLinkStreamingOverlay: View {
 
                 // Transcript text
                 ScrollView {
-                    Text(transcript.isEmpty ? "Listening..." : transcript)
+                    Text(isProcessing ? (transcript.isEmpty ? "Finishing transcription..." : transcript) : (transcript.isEmpty ? "Listening..." : transcript))
                         .font(.system(size: 18, weight: .medium))
                         .foregroundStyle(.white)
                         .multilineTextAlignment(.center)
@@ -414,25 +430,34 @@ struct SwiftLinkStreamingOverlay: View {
                 }
                 .frame(maxHeight: 120)
 
-                // Stop button
-                Button(action: onStop) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                        Text("Stop & Insert")
-                            .font(.system(size: 14, weight: .semibold))
+                // Button - only show stop when not processing
+                if !isProcessing {
+                    Button(action: onStop) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "stop.fill")
+                                .font(.system(size: 14, weight: .semibold))
+                            Text("Stop & Insert")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundStyle(.green)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
+                        .background(Color.white, in: Capsule())
                     }
-                    .foregroundStyle(.green)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(Color.white, in: Capsule())
+                    .buttonStyle(.plain)
+                } else {
+                    // Processing indicator text
+                    Text("Please wait...")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.8))
+                        .padding(.vertical, 12)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.vertical, 20)
         }
         .onAppear {
             pulseScale = 1.3
+            processingRotation = 360
         }
     }
 }

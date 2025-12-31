@@ -419,6 +419,9 @@ final class SwiftLinkSessionManager: ObservableObject {
         sharedDefaults?.set("processing", forKey: Constants.Keys.swiftLinkProcessingStatus)
         sharedDefaults?.synchronize()
 
+        // Notify keyboard that we're now processing (not recording)
+        DarwinNotificationManager.shared.postStreamingUpdate()
+
         Task {
             // Get the final transcript from the provider
             guard let provider = streamingProvider else {
@@ -430,11 +433,33 @@ final class SwiftLinkSessionManager: ObservableObject {
                 return
             }
 
-            // Signal end of audio and wait briefly for final transcripts
+            // Signal end of audio to provider
+            appLog("Signaling end of audio to streaming provider...", category: "SwiftLink")
             provider.finishAudio()
 
-            // Give the provider a moment to send final transcripts
-            try? await Task.sleep(nanoseconds: 500_000_000)  // 0.5 seconds
+            // Wait for provider to finish processing remaining audio buffer
+            // Use a loop to wait until transcript stabilizes or max timeout
+            var lastTranscript = provider.fullTranscript
+            var stableCount = 0
+            let maxWaitIterations = 20  // 20 * 200ms = 4 seconds max wait
+
+            for iteration in 0..<maxWaitIterations {
+                try? await Task.sleep(nanoseconds: 200_000_000)  // 200ms per check
+
+                let currentTranscript = provider.fullTranscript
+                if currentTranscript == lastTranscript {
+                    stableCount += 1
+                    // If transcript hasn't changed for 3 consecutive checks (600ms), consider it stable
+                    if stableCount >= 3 {
+                        appLog("Transcript stabilized after \(iteration * 200)ms", category: "SwiftLink")
+                        break
+                    }
+                } else {
+                    stableCount = 0
+                    lastTranscript = currentTranscript
+                    appLog("Transcript still updating: \(currentTranscript.suffix(30))...", category: "SwiftLink")
+                }
+            }
 
             // Get the accumulated transcript
             let finalTranscript = provider.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1098,13 +1123,111 @@ struct SwiftLinkApp: Codable, Identifiable, Equatable, Hashable {
     }
 
     /// Create from AppInfo (from AppLibrary)
-    /// Note: AppInfo doesn't include URL scheme - user must provide it separately or we use nil
+    /// Note: AppInfo doesn't include URL scheme - looks up from known schemes
     init(from appInfo: AppInfo, urlScheme: String? = nil) {
         self.bundleId = appInfo.id  // AppInfo uses 'id' as bundle ID
         self.name = appInfo.name
-        self.urlScheme = urlScheme
+        // Use provided scheme, or look up from known schemes
+        self.urlScheme = urlScheme ?? Self.knownURLSchemes[appInfo.id]
         self.iconName = nil  // AppInfo doesn't have icon info
     }
+
+    /// Get the effective URL scheme (stored or looked up from known schemes)
+    var effectiveURLScheme: String? {
+        urlScheme ?? Self.knownURLSchemes[bundleId]
+    }
+
+    /// Known URL schemes for popular apps (bundleId -> scheme)
+    static let knownURLSchemes: [String: String] = [
+        // Messaging - WhatsApp variants (different schemes to distinguish between apps)
+        "net.whatsapp.WhatsApp": "whatsapp://",           // Regular WhatsApp
+        "net.whatsapp.WhatsAppSMB": "whatsapp-smb://",    // WhatsApp Business (SMB = Small/Medium Business)
+        "net.whatsapp.WhatsAppBusiness": "whatsapp-smb://", // Alternative bundle ID for WhatsApp Business
+        "com.facebook.Messenger": "fb-messenger://",
+        "com.apple.MobileSMS": "sms://",
+        "org.telegram.Telegram": "telegram://",
+        "com.viber": "viber://",
+        "jp.naver.line": "line://",
+        "com.tencent.xin": "weixin://",
+        "ph.telegra.Telegraph": "telegram://",
+        "im.signal.Signal": "signal://",
+        "com.hammerandchisel.discord": "discord://",
+        "com.skype.skype": "skype://",
+        "com.slack.Slack": "slack://",
+        "com.microsoft.teams": "msteams://",
+        "com.imo.IMO": "imo://",
+
+        // Social Media
+        "com.burbn.instagram": "instagram://",
+        "com.atebits.Tweetie2": "twitter://",
+        "com.facebook.Facebook": "fb://",
+        "com.linkedin.LinkedIn": "linkedin://",
+        "com.zhiliaoapp.musically": "tiktok://",
+        "com.snapchat.Snapchat": "snapchat://",
+        "com.pinterest": "pinterest://",
+        "com.reddit.Reddit": "reddit://",
+        "tv.twitch": "twitch://",
+        "com.google.Threads": "barcelona://",
+
+        // Email
+        "com.apple.mobilemail": "mailto://",
+        "com.google.Gmail": "googlegmail://",
+        "com.microsoft.Outlook": "ms-outlook://",
+        "com.readdle.smartemail": "spark://",
+        "com.airmailapp.airmail": "airmail://",
+        "com.yahoo.Aerogram": "ymail://",
+        "com.protonmail.protonmail": "protonmail://",
+
+        // Notes & Productivity
+        "com.apple.mobilenotes": "mobilenotes://",
+        "notion.id": "notion://",
+        "com.google.Docs": "googledocs://",
+        "com.evernote.iPhone.Evernote": "evernote://",
+        "net.shinyfrog.bear": "bear://",
+        "com.lukilabs.lukiapp": "craft://",
+        "md.obsidian": "obsidian://",
+        "com.apple.reminders": "x-apple-reminderkit://",
+        "com.todoist.ios": "todoist://",
+        "com.culturedcode.ThingsiPhone": "things://",
+        "com.omnigroup.OmniFocus3.iOS": "omnifocus://",
+        "com.trello.Trello": "trello://",
+        "com.asana.Asana": "asana://",
+
+        // Browsers
+        "com.apple.mobilesafari": "x-web-search://",
+        "com.google.chrome.ios": "googlechrome://",
+        "org.mozilla.ios.Firefox": "firefox://",
+        "com.brave.ios.browser": "brave://",
+        "com.opera.OperaTouch": "opera://",
+        "com.duckduckgo.mobile.ios": "ddgQuickLink://",
+        "com.AnyOrganization.AnyBrowser": "arc://",
+
+        // Cloud Storage
+        "com.google.Drive": "googledrive://",
+        "com.getdropbox.Dropbox": "dbapi-1://",
+        "com.microsoft.skydrive": "ms-onedrive://",
+        "com.apple.iCloudDriveApp": "shareddocuments://",
+
+        // Calendar
+        "com.apple.mobilecal": "calshow://",
+        "com.flexibits.fantastical2.iphone": "fantastical://",
+        "com.google.calendar": "googlecalendar://",
+
+        // Media
+        "com.google.ios.youtube": "youtube://",
+        "com.spotify.client": "spotify://",
+        "com.netflix.Netflix": "nflx://",
+        "com.apple.podcasts": "podcasts://",
+        "com.audible.iphone": "audible://",
+
+        // Other
+        "com.amazon.Amazon": "amazon://",
+        "com.ubercab.UberClient": "uber://",
+        "com.toyopagroup.picaboo": "lyft://",
+        "com.airbnb.app": "airbnb://",
+        "com.yelp.yelpiphone": "yelp://",
+        "com.zhiliaoapp.musically.go": "snssdk1128://",
+    ]
 }
 
 // MARK: - SwiftLink Errors
