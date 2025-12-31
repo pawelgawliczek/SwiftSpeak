@@ -110,9 +110,14 @@ private struct AssignedAppRow: View {
                 Text(app.name)
                     .font(.subheadline)
 
-                Text(effectiveCategory.displayName)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                // Category label with category color
+                HStack(spacing: 4) {
+                    Image(systemName: effectiveCategory.icon)
+                        .font(.caption2)
+                    Text(effectiveCategory.displayName)
+                        .font(.caption)
+                }
+                .foregroundStyle(effectiveCategory.color)
             }
 
             Spacer()
@@ -207,7 +212,7 @@ private struct AppPickerSheet: View {
         NavigationStack {
             List {
                 ForEach(groupedApps, id: \.category) { group in
-                    Section(group.category.displayName) {
+                    Section {
                         ForEach(group.apps) { app in
                             let isSelected = selectedAppIds.contains(app.id)
                             Button {
@@ -220,8 +225,19 @@ private struct AppPickerSheet: View {
                                 HStack(spacing: 12) {
                                     AppIcon(app, size: .medium, style: .filled)
 
-                                    Text(app.name)
-                                        .foregroundStyle(.primary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(app.name)
+                                            .foregroundStyle(.primary)
+
+                                        // Category label with category color
+                                        HStack(spacing: 4) {
+                                            Image(systemName: group.category.icon)
+                                                .font(.caption2)
+                                            Text(group.category.displayName)
+                                                .font(.caption)
+                                        }
+                                        .foregroundStyle(group.category.color)
+                                    }
 
                                     Spacer()
 
@@ -236,6 +252,13 @@ private struct AppPickerSheet: View {
                             }
                             .buttonStyle(.plain)
                         }
+                    } header: {
+                        // Section header with category color
+                        HStack(spacing: 6) {
+                            Image(systemName: group.category.icon)
+                            Text(group.category.displayName)
+                        }
+                        .foregroundStyle(group.category.color)
                     }
                 }
             }

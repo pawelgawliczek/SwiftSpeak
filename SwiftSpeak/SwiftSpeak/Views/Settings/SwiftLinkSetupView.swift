@@ -273,9 +273,13 @@ struct SwiftLinkAppRow: View {
     let app: SwiftLinkApp
     let onDelete: () -> Void
 
-    /// Look up AppInfo from AppLibrary to get the icon
+    /// Look up AppInfo from AppLibrary to get the icon and category
     private var appInfo: AppInfo? {
         AppLibrary.apps.first { $0.id == app.bundleId }
+    }
+
+    private var category: AppCategory {
+        appInfo?.defaultCategory ?? .other
     }
 
     var body: some View {
@@ -286,8 +290,8 @@ struct SwiftLinkAppRow: View {
             } else {
                 // Fallback for apps not in library
                 ZStack {
-                    Circle()
-                        .fill(Color.secondary.opacity(0.3))
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.secondary.opacity(0.1))
                     Image(systemName: "app.fill")
                         .font(.body)
                         .foregroundStyle(.secondary)
@@ -299,18 +303,28 @@ struct SwiftLinkAppRow: View {
                 Text(app.name)
                     .font(.body)
 
-                if let urlScheme = app.urlScheme {
-                    Text("\(urlScheme)://")
+                // Category label with category color (consistent with Contexts)
+                HStack(spacing: 4) {
+                    Image(systemName: category.icon)
+                        .font(.caption2)
+                    Text(category.displayName)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("No URL scheme")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
                 }
+                .foregroundStyle(category.color)
             }
 
             Spacer()
+
+            // URL scheme indicator
+            if app.urlScheme != nil {
+                Image(systemName: "link")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Image(systemName: "link.badge.plus")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 }
@@ -374,12 +388,18 @@ struct SwiftLinkAppPickerSheet: View {
                             HStack(spacing: 12) {
                                 AppIcon(app, size: .medium, style: .filled)
 
-                                VStack(alignment: .leading) {
+                                VStack(alignment: .leading, spacing: 2) {
                                     Text(app.name)
                                         .foregroundStyle(.primary)
-                                    Text(app.id)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
+
+                                    // Category label with category color
+                                    HStack(spacing: 4) {
+                                        Image(systemName: app.defaultCategory.icon)
+                                            .font(.caption2)
+                                        Text(app.defaultCategory.displayName)
+                                            .font(.caption)
+                                    }
+                                    .foregroundStyle(app.defaultCategory.color)
                                 }
 
                                 Spacer()
@@ -467,18 +487,21 @@ struct SwiftLinkStartSheet: View {
 
                 Section("Select App") {
                     ForEach(apps) { app in
+                        let appInfo = AppLibrary.apps.first(where: { $0.id == app.bundleId })
+                        let category = appInfo?.defaultCategory ?? .other
+
                         Button {
                             onSelectApp(app)
                         } label: {
                             HStack(spacing: 12) {
                                 // Look up AppInfo from AppLibrary to get the icon
-                                if let appInfo = AppLibrary.apps.first(where: { $0.id == app.bundleId }) {
+                                if let appInfo = appInfo {
                                     AppIcon(appInfo, size: .medium, style: .filled)
                                 } else {
                                     // Fallback for apps not in library
                                     ZStack {
-                                        Circle()
-                                            .fill(Color.secondary.opacity(0.3))
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .fill(Color.secondary.opacity(0.1))
                                         Image(systemName: "app.fill")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
@@ -486,13 +509,25 @@ struct SwiftLinkStartSheet: View {
                                     .frame(width: 28, height: 28)
                                 }
 
-                                Text(app.name)
-                                    .foregroundStyle(.primary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(app.name)
+                                        .foregroundStyle(.primary)
+
+                                    // Category label with category color
+                                    HStack(spacing: 4) {
+                                        Image(systemName: category.icon)
+                                            .font(.caption2)
+                                        Text(category.displayName)
+                                            .font(.caption)
+                                    }
+                                    .foregroundStyle(category.color)
+                                }
 
                                 Spacer()
 
                                 if app.urlScheme != nil {
-                                    Image(systemName: "arrow.up.forward.app.fill")
+                                    Image(systemName: "link")
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                             }

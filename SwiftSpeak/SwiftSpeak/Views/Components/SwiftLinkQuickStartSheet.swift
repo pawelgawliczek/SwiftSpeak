@@ -452,26 +452,29 @@ struct SwiftLinkAppPickerForQuickStart: View {
     }
 
     private func appRow(_ app: SwiftLinkApp, isExisting: Bool) -> some View {
-        Button(action: { onSelect(app) }) {
+        let appInfo = AppLibrary.find(bundleId: app.bundleId)
+        let category = appInfo?.defaultCategory ?? .other
+
+        return Button(action: { onSelect(app) }) {
             HStack(spacing: 12) {
                 // Icon
                 Group {
-                    if let appInfo = AppLibrary.find(bundleId: app.bundleId) {
+                    if let appInfo = appInfo {
                         AppIcon(appInfo, size: .large, style: .filled)
                     } else {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(isExisting ? AppTheme.accent.opacity(0.15) : Color.secondary.opacity(0.1))
+                                .fill(Color.secondary.opacity(0.1))
                                 .frame(width: 44, height: 44)
 
                             if let iconName = app.iconName {
                                 Image(systemName: iconName)
                                     .font(.title3)
-                                    .foregroundStyle(isExisting ? AppTheme.accent : .secondary)
+                                    .foregroundStyle(.secondary)
                             } else {
                                 Text(String(app.name.prefix(1)).uppercased())
                                     .font(.headline)
-                                    .foregroundStyle(isExisting ? AppTheme.accent : .secondary)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -481,11 +484,14 @@ struct SwiftLinkAppPickerForQuickStart: View {
                     Text(app.name)
                         .foregroundStyle(.primary)
 
-                    if app.urlScheme != nil {
-                        Text("Auto-return supported")
+                    // Category label with category color
+                    HStack(spacing: 4) {
+                        Image(systemName: category.icon)
+                            .font(.caption2)
+                        Text(category.displayName)
                             .font(.caption)
-                            .foregroundStyle(.green)
                     }
+                    .foregroundStyle(category.color)
                 }
 
                 Spacer()
