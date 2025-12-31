@@ -13,6 +13,7 @@ struct HowItWorksScreen: View {
 
     @State private var currentStep = 0
     @State private var stepsVisible = false
+    @State private var autoAdvanceTimer: Timer?
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -36,20 +37,20 @@ struct HowItWorksScreen: View {
         ),
         (
             icon: "sparkles",
-            title: "Use Modes & Skills",
-            description: "Enable modes for smart formatting, translations, and use templates for common tasks"
+            title: "Advanced Features",
+            description: "Power Modes for AI agents, translations, conversation contexts, RAG knowledge bases, and webhooks for automation"
         )
     ]
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 24) {
+            VStack(spacing: 16) {
                 Spacer()
-                    .frame(height: 24)
+                    .frame(height: 8)
 
                 // Animated waveform - same position as other onboarding screens
                 SwiftSpeakWaveTextView(isActive: true, fontSize: 28)
-                    .frame(height: 60)
+                    .frame(height: 50)
 
                 // Title
                 Text("How It Works")
@@ -57,7 +58,7 @@ struct HowItWorksScreen: View {
                     .foregroundStyle(.primary)
 
                 // Subtitle
-                Text("Three simple steps to voice typing")
+                Text("Voice typing made simple")
                     .font(.body)
                     .foregroundStyle(.secondary)
 
@@ -75,7 +76,7 @@ struct HowItWorksScreen: View {
                     }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .frame(height: 280)
+                .frame(height: 290)
                 .opacity(stepsVisible ? 1 : 0)
                 .offset(y: stepsVisible ? 0 : 30)
 
@@ -91,7 +92,7 @@ struct HowItWorksScreen: View {
                 }
 
                 Spacer()
-                    .frame(height: 20)
+                    .frame(height: 12)
 
                 // Continue button
                 Button(action: {
@@ -115,7 +116,7 @@ struct HowItWorksScreen: View {
                 .padding(.horizontal, 24)
 
                 Spacer()
-                    .frame(height: 50)
+                    .frame(height: 24)
             }
         }
         .background(backgroundColor.ignoresSafeArea())
@@ -127,10 +128,29 @@ struct HowItWorksScreen: View {
             // Auto-advance carousel
             startAutoAdvance()
         }
+        .onDisappear {
+            // Clean up timer when view disappears
+            autoAdvanceTimer?.invalidate()
+            autoAdvanceTimer = nil
+        }
+        .onChange(of: currentStep) { _, _ in
+            // Reset timer when user swipes
+            resetAutoAdvanceTimer()
+        }
     }
 
     private func startAutoAdvance() {
-        Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+        autoAdvanceTimer?.invalidate()
+        autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
+            withAnimation(AppTheme.smoothSpring) {
+                currentStep = (currentStep + 1) % steps.count
+            }
+        }
+    }
+
+    private func resetAutoAdvanceTimer() {
+        autoAdvanceTimer?.invalidate()
+        autoAdvanceTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { _ in
             withAnimation(AppTheme.smoothSpring) {
                 currentStep = (currentStep + 1) % steps.count
             }
@@ -187,9 +207,12 @@ struct StepCard: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                .lineLimit(nil)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 24)
         }
         .padding(.vertical, 20)
+        .padding(.horizontal, 16)
         .onAppear {
             withAnimation(AppTheme.smoothSpring) {
                 iconScale = 1.0

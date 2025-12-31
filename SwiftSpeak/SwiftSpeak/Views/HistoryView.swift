@@ -314,8 +314,25 @@ struct HistoryRowView: View {
                 // Header with mode, power mode, context, translation, and time
                 headerBadges
 
-                // Input text (if different from output)
-                if record.hasTransformation {
+                // Phase 12: Edit entries show instructions, regular entries show input
+                if record.isEditOperation, let editContext = record.editContext {
+                    // For edit operations: show instructions (what user asked)
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "quote.bubble")
+                                .font(.caption2)
+                            Text("Instructions")
+                                .font(.caption2.weight(.medium))
+                        }
+                        .foregroundStyle(.green)
+                        Text(editContext.instructions)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .italic()
+                            .lineLimit(2)
+                    }
+                } else if record.hasTransformation {
+                    // Regular entries: show input if different from output
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Input")
                             .font(.caption2.weight(.medium))
@@ -330,7 +347,11 @@ struct HistoryRowView: View {
                 // Output text (larger, tappable to copy)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        if record.hasTransformation {
+                        if record.isEditOperation {
+                            Text("Result")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.green)
+                        } else if record.hasTransformation {
                             Text("Output")
                                 .font(.caption2.weight(.medium))
                                 .foregroundStyle(.tertiary)
@@ -430,18 +451,33 @@ struct HistoryRowView: View {
 
     private var headerBadges: some View {
         HStack {
-            // Mode badge
-            HStack(spacing: 4) {
-                Image(systemName: record.mode.icon)
-                    .font(.caption2)
-                Text(record.mode.displayName)
-                    .font(.caption2.weight(.medium))
+            // Phase 12: Edit badge (green, with pencil icon)
+            if record.isEditOperation {
+                HStack(spacing: 4) {
+                    Image(systemName: "pencil")
+                        .font(.caption2.weight(.semibold))
+                    Text("Edit")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.green)
+                .clipShape(Capsule())
+            } else {
+                // Mode badge (only show for non-edit entries)
+                HStack(spacing: 4) {
+                    Image(systemName: record.mode.icon)
+                        .font(.caption2)
+                    Text(record.mode.displayName)
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(AppTheme.accent)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AppTheme.accent.opacity(0.15))
+                .clipShape(Capsule())
             }
-            .foregroundStyle(AppTheme.accent)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(AppTheme.accent.opacity(0.15))
-            .clipShape(Capsule())
 
             // Power Mode badge
             if let powerModeName = record.powerModeName {
@@ -657,18 +693,37 @@ struct HistoryDetailView: View {
 
     private var textContentSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Input (if different from output)
-            if record.hasTransformation {
+            // Phase 12: Edit entries have special display
+            if record.isEditOperation, let editContext = record.editContext {
+                // Original text that was being edited
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
-                        Image(systemName: "mic.fill")
+                        Image(systemName: "doc.text")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("Raw Transcription")
+                        Text("Original Text")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        // Parent link badge if parent exists
+                        if let parentId = editContext.parentEntryId,
+                           let parentRecord = settings.transcriptionHistory.first(where: { $0.id == parentId }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.turn.up.left")
+                                    .font(.caption2)
+                                Text("from \(parentRecord.timestamp.formatted(date: .abbreviated, time: .shortened))")
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.green.opacity(0.15))
+                            .clipShape(Capsule())
+                        }
                     }
-                    Text(record.rawTranscribedText)
+                    Text(editContext.originalText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -677,28 +732,93 @@ struct HistoryDetailView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.primary.opacity(0.03))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            }
 
-            // Output (prominent)
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "text.alignleft")
-                        .font(.caption)
-                        .foregroundStyle(AppTheme.accent)
-                    Text("Final Output")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(AppTheme.accent)
+                // Instructions (what user asked for)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "quote.bubble")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                        Text("Instructions")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    }
+                    Text(editContext.instructions)
+                        .font(.subheadline)
+                        .italic()
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
                 }
-                Text(record.text)
-                    .font(.body)
-                    .foregroundStyle(.primary)
-                    .textSelection(.enabled)
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.green.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Result (the edited text)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                        Text("Edited Result")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.green)
+                    }
+                    Text(record.text)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.08), radius: 8, y: 2)
+
+            } else {
+                // Regular entries: Input (if different from output)
+                if record.hasTransformation {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "mic.fill")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text("Raw Transcription")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(record.rawTranscribedText)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    .padding(16)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.03))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+
+                // Output (prominent)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "text.alignleft")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.accent)
+                        Text("Final Output")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(AppTheme.accent)
+                    }
+                    Text(record.text)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.08), radius: 8, y: 2)
             }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.08), radius: 8, y: 2)
         }
     }
 

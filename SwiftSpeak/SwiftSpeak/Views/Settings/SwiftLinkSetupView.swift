@@ -296,6 +296,8 @@ struct SwiftLinkAppRow: View {
     let app: SwiftLinkApp
     let onDelete: () -> Void
 
+    @State private var showingDeleteConfirmation = false
+
     /// Look up AppInfo from AppLibrary to get the icon and category
     private var appInfo: AppInfo? {
         AppLibrary.apps.first { $0.id == app.bundleId }
@@ -328,8 +330,12 @@ struct SwiftLinkAppRow: View {
                         .font(.body)
                         .foregroundStyle(.primary)
 
-                    // URL scheme indicator next to name
-                    if app.urlScheme == nil {
+                    // URL scheme indicator - green if available, orange if not
+                    if app.effectiveURLScheme != nil {
+                        Image(systemName: "link")
+                            .font(.caption)
+                            .foregroundStyle(.green)
+                    } else {
                         Image(systemName: "link.badge.plus")
                             .font(.caption)
                             .foregroundStyle(.orange)
@@ -343,9 +349,23 @@ struct SwiftLinkAppRow: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            // Delete button
+            Button(action: {
+                showingDeleteConfirmation = true
+            }) {
+                Image(systemName: "trash")
+                    .font(.body)
+                    .foregroundStyle(.red)
+            }
+            .buttonStyle(.plain)
+        }
+        .confirmationDialog("Remove \(app.name)?", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
+                onDelete()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This app will be removed from your SwiftLink list.")
         }
     }
 }

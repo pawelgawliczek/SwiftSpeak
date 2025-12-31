@@ -106,10 +106,16 @@ struct PowerModeListContent: View {
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { showingEditor = true }) {
+                Button(action: {
+                    if hasPowerAccess {
+                        showingEditor = true
+                    } else {
+                        showPaywall = true
+                    }
+                }) {
                     Image(systemName: "plus")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.powerAccent)
+                        .foregroundStyle(hasPowerAccess ? AppTheme.powerAccent : .secondary)
                 }
             }
         }
@@ -266,17 +272,32 @@ struct PowerModeListContent: View {
     // MARK: - Create New Button
 
     private var createNewButton: some View {
-        Button(action: { showingEditor = true }) {
+        Button(action: {
+            if hasPowerAccess {
+                showingEditor = true
+            } else {
+                showPaywall = true
+            }
+        }) {
             HStack(spacing: 8) {
-                Image(systemName: "plus")
+                Image(systemName: hasPowerAccess ? "plus" : "lock.fill")
                     .font(.body.weight(.semibold))
                 Text("Create New Mode")
                     .font(.callout.weight(.semibold))
+                if !hasPowerAccess {
+                    Text("POWER")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.orange)
+                        .clipShape(Capsule())
+                }
             }
-            .foregroundStyle(AppTheme.powerAccent)
+            .foregroundStyle(hasPowerAccess ? AppTheme.powerAccent : .secondary)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(AppTheme.powerAccent.opacity(0.15))
+            .background((hasPowerAccess ? AppTheme.powerAccent : Color.secondary).opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
         }
     }

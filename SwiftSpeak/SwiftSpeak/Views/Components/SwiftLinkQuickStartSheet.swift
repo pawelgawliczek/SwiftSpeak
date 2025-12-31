@@ -16,10 +16,14 @@ struct SwiftLinkQuickStartSheet: View {
 
     @StateObject private var sessionManager = SwiftLinkSessionManager.shared
 
+    /// Pre-selected app from keyboard URL scheme (optional)
+    var preselectedApp: SwiftLinkApp? = nil
+
     @State private var selectedApp: SwiftLinkApp?
     @State private var showingAppPicker = false
     @State private var isStartingSession = false
     @State private var errorMessage: String?
+    @State private var sessionStartedApp: SwiftLinkApp? = nil  // App that session was started for
 
     /// Callback when session starts successfully with a URL scheme to open
     var onSessionStarted: ((String?) -> Void)?
@@ -31,37 +35,45 @@ struct SwiftLinkQuickStartSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                // Header illustration
-                headerSection
+                // Show different content based on session state
+                if let app = sessionStartedApp {
+                    // Session started - show return button
+                    sessionStartedView(for: app)
+                } else {
+                    // Header illustration
+                    headerSection
 
-                // App selection
-                appSelectionSection
+                    // App selection
+                    appSelectionSection
 
-                // Duration info
-                durationInfo
+                    // Duration info
+                    durationInfo
 
-                // Error message
-                if let error = errorMessage {
-                    Text(error)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
+                    // Error message
+                    if let error = errorMessage {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+
+                    Spacer()
+
+                    // Start button
+                    startButton
                 }
-
-                Spacer()
-
-                // Start button
-                startButton
             }
             .padding(.vertical, 24)
             .padding(.horizontal, 20)
             .background(backgroundColor.ignoresSafeArea())
-            .navigationTitle("Start SwiftLink")
+            .navigationTitle(sessionStartedApp != nil ? "SwiftLink Ready" : "Start SwiftLink")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    if sessionStartedApp == nil {
+                        Button("Cancel") { dismiss() }
+                    }
                 }
             }
         }
@@ -80,9 +92,9 @@ struct SwiftLinkQuickStartSheet: View {
             .presentationDetents([.large])
         }
         .onAppear {
-            // Pre-select the last used app or first app in list
+            // Pre-select: 1) passed from keyboard, 2) last used app, 3) first app in list
             if selectedApp == nil {
-                selectedApp = sessionManager.getLastUsedApp() ?? settings.swiftLinkApps.first
+                selectedApp = preselectedApp ?? sessionManager.getLastUsedApp() ?? settings.swiftLinkApps.first
             }
         }
     }
@@ -111,6 +123,16 @@ struct SwiftLinkQuickStartSheet: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            // Privacy note
+            HStack(spacing: 6) {
+                Image(systemName: "lock.shield.fill")
+                    .foregroundStyle(.green)
+                Text("Nothing is recorded until you press the mic button")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.top, 4)
         }
     }
 
@@ -220,7 +242,7 @@ struct SwiftLinkQuickStartSheet: View {
                             .font(.headline)
                             .foregroundStyle(.primary)
 
-                        if app.urlScheme != nil {
+                        if app.effectiveURLScheme != nil {
                             Text("Will auto-return")
                                 .font(.caption)
                                 .foregroundStyle(.green)
@@ -329,7 +351,184 @@ struct SwiftLinkQuickStartSheet: View {
         .disabled(selectedApp == nil || isStartingSession)
     }
 
+    // MARK: - Session Started View
+
+    private func sessionStartedView(for app: SwiftLinkApp) -> some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Success indicator
+            ZStack {
+                Circle()
+                    .fill(Color.green.opacity(0.15))
+                    .frame(width: 100, height: 100)
+
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.green)
+            }
+
+            // Success message
+            VStack(spacing: 8) {
+                Text("SwiftLink Active")
+                    .font(.title2.weight(.bold))
+
+                Text("Use the keyboard mic button to dictate inline")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+
+            // Show error if auto-return failed, otherwise show loading
+            if let error = returnError {
+                VStack(spacing: 12) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.orange.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    Button(action: { dismiss() }) {
+                        Text("Switch apps manually")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } else {
+                // Show loading indicator while auto-returning
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Returning to \(app.name)...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .onAppear {
+            // Auto-return for all apps
+            autoReturnToApp(app)
+        }
+    }
+
     // MARK: - Actions
+
+    @State private var returnError: String? = nil
+
+    /// Auto-return to app (called on appear for non-WhatsApp apps)
+    private func autoReturnToApp(_ app: SwiftLinkApp) {
+        // Small delay to let the UI render first
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            // Try to open the app using its URL scheme
+            guard let scheme = app.effectiveURLScheme else {
+                appLog("No URL scheme for \(app.name) - cannot auto-return", category: "SwiftLink", level: .warning)
+                returnError = "No URL scheme found. Please switch apps manually."
+                return
+            }
+
+            var urlString = scheme.trimmingCharacters(in: .whitespacesAndNewlines)
+            if urlString.contains("%3A%2F%2F") {
+                urlString = urlString.removingPercentEncoding ?? urlString
+            }
+            if !urlString.contains("://") {
+                urlString = "\(urlString)://"
+            }
+
+            guard let url = URL(string: urlString) else {
+                returnError = "Invalid URL scheme. Please switch apps manually."
+                return
+            }
+
+            appLog("Auto-returning to \(app.name) via: \(urlString)", category: "SwiftLink")
+
+            UIApplication.shared.open(url, options: [:]) { success in
+                DispatchQueue.main.async {
+                    if success {
+                        appLog("Successfully auto-returned to \(app.name)", category: "SwiftLink")
+                        dismiss()
+                    } else {
+                        appLog("Failed to auto-return to \(app.name)", category: "SwiftLink", level: .error)
+                        returnError = "Failed to open \(app.name). Please switch apps manually."
+                        HapticManager.error()
+                    }
+                }
+            }
+        }
+    }
+
+    private func returnToApp(_ app: SwiftLinkApp) {
+        HapticManager.lightTap()
+        returnError = nil
+
+        // For WhatsApp specifically, we can't reliably distinguish between WhatsApp and WhatsApp Business
+        // via URL schemes. Instead, dismiss and let user use iOS's native "◀ [App]" back button in status bar
+        if app.bundleId.contains("whatsapp") {
+            appLog("WhatsApp detected - dismissing to let user use iOS back button", category: "SwiftLink")
+            // Just dismiss - the iOS "◀ WhatsApp" button in status bar will take them to the correct app
+            dismiss()
+            return
+        }
+
+        // Try to open the app using its URL scheme (stored or looked up from known schemes)
+        guard let scheme = app.effectiveURLScheme else {
+            // No URL scheme - show error
+            appLog("No URL scheme for \(app.name) (bundleId: \(app.bundleId))", category: "SwiftLink", level: .warning)
+            returnError = "No URL scheme found for \(app.name). Please switch apps manually."
+            return
+        }
+
+        // Clean up the scheme - ensure it has the :// suffix
+        var urlString = scheme.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Handle URL-encoded schemes (from keyboard URL)
+        if urlString.contains("%3A%2F%2F") {
+            urlString = urlString.removingPercentEncoding ?? urlString
+        }
+
+        // Ensure the scheme ends with ://
+        if !urlString.contains("://") {
+            urlString = "\(urlString)://"
+        }
+
+        appLog("Attempting to return to \(app.name) via: \(urlString)", category: "SwiftLink")
+
+        guard let url = URL(string: urlString) else {
+            appLog("Invalid URL format: \(urlString)", category: "SwiftLink", level: .error)
+            returnError = "Invalid URL scheme format. Please switch apps manually."
+            return
+        }
+
+        // Check if we can open this URL
+        guard UIApplication.shared.canOpenURL(url) else {
+            appLog("Cannot open URL: \(urlString) - app may not be installed or scheme not registered", category: "SwiftLink", level: .error)
+            returnError = "Cannot open \(app.name). The app may need to be installed or the URL scheme may be incorrect."
+            return
+        }
+
+        // Open the URL
+        UIApplication.shared.open(url, options: [:]) { success in
+            DispatchQueue.main.async {
+                if success {
+                    appLog("Successfully opened \(app.name)", category: "SwiftLink")
+                    // Dismiss after successful open
+                    dismiss()
+                } else {
+                    appLog("Failed to open \(app.name)", category: "SwiftLink", level: .error)
+                    returnError = "Failed to open \(app.name). Please switch apps manually."
+                    HapticManager.error()
+                }
+            }
+        }
+    }
 
     private func startSession() {
         guard let app = selectedApp else { return }
@@ -340,13 +539,16 @@ struct SwiftLinkQuickStartSheet: View {
 
         Task {
             do {
-                let urlScheme = try await sessionManager.startSession(targetApp: app)
+                _ = try await sessionManager.startSession(targetApp: app)
 
                 await MainActor.run {
                     isStartingSession = false
                     HapticManager.success()
-                    dismiss()
-                    onSessionStarted?(urlScheme)
+                    // Show the session started view with return button
+                    // instead of auto-dismissing (which wasn't reliable)
+                    withAnimation(.spring(response: 0.3)) {
+                        sessionStartedApp = app
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -380,6 +582,7 @@ struct SwiftLinkAppPickerForQuickStart: View {
     // Popular apps with URL schemes
     private let popularApps: [SwiftLinkApp] = [
         SwiftLinkApp(bundleId: "net.whatsapp.WhatsApp", name: "WhatsApp", urlScheme: "whatsapp://", iconName: "message.fill"),
+        SwiftLinkApp(bundleId: "net.whatsapp.WhatsAppSMB", name: "WhatsApp Business", urlScheme: "whatsapp-smb://", iconName: "message.badge.filled.fill"),
         SwiftLinkApp(bundleId: "com.burbn.instagram", name: "Instagram", urlScheme: "instagram://", iconName: "camera.fill"),
         SwiftLinkApp(bundleId: "com.facebook.Messenger", name: "Messenger", urlScheme: "fb-messenger://", iconName: "bubble.left.fill"),
         SwiftLinkApp(bundleId: "com.apple.MobileSMS", name: "Messages", urlScheme: "sms://", iconName: "message.fill"),

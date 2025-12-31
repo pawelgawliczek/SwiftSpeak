@@ -5,10 +5,12 @@
 //  Screen 6: Celebration screen with confetti
 //
 
+import AVFoundation
 import SwiftUI
 
 struct AllSetScreen: View {
     let onComplete: () -> Void
+    @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
 
     @State private var checkmarkScale: CGFloat = 0
@@ -17,6 +19,9 @@ struct AllSetScreen: View {
     @State private var buttonOpacity: Double = 0
     @State private var confettiActive = false
     @State private var pulseScale: CGFloat = 1.0
+    @State private var micPermissionGranted = false
+    @State private var micPermissionRequested = false
+    @State private var showLanguagePicker = false
 
     // Theme-aware colors (following branding guidelines)
     private var backgroundColor: Color {
@@ -73,6 +78,94 @@ struct AllSetScreen: View {
                 }
                 .opacity(titleOpacity)
 
+                // Status indicators
+                VStack(spacing: 12) {
+                    // Microphone permission status
+                    HStack(spacing: 12) {
+                        Image(systemName: micPermissionGranted ? "checkmark.circle.fill" : "mic.slash.fill")
+                            .font(.title3)
+                            .foregroundStyle(micPermissionGranted ? .green : .orange)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Microphone Access")
+                                .font(.subheadline.weight(.medium))
+
+                            if micPermissionGranted {
+                                Text("Ready to record")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            } else if micPermissionRequested {
+                                Text("Enable in Settings → Privacy → Microphone")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            } else {
+                                Text("Requesting access...")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        Spacer()
+
+                        if !micPermissionGranted && micPermissionRequested {
+                            Button("Settings") {
+                                if let url = URL(string: UIApplication.openSettingsURLString) {
+                                    UIApplication.shared.open(url)
+                                }
+                            }
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(Color.orange)
+                            .clipShape(Capsule())
+                        }
+                    }
+                    .padding(16)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .padding(.horizontal, 24)
+                .opacity(contentOpacity)
+
+                // Dictation language selection
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "mic.fill")
+                            .font(.title3)
+                            .foregroundStyle(AppTheme.accent)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Dictation Language")
+                                .font(.subheadline.weight(.medium))
+
+                            Text(settings.selectedDictationLanguage?.displayName ?? "Auto-detect")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button(action: {
+                            HapticManager.selection()
+                            showLanguagePicker = true
+                        }) {
+                            Text("Change")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(AppTheme.accent)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .padding(16)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .padding(.horizontal, 24)
+                .opacity(contentOpacity)
+
                 // Quick tip card - glassmorphic material
                 VStack(spacing: 16) {
                     HStack(spacing: 6) {
@@ -93,11 +186,11 @@ struct AllSetScreen: View {
                     Image("GlobeKeyboard")
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxHeight: 180)
+                        .frame(maxHeight: 140)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .padding(.top, 4)
                 }
-                .padding(24)
+                .padding(20)
                 .background(.ultraThinMaterial)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 5)
@@ -127,6 +220,50 @@ struct AllSetScreen: View {
         }
         .onAppear {
             startAnimations()
+            requestMicrophonePermission()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Re-check permission when returning from Settings
+            checkMicrophonePermission()
+        }
+        .sheet(isPresented: $showLanguagePicker) {
+            OnboardingDictationLanguageSheet(selectedLanguage: Binding(
+                get: { settings.selectedDictationLanguage },
+                set: { settings.selectedDictationLanguage = $0 }
+            ))
+            .presentationDetents([.medium])
+        }
+    }
+
+    private func checkMicrophonePermission() {
+        let status = AVAudioApplication.shared.recordPermission
+        micPermissionGranted = (status == .granted)
+        micPermissionRequested = true
+    }
+
+    private func requestMicrophonePermission() {
+        // Check current status first
+        let status = AVAudioApplication.shared.recordPermission
+
+        switch status {
+        case .granted:
+            micPermissionGranted = true
+            micPermissionRequested = true
+        case .denied:
+            micPermissionGranted = false
+            micPermissionRequested = true
+        case .undetermined:
+            // Request permission
+            Task {
+                let granted = await AVAudioApplication.requestRecordPermission()
+                await MainActor.run {
+                    micPermissionGranted = granted
+                    micPermissionRequested = true
+                }
+            }
+        @unknown default:
+            micPermissionGranted = false
+            micPermissionRequested = true
         }
     }
 
@@ -216,13 +353,99 @@ struct ModernConfettiView: View {
     }
 }
 
+// MARK: - Onboarding Dictation Language Sheet
+struct OnboardingDictationLanguageSheet: View {
+    @Binding var selectedLanguage: Language?
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    /// Languages supported by both OpenAI Whisper and Google Gemini
+    private let supportedLanguages: [Language] = [
+        .english, .spanish, .french, .german, .italian, .portuguese,
+        .chinese, .japanese, .korean, .arabic, .russian, .polish
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                // Auto-detect option
+                Button(action: {
+                    HapticManager.selection()
+                    selectedLanguage = nil
+                    dismiss()
+                }) {
+                    HStack {
+                        Image(systemName: "waveform")
+                            .font(.title2)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Auto-detect")
+                                .foregroundStyle(.primary)
+                            Text("Let AI detect your language")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        if selectedLanguage == nil {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(AppTheme.accent)
+                        }
+                    }
+                }
+
+                Section {
+                    ForEach(supportedLanguages) { language in
+                        Button(action: {
+                            HapticManager.selection()
+                            selectedLanguage = language
+                            dismiss()
+                        }) {
+                            HStack {
+                                Text(language.flag)
+                                    .font(.title2)
+
+                                Text(language.displayName)
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+
+                                if selectedLanguage == language {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(AppTheme.accent)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Select Your Language")
+                }
+            }
+            .navigationTitle("Dictation Language")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+
 // MARK: - Previews
 #Preview("Dark Mode") {
     AllSetScreen(onComplete: {})
+        .environmentObject(SharedSettings.shared)
         .preferredColorScheme(.dark)
 }
 
 #Preview("Light Mode") {
     AllSetScreen(onComplete: {})
+        .environmentObject(SharedSettings.shared)
         .preferredColorScheme(.light)
 }

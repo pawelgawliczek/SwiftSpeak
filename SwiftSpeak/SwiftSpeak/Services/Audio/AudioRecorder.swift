@@ -62,16 +62,16 @@ final class AudioRecorder: NSObject, ObservableObject {
     /// Start recording audio
     /// - Throws: TranscriptionError if recording fails to start
     func startRecording() async throws {
-        // Check permission
-        try sessionManager.checkPermission()
-
-        // Request permission if needed
+        // Request permission if needed (must come before checkPermission)
         if sessionManager.permissionStatus == .undetermined {
             let granted = await sessionManager.requestPermission()
             if !granted {
                 throw TranscriptionError.microphonePermissionDenied
             }
         }
+
+        // Check permission (will throw if denied)
+        try sessionManager.checkPermission()
 
         // Configure and activate session
         try sessionManager.configureForRecording()

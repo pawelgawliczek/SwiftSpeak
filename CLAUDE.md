@@ -128,6 +128,23 @@ Critical security and reliability improvements for the transcription/formatting 
 - [x] iOS 18 availability: Apple Translation uses runtime `#available` checks (gracefully disabled on iOS 17)
 - [x] RecordingView uses `localTranslationHandlerIfAvailable()` extension for backward compatibility
 
+### Phase 12: SwiftLink & Edit Mode - COMPLETE ✅
+Background dictation and text editing without leaving the current app.
+
+**SwiftLink (Background Dictation):**
+- [x] DarwinNotificationManager for IPC between keyboard and main app
+- [x] Background audio session keeps main app alive
+- [x] Keyboard can trigger recording without app switch
+- [x] Real-time status updates via Darwin notifications
+- [x] Results returned via App Groups UserDefaults
+
+**Edit Mode:**
+- [x] Detects existing text in field (green button with pencil icon)
+- [x] Voice commands to edit/replace existing text
+- [x] SwiftLink edit mode (inline, stays in keyboard)
+- [x] URL scheme edit mode (opens main app for processing)
+- [x] Automatic text replacement on completion
+
 ### Remaining Work
 | Phase | Task | Priority |
 |-------|------|----------|
@@ -185,6 +202,7 @@ swiftspeak://record?mode=raw&translate=true&target=french
 | 9 | Remote Config & Cost Analytics | ✅ Complete |
 | 10 | Privacy Mode & Local Providers | ✅ Complete |
 | 11 | Orchestration Security & Reliability | ✅ Complete |
+| 12 | SwiftLink & Edit Mode | ✅ Complete |
 | - | App Store Submission Preparation | ✅ Complete |
 
 ## Current File Structure
@@ -324,7 +342,8 @@ SwiftSpeak/
 │
 ├── SwiftSpeakKeyboard/                  # Keyboard Extension
 │   ├── KeyboardViewController.swift
-│   ├── KeyboardView.swift
+│   ├── KeyboardView.swift               # Main keyboard UI with arch layout
+│   ├── DarwinNotificationManager.swift  # Phase 12 - IPC for SwiftLink
 │   ├── LogSanitizer.swift               # Copy of Shared/LogSanitizer.swift (separate target)
 │   ├── SharedLogManager.swift           # Copy of Shared/SharedLogManager.swift (separate target)
 │   ├── Components/
@@ -480,6 +499,8 @@ let text = sharedDefaults?.string(forKey: "lastTranscription")
 
 Both the main app and keyboard extension write to a shared log file via App Groups for unified debugging.
 
+**IMPORTANT: ALWAYS use `appLog()` or `keyboardLog()` for ALL logging in this project. NEVER use `os.log`, `Logger`, `print()`, or `NSLog()`.** Logs written via os.log go to system Console and are NOT visible in the app's DiagnosticsView. The `appLog()`/`keyboardLog()` functions write to the shared App Groups file that users can view and export for debugging.
+
 ### Architecture
 
 ```
@@ -580,6 +601,126 @@ xcodebuild test -project SwiftSpeak.xcodeproj -scheme SwiftSpeak -destination 'p
 2. Check remaining work in the table above (Phase 7 polish, App Store prep)
 3. Use Context7 for Swift/SwiftUI documentation if needed
 4. Run build to verify current state before making changes
+
+## SwiftLink (Background Dictation)
+
+SwiftLink enables voice dictation without leaving the current app. The main app runs in the background while the keyboard triggers recording.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Keyboard Extension                            │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │ Start Link  │    │  Recording  │    │   Insert    │         │
+│  │   Button    │───▶│   Button    │───▶│   Result    │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+└────────────┬───────────────┬────────────────┬───────────────────┘
+             │               │                │
+     Darwin Notify    Darwin Notify    App Groups
+     (startSession)   (startDictation) (result text)
+             │               │                │
+             ▼               ▼                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Main App (Background)                       │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+│  │   Start     │    │   Record    │    │  Transcribe │         │
+│  │   Session   │───▶│   Audio     │───▶│  & Format   │         │
+│  └─────────────┘    └─────────────┘    └─────────────┘         │
+│         │                                      │                 │
+│   Background                            Darwin Notify            │
+│   Audio Mode                            (resultReady)            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Components
+
+| File | Purpose |
+|------|---------|
+| `DarwinNotificationManager.swift` | Darwin notification IPC for keyboard ↔ app |
+| `KeyboardView.swift` | SwiftLink UI (start button, recording indicator) |
+| `ContentView.swift` | Background session handling, audio recording |
+| `Constants.swift` | SwiftLink notification names and keys |
+
+### Darwin Notifications (IPC)
+
+```swift
+// Notification names (Constants.SwiftLinkNotifications)
+static let startSession = "swiftspeak.swiftlink.startSession"
+static let endSession = "swiftspeak.swiftlink.endSession"
+static let startDictation = "swiftspeak.swiftlink.startDictation"
+static let stopDictation = "swiftspeak.swiftlink.stopDictation"
+static let dictationResult = "swiftspeak.swiftlink.dictationResult"
+static let startEdit = "swiftspeak.swiftlink.startEdit"  // Phase 12
+```
+
+### App Groups Keys
+
+```swift
+// SwiftLink state (Constants.Keys)
+static let swiftLinkSessionActive = "swiftLinkSessionActive"
+static let swiftLinkTranscriptionResult = "swiftLinkTranscriptionResult"
+static let swiftLinkProcessingStatus = "swiftLinkProcessingStatus"
+
+// Edit Mode (Constants.EditMode)
+static let pendingEditText = "pendingEditText"
+static let swiftLinkEditOriginalText = "swiftLinkEditOriginalText"
+static let lastResultWasEdit = "lastResultWasEdit"
+```
+
+### SwiftLink Flow
+
+1. **Start Session**: User taps "Link" button in keyboard
+   - Main app opens briefly, starts background audio session
+   - Returns to original app automatically
+   - Keyboard shows orange "SwiftLink Active" indicator
+
+2. **Record**: User taps mic button (now orange)
+   - Darwin notification triggers recording in background app
+   - Keyboard shows red pulsing button with waveform
+   - User speaks, taps to stop
+
+3. **Process**: Main app transcribes and formats
+   - Status updates via Darwin notifications
+   - Result stored in App Groups
+
+4. **Insert**: Keyboard receives result notification
+   - Text automatically inserted into text field
+   - Ready for next dictation
+
+### Edit Mode (Phase 12)
+
+When text exists in the field, the keyboard enters "Edit Mode":
+- Button turns **green** with pencil icon
+- Label shows "Edit text"
+- User can dictate changes to existing text
+
+**Two Edit Flows:**
+1. **SwiftLink Edit**: Stays in keyboard, processes in background
+2. **URL Scheme Edit**: Opens main app for complex edits
+
+```swift
+// Keyboard detects existing text
+var hasTextInField: Bool {
+    guard let proxy = textDocumentProxy else { return false }
+    let before = proxy.documentContextBeforeInput ?? ""
+    let after = proxy.documentContextAfterInput ?? ""
+    return !before.isEmpty || !after.isEmpty
+}
+
+// Edit mode replaces all text with new result
+private func deleteAllTextInField() {
+    // Move to end, delete all backwards
+}
+```
+
+### URL Scheme Extensions
+
+```
+swiftspeak://edit              # Edit mode (text passed via App Groups)
+swiftspeak://swiftlink/start   # Start SwiftLink session
+swiftspeak://swiftlink/stop    # End SwiftLink session
+```
 
 ## App Auto-Enable Feature
 

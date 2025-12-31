@@ -113,6 +113,7 @@ struct AppLibrary {
 
     static let messagingApps: [AppInfo] = [
         AppInfo(bundleId: "net.whatsapp.WhatsApp", name: "WhatsApp", category: .messaging),
+        AppInfo(bundleId: "net.whatsapp.WhatsAppSMB", name: "WhatsApp Business", category: .messaging),
         AppInfo(bundleId: "com.facebook.Messenger", name: "Messenger", category: .messaging),
         AppInfo(bundleId: "ph.telegra.Telegraph", name: "Telegram", category: .messaging),
         AppInfo(bundleId: "org.whispersystems.signal", name: "Signal", category: .messaging),

@@ -144,11 +144,34 @@ struct ContentView: View {
                 Task {
                     do {
                         if let returnScheme = try await SwiftLinkSessionManager.shared.startSession(targetApp: targetApp) {
-                            // Return to the target app immediately
+                            // Try to return to the target app immediately
                             let returnURLString = returnScheme.contains("://") ? returnScheme : "\(returnScheme)://"
                             if let returnURL = URL(string: returnURLString) {
                                 appLog("SwiftLink auto-started, returning to: \(returnURLString)", category: "SwiftLink")
-                                await UIApplication.shared.open(returnURL)
+
+                                // Use completion handler to detect if open failed
+                                await withCheckedContinuation { continuation in
+                                    UIApplication.shared.open(returnURL) { success in
+                                        if success {
+                                            appLog("Successfully returned to \(name)", category: "SwiftLink")
+                                        } else {
+                                            appLog("Failed to open \(returnURLString) - showing return button", category: "SwiftLink", level: .warning)
+                                            // Fall back to showing the quick-start sheet with return button
+                                            DispatchQueue.main.async {
+                                                self.swiftLinkPreselectedApp = targetApp
+                                                self.showSwiftLinkQuickStart = true
+                                            }
+                                        }
+                                        continuation.resume()
+                                    }
+                                }
+                            }
+                        } else {
+                            // No URL scheme returned - show return button UI
+                            appLog("SwiftLink started but no URL scheme - showing return button", category: "SwiftLink")
+                            await MainActor.run {
+                                swiftLinkPreselectedApp = targetApp
+                                showSwiftLinkQuickStart = true
                             }
                         }
                     } catch {

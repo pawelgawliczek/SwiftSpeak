@@ -17,6 +17,8 @@ struct DiagnosticsView: View {
     @State private var selectedTimeRange: LogExporter.TimeRange = .last24Hours
     @State private var selectedLevel: LogExporter.MinLevel = .all
     @State private var logFileSize: Int64 = 0
+    @State private var isCopying = false
+    @State private var showCopiedToast = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -77,6 +79,27 @@ struct DiagnosticsView: View {
                     }
                     .listRowBackground(rowBackground)
 
+                    Button(action: copyLogsToClipboard) {
+                        HStack {
+                            if isCopying {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Copying...")
+                            } else if showCopiedToast {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text("Copied!")
+                                    .foregroundStyle(.green)
+                            } else {
+                                Image(systemName: "doc.on.doc")
+                                Text("Copy to Clipboard")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isCopying)
+                    .listRowBackground(rowBackground)
+
                     Button(action: exportLogs) {
                         HStack {
                             if isExporting {
@@ -85,7 +108,7 @@ struct DiagnosticsView: View {
                                 Text("Exporting...")
                             } else {
                                 Image(systemName: "square.and.arrow.up")
-                                Text("Export Logs")
+                                Text("Export as File")
                             }
                             Spacer()
                             Image(systemName: "chevron.right")
@@ -168,6 +191,72 @@ struct DiagnosticsView: View {
             let size = await SharedLogManager.shared.logFileSize()
             await MainActor.run {
                 self.logFileSize = size
+            }
+        }
+    }
+
+    private func copyLogsToClipboard() {
+        isCopying = true
+        HapticManager.lightTap()
+
+        Task {
+            let entries = await SharedLogManager.shared.readEntries()
+
+            // Filter by time range
+            let cutoff: Date
+            switch selectedTimeRange {
+            case .currentSession:
+                cutoff = Date().addingTimeInterval(-1800) // ~30 mins for current session
+            case .last1Hour:
+                cutoff = Date().addingTimeInterval(-3600)
+            case .last24Hours:
+                cutoff = Date().addingTimeInterval(-86400)
+            case .allTime:
+                cutoff = Date.distantPast
+            }
+
+            let filteredEntries = entries.filter { entry in
+                guard entry.timestamp >= cutoff else { return false }
+
+                switch selectedLevel {
+                case .all:
+                    return true
+                case .infoAndAbove:
+                    return entry.level != .debug
+                case .warningsAndErrors:
+                    return entry.level == .warning || entry.level == .error
+                case .errorsOnly:
+                    return entry.level == .error
+                }
+            }
+
+            // Format entries as text
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+            var logText = "SwiftSpeak Logs - \(dateFormatter.string(from: Date()))\n"
+            logText += "Time Range: \(selectedTimeRange)\n"
+            logText += "Level: \(selectedLevel)\n"
+            logText += "Entries: \(filteredEntries.count)\n"
+            logText += String(repeating: "-", count: 50) + "\n\n"
+
+            for entry in filteredEntries {
+                let timestamp = dateFormatter.string(from: entry.timestamp)
+                let level = entry.level.rawValue.uppercased().padding(toLength: 7, withPad: " ", startingAt: 0)
+                let source = entry.source.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)
+                logText += "[\(timestamp)] [\(level)] [\(source)] [\(entry.category)] \(entry.message)\n"
+            }
+
+            await MainActor.run {
+                UIPasteboard.general.string = logText
+                self.isCopying = false
+                self.showCopiedToast = true
+                HapticManager.success()
+
+                // Hide toast after 2 seconds
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    self.showCopiedToast = false
+                }
             }
         }
     }

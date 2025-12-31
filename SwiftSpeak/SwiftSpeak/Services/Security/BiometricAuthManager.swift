@@ -107,7 +107,7 @@ final class BiometricAuthManager: ObservableObject {
     }
 
     /// Perform biometric authentication
-    /// Falls back to device passcode if biometrics fail
+    /// Tries biometrics first (Face ID/Touch ID), falls back to passcode only if unavailable
     /// - Parameter reason: Localized reason shown to user
     /// - Returns: Success or error result
     func authenticate(reason: String) async -> Result<Void, BiometricAuthError> {
@@ -118,10 +118,56 @@ final class BiometricAuthManager: ObservableObject {
 
         let context = LAContext()
         context.localizedCancelTitle = "Cancel"
-        context.localizedFallbackTitle = "Use Passcode"
+
+        // Check if biometrics are available
+        var biometricsError: NSError?
+        let biometricsAvailable = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &biometricsError)
+
+        // If biometrics available, try them first
+        if biometricsAvailable {
+            context.localizedFallbackTitle = "Use Passcode"
+
+            do {
+                let success = try await context.evaluatePolicy(
+                    .deviceOwnerAuthenticationWithBiometrics,
+                    localizedReason: reason
+                )
+
+                if success {
+                    lastAuthTime = Date()
+                    isAuthenticated = true
+                    lastError = nil
+                    return .success(())
+                } else {
+                    // Shouldn't happen, but fall back to passcode
+                    return await authenticateWithPasscode(reason: reason)
+                }
+            } catch let error as LAError {
+                // If user chose fallback or biometrics locked out, try passcode
+                if error.code == .userFallback || error.code == .biometryLockout {
+                    return await authenticateWithPasscode(reason: reason)
+                }
+                // User cancelled or other error
+                let authError = mapLAError(error)
+                lastError = authError
+                return .failure(authError)
+            } catch {
+                let authError = BiometricAuthError.unknown(error)
+                lastError = authError
+                return .failure(authError)
+            }
+        }
+
+        // Biometrics not available, fall back to passcode
+        return await authenticateWithPasscode(reason: reason)
+    }
+
+    /// Authenticate using device passcode only
+    private func authenticateWithPasscode(reason: String) async -> Result<Void, BiometricAuthError> {
+        let context = LAContext()
+        context.localizedCancelTitle = "Cancel"
 
         do {
-            // Use deviceOwnerAuthentication to allow passcode fallback
             let success = try await context.evaluatePolicy(
                 .deviceOwnerAuthentication,
                 localizedReason: reason

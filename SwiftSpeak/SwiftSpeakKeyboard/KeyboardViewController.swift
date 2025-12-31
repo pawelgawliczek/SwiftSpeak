@@ -55,13 +55,22 @@ class KeyboardViewController: UIInputViewController {
         // Update Full Access status each time keyboard appears
         updateFullAccessStatus()
 
-        // Reload settings when keyboard appears
-        viewModel.loadSettings()
+        // Refresh all state including SwiftLink status checks
         viewModel.textDocumentProxy = textDocumentProxy
         viewModel.hostViewController = self
+        viewModel.refreshState()
 
         // Phase 11: Check for auto-insert after main app completes transcription
         viewModel.checkAutoInsert()
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+
+        keyboardLog("Keyboard disappearing", category: "Lifecycle")
+
+        // Clean up timers and status checks
+        viewModel.cleanup()
     }
 
     override func viewWillLayoutSubviews() {
@@ -81,14 +90,18 @@ class KeyboardViewController: UIInputViewController {
         viewModel.textDocumentProxy = textDocumentProxy
     }
 
-    // MARK: - Full Access Detection
+    // MARK: - Keyboard Status Detection
 
-    /// Updates the shared defaults with the current Full Access status
-    /// so the main app can detect whether keyboard has required permissions
+    /// Updates the shared defaults with keyboard status
+    /// so the main app can detect whether keyboard is enabled and has permissions
     private func updateFullAccessStatus() {
+        let sharedDefaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
+
+        // Mark that the keyboard extension has been loaded (means it's enabled)
+        sharedDefaults?.set(true, forKey: "keyboardIsActive")
+
         // hasFullAccess is a property of UIInputViewController
         // that indicates whether the user has granted Full Access
-        let sharedDefaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
         let previousStatus = sharedDefaults?.bool(forKey: "keyboardHasFullAccess") ?? false
         sharedDefaults?.set(hasFullAccess, forKey: "keyboardHasFullAccess")
         sharedDefaults?.synchronize()

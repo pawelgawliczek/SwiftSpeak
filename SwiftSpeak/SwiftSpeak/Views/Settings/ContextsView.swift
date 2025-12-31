@@ -34,9 +34,14 @@ struct ContextsListContent: View {
     @State private var contextToDelete: ConversationContext?
     @State private var showPaywall = false
 
-    /// Whether the user has access to Contexts (Pro+ tier)
-    private var hasContextsAccess: Bool {
+    /// Whether the user can create custom contexts (Pro+ tier)
+    private var canCreateCustomContexts: Bool {
         settings.subscriptionTier != .free
+    }
+
+    /// All contexts: presets + user's custom contexts
+    private var allContexts: [ConversationContext] {
+        ConversationContext.presets + settings.contexts.filter { !$0.isPreset }
     }
 
     var body: some View {
@@ -45,61 +50,116 @@ struct ContextsListContent: View {
                 // Header explanation
                 headerSection
 
-                // Context list
-                if settings.contexts.isEmpty {
-                    emptyState
-                } else {
-                    LazyVStack(spacing: 12) {
-                        ForEach(settings.contexts) { context in
-                            SwipeableContextCard(
-                                context: context,
-                                isActive: settings.activeContextId == context.id,
-                                onTap: {
-                                    HapticManager.lightTap()
-                                    navigateToDetail = context
-                                },
-                                onEdit: { editingContext = context },
-                                onDelete: {
-                                    contextToDelete = context
-                                    showingDeleteConfirmation = true
-                                },
-                                onShowHistory: { navigateToHistory = context }
-                            )
+                // Preset contexts (available to all users)
+                if !ConversationContext.presets.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("PRESETS")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 20)
+
+                        LazyVStack(spacing: 12) {
+                            ForEach(ConversationContext.presets) { context in
+                                PresetContextCard(
+                                    context: context,
+                                    isActive: settings.activeContextId == context.id,
+                                    onTap: {
+                                        HapticManager.selection()
+                                        if settings.activeContextId == context.id {
+                                            settings.setActiveContext(nil)
+                                        } else {
+                                            settings.setActiveContext(context)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+
+                // Custom contexts (Pro feature)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("CUSTOM")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+
+                        if !canCreateCustomContexts {
+                            TierBadge.pro
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 20)
+
+                    if settings.contexts.filter({ !$0.isPreset }).isEmpty {
+                        // Empty state for custom contexts
+                        VStack(spacing: 12) {
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 32))
+                                .foregroundStyle(.secondary)
+
+                            Text("No custom contexts")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+
+                            if !canCreateCustomContexts {
+                                Text("Upgrade to Pro to create your own")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 24)
+                        .padding(.horizontal, 16)
+                    } else {
+                        LazyVStack(spacing: 12) {
+                            ForEach(settings.contexts.filter { !$0.isPreset }) { context in
+                                SwipeableContextCard(
+                                    context: context,
+                                    isActive: settings.activeContextId == context.id,
+                                    onTap: {
+                                        HapticManager.lightTap()
+                                        navigateToDetail = context
+                                    },
+                                    onEdit: { editingContext = context },
+                                    onDelete: {
+                                        contextToDelete = context
+                                        showingDeleteConfirmation = true
+                                    },
+                                    onShowHistory: { navigateToHistory = context }
+                                )
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
                 }
 
                 // "No active context" option
                 noContextOption
                     .padding(.horizontal, 16)
 
-                // Create new button
+                // Create new button (Pro only)
                 createNewButton
                     .padding(.horizontal, 16)
                     .padding(.bottom, 32)
             }
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
-        .overlay {
-            if !hasContextsAccess {
-                FeatureGateOverlay(
-                    requiredTier: .pro,
-                    featureName: "Contexts",
-                    featureDescription: "Create conversation contexts to personalize AI responses with your preferences and background",
-                    onUpgrade: { showPaywall = true }
-                )
-            }
-        }
         .sheet(isPresented: $showPaywall) {
             PaywallView()
         }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                Button(action: { showingNewEditor = true }) {
+                Button(action: {
+                    if canCreateCustomContexts {
+                        showingNewEditor = true
+                    } else {
+                        showPaywall = true
+                    }
+                }) {
                     Image(systemName: "plus")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(AppTheme.accent)
+                        .foregroundStyle(canCreateCustomContexts ? AppTheme.accent : .secondary)
                 }
             }
         }
@@ -254,17 +314,32 @@ struct ContextsListContent: View {
     // MARK: - Create New Button
 
     private var createNewButton: some View {
-        Button(action: { showingNewEditor = true }) {
-            HStack(spacing: 8) {
-                Image(systemName: "plus")
-                    .font(.body.weight(.semibold))
-                Text("Create New Context")
-                    .font(.callout.weight(.semibold))
+        Button(action: {
+            if canCreateCustomContexts {
+                showingNewEditor = true
+            } else {
+                showPaywall = true
             }
-            .foregroundStyle(AppTheme.accent)
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: canCreateCustomContexts ? "plus" : "lock.fill")
+                    .font(.body.weight(.semibold))
+                Text("Create Custom Context")
+                    .font(.callout.weight(.semibold))
+                if !canCreateCustomContexts {
+                    Text("PRO")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(AppTheme.accent)
+                        .clipShape(Capsule())
+                }
+            }
+            .foregroundStyle(canCreateCustomContexts ? AppTheme.accent : .secondary)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(AppTheme.accent.opacity(0.15))
+            .background((canCreateCustomContexts ? AppTheme.accent : Color.secondary).opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
         }
     }
@@ -479,6 +554,72 @@ struct SwipeableContextCard: View {
                     }
                 }
             }
+    }
+}
+
+// MARK: - Preset Context Card (Simple, non-editable)
+
+struct PresetContextCard: View {
+    let context: ConversationContext
+    let isActive: Bool
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(context.color.color.opacity(0.15))
+                        .frame(width: 48, height: 48)
+
+                    Text(context.icon)
+                        .font(.title3)
+                }
+
+                // Info
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(context.name)
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+
+                        Text("PRESET")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.2))
+                            .clipShape(Capsule())
+                    }
+
+                    Text(context.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Selection indicator
+                if isActive {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(context.color.color)
+                }
+            }
+            .padding(14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
+                    .strokeBorder(
+                        isActive ? context.color.color.opacity(0.5) : Color.clear,
+                        lineWidth: 1.5
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 

@@ -2,20 +2,22 @@
 //  OnboardingView.swift
 //  SwiftSpeak
 //
-//  Main onboarding container with 7 screens (including upsell)
+//  Main onboarding container with 6 screens
 //
 
 import SwiftUI
 
 struct OnboardingView: View {
     @StateObject private var settings = SharedSettings.shared
-    @State private var currentPage = 0
     @State private var isKeyboardEnabled = false
     @State private var isFullAccessEnabled = false
-    @Binding var showOnboarding: Bool
+    @Binding var isComplete: Bool
 
-    private let totalPages = 7
+    private let totalPages = 6
     @State private var showPaywall = false
+
+    // Persist current page to survive app backgrounding
+    @AppStorage("onboardingCurrentPage") private var currentPage = 0
 
     var body: some View {
         ZStack {
@@ -29,13 +31,15 @@ struct OnboardingView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 16)
 
-                // Skip button (hidden on last page)
+                // Skip button (hidden on upsell screen and after - upsell is mandatory)
                 HStack {
                     Spacer()
-                    if currentPage < totalPages - 1 {
+                    // Upsell is page 4, hide skip on page 4 and after
+                    if currentPage < 4 {
                         Button("Skip") {
                             withAnimation(AppTheme.smoothSpring) {
-                                currentPage = totalPages - 1
+                                // Skip to upsell screen (page 4), not past it
+                                currentPage = 4
                             }
                         }
                         .font(.callout)
@@ -54,20 +58,16 @@ struct OnboardingView: View {
                     HowItWorksScreen(onContinue: nextPage)
                         .tag(1)
 
-                    EnableKeyboardScreen(
-                        isEnabled: $isKeyboardEnabled,
+                    // Combined keyboard + full access screen
+                    KeyboardSetupScreen(
+                        isKeyboardEnabled: $isKeyboardEnabled,
+                        isFullAccessEnabled: $isFullAccessEnabled,
                         onContinue: nextPage
                     )
                     .tag(2)
 
-                    FullAccessScreen(
-                        isEnabled: $isFullAccessEnabled,
-                        onContinue: nextPage
-                    )
-                    .tag(3)
-
                     APIKeyScreen(onContinue: nextPage)
-                        .tag(4)
+                        .tag(3)
 
                     OnboardingUpsellScreen(
                         onStartTrial: {
@@ -75,10 +75,10 @@ struct OnboardingView: View {
                         },
                         onContinueFree: nextPage
                     )
-                    .tag(5)
+                    .tag(4)
 
                     AllSetScreen(onComplete: completeOnboarding)
-                        .tag(6)
+                        .tag(5)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(AppTheme.smoothSpring, value: currentPage)
@@ -89,6 +89,10 @@ struct OnboardingView: View {
             checkKeyboardStatus()
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            checkKeyboardStatus()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            // Also check when app becomes active (returning from Settings)
             checkKeyboardStatus()
         }
         .sheet(isPresented: $showPaywall) {
@@ -111,26 +115,34 @@ struct OnboardingView: View {
     }
 
     private func completeOnboarding() {
-        settings.hasCompletedOnboarding = true
+        // Reset persisted page for next time
+        currentPage = 0
         withAnimation(AppTheme.smoothSpring) {
-            showOnboarding = false
+            isComplete = true
         }
     }
 
     private func checkKeyboardStatus() {
         // Check if our keyboard extension is enabled in system settings
-        // iOS stores enabled keyboards in "AppleKeyboards" preference
-        let keyboardBundleID = "pawelgawliczek.SwiftSpeak.SwiftSpeakKeyboard"
+        let keyboardBundleID = Constants.keyboardBundleID
 
+        // Method 1: Check AppleKeyboards in standard UserDefaults
         if let keyboards = UserDefaults.standard.array(forKey: "AppleKeyboards") as? [String] {
             isKeyboardEnabled = keyboards.contains(keyboardBundleID)
         } else {
             isKeyboardEnabled = false
         }
 
-        // Check if Full Access is enabled via App Group shared defaults
-        // The keyboard extension writes this flag when it has Full Access
-        let sharedDefaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
+        // Method 2: Check shared App Group for keyboard status flag
+        // The keyboard extension writes this when it loads
+        let sharedDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Keyboard enabled flag (written by keyboard extension on load)
+        if let keyboardActive = sharedDefaults?.bool(forKey: "keyboardIsActive"), keyboardActive {
+            isKeyboardEnabled = true
+        }
+
+        // Full Access flag (written by keyboard extension when it has full access)
         isFullAccessEnabled = sharedDefaults?.bool(forKey: "keyboardHasFullAccess") ?? false
     }
 }
@@ -157,5 +169,5 @@ struct ProgressBar: View {
 }
 
 #Preview {
-    OnboardingView(showOnboarding: .constant(true))
+    OnboardingView(isComplete: .constant(false))
 }

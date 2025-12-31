@@ -278,12 +278,18 @@ actor APIClient {
 
         do {
             return try decoder.decode(T.self, from: data)
-        } catch {
+        } catch let decodingError {
+            // Log the raw response for debugging
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+            let rawResponse = String(data: data.prefix(500), encoding: .utf8) ?? "unable to decode"
+            appLog("JSON decoding failed (status \(statusCode)): \(decodingError.localizedDescription)", category: "API", level: .error)
+            appLog("Raw response preview: \(rawResponse.prefix(200))...", category: "API", level: .error)
+
             // Try to decode error response using nonisolated helper
             if let errorResponse = decodeAPIErrorResponse(from: data) {
-                throw mapAPIError(errorResponse, statusCode: (response as? HTTPURLResponse)?.statusCode)
+                throw mapAPIError(errorResponse, statusCode: statusCode)
             }
-            throw TranscriptionError.decodingError(error.localizedDescription)
+            throw TranscriptionError.decodingError(decodingError.localizedDescription)
         }
     }
 

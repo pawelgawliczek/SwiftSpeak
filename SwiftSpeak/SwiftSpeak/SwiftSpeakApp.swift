@@ -11,7 +11,6 @@ import SwiftUI
 @main
 struct SwiftSpeakApp: App {
     @StateObject private var settings = SharedSettings.shared
-    @State private var showOnboarding = true
 
     init() {
         // Initialize Firebase for Remote Config
@@ -19,6 +18,11 @@ struct SwiftSpeakApp: App {
 
         // Pre-warm audio session for instant recording (<200ms startup)
         AudioSessionManager.shared.preWarm()
+
+        // Initialize SwiftLink session manager to register Darwin notification observers
+        // This ensures the app can receive dictation start/stop notifications from the keyboard
+        _ = SwiftLinkSessionManager.shared
+        appLog("SwiftLink manager initialized (session active: \(SwiftLinkSessionManager.shared.isSessionActive))", category: "Startup")
 
         // Configure subscription service (mock mode for now)
         // TODO: Add your RevenueCat API key to Constants.swift and pass it here
@@ -32,17 +36,18 @@ struct SwiftSpeakApp: App {
                 ContentView()
                     .environmentObject(settings)
 
-                // Onboarding overlay
-                if showOnboarding && !settings.hasCompletedOnboarding {
-                    OnboardingView(showOnboarding: $showOnboarding)
-                        .transition(.opacity)
-                        .zIndex(1)
+                // Onboarding overlay - directly observes settings.hasCompletedOnboarding
+                if !settings.hasCompletedOnboarding {
+                    OnboardingView(isComplete: Binding(
+                        get: { settings.hasCompletedOnboarding },
+                        set: { settings.hasCompletedOnboarding = $0 }
+                    ))
+                    .transition(.opacity)
+                    .zIndex(1)
                 }
             }
             .preferredColorScheme(.dark)
-            .onAppear {
-                showOnboarding = !settings.hasCompletedOnboarding
-            }
+            .animation(.easeInOut(duration: 0.3), value: settings.hasCompletedOnboarding)
         }
     }
 }

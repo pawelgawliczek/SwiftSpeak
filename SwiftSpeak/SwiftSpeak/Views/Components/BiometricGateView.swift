@@ -11,7 +11,7 @@ import SwiftUI
 /// Uses session-based authentication - once authenticated, remains valid for 5 minutes
 struct BiometricGateView<Content: View>: View {
     @EnvironmentObject var settings: SharedSettings
-    @StateObject private var authManager = BiometricAuthManager.shared
+    @ObservedObject private var authManager = BiometricAuthManager.shared
 
     /// The content to display when authenticated
     let protectedContent: () -> Content
@@ -27,6 +27,9 @@ struct BiometricGateView<Content: View>: View {
 
     /// Error message to display
     @State private var errorMessage: String?
+
+    /// Whether authentication is in progress
+    @State private var isAuthenticating = false
 
     init(
         authReason: String,
@@ -56,7 +59,7 @@ struct BiometricGateView<Content: View>: View {
         }
         .onAppear {
             // Auto-attempt authentication when view appears
-            if settings.biometricProtectionEnabled && !hasAttemptedAuth && !authManager.isSessionValid {
+            if settings.biometricProtectionEnabled && !hasAttemptedAuth && !authManager.isSessionValid && !isAuthenticating {
                 performAuthentication()
             }
         }
@@ -65,12 +68,17 @@ struct BiometricGateView<Content: View>: View {
     // MARK: - Private Methods
 
     private func performAuthentication() {
+        guard !isAuthenticating else { return }
+
         hasAttemptedAuth = true
+        isAuthenticating = true
         showError = false
         errorMessage = nil
 
-        Task {
+        Task { @MainActor in
             let result = await authManager.authenticate(reason: authReason)
+
+            isAuthenticating = false
 
             switch result {
             case .success:

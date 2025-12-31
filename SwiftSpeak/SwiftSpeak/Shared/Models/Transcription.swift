@@ -9,6 +9,26 @@
 
 import Foundation
 
+// MARK: - Edit Context (Phase 12)
+
+/// Context for edit operations where user modifies existing text via voice instructions
+struct EditContext: Codable, Equatable {
+    /// The original text that was in the text field before editing
+    let originalText: String
+
+    /// What the user dictated as editing instructions (e.g., "make it more formal")
+    let instructions: String
+
+    /// If the original text came from a previous SwiftSpeak transcription, this links to it
+    let parentEntryId: UUID?
+
+    init(originalText: String, instructions: String, parentEntryId: UUID? = nil) {
+        self.originalText = originalText
+        self.instructions = instructions
+        self.parentEntryId = parentEntryId
+    }
+}
+
 // MARK: - Transcription Record
 struct TranscriptionRecord: Identifiable {
     let id: UUID
@@ -37,6 +57,12 @@ struct TranscriptionRecord: Identifiable {
 
     // Processing metadata (Phase 11 - History Enhancement)
     let processingMetadata: ProcessingMetadata?
+
+    // Edit context (Phase 12 - Edit Text Feature)
+    let editContext: EditContext?
+
+    /// Whether this is an edit operation (modifying existing text)
+    var isEditOperation: Bool { editContext != nil }
 
     /// Whether this record has detailed processing info
     var hasProcessingDetails: Bool {
@@ -70,7 +96,8 @@ struct TranscriptionRecord: Identifiable {
         contextIcon: String? = nil,
         estimatedCost: Double? = nil,
         costBreakdown: CostBreakdown? = nil,
-        processingMetadata: ProcessingMetadata? = nil
+        processingMetadata: ProcessingMetadata? = nil,
+        editContext: EditContext? = nil
     ) {
         self.id = id
         // For migration: if rawTranscribedText is nil, use text as raw
@@ -90,6 +117,7 @@ struct TranscriptionRecord: Identifiable {
         self.estimatedCost = estimatedCost
         self.costBreakdown = costBreakdown
         self.processingMetadata = processingMetadata
+        self.editContext = editContext
     }
 }
 
@@ -100,7 +128,8 @@ extension TranscriptionRecord: Codable {
         case id, text, mode, provider, timestamp, duration, translated, targetLanguage
         case powerModeId, powerModeName, contextId, contextName, contextIcon
         case estimatedCost, costBreakdown
-        case rawTranscribedText, processingMetadata  // New fields
+        case rawTranscribedText, processingMetadata
+        case editContext  // Phase 12
     }
 
     init(from decoder: Decoder) throws {
@@ -127,6 +156,9 @@ extension TranscriptionRecord: Codable {
 
         // Handle migration: processingMetadata might not exist
         processingMetadata = try container.decodeIfPresent(ProcessingMetadata.self, forKey: .processingMetadata)
+
+        // Handle migration: editContext might not exist (Phase 12)
+        editContext = try container.decodeIfPresent(EditContext.self, forKey: .editContext)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -149,6 +181,7 @@ extension TranscriptionRecord: Codable {
         try container.encodeIfPresent(costBreakdown, forKey: .costBreakdown)
         try container.encode(rawTranscribedText, forKey: .rawTranscribedText)
         try container.encodeIfPresent(processingMetadata, forKey: .processingMetadata)
+        try container.encodeIfPresent(editContext, forKey: .editContext)
     }
 }
 
