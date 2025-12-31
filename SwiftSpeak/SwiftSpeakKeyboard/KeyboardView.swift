@@ -1984,7 +1984,8 @@ class KeyboardViewModel: ObservableObject {
 
     /// Handle streaming transcript update from main app
     private func handleStreamingUpdate() {
-        keyboardLog("handleStreamingUpdate called", category: "SwiftLink")
+        // Cancel timeout - we're receiving streaming updates, so main app is responsive
+        cancelSwiftLinkTimeout()
 
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
         defaults?.synchronize()
@@ -1992,16 +1993,19 @@ class KeyboardViewModel: ObservableObject {
         let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? ""
         let transcript = defaults?.string(forKey: Constants.Keys.swiftLinkStreamingTranscript) ?? ""
 
-        keyboardLog("Streaming status: '\(status)', transcript length: \(transcript.count)", category: "SwiftLink")
-
         if status == "streaming" {
+            // Only log when transcript actually changes
+            if transcript != swiftLinkStreamingTranscript {
+                keyboardLog("Streaming transcript: \(transcript.count) chars", category: "SwiftLink")
+            }
             isSwiftLinkStreaming = true
             swiftLinkStreamingTranscript = transcript
             swiftLinkProcessingStatus = "streaming"
-            keyboardLog("Updated streaming transcript: \(transcript.prefix(50))...", category: "SwiftLink")
         } else {
             // Streaming ended
-            keyboardLog("Streaming ended or not active (status: \(status))", category: "SwiftLink")
+            if isSwiftLinkStreaming {
+                keyboardLog("Streaming ended (status: \(status))", category: "SwiftLink")
+            }
             isSwiftLinkStreaming = false
         }
     }

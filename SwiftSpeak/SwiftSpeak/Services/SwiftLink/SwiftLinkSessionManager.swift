@@ -353,13 +353,12 @@ final class SwiftLinkSessionManager: ObservableObject {
 
     /// Update streaming transcript in App Groups and notify keyboard
     private func updateStreamingTranscript(_ transcript: String) {
-        guard isStreamingMode, isRecording else {
-            appLog("updateStreamingTranscript skipped (streaming: \(isStreamingMode), recording: \(isRecording))", category: "SwiftLink", level: .debug)
-            return
-        }
+        guard isStreamingMode, isRecording else { return }
+
+        // Only update if transcript actually changed
+        guard transcript != streamingTranscript else { return }
 
         streamingTranscript = transcript
-        appLog("Pushing streaming transcript to App Groups: \(transcript.count) chars", category: "SwiftLink")
 
         // Store in App Groups
         sharedDefaults?.set(transcript, forKey: Constants.Keys.swiftLinkStreamingTranscript)
@@ -367,7 +366,6 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         // Notify keyboard of update
         DarwinNotificationManager.shared.postStreamingUpdate()
-        appLog("Posted streaming update notification", category: "SwiftLink")
     }
 
     /// Mark the end of a dictation segment and process it.
