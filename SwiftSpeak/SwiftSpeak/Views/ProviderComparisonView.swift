@@ -164,8 +164,7 @@ private struct RecommendationCard: View {
 
             // Recommendation
             HStack(spacing: 8) {
-                Image(systemName: recommendation.recommendedProvider.icon)
-                    .foregroundStyle(AppTheme.accent)
+                ProviderIcon(recommendation.recommendedProvider, size: .small, style: .filled)
 
                 Text(recommendation.recommendedProvider.displayName)
                     .font(.subheadline.weight(.medium))
@@ -247,12 +246,7 @@ private struct ProviderComparisonRow: View {
         }) {
             HStack(spacing: 12) {
                 // Icon
-                Image(systemName: provider.icon)
-                    .font(.body)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 36, height: 36)
-                    .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ProviderIcon(provider, size: .large, style: .filled)
 
                 // Info
                 VStack(alignment: .leading, spacing: 4) {

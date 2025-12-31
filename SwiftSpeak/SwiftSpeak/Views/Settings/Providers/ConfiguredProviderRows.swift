@@ -21,12 +21,7 @@ struct ConfiguredAIProviderRow: View {
         }) {
             HStack(spacing: 12) {
                 // Provider icon
-                Image(systemName: config.provider.icon)
-                    .font(.title3)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 32, height: 32)
-                    .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ProviderIcon(config.provider, size: .medium, style: .filled)
 
                 // Provider info
                 VStack(alignment: .leading, spacing: 4) {
@@ -124,12 +119,7 @@ struct FreeProviderRow: View {
         }) {
             HStack(spacing: 12) {
                 // Provider icon
-                Image(systemName: provider.icon)
-                    .font(.title3)
-                    .foregroundStyle(isDisabled ? .secondary : AppTheme.accent)
-                    .frame(width: 32, height: 32)
-                    .background((isDisabled ? Color.secondary : AppTheme.accent).opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                ProviderIcon(provider, size: .medium, style: .filled, isDisabled: isDisabled)
 
                 // Provider info
                 VStack(alignment: .leading, spacing: 4) {

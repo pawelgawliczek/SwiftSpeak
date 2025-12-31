@@ -121,12 +121,7 @@ struct AddAIProviderSheet: View {
                                 }
                             }) {
                                 HStack(spacing: 12) {
-                                    Image(systemName: provider.icon)
-                                        .font(.title3)
-                                        .foregroundStyle(isLocked ? .secondary : AppTheme.accent)
-                                        .frame(width: 40, height: 40)
-                                        .background((isLocked ? Color.secondary : AppTheme.accent).opacity(0.15))
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                    ProviderIcon(provider, size: .large, style: .filled, isDisabled: isLocked)
 
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack(spacing: 6) {

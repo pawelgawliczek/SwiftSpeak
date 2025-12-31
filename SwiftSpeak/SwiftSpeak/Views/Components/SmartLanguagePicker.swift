@@ -159,12 +159,7 @@ struct SmartLanguagePicker: View {
 
     private var currentProviderInfo: some View {
         HStack(spacing: 12) {
-            Image(systemName: currentProvider.icon)
-                .font(.title3)
-                .foregroundStyle(AppTheme.accent)
-                .frame(width: 40, height: 40)
-                .background(AppTheme.accent.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            ProviderIcon(currentProvider, size: .large, style: .filled)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("Using \(currentProvider.displayName)")

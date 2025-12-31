@@ -124,12 +124,7 @@ struct ProviderHelpSheet: View {
 
     private var providerHeader: some View {
         VStack(spacing: 12) {
-            Image(systemName: provider.icon)
-                .font(.system(size: 40))
-                .foregroundStyle(AppTheme.accent)
-                .frame(width: 80, height: 80)
-                .background(AppTheme.accent.opacity(0.15))
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            ProviderIcon(provider, size: .extraLarge, style: .filled)
 
             Text("Setting up \(provider.displayName)")
                 .font(.title2.weight(.bold))

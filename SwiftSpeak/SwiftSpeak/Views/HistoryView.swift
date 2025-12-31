@@ -541,8 +541,7 @@ struct HistoryRowView: View {
 
             // Provider
             HStack(spacing: 4) {
-                Image(systemName: record.provider.icon)
-                    .font(.caption2)
+                ProviderIcon(record.provider, size: .small, style: .filled)
                 Text(record.provider.shortName)
                     .font(.caption2)
             }
@@ -860,9 +859,7 @@ struct HistoryDetailView: View {
                 VStack(spacing: 12) {
                     ForEach(metadata.steps) { step in
                         HStack {
-                            Image(systemName: step.provider.icon)
-                                .font(.caption)
-                                .foregroundStyle(step.stepType.color)
+                            ProviderIcon(step.provider, size: .small, style: .filled)
                                 .frame(width: 24)
 
                             VStack(alignment: .leading, spacing: 2) {
@@ -883,7 +880,20 @@ struct HistoryDetailView: View {
             } else {
                 // Legacy: show basic provider info
                 VStack(spacing: 12) {
-                    MetadataRow(icon: record.provider.icon, label: "Transcription", value: record.provider.displayName)
+                    HStack {
+                        ProviderIcon(record.provider, size: .small, style: .filled)
+                            .frame(width: 24)
+
+                        Text("Transcription")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text(record.provider.displayName)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                    }
                 }
                 .padding(16)
                 .background(cardBackground)
@@ -957,11 +967,70 @@ struct HistoryDetailView: View {
 
     private var promptsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            SectionHeader(title: "PROMPTS SENT")
+            // Always show transcription configuration
+            SectionHeader(title: "TRANSCRIPTION CONFIG")
 
+            VStack(spacing: 0) {
+                // Transcription provider
+                PromptConfigRow(
+                    icon: "waveform",
+                    iconColor: AppTheme.accent,
+                    label: "Transcription",
+                    value: record.provider.displayName
+                )
+
+                Divider().padding(.leading, 44)
+
+                // Mode
+                PromptConfigRow(
+                    icon: record.mode.icon,
+                    iconColor: AppTheme.accent,
+                    label: "Mode",
+                    value: record.mode.displayName
+                )
+
+                Divider().padding(.leading, 44)
+
+                // Context
+                PromptConfigRow(
+                    icon: record.contextIcon ?? "person.crop.circle.dashed",
+                    iconColor: .purple,
+                    label: "Context",
+                    value: record.contextName ?? "No context"
+                )
+
+                // Power Mode (if used)
+                if let powerModeName = record.powerModeName {
+                    Divider().padding(.leading, 44)
+                    PromptConfigRow(
+                        icon: "bolt.fill",
+                        iconColor: .orange,
+                        label: "Power Mode",
+                        value: powerModeName
+                    )
+                }
+
+                // Translation (if used)
+                if record.translated, let lang = record.targetLanguage {
+                    Divider().padding(.leading, 44)
+                    PromptConfigRow(
+                        icon: "globe",
+                        iconColor: .teal,
+                        label: "Translation",
+                        value: "\(lang.flag) \(lang.displayName)"
+                    )
+                }
+            }
+            .padding(16)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Show actual prompts if recorded
             if let metadata = record.processingMetadata {
                 let prompts = metadata.allPrompts
                 if !prompts.isEmpty {
+                    SectionHeader(title: "PROMPTS SENT TO AI")
+
                     ForEach(Array(prompts.enumerated()), id: \.offset) { _, item in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
@@ -986,32 +1055,9 @@ struct HistoryDetailView: View {
                         .background(Color.primary.opacity(0.03))
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
-                } else {
-                    noPromptsCard
                 }
-            } else {
-                noPromptsCard
             }
         }
-    }
-
-    private var noPromptsCard: some View {
-        VStack(spacing: 8) {
-            Image(systemName: "doc.text")
-                .font(.title2)
-                .foregroundStyle(.tertiary)
-            Text("No prompts recorded")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-            Text("Prompt logging was added in a later version.")
-                .font(.caption2)
-                .foregroundStyle(.quaternary)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(24)
-        .background(cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - Costs Section
@@ -1241,6 +1287,46 @@ struct SettingsUsedRow: View {
             Spacer()
         }
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Prompt Config Row (for Prompts tab)
+
+private struct PromptConfigRow: View {
+    let icon: String
+    let iconColor: Color
+    let label: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(iconColor.opacity(0.15))
+                    .frame(width: 32, height: 32)
+
+                // Handle emoji icons vs SF Symbols
+                if icon.count <= 2 && !icon.contains(".") {
+                    Text(icon)
+                        .font(.system(size: 14))
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(iconColor)
+                }
+            }
+
+            Text(label)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Text(value)
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(.primary)
+        }
+        .padding(.vertical, 6)
     }
 }
 

@@ -101,16 +101,8 @@ private struct AppRow: View {
     var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                // App icon placeholder (using first letter)
-                ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(effectiveCategory.color.opacity(0.2))
-                        .frame(width: 44, height: 44)
-
-                    Text(String(app.name.prefix(1)))
-                        .font(.title2.weight(.semibold))
-                        .foregroundStyle(effectiveCategory.color)
-                }
+                // App icon - use real icon from asset catalog
+                AppIcon(app, size: .large, style: .filled)
 
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 4) {

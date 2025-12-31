@@ -140,7 +140,8 @@ struct IncompatibilityWarning: View {
                         onSwitchProvider(recommended)
                     }) {
                         HStack(spacing: 6) {
-                            Image(systemName: recommended.icon)
+                            ProviderIcon(recommended, size: .small, style: .plain)
+                                .foregroundStyle(.white)
                             Text("Switch to \(recommended.shortName)")
                         }
                         .font(.caption.weight(.semibold))
@@ -174,9 +175,7 @@ private struct AlternativeProviderRow: View {
     var body: some View {
         Button(action: onSelect) {
             HStack(spacing: 10) {
-                Image(systemName: provider.icon)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 20)
+                ProviderIcon(provider, size: .small, style: .filled)
 
                 Text(provider.displayName)
                     .font(.callout)

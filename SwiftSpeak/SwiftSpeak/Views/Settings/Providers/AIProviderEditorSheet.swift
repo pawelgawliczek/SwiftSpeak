@@ -146,12 +146,7 @@ struct AIProviderEditorSheet: View {
     private var providerInfoHeaderSection: some View {
         Section {
             HStack(spacing: 16) {
-                Image(systemName: config.provider.icon)
-                    .font(.title)
-                    .foregroundStyle(AppTheme.accent)
-                    .frame(width: 56, height: 56)
-                    .background(AppTheme.accent.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                ProviderIcon(config.provider, size: .extraLarge, style: .filled)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(config.provider.displayName)

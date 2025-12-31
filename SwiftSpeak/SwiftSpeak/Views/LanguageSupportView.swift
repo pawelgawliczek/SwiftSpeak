@@ -244,9 +244,7 @@ private struct ProviderSupportBadge: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            Image(systemName: provider.icon)
-                .font(.caption2)
-                .foregroundStyle(level.color)
+            ProviderIcon(provider, size: .small, style: .plain)
 
             Image(systemName: level.icon)
                 .font(.system(size: 6))
@@ -405,8 +403,7 @@ private struct ProviderRankingCard: View {
             // Provider info
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Image(systemName: provider.icon)
-                        .foregroundStyle(AppTheme.accent)
+                    ProviderIcon(provider, size: .small, style: .filled)
 
                     Text(provider.displayName)
                         .font(.callout.weight(.medium))

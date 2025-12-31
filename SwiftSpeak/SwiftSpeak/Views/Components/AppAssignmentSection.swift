@@ -104,15 +104,7 @@ private struct AssignedAppRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(effectiveCategory.color.opacity(0.2))
-                    .frame(width: 32, height: 32)
-
-                Text(String(app.name.prefix(1)))
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(effectiveCategory.color)
-            }
+            AppIcon(app, size: .medium, style: .filled)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(app.name)
@@ -226,15 +218,7 @@ private struct AppPickerSheet: View {
                                 }
                             } label: {
                                 HStack(spacing: 12) {
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(group.category.color.opacity(0.2))
-                                            .frame(width: 32, height: 32)
-
-                                        Text(String(app.name.prefix(1)))
-                                            .font(.subheadline.weight(.semibold))
-                                            .foregroundStyle(group.category.color)
-                                    }
+                                    AppIcon(app, size: .medium, style: .filled)
 
                                     Text(app.name)
                                         .foregroundStyle(.primary)

@@ -226,15 +226,15 @@ struct ProviderPickerRow: View {
                 let cloudProviders = availableProviders.filter { !$0.isLocal }
                 if !cloudProviders.isEmpty {
                     Section("Cloud") {
-                        ForEach(cloudProviders, id: \.self) { provider in
+                        ForEach(cloudProviders, id: \.self) { providerSelection in
                             Button(action: {
                                 HapticManager.selection()
-                                selection = provider
+                                selection = providerSelection
                             }) {
                                 Label {
-                                    Text(provider.displayName)
+                                    Text(providerSelection.displayName)
                                 } icon: {
-                                    Image(systemName: provider.icon)
+                                    ProviderSelectionIcon(providerSelection, size: .small, style: .filled)
                                 }
                             }
                         }
@@ -245,15 +245,15 @@ struct ProviderPickerRow: View {
                 let localProviders = availableProviders.filter { $0.isLocal }
                 if !localProviders.isEmpty {
                     Section("On-Device") {
-                        ForEach(localProviders, id: \.self) { provider in
+                        ForEach(localProviders, id: \.self) { providerSelection in
                             Button(action: {
                                 HapticManager.selection()
-                                selection = provider
+                                selection = providerSelection
                             }) {
                                 Label {
-                                    Text(provider.displayName)
+                                    Text(providerSelection.displayName)
                                 } icon: {
-                                    Image(systemName: provider.icon)
+                                    ProviderSelectionIcon(providerSelection, size: .small, style: .filled)
                                 }
                             }
                         }
@@ -262,15 +262,7 @@ struct ProviderPickerRow: View {
             } label: {
                 HStack(spacing: 12) {
                     // Provider icon with colored background
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(providerIconBackground)
-                            .frame(width: 40, height: 40)
-
-                        Image(systemName: providerIcon)
-                            .font(.body)
-                            .foregroundStyle(providerIconColor)
-                    }
+                    ProviderSelectionIcon(selection, size: .large, style: .filled, fallbackColor: categoryColor)
 
                     // Provider info
                     VStack(alignment: .leading, spacing: 2) {
@@ -323,24 +315,6 @@ struct ProviderPickerRow: View {
     }
 
     // MARK: - Computed Properties
-
-    private var providerIcon: String {
-        selection?.icon ?? "sparkles"
-    }
-
-    private var providerIconColor: Color {
-        if let selected = selection {
-            return selected.isLocal ? .green : categoryColor
-        }
-        return categoryColor
-    }
-
-    private var providerIconBackground: Color {
-        if let selected = selection {
-            return (selected.isLocal ? Color.green : categoryColor).opacity(0.15)
-        }
-        return categoryColor.opacity(0.15)
-    }
 
     private var providerDisplayName: String {
         selection?.displayName ?? "Automatic"

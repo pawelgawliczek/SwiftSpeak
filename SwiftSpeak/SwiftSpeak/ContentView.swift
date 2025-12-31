@@ -94,6 +94,15 @@ struct ContentView: View {
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
         let queryItems = components?.queryItems ?? []
 
+        // Handle SwiftLink start request
+        if url.host == "swiftlink" {
+            appLog("SwiftLink start requested", category: "Navigation")
+            // Navigate to Settings tab and show SwiftLink setup
+            selectedTab = 1  // Settings tab
+            // The user will navigate to SwiftLink from there
+            return
+        }
+
         // Check if it's a power mode URL
         if url.host == "powermode" {
             // Handle power mode launch from keyboard
@@ -146,11 +155,11 @@ struct HomeView: View {
     @Binding var translateOnRecord: Bool
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var showModePicker = false
     @State private var showContextPicker = false
     @State private var showDefaultsSettings = false
-    @State private var showProviderSetup = false
     @State private var showPaywall = false
+    @State private var providerToSetup: AIProvider? = nil
+    @State private var showLanguagePicker = false
 
     /// Whether the user has access to Pro features (contexts, modes, translation)
     private var hasProAccess: Bool {
@@ -162,12 +171,16 @@ struct HomeView: View {
         settings.subscriptionTier != .free
     }
 
+    /// Whether user has Power tier (for Power Modes)
+    private var hasPowerAccess: Bool {
+        settings.subscriptionTier == .power
+    }
+
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
     }
 
     private var isProviderConfigured: Bool {
-        // Check if any AI provider is configured for transcription
         guard let config = settings.transcriptionProviders.first else {
             return false
         }
@@ -193,154 +206,108 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     Spacer()
 
-                    // Context & Mode Selectors - Beautiful stacked dropdowns
-                    VStack(spacing: 20) {
-                        // Context Selector (Pro feature)
-                        VStack(spacing: 10) {
-                            HStack(spacing: 6) {
-                                Text("CONTEXT")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .tracking(1.5)
-
-                                if !hasProAccess {
-                                    TierBadge.pro
-                                }
-                            }
-
-                            ContextSelector(
-                                activeContext: hasProAccess ? settings.activeContext : nil,
-                                isLocked: !hasProAccess,
-                                onTap: {
-                                    HapticManager.lightTap()
-                                    if hasProAccess {
-                                        showContextPicker = true
-                                    } else {
-                                        showPaywall = true
-                                    }
-                                }
-                            )
-                        }
-
-                        // Mode Selector (Pro feature for non-raw modes)
-                        VStack(spacing: 10) {
-                            HStack(spacing: 6) {
-                                Text("MODE")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .tracking(1.5)
-
-                                if !hasProAccess {
-                                    TierBadge.pro
-                                }
-                            }
-
-                            ModeSelector(
-                                selectedMode: $settings.selectedMode,
-                                isLocked: !hasProAccess && settings.selectedMode != .raw,
-                                onTap: {
-                                    HapticManager.lightTap()
-                                    if hasProAccess {
-                                        showModePicker = true
-                                    } else {
-                                        showPaywall = true
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    Spacer()
-
                     // Action Buttons Area
                     if isProviderConfigured {
-                        VStack(spacing: 24) {
-                            // Two action buttons side by side
-                            HStack(spacing: 32) {
-                                // Translate + Transcribe button (pink) - Pro+ feature
-                                ZStack(alignment: .topTrailing) {
-                                    ActionButton(
-                                        icon: "globe",
-                                        label: "Translate",
-                                        color: .pink,
-                                        size: 72
-                                    ) {
-                                        HapticManager.mediumTap()
-                                        if hasTranslationAccess {
-                                            translateOnRecord = true
-                                            showRecording = true
-                                        } else {
-                                            showPaywall = true
-                                        }
-                                    }
-
-                                    // Show PRO badge if not subscribed
-                                    if !hasTranslationAccess {
-                                        TierBadge.pro
-                                            .offset(x: 8, y: -8)
-                                    }
-                                }
-
-                                // Transcribe only button (accent)
-                                ActionButton(
-                                    icon: "mic.fill",
-                                    label: "Transcribe",
-                                    gradient: AppTheme.accentGradient,
-                                    size: 100
+                        VStack(spacing: 28) {
+                            // Primary Action Row - Context | Mic | Power Mode (matches keyboard)
+                            HStack(spacing: 0) {
+                                // Context selector (left) - available to all with presets
+                                HomeCompactButton(
+                                    icon: settings.activeContext?.icon ?? "👤",
+                                    title: settings.activeContext?.name ?? "Context",
+                                    accentColor: .purple
                                 ) {
+                                    HapticManager.lightTap()
+                                    showContextPicker = true
+                                }
+                                .frame(maxWidth: .infinity)
+
+                                // Main transcribe button - HERO element
+                                HomeMainActionButton {
                                     HapticManager.mediumTap()
                                     translateOnRecord = false
                                     showRecording = true
                                 }
+
+                                // Power Mode selector (right) - Power tier only
+                                HomeCompactButton(
+                                    icon: "⚡️",
+                                    title: "Power",
+                                    isLocked: !hasPowerAccess,
+                                    accentColor: .orange
+                                ) {
+                                    if hasPowerAccess {
+                                        HapticManager.lightTap()
+                                        // Navigate to Power tab handled by tab bar
+                                    } else {
+                                        showPaywall = true
+                                    }
+                                }
+                                .frame(maxWidth: .infinity)
                             }
+                            .padding(.horizontal, 20)
 
-                            // Settings summary
-                            VStack(spacing: 8) {
-                                // Model info
-                                HStack(spacing: 16) {
-                                    // Transcription
-                                    ModelInfoPill(
-                                        icon: "waveform",
-                                        text: settings.selectedTranscriptionProvider.shortName,
-                                        color: AppTheme.accent
-                                    )
-
-                                    // Translation
-                                    ModelInfoPill(
-                                        icon: "globe",
-                                        text: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTranslationProvider.shortName)",
-                                        color: .pink
-                                    )
-
-                                    // Mode (only when not Raw)
-                                    if settings.selectedMode != .raw {
-                                        ModelInfoPill(
-                                            icon: "text.badge.star",
-                                            text: settings.selectedPowerModeProvider.shortName,
-                                            color: .orange
-                                        )
+                            // Secondary Actions Row - Translate | Language (matches keyboard)
+                            HStack(spacing: 16) {
+                                // Translate button
+                                HomeSecondaryButton(
+                                    icon: "globe",
+                                    title: "Translate",
+                                    color: .pink,
+                                    isLocked: !hasTranslationAccess
+                                ) {
+                                    if hasTranslationAccess {
+                                        HapticManager.mediumTap()
+                                        translateOnRecord = true
+                                        showRecording = true
+                                    } else {
+                                        showPaywall = true
                                     }
                                 }
 
-                                // Edit defaults button
-                                Button(action: {
-                                    HapticManager.lightTap()
-                                    showDefaultsSettings = true
-                                }) {
-                                    Text("Edit defaults")
+                                // Language selector
+                                HomeSecondaryButton(
+                                    icon: "character.bubble",
+                                    title: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTargetLanguage.displayName)",
+                                    color: .blue,
+                                    isLocked: !hasTranslationAccess
+                                ) {
+                                    if hasTranslationAccess {
+                                        HapticManager.lightTap()
+                                        showLanguagePicker = true
+                                    } else {
+                                        showPaywall = true
+                                    }
+                                }
+                            }
+                            .padding(.horizontal, 20)
+
+                            // Provider info (subtle)
+                            Button(action: {
+                                HapticManager.lightTap()
+                                showDefaultsSettings = true
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "waveform")
+                                        .font(.caption2)
+                                        .foregroundStyle(AppTheme.accent)
+                                    Text(settings.selectedTranscriptionProvider.shortName)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2)
+                                        .foregroundStyle(.tertiary)
                                 }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .background(Color.secondary.opacity(0.1), in: Capsule())
                             }
                         }
                     } else {
                         // Empty state - no AI provider configured for transcription
-                        SetupRequiredView(
-                            provider: currentTranscriptionConfig?.provider ?? .openAI,
-                            onSetup: {
-                                showProviderSetup = true
-                            }
-                        )
+                        SetupRequiredView { provider in
+                            providerToSetup = provider
+                        }
                     }
 
                     Spacer()
@@ -360,28 +327,27 @@ struct HomeView: View {
                     PrivacyModeIndicator()
                 }
             }
-            .sheet(isPresented: $showModePicker) {
-                ModePickerSheet(selectedMode: $settings.selectedMode)
-                    .presentationDetents([.height(320)])
-            }
             .sheet(isPresented: $showContextPicker) {
                 ContextPickerSheet()
+                    .presentationDetents([.medium, .large])
+            }
+            .sheet(isPresented: $showLanguagePicker) {
+                LanguagePickerSheet(selectedLanguage: $settings.selectedTargetLanguage)
                     .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showDefaultsSettings) {
                 DefaultsSettingsSheet()
                     .presentationDetents([.medium])
             }
-            .sheet(isPresented: $showProviderSetup) {
+            .sheet(item: $providerToSetup) { provider in
                 AIProviderEditorSheet(
-                    config: currentTranscriptionConfig ?? AIProviderConfig(provider: .openAI),
-                    isEditing: currentTranscriptionConfig != nil,
+                    config: AIProviderConfig(provider: provider),
+                    isEditing: false,
                     onSave: { updatedConfig in
-                        if currentTranscriptionConfig != nil {
-                            settings.updateAIProvider(updatedConfig)
-                        } else {
-                            settings.addAIProvider(updatedConfig)
-                        }
+                        settings.addAIProvider(updatedConfig)
+                        settings.selectedTranscriptionProvider = updatedConfig.provider
+                        settings.selectedTranslationProvider = updatedConfig.provider
+                        settings.selectedPowerModeProvider = updatedConfig.provider
                     },
                     onDelete: nil
                 )
@@ -1147,8 +1113,7 @@ struct TranslateToggleButton: View {
 
 // MARK: - Setup Required View (Empty State)
 struct SetupRequiredView: View {
-    let provider: AIProvider
-    let onSetup: () -> Void
+    let onSetup: (AIProvider) -> Void
 
     @Environment(\.colorScheme) var colorScheme
 
@@ -1164,7 +1129,7 @@ struct SetupRequiredView: View {
                     .fill(cardBackground)
                     .frame(width: 80, height: 80)
 
-                Image(systemName: provider.icon)
+                Image(systemName: "waveform")
                     .font(.system(size: 32))
                     .foregroundStyle(.secondary)
 
@@ -1182,36 +1147,215 @@ struct SetupRequiredView: View {
 
             // Message
             VStack(spacing: 6) {
-                Text("API Key Required")
+                Text("Setup Required")
                     .font(.headline)
                     .foregroundStyle(.primary)
 
-                Text("Configure \(provider.shortName) to start transcribing")
+                Text("Choose a provider to start transcribing")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             }
 
-            // Setup Button
-            Button(action: {
-                HapticManager.lightTap()
-                onSetup()
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "key.fill")
-                        .font(.subheadline)
-
-                    Text("Add API Key")
-                        .font(.subheadline.weight(.semibold))
+            // Provider buttons
+            VStack(spacing: 12) {
+                Button(action: {
+                    HapticManager.lightTap()
+                    onSetup(.openAI)
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "brain")
+                            .font(.subheadline)
+                        Text("OpenAI")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: 200)
+                    .padding(.vertical, 12)
+                    .background(AppTheme.accentGradient)
+                    .clipShape(Capsule())
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(AppTheme.accentGradient)
-                .clipShape(Capsule())
+
+                Button(action: {
+                    HapticManager.lightTap()
+                    onSetup(.local)
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "iphone")
+                            .font(.subheadline)
+                        Text("On-Device (Free)")
+                            .font(.subheadline.weight(.medium))
+                    }
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: 200)
+                    .padding(.vertical, 12)
+                    .background(Color.secondary.opacity(0.2))
+                    .clipShape(Capsule())
+                }
             }
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Home Screen Components
+
+/// Compact button for Context/Power Mode selectors
+struct HomeCompactButton: View {
+    let icon: String
+    let title: String
+    var isLocked: Bool = false
+    var accentColor: Color = .purple
+    let action: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var background: Color {
+        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(isLocked ? Color.secondary.opacity(0.3) : accentColor.opacity(0.2))
+                        .frame(width: 48, height: 48)
+
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 18))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(icon)
+                            .font(.system(size: 22))
+                    }
+                }
+
+                Text(title)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(isLocked ? .secondary : .primary)
+                    .lineLimit(1)
+            }
+            .frame(width: 80)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Main transcribe button - hero element
+struct HomeMainActionButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(AppTheme.accentGradient)
+                    .frame(width: 88, height: 88)
+                    .shadow(color: AppTheme.accent.opacity(0.4), radius: 16, y: 4)
+
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.white)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// Secondary action buttons (Translate, Language)
+struct HomeSecondaryButton: View {
+    let icon: String
+    let title: String
+    let color: Color
+    var isLocked: Bool = false
+    let action: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var background: Color {
+        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isLocked ? .secondary : color)
+
+                Text(title)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(isLocked ? .secondary : .primary)
+                    .lineLimit(1)
+
+                if isLocked {
+                    TierBadge.pro
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            .background(background)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Language Picker Sheet
+struct LanguagePickerSheet: View {
+    @Binding var selectedLanguage: Language
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(Language.allCases, id: \.self) { language in
+                    Button(action: {
+                        HapticManager.selection()
+                        selectedLanguage = language
+                        dismiss()
+                    }) {
+                        HStack {
+                            Text(language.flag)
+                                .font(.title2)
+
+                            Text(language.displayName)
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            if language == selectedLanguage {
+                                Image(systemName: "checkmark")
+                                    .foregroundStyle(AppTheme.accent)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                    .listRowBackground(backgroundColor)
+                }
+            }
+            .listStyle(.plain)
+            .background(backgroundColor)
+            .scrollContentBackground(.hidden)
+            .navigationTitle("Target Language")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                    .fontWeight(.semibold)
+                }
+            }
+        }
     }
 }
 
@@ -1243,12 +1387,7 @@ struct AIProviderPickerSheet: View {
                             dismiss()
                         }) {
                             HStack(spacing: 12) {
-                                Image(systemName: provider.icon)
-                                    .font(.title3)
-                                    .foregroundStyle(AppTheme.accent)
-                                    .frame(width: 36, height: 36)
-                                    .background(AppTheme.accent.opacity(0.15))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                ProviderIcon(provider, size: .large, style: .filled)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(provider.displayName)
@@ -1358,12 +1497,7 @@ struct TranscriptionProviderPickerSheet: View {
                             dismiss()
                         }) {
                             HStack(spacing: 12) {
-                                Image(systemName: config.provider.icon)
-                                    .font(.title3)
-                                    .foregroundStyle(AppTheme.accent)
-                                    .frame(width: 36, height: 36)
-                                    .background(AppTheme.accent.opacity(0.15))
-                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                ProviderIcon(config.provider, size: .large, style: .filled)
 
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(config.provider.displayName)
@@ -1486,69 +1620,6 @@ struct ModePickerSheet: View {
     }
 }
 
-// MARK: - Language Picker Sheet
-struct LanguagePickerSheet: View {
-    @Binding var selectedLanguage: Language
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) var colorScheme
-
-    private var backgroundColor: Color {
-        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
-    }
-
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    var body: some View {
-        NavigationStack {
-            ZStack {
-                backgroundColor.ignoresSafeArea()
-
-                List {
-                    ForEach(Language.allCases) { language in
-                        Button(action: {
-                            HapticManager.selection()
-                            selectedLanguage = language
-                            dismiss()
-                        }) {
-                            HStack {
-                                Text(language.flag)
-                                    .font(.title2)
-
-                                Text(language.displayName)
-                                    .font(.callout)
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                if selectedLanguage == language {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(AppTheme.accent)
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                        }
-                        .listRowBackground(rowBackground)
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .scrollContentBackground(.hidden)
-            }
-            .navigationTitle("Translate To")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Done") {
-                        dismiss()
-                    }
-                    .fontWeight(.semibold)
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Quick Stats Card
 struct QuickStatsCard: View {
     @EnvironmentObject var settings: SharedSettings
@@ -1657,10 +1728,7 @@ struct QuickStatsCard: View {
 }
 
 #Preview("Setup Required View") {
-    SetupRequiredView(
-        provider: .openAI,
-        onSetup: { }
-    )
+    SetupRequiredView { _ in }
     .padding()
     .preferredColorScheme(.dark)
 }
