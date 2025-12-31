@@ -38,10 +38,9 @@ struct RecordingView: View {
     @State private var showingSwiftLinkQuickStart = false
     @State private var showingOriginalText = false  // Phase 12: Toggle for original text preview
 
-    /// Whether streaming mode is active and available
-    private var useStreamingMode: Bool {
-        settings.transcriptionStreamingEnabled && streamingOrchestrator.isStreamingAvailable
-    }
+    /// Captured streaming mode - set once on appear to prevent mid-session switching
+    /// Using Optional to prevent any rendering until mode is determined
+    @State private var isStreamingSession: Bool? = nil
 
     /// Current streaming transcript for display
     private var streamingTranscript: String {
@@ -82,56 +81,75 @@ struct RecordingView: View {
         }
     }
 
+    /// Safe accessor for streaming mode - returns false until mode is determined
+    private var isStreaming: Bool {
+        isStreamingSession ?? false
+    }
+
     var body: some View {
         ZStack {
             // Blurred background
             backgroundColor.opacity(0.95)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    if orchestrator.state == .recording {
-                        stopRecording()
+                    // Handle background tap for both streaming and non-streaming modes
+                    guard isStreamingSession != nil else { return }
+                    if isStreaming {
+                        if streamingOrchestrator.state == .streaming {
+                            appLog("Background tap - stopping streaming", category: "Streaming")
+                            stopRecording()
+                        }
+                    } else {
+                        if orchestrator.state == .recording {
+                            appLog("Background tap - stopping recording", category: "Recording")
+                            stopRecording()
+                        }
                     }
                 }
 
-            VStack(spacing: 0) {
-                Spacer()
+            // Only show content after streaming mode is determined
+            if isStreamingSession != nil {
+                VStack(spacing: 0) {
+                    Spacer()
 
-                // Recording card
-                RecordingCard(
-                    state: useStreamingMode ? streamingStateToRecordingState : orchestrator.state,
-                    duration: useStreamingMode ? 0 : orchestrator.recordingDuration,
-                    mode: settings.selectedMode,
-                    isTranslationEnabled: translateAfterRecording,
-                    targetLanguage: settings.selectedTargetLanguage,
-                    transcriptionProvider: settings.selectedTranscriptionProvider,
-                    modeProvider: settings.selectedPowerModeProvider,
-                    translationProvider: settings.selectedTranslationProvider,
-                    waveformType: selectedWaveform,
-                    audioLevels: useStreamingMode ? streamingAudioLevels : orchestrator.audioLevels,
-                    colorScheme: colorScheme,
-                    activeContext: settings.activeContext,
-                    isEditMode: isEditMode,
-                    editOriginalText: editModeOriginalText,
-                    showingOriginalText: $showingOriginalText,
-                    streamingTranscript: useStreamingMode ? streamingTranscript : nil,
-                    onTap: handleCardTap,
-                    onCancel: cancelRecording,
-                    onChangeContext: {
-                        HapticManager.selection()
-                        showingContextPicker = true
+                    // Recording card
+                    RecordingCard(
+                        state: isStreaming ? streamingStateToRecordingState : orchestrator.state,
+                        duration: isStreaming ? 0 : orchestrator.recordingDuration,
+                        mode: settings.selectedMode,
+                        isTranslationEnabled: translateAfterRecording,
+                        targetLanguage: settings.selectedTargetLanguage,
+                        transcriptionProvider: settings.selectedTranscriptionProvider,
+                        modeProvider: settings.selectedPowerModeProvider,
+                        translationProvider: settings.selectedTranslationProvider,
+                        waveformType: selectedWaveform,
+                        audioLevels: isStreaming ? streamingAudioLevels : orchestrator.audioLevels,
+                        colorScheme: colorScheme,
+                        activeContext: settings.activeContext,
+                        isEditMode: isEditMode,
+                        editOriginalText: editModeOriginalText,
+                        showingOriginalText: $showingOriginalText,
+                        isStreamingMode: isStreaming,
+                        streamingTranscript: isStreaming ? streamingTranscript : nil,
+                        onTap: handleCardTap,
+                        onCancel: cancelRecording,
+                        onChangeContext: {
+                            HapticManager.selection()
+                            showingContextPicker = true
+                        }
+                    )
+                    .scaleEffect(cardScale)
+                    .opacity(cardOpacity)
+
+                    Spacer()
+
+                    // SwiftLink quick start banner (only when no session active)
+                    if !swiftLinkManager.isSessionActive {
+                        swiftLinkBanner
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .padding(.bottom, 40)
+                            .padding(.horizontal, 8)
                     }
-                )
-                .scaleEffect(cardScale)
-                .opacity(cardOpacity)
-
-                Spacer()
-
-                // SwiftLink quick start banner (only when no session active)
-                if !swiftLinkManager.isSessionActive {
-                    swiftLinkBanner
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.bottom, 40)
-                        .padding(.horizontal, 8)
                 }
             }
         }
@@ -158,19 +176,30 @@ struct RecordingView: View {
             .presentationDetents([.medium, .large])
         }
         .onAppear {
-            // Reset orchestrator for fresh start
+            // Reset both orchestrators for fresh start
             orchestrator.reset()
+            streamingOrchestrator.reset()
 
-            // Configure orchestrator with current settings
-            orchestrator.mode = settings.selectedMode
-            orchestrator.customTemplate = settings.selectedCustomTemplate
-            orchestrator.translateEnabled = translateAfterRecording
-            orchestrator.targetLanguage = settings.selectedTargetLanguage
-            orchestrator.sourceLanguage = settings.selectedDictationLanguage
-            orchestrator.activeContext = settings.activeContext  // Apply selected context
+            // Capture streaming mode ONCE at start - prevents mode switching mid-session
+            let shouldUseStreaming = settings.transcriptionStreamingEnabled && streamingOrchestrator.isStreamingAvailable
+            isStreamingSession = shouldUseStreaming
 
-            // Phase 12: Configure edit mode if active
-            orchestrator.editOriginalText = editModeOriginalText
+            // Log streaming mode state
+            appLog("RecordingView onAppear - streamingEnabled: \(settings.transcriptionStreamingEnabled), isStreamingAvailable: \(streamingOrchestrator.isStreamingAvailable), isStreamingSession: \(shouldUseStreaming)", category: "Streaming")
+            appLog("Selected provider: \(settings.selectedTranscriptionProvider.displayName)", category: "Streaming")
+
+            // Configure orchestrator with current settings (for non-streaming mode)
+            if !shouldUseStreaming {
+                orchestrator.mode = settings.selectedMode
+                orchestrator.customTemplate = settings.selectedCustomTemplate
+                orchestrator.translateEnabled = translateAfterRecording
+                orchestrator.targetLanguage = settings.selectedTargetLanguage
+                orchestrator.sourceLanguage = settings.selectedDictationLanguage
+                orchestrator.activeContext = settings.activeContext  // Apply selected context
+
+                // Phase 12: Configure edit mode if active
+                orchestrator.editOriginalText = editModeOriginalText
+            }
 
             // Clear the selected custom template after configuring orchestrator
             settings.selectedCustomTemplate = nil
@@ -186,7 +215,12 @@ struct RecordingView: View {
             startRecording()
         }
         .onDisappear {
-            orchestrator.cancel()
+            appLog("RecordingView onDisappear - cancelling orchestrators", category: "Streaming")
+            if isStreaming {
+                streamingOrchestrator.cancel()
+            } else {
+                orchestrator.cancel()
+            }
         }
         // Phase 10f: Enable on-device translation via Apple Translation framework
         .localTranslationHandlerIfAvailable()
@@ -211,31 +245,42 @@ struct RecordingView: View {
 
     private func startRecording() {
         HapticManager.lightTap()
+        appLog("startRecording called - isStreaming: \(isStreaming)", category: "Streaming")
 
         Task {
-            if useStreamingMode {
+            if isStreaming {
+                appLog("Starting streaming transcription...", category: "Streaming")
+                appLog("Streaming orchestrator state before: \(String(describing: streamingOrchestrator.state))", category: "Streaming")
                 do {
                     try await streamingOrchestrator.startStreaming()
+                    appLog("Streaming started successfully, state: \(String(describing: streamingOrchestrator.state))", category: "Streaming")
                 } catch {
+                    appLog("Streaming failed to start: \(error.localizedDescription)", category: "Streaming", level: .error)
                     HapticManager.error()
                 }
             } else {
+                appLog("Starting non-streaming recording...", category: "Recording")
                 await orchestrator.startRecording()
+                appLog("Non-streaming recording started, state: \(String(describing: orchestrator.state))", category: "Recording")
             }
         }
     }
 
     private func stopRecording() {
         HapticManager.mediumTap()
+        appLog("stopRecording called - isStreaming: \(isStreaming)", category: "Streaming")
 
         Task {
-            if useStreamingMode {
+            if isStreaming {
+                appLog("Stopping streaming, current state: \(String(describing: streamingOrchestrator.state))", category: "Streaming")
                 let result = await streamingOrchestrator.stopStreaming()
+                appLog("Streaming stopped, result: \(result != nil ? "\(result!.count) chars" : "nil")", category: "Streaming")
                 if let text = result {
                     HapticManager.success()
                     // Copy to clipboard and save to history
                     UIPasteboard.general.string = text
                     settings.lastTranscription = text
+                    appLog("Copied to clipboard and saved lastTranscription", category: "Streaming")
 
                     // Save to history
                     let record = TranscriptionRecord(
@@ -258,8 +303,22 @@ struct RecordingView: View {
                         processingMetadata: nil
                     )
                     settings.addTranscription(record)
+                    appLog("Saved to history", category: "Streaming")
+
+                    // Auto-dismiss after short delay to show completion
+                    try? await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+                    hideCard {
+                        isPresented = false
+                    }
                 } else if streamingOrchestrator.error != nil {
+                    appLog("Streaming error: \(streamingOrchestrator.error?.errorDescription ?? "unknown")", category: "Streaming", level: .error)
                     HapticManager.error()
+                } else {
+                    appLog("Streaming returned nil result but no error", category: "Streaming", level: .warning)
+                    // No result - dismiss anyway
+                    hideCard {
+                        isPresented = false
+                    }
                 }
             } else {
                 await orchestrator.stopRecording()
@@ -276,7 +335,7 @@ struct RecordingView: View {
     }
 
     private func cancelRecording() {
-        if useStreamingMode {
+        if isStreaming {
             streamingOrchestrator.cancel()
         } else {
             orchestrator.cancel()
@@ -287,39 +346,58 @@ struct RecordingView: View {
     }
 
     private func handleCardTap() {
-        if useStreamingMode {
+        appLog("handleCardTap - isStreaming: \(isStreaming)", category: "Streaming")
+
+        if isStreaming {
+            appLog("Streaming state: \(String(describing: streamingOrchestrator.state))", category: "Streaming")
             switch streamingOrchestrator.state {
             case .idle:
+                appLog("Streaming idle -> starting recording", category: "Streaming")
                 startRecording()
+            case .connecting:
+                appLog("Streaming connecting -> ignoring tap (wait for connection)", category: "Streaming")
+                // Do nothing while connecting
+                break
             case .streaming:
+                appLog("Streaming active -> stopping recording", category: "Streaming")
                 stopRecording()
+            case .processing:
+                appLog("Streaming processing -> ignoring tap (wait for completion)", category: "Streaming")
+                // Do nothing while processing
+                break
             case .complete:
+                appLog("Streaming complete -> hiding card", category: "Streaming")
                 hideCard {
                     isPresented = false
                 }
             case .error:
+                appLog("Streaming error -> retrying", category: "Streaming")
                 // Tap to retry on error
                 streamingOrchestrator.reset()
                 startRecording()
-            default:
-                break
             }
         } else {
+            appLog("Non-streaming state: \(String(describing: orchestrator.state))", category: "Recording")
             switch orchestrator.state {
             case .idle:
+                appLog("Idle -> starting recording", category: "Recording")
                 startRecording()
             case .recording:
+                appLog("Recording -> stopping recording", category: "Recording")
                 stopRecording()
             case .complete:
+                appLog("Complete -> hiding card", category: "Recording")
                 hideCard {
                     isPresented = false
                 }
             case .error:
+                appLog("Error -> retrying", category: "Recording")
                 // Tap to retry on error
                 Task {
                     await orchestrator.retry()
                 }
             default:
+                appLog("Other state (\(String(describing: orchestrator.state))) -> ignoring tap", category: "Recording")
                 break
             }
         }
@@ -409,6 +487,8 @@ struct RecordingCard: View {
     var isEditMode: Bool = false
     var editOriginalText: String? = nil
     @Binding var showingOriginalText: Bool
+    /// Whether this is a streaming transcription session
+    var isStreamingMode: Bool = false
     /// Live streaming transcript (shown while recording in streaming mode)
     var streamingTranscript: String? = nil
     let onTap: () -> Void
@@ -427,6 +507,22 @@ struct RecordingCard: View {
         VStack(spacing: 24) {
             // Status badges row
             HStack(spacing: 8) {
+                // Streaming mode badge
+                if isStreamingMode {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.red)
+                            .frame(width: 6, height: 6)
+                        Text("LIVE")
+                            .font(.caption2.weight(.bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.red.opacity(0.9))
+                    .clipShape(Capsule())
+                }
+
                 // Phase 12: Edit mode badge
                 if isEditMode {
                     HStack(spacing: 4) {

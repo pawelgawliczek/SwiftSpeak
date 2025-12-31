@@ -26,6 +26,12 @@ struct SettingsView: View {
         colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
     }
 
+    /// Check if the current transcription provider supports streaming
+    private var isStreamingProviderSelected: Bool {
+        let provider = settings.selectedTranscriptionProvider
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+    }
+
     private var webhooksSubtitle: String {
         let count = settings.webhooks.count
         if count == 0 {
@@ -198,6 +204,9 @@ struct SettingsView: View {
 
                     // Webhooks Section - Requires Power tier
                     webhooksSection
+
+                    // SwiftLink Section - Available to all users
+                    swiftLinkSection
 
                     // Behavior Section
                     behaviorSection
@@ -871,6 +880,37 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - SwiftLink Section
+
+    private var swiftLinkSection: some View {
+        Section {
+            NavigationLink {
+                SwiftLinkSetupView()
+            } label: {
+                SettingsRow(
+                    icon: "link.circle.fill",
+                    iconColor: .orange,
+                    title: "SwiftLink",
+                    subtitle: swiftLinkSubtitle
+                )
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Background Dictation")
+        } footer: {
+            Text("Start a session to dictate from your keyboard without leaving apps.")
+        }
+    }
+
+    private var swiftLinkSubtitle: String {
+        let appCount = settings.swiftLinkApps.count
+        if appCount == 0 {
+            return "Tap to set up"
+        } else {
+            return "\(appCount) app\(appCount == 1 ? "" : "s") configured"
+        }
+    }
+
     // MARK: - Behavior Section
 
     private var behaviorSection: some View {
@@ -897,6 +937,32 @@ struct SettingsView: View {
                 }
             }
             .tint(AppTheme.powerAccent)
+            .listRowBackground(rowBackground)
+
+            Toggle(isOn: $settings.transcriptionStreamingEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text("Stream transcriptions")
+                            .font(.callout)
+                        Text("Beta")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(AppTheme.accent.opacity(0.8))
+                            .clipShape(Capsule())
+                    }
+                    Text("Show transcription text in real-time as you speak")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
+                        Text("⚠️ Current provider doesn't support streaming")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+            .tint(AppTheme.accent)
             .listRowBackground(rowBackground)
         } header: {
             Text("Behavior")
