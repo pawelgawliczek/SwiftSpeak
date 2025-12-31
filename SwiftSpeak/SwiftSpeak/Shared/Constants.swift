@@ -13,6 +13,9 @@ enum Constants {
     // MARK: - App Group
     static let appGroupIdentifier = "group.pawelgawliczek.swiftspeak"
 
+    // MARK: - Bundle IDs
+    static let keyboardBundleID = "pawelgawliczek.SwiftSpeak.SwiftSpeakKeyboard"
+
     // MARK: - URL Scheme
     static let urlScheme = "swiftspeak"
 
@@ -31,6 +34,7 @@ enum Constants {
         static let selectedMode = "selectedMode"
         static let selectedTargetLanguage = "selectedTargetLanguage"
         static let isTranslationEnabled = "isTranslationEnabled"
+        static let selectedDictationLanguage = "selectedDictationLanguage"
         static let autoReturnEnabled = "autoReturnEnabled"
         static let lastTranscription = "lastTranscription"
         static let transcriptionHistory = "transcriptionHistory"
@@ -48,6 +52,7 @@ enum Constants {
         static let globalMemory = "globalMemory"
         static let globalMemoryEnabled = "globalMemoryEnabled"
         static let powerModeStreamingEnabled = "powerModeStreamingEnabled"
+        static let transcriptionStreamingEnabled = "transcriptionStreamingEnabled"
 
         // App Library: User app category overrides
         static let userAppCategoryOverrides = "userAppCategoryOverrides"
@@ -68,6 +73,19 @@ enum Constants {
         static let appleTranslationConfig = "appleTranslationConfig"
         static let providerDefaults = "providerDefaults"
         static let forcePrivacyMode = "forcePrivacyMode"
+
+        // SwiftLink: Background Dictation Sessions
+        static let swiftLinkApps = "swiftLinkApps"
+        static let swiftLinkSessionDuration = "swiftLinkSessionDuration"
+        static let swiftLinkLastUsedApp = "swiftLinkLastUsedApp"
+        static let swiftLinkSessionActive = "swiftLinkSessionActive"
+        static let swiftLinkSessionStartTime = "swiftLinkSessionStartTime"
+        static let swiftLinkDictationStartTime = "swiftLinkDictationStartTime"
+        static let swiftLinkDictationEndTime = "swiftLinkDictationEndTime"
+        static let swiftLinkTranscriptionResult = "swiftLinkTranscriptionResult"
+        static let swiftLinkProcessingStatus = "swiftLinkProcessingStatus"
+        /// Live streaming transcript for real-time display in keyboard
+        static let swiftLinkStreamingTranscript = "swiftLinkStreamingTranscript"
     }
 
     // MARK: - API Endpoints
@@ -118,6 +136,64 @@ enum Constants {
         // Entitlement identifiers (configure in RevenueCat dashboard)
         static let proEntitlement = "pro"
         static let powerEntitlement = "power"
+    }
+
+    // MARK: - URL Scheme Hosts (Phase 12)
+    enum URLHosts {
+        static let record = "record"
+        static let edit = "edit"
+        static let powermode = "powermode"
+        static let swiftlink = "swiftlink"
+        static let setup = "setup"
+        static let pending = "pending"
+    }
+
+    // MARK: - SwiftLink Darwin Notifications
+    enum SwiftLinkNotifications {
+        static let prefix = "com.swiftspeak.swiftlink."
+        static let startDictation = prefix + "startDictation"
+        static let stopDictation = prefix + "stopDictation"
+        static let resultReady = prefix + "resultReady"
+        static let sessionStarted = prefix + "sessionStarted"
+        static let sessionEnded = prefix + "sessionEnded"
+
+        // Phase 12: Edit Text via SwiftLink
+        static let startEdit = prefix + "startEdit"
+        static let editResultReady = prefix + "editResultReady"
+
+        // Streaming transcription updates
+        static let streamingUpdate = prefix + "streamingUpdate"
+    }
+
+    // MARK: - App Groups Keys for Edit Mode (Phase 12)
+    enum EditMode {
+        /// Key for storing original text to edit (in App Groups UserDefaults)
+        static let pendingEditText = "pendingEditText"
+        /// Key for storing original text during SwiftLink edit
+        static let swiftLinkEditOriginalText = "swiftLinkEditOriginalText"
+        /// Key for tracking if last result was an edit (for keyboard to know to clear field first)
+        static let lastResultWasEdit = "lastResultWasEdit"
+    }
+
+    // MARK: - SwiftLink Session Duration
+    enum SwiftLinkSessionDuration: Int, CaseIterable, Codable {
+        case fiveMinutes = 300
+        case fifteenMinutes = 900
+        case oneHour = 3600
+        case never = 0  // 0 means never auto-end
+
+        var displayName: String {
+            switch self {
+            case .fiveMinutes: return "5 minutes"
+            case .fifteenMinutes: return "15 minutes"
+            case .oneHour: return "1 hour"
+            case .never: return "Never (manual)"
+            }
+        }
+
+        var timeInterval: TimeInterval? {
+            self == .never ? nil : TimeInterval(rawValue)
+        }
     }
 
     // MARK: - Phase 11j: Audio Validation

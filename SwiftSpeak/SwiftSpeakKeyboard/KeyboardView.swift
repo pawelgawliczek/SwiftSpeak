@@ -2,75 +2,26 @@
 //  KeyboardView.swift
 //  SwiftSpeakKeyboard
 //
-//  SwiftUI keyboard interface
-//
-//  NOTE: This file uses shared types from Shared/ directory:
-//  - FormattingMode, Language (from Models.swift)
-//  - KeyboardTheme, KeyboardHaptics (typealiases from Theme.swift)
-//  - Constants (from Constants.swift)
+//  SwiftUI keyboard interface - Modern, clean design with wheel pickers
 //
 
 import SwiftUI
 import UIKit
 import Combine
 
-// MARK: - Status Banner (Phase 11)
-struct StatusBanner: View {
-    let status: KeyboardProcessingStatus
-    let onDismiss: () -> Void
-    let onRetry: () -> Void
+// MARK: - Picker Mode
+enum KeyboardPickerMode {
+    case none
+    case translation  // Combined translate + language picker
+    case context
+    case powerMode
+    case swiftLink
+}
 
-    var body: some View {
-        HStack(spacing: 10) {
-            // Icon with animation for processing states
-            if status.currentStep == "transcribing" || status.currentStep == "formatting" ||
-               status.currentStep == "translating" || status.currentStep == "retrying" {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: status.color))
-                    .scaleEffect(0.8)
-            } else {
-                Image(systemName: status.icon)
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(status.color)
-            }
-
-            Text(status.displayText)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.primary)
-
-            Spacer()
-
-            // Action buttons
-            if status.currentStep == "failed" {
-                Button(action: onRetry) {
-                    Text("Retry")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(Color.blue)
-                        .clipShape(Capsule())
-                }
-
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-            } else if status.currentStep == "complete" {
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(status.color.opacity(0.15))
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .padding(.horizontal, 16)
-    }
+// MARK: - Keyboard Display Mode
+enum KeyboardDisplayMode {
+    case voice   // Main SwiftSpeak voice interface
+    case typing  // Standard typing keyboard
 }
 
 // MARK: - Keyboard View
@@ -78,498 +29,561 @@ struct KeyboardView: View {
     @ObservedObject var viewModel: KeyboardViewModel
     let onNextKeyboard: () -> Void
 
-    @State private var showPowerModePicker = false
-    @State private var showContextPicker = false
+    @State private var activePicker: KeyboardPickerMode = .none
+    @State private var displayMode: KeyboardDisplayMode = .voice
+    @State private var dragOffset: CGFloat = 0
 
     private var shouldShowStatusBanner: Bool {
         let step = viewModel.processingStatus.currentStep
-        return step == "transcribing" || step == "formatting" ||
+        return step == "streaming" || step == "transcribing" || step == "formatting" ||
                step == "translating" || step == "retrying" ||
                step == "complete" || step == "failed"
     }
 
     var body: some View {
-        VStack(spacing: 12) {
-            // Phase 11: Status Banner
-            if shouldShowStatusBanner {
-                StatusBanner(
-                    status: viewModel.processingStatus,
-                    onDismiss: {
-                        KeyboardHaptics.lightTap()
-                        viewModel.dismissError()
+        ZStack {
+            // Voice keyboard (main)
+            mainKeyboardContent
+                .opacity(activePicker == .none && displayMode == .voice ? 1 : 0)
+                .offset(x: displayMode == .voice ? dragOffset : -UIScreen.main.bounds.width + dragOffset)
+
+            // Typing keyboard
+            TypingKeyboardView(viewModel: viewModel, onNextKeyboard: onNextKeyboard) {
+                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                    displayMode = .voice
+                }
+            }
+            .opacity(displayMode == .typing ? 1 : 0)
+            .offset(x: displayMode == .typing ? dragOffset : UIScreen.main.bounds.width + dragOffset)
+
+            // Full-screen pickers
+            if activePicker == .translation {
+                TranslationWheelPicker(
+                    isTranslationEnabled: viewModel.isTranslationEnabled,
+                    selectedLanguage: viewModel.selectedLanguage,
+                    onSelect: { enabled, lang in
+                        viewModel.isTranslationEnabled = enabled
+                        if let lang = lang {
+                            viewModel.selectedLanguage = lang
+                        }
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
                     },
-                    onRetry: {
-                        KeyboardHaptics.mediumTap()
-                        viewModel.startTranscription()
+                    onCancel: {
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
                     }
                 )
-                .transition(.move(edge: .top).combined(with: .opacity))
+                .transition(.opacity)
             }
 
-            // Provider indicator (if configured)
-            if let provider = viewModel.transcriptionProvider, provider.isConfigured {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 6, height: 6)
-                    Text(provider.model ?? provider.name)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.05))
-                .clipShape(Capsule())
-            }
-
-            // Main action buttons
-            HStack(spacing: 8) {
-                // Transcribe button
-                ActionButton(
-                    icon: viewModel.isProviderConfigured ? "mic.fill" : "exclamationmark.triangle.fill",
-                    title: viewModel.isProviderConfigured ? "Transcribe" : "Setup Required",
-                    gradient: viewModel.isProviderConfigured ? KeyboardTheme.accentGradient : LinearGradient(colors: [.orange, .red], startPoint: .leading, endPoint: .trailing),
-                    isLocked: !viewModel.isProviderConfigured
-                ) {
-                    viewModel.startTranscription()
-                }
-
-                // Translate button
-                ActionButton(
-                    icon: "globe",
-                    title: "Translate",
-                    gradient: KeyboardTheme.proGradient,
-                    isPro: true,
-                    isLocked: !viewModel.isPro
-                ) {
-                    viewModel.startTranslation()
-                }
-
-                // Power button
-                ActionButton(
-                    icon: "bolt.fill",
-                    title: "Power",
-                    gradient: KeyboardTheme.powerGradient,
-                    isPro: true,
-                    isLocked: !viewModel.isPower
-                ) {
-                    showPowerModePicker = true
-                }
-            }
-            .padding(.horizontal, 16)
-
-            // Mode, Context, and Language selectors
-            HStack(spacing: 8) {
-                // Mode dropdown (includes custom templates for Pro)
-                DropdownButton(
-                    icon: viewModel.currentModeIcon,
-                    title: viewModel.currentModeDisplayName,
-                    options: viewModel.modeOptions
-                ) { value in
-                    viewModel.selectMode(value: value)
-                }
-
-                // Context button (Pro+ only)
-                if viewModel.isPro {
-                    ContextSelectorButton(
-                        activeContext: viewModel.activeContext,
-                        onTap: {
-                            KeyboardHaptics.selection()
-                            withAnimation(KeyboardTheme.quickSpring) {
-                                showContextPicker = true
-                            }
-                        }
-                    )
-                }
-
-                // Language dropdown (for translation)
-                DropdownButton(
-                    icon: "globe",
-                    title: viewModel.selectedLanguage.flag,
-                    options: Language.allCases.map { ($0.flag, $0.displayName, $0.rawValue) }
-                ) { value in
-                    if let language = Language(rawValue: value) {
-                        viewModel.selectedLanguage = language
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-
-            // Bottom row with globe button
-            HStack {
-                // Next keyboard button
-                Button(action: {
-                    KeyboardHaptics.lightTap()
-                    onNextKeyboard()
-                }) {
-                    Image(systemName: "globe")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .background(Color.primary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
-                }
-
-                Spacer()
-
-                // Phase 11: Pending audio indicator OR Insert Last button
-                if viewModel.pendingAudioCount > 0 {
-                    Button(action: {
-                        KeyboardHaptics.warning()
-                        // Open main app to pending recordings
-                        if let url = URL(string: "swiftspeak://pending") {
-                            viewModel.openAppURL(url)
-                        }
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "waveform.badge.exclamationmark")
-                                .font(.footnote)
-                            Text("\(viewModel.pendingAudioCount) pending")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(Color.orange.opacity(0.15))
-                        .clipShape(Capsule())
-                    }
-                } else if let lastText = viewModel.lastTranscription, !lastText.isEmpty {
-                    Button(action: {
-                        KeyboardHaptics.lightTap()
-                        viewModel.insertLastTranscription()
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "doc.on.clipboard")
-                                .font(.footnote)
-                            Text("Insert Last")
-                                .font(.caption.weight(.medium))
-                        }
-                        .foregroundStyle(KeyboardTheme.accent)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(KeyboardTheme.accent.opacity(0.15))
-                        .clipShape(Capsule())
-                    }
-                }
-
-                Spacer()
-
-                // Backspace button
-                Button(action: {
-                    KeyboardHaptics.lightTap()
-                    viewModel.deleteBackward()
-                }) {
-                    Image(systemName: "delete.left")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .background(Color.primary.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-        }
-        .padding(.top, 12)
-        .background(KeyboardTheme.darkBase.opacity(0.95))
-        .overlay {
-            if showPowerModePicker {
-                PowerModePickerOverlay(
-                    powerModes: viewModel.powerModes,
-                    onSelect: { mode in
-                        showPowerModePicker = false
-                        viewModel.startPowerMode(mode)
-                    },
-                    onDismiss: {
-                        showPowerModePicker = false
-                    }
-                )
-            }
-
-            if showContextPicker {
-                ContextPickerOverlay(
+            if activePicker == .context {
+                ContextWheelPicker(
                     contexts: viewModel.contexts,
                     activeContextId: viewModel.activeContext?.id,
                     onSelect: { context in
-                        showContextPicker = false
                         viewModel.selectContext(context)
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
                     },
-                    onDismiss: {
-                        showContextPicker = false
+                    onCancel: {
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
                     }
                 )
+                .transition(.opacity)
+            }
+
+            if activePicker == .powerMode {
+                PowerModeWheelPicker(
+                    powerModes: viewModel.powerModes,
+                    onSelect: { mode in
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
+                        viewModel.startPowerMode(mode)
+                    },
+                    onCancel: {
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
+                    }
+                )
+                .transition(.opacity)
+            }
+
+            if activePicker == .swiftLink {
+                SwiftLinkAppPicker(
+                    apps: viewModel.swiftLinkApps,
+                    onSelect: { app in
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
+                        viewModel.startSwiftLinkSession(with: app)
+                    },
+                    onCancel: {
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .none
+                        }
+                    }
+                )
+                .transition(.opacity)
             }
         }
-    }
-}
+        .frame(height: 235)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.12), Color(white: 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    // Only allow horizontal swipes when no picker is active
+                    guard activePicker == .none else { return }
 
-// MARK: - Power Mode Picker Overlay
-struct PowerModePickerOverlay: View {
-    let powerModes: [KeyboardPowerMode]
-    let onSelect: (KeyboardPowerMode) -> Void
-    let onDismiss: () -> Void
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "bolt.fill")
-                        .font(.footnote)
-                        .foregroundStyle(Color.orange)
-                    Text("Select Power Mode")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
+                    // Track horizontal drag
+                    if abs(value.translation.width) > abs(value.translation.height) {
+                        dragOffset = value.translation.width * 0.3
+                    }
                 }
+                .onEnded { value in
+                    guard activePicker == .none else { return }
+
+                    let threshold: CGFloat = 50
+                    let velocity = value.predictedEndTranslation.width
+
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        if displayMode == .voice && (value.translation.width < -threshold || velocity < -200) {
+                            // Swipe left: go to typing keyboard
+                            displayMode = .typing
+                            KeyboardHaptics.selection()
+                        } else if displayMode == .typing && (value.translation.width > threshold || velocity > 200) {
+                            // Swipe right: go back to voice keyboard
+                            displayMode = .voice
+                            KeyboardHaptics.selection()
+                        }
+                        dragOffset = 0
+                    }
+                }
+        )
+        .clipped()
+    }
+
+    // MARK: - Main Keyboard Content
+    private var mainKeyboardContent: some View {
+        ZStack {
+            // Status Banner (Phase 11) - at top
+            VStack {
+                if shouldShowStatusBanner {
+                    StatusBanner(
+                        status: viewModel.processingStatus,
+                        onDismiss: {
+                            KeyboardHaptics.lightTap()
+                            viewModel.dismissError()
+                        },
+                        onRetry: {
+                            KeyboardHaptics.mediumTap()
+                            viewModel.startTranscription()
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+                Spacer()
+            }
+
+            // Corner buttons - top row
+            VStack {
+                HStack {
+                    // Left corner: Insert/Pending
+                    if viewModel.pendingAudioCount > 0 {
+                        PendingBadge(count: viewModel.pendingAudioCount) {
+                            if let url = URL(string: "swiftspeak://pending") {
+                                viewModel.openAppURL(url)
+                            }
+                        }
+                    } else if let lastText = viewModel.lastTranscription, !lastText.isEmpty {
+                        InsertLastButton {
+                            viewModel.insertLastTranscription()
+                        }
+                    } else {
+                        Color.clear.frame(width: 70, height: 34)
+                    }
+
+                    Spacer()
+
+                    // Right corner: Switch to typing keyboard (within SwiftSpeak)
+                    KeyboardSwitchButton {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            displayMode = .typing
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, shouldShowStatusBanner ? 48 : 12)
 
                 Spacer()
 
-                Button(action: {
-                    KeyboardHaptics.lightTap()
-                    onDismiss()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .background(Color.primary.opacity(0.1))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            // Power modes list
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(powerModes) { mode in
+                // Bottom corners
+                HStack {
+                    // Left corner: SwiftLink
+                    if viewModel.isSwiftLinkSessionActive {
+                        // Active: Green icon only
                         Button(action: {
-                            KeyboardHaptics.mediumTap()
-                            onSelect(mode)
-                        }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: mode.icon)
-                                    .font(.body)
-                                    .foregroundStyle(Color.orange)
-                                    .frame(width: 28)
-
-                                Text(mode.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                Image(systemName: "play.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            KeyboardHaptics.selection()
+                            withAnimation(.spring(response: 0.3)) {
+                                activePicker = .swiftLink
                             }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .frame(minHeight: 44)
+                        }) {
+                            Image(systemName: "link")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.green)
+                                .frame(width: 32, height: 32)
+                                .background(Color.green.opacity(0.15), in: Circle())
                         }
-
-                        if mode.id != powerModes.last?.id {
-                            Divider()
-                                .padding(.leading, 54)
+                        .buttonStyle(.plain)
+                    } else {
+                        // Inactive: Orange with "Link" text
+                        SwiftLinkCornerButton {
+                            KeyboardHaptics.selection()
+                            withAnimation(.spring(response: 0.3)) {
+                                activePicker = .swiftLink
+                            }
                         }
                     }
+
+                    Spacer()
+
+                    // Right corner: Empty or future use
+                    Color.clear.frame(width: 60, height: 30)
                 }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
             }
-            .frame(maxHeight: 180)
+
+            // Center: Main record button with arch mode buttons
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Arch layout container
+                ZStack {
+                    // Power Mode button - directly above (12 o'clock)
+                    ArchModeButton(
+                        icon: "⚡️",
+                        label: "Power",
+                        isLocked: !viewModel.isPower,
+                        accentColor: .orange
+                    ) {
+                        if viewModel.isPower {
+                            KeyboardHaptics.selection()
+                            withAnimation(.spring(response: 0.3)) {
+                                activePicker = .powerMode
+                            }
+                        }
+                    }
+                    .offset(y: -85)
+
+                    // Translate button - 45° lower-left (10:30 position)
+                    ArchModeButton(
+                        icon: viewModel.isTranslationEnabled ? viewModel.selectedLanguage.flag : "🌐",
+                        label: "Translate",
+                        isActive: viewModel.isTranslationEnabled,
+                        isLocked: !viewModel.isPro,
+                        accentColor: .pink
+                    ) {
+                        if viewModel.isPro {
+                            KeyboardHaptics.selection()
+                            withAnimation(.spring(response: 0.3)) {
+                                activePicker = .translation
+                            }
+                        }
+                    }
+                    .offset(x: -85, y: -42)
+
+                    // Context button - 45° lower-right (1:30 position)
+                    ArchModeButton(
+                        icon: viewModel.activeContext?.icon ?? "👤",
+                        label: "Context",
+                        isActive: viewModel.activeContext != nil,
+                        accentColor: .purple
+                    ) {
+                        KeyboardHaptics.selection()
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .context
+                        }
+                    }
+                    .offset(x: 85, y: -42)
+
+                    // Clear button - only visible when there's text (left side)
+                    if viewModel.hasTextInField {
+                        ClearButton {
+                            viewModel.clearAllText()
+                        }
+                        .offset(x: -60, y: 25)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+
+                    // Main record button at center
+                    MainActionButton(
+                        isConfigured: viewModel.isProviderConfigured,
+                        isSwiftLinkActive: viewModel.isSwiftLinkSessionActive,
+                        isSwiftLinkRecording: viewModel.isSwiftLinkRecording,
+                        isEditMode: viewModel.hasTextInField && viewModel.isPro,  // Phase 12: Edit mode (Pro only)
+                        action: { viewModel.startTranscription() }
+                    )
+
+                    // Enter/Send button - only visible when there's text (right side)
+                    if viewModel.hasTextInField {
+                        EnterButton(returnKeyType: viewModel.textDocumentProxy?.returnKeyType ?? .default) {
+                            viewModel.textDocumentProxy?.insertText("\n")
+                            KeyboardHaptics.mediumTap()
+                        }
+                        .offset(x: 60, y: 25)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+
+                Spacer()
+                    .frame(height: 25)
+            }
+
+            // SwiftLink Streaming Overlay
+            if viewModel.isSwiftLinkStreaming || viewModel.swiftLinkProcessingStatus == "streaming" {
+                SwiftLinkStreamingOverlay(
+                    transcript: viewModel.swiftLinkStreamingTranscript,
+                    onStop: {
+                        KeyboardHaptics.mediumTap()
+                        viewModel.stopSwiftLinkRecording()
+                    }
+                )
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
         }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusMedium, style: .continuous))
-        .shadow(color: .black.opacity(0.3), radius: 15)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        .animation(KeyboardTheme.quickSpring, value: true)
     }
 }
 
-// MARK: - Context Selector Button
-struct ContextSelectorButton: View {
-    let activeContext: KeyboardContext?
-    let onTap: () -> Void
+// MARK: - SwiftLink Streaming Overlay
+struct SwiftLinkStreamingOverlay: View {
+    let transcript: String
+    let onStop: () -> Void
+
+    @State private var pulseScale: CGFloat = 1.0
 
     var body: some View {
-        Button(action: onTap) {
-            Text(activeContext?.icon ?? "👤")
-                .font(.title3)
-                .frame(width: 44, height: 44)
-                .background(activeContext != nil ? Color.purple.opacity(0.2) : Color.primary.opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous)
-                        .strokeBorder(activeContext != nil ? Color.purple.opacity(0.5) : Color.clear, lineWidth: 1.5)
-                )
+        ZStack {
+            // Semi-transparent green background
+            Color.green.opacity(0.85)
+                .ignoresSafeArea()
+
+            VStack(spacing: 16) {
+                // LIVE indicator
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 10, height: 10)
+                        .scaleEffect(pulseScale)
+                        .animation(
+                            .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
+                            value: pulseScale
+                        )
+
+                    Text("LIVE")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.white.opacity(0.2), in: Capsule())
+
+                // Transcript text
+                ScrollView {
+                    Text(transcript.isEmpty ? "Listening..." : transcript)
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(.white)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+                        .frame(maxWidth: .infinity)
+                }
+                .frame(maxHeight: 120)
+
+                // Stop button
+                Button(action: onStop) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                        Text("Stop & Insert")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.vertical, 20)
+        }
+        .onAppear {
+            pulseScale = 1.3
+        }
+    }
+}
+
+// MARK: - Arch Mode Button
+struct ArchModeButton: View {
+    let icon: String
+    let label: String
+    var isActive: Bool = false
+    var isLocked: Bool = false
+    var accentColor: Color = .white
+
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    Circle()
+                        .fill(isActive ? accentColor.opacity(0.25) : Color.white.opacity(0.1))
+                        .frame(width: 44, height: 44)
+
+                    if icon.count <= 2 {
+                        Text(icon)
+                            .font(.system(size: 18))
+                            .opacity(isLocked ? 0.4 : 1.0)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white.opacity(isLocked ? 0.4 : 0.9))
+                    }
+
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .offset(x: 14, y: 14)
+                    }
+                }
+
+                Text(label)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+            }
         }
         .buttonStyle(.plain)
     }
 }
 
-// MARK: - Context Picker Overlay
-struct ContextPickerOverlay: View {
-    let contexts: [KeyboardContext]
-    let activeContextId: UUID?
-    let onSelect: (KeyboardContext?) -> Void
-    let onDismiss: () -> Void
-
+// MARK: - SwiftSpeak Logo View (with fallback)
+struct SwiftSpeakLogoView: View {
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "person.circle.fill")
-                        .font(.footnote)
-                        .foregroundStyle(Color.purple)
-                    Text("Select Context")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.primary)
-                }
-
-                Spacer()
-
-                Button(action: {
-                    KeyboardHaptics.lightTap()
-                    onDismiss()
-                }) {
-                    Image(systemName: "xmark")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
-                        .background(Color.primary.opacity(0.1))
-                        .clipShape(Circle())
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-
-            Divider()
-
-            // Context list
-            ScrollView {
-                VStack(spacing: 0) {
-                    // No Context option
-                    Button(action: {
-                        KeyboardHaptics.selection()
-                        onSelect(nil)
-                    }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "circle.slash")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 28)
-
-                            Text("No Context")
-                                .font(.subheadline)
-                                .foregroundStyle(.primary)
-
-                            Spacer()
-
-                            if activeContextId == nil {
-                                Image(systemName: "checkmark")
-                                    .font(.caption.weight(.bold))
-                                    .foregroundStyle(Color.purple)
-                            }
-                        }
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .frame(minHeight: 44)
-                    }
-
-                    Divider()
-                        .padding(.leading, 54)
-
-                    // Context options
-                    ForEach(contexts) { context in
-                        Button(action: {
-                            KeyboardHaptics.mediumTap()
-                            onSelect(context)
-                        }) {
-                            HStack(spacing: 12) {
-                                Text(context.icon)
-                                    .font(.body)
-                                    .frame(width: 28)
-
-                                Text(context.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                if activeContextId == context.id {
-                                    Image(systemName: "checkmark")
-                                        .font(.caption.weight(.bold))
-                                        .foregroundStyle(Color.purple)
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 12)
-                            .frame(minHeight: 44)
-                        }
-
-                        if context.id != contexts.last?.id {
-                            Divider()
-                                .padding(.leading, 54)
-                        }
-                    }
-                }
-            }
-            .frame(maxHeight: 180)
+        if let uiImage = UIImage(named: "SwiftSpeakLogo") {
+            // Use actual logo (rendered as template for tinting)
+            Image(uiImage: uiImage)
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else {
+            // Fallback to mic icon
+            Image(systemName: "mic.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
         }
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusMedium, style: .continuous))
-        .shadow(color: .black.opacity(0.3), radius: 15)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .transition(.opacity.combined(with: .scale(scale: 0.95)))
-        .animation(KeyboardTheme.quickSpring, value: true)
     }
 }
 
-// MARK: - Action Button
-struct ActionButton: View {
-    let icon: String
-    let title: String
-    let gradient: LinearGradient
-    var isPro: Bool = false
-    var isLocked: Bool = false
+// MARK: - Keyboard Switch Button (styled like Insert)
+struct KeyboardSwitchButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.lightTap()
+            action()
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: "keyboard")
+                    .font(.system(size: 11))
+                Text("Keyboard")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(KeyboardTheme.accent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(KeyboardTheme.accent.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - SwiftLink Corner Button
+struct SwiftLinkCornerButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                Image(systemName: "link")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Link")
+                    .font(.system(size: 10, weight: .medium))
+            }
+            .foregroundStyle(.orange.opacity(0.8))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Color.orange.opacity(0.1), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Enter Button
+struct EnterButton: View {
+    let returnKeyType: UIReturnKeyType
     let action: () -> Void
 
     @State private var isPressed = false
 
-    var body: some View {
-        Button(action: {
-            if !isLocked {
-                KeyboardHaptics.mediumTap()
-                action()
-            }
-        }) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.title3.weight(.semibold))
-
-                Text(title)
-                    .font(.callout.weight(.semibold))
-
-                if isPro && isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.caption2)
-                }
-            }
-            .foregroundStyle(.white)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 44)
-            .padding(.vertical, 4)
-            .background(isLocked ? LinearGradient(colors: [.gray, .gray.opacity(0.8)], startPoint: .leading, endPoint: .trailing) : gradient)
-            .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusMedium, style: .continuous))
-            .scaleEffect(isPressed ? 0.97 : 1.0)
-            .animation(KeyboardTheme.quickSpring, value: isPressed)
+    private var isSendType: Bool {
+        switch returnKeyType {
+        case .send, .go, .done, .search, .join, .route:
+            return true
+        default:
+            return false
         }
-        .buttonStyle(PlainButtonStyle())
+    }
+
+    private var iconName: String {
+        isSendType ? "arrow.up" : "return"
+    }
+
+    private var buttonColor: Color {
+        isSendType ? .green : .blue
+    }
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(isSendType ? buttonColor : buttonColor.opacity(0.2))
+                    .frame(width: 40, height: 40)
+
+                Image(systemName: iconName)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(isSendType ? .white : buttonColor)
+            }
+            .scaleEffect(isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.25), value: isPressed)
+        }
+        .buttonStyle(.plain)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in isPressed = true }
@@ -578,140 +592,1272 @@ struct ActionButton: View {
     }
 }
 
-// MARK: - Dropdown Button
-struct DropdownButton: View {
-    let icon: String
-    let title: String
-    let options: [(icon: String, title: String, value: String)]
-    let onSelect: (String) -> Void
+// MARK: - Clear Button
+struct ClearButton: View {
+    let action: () -> Void
 
-    @State private var showingOptions = false
+    @State private var isPressed = false
 
     var body: some View {
-        Button(action: {
-            KeyboardHaptics.selection()
-            withAnimation(KeyboardTheme.quickSpring) {
-                showingOptions.toggle()
-            }
-        }) {
-            HStack(spacing: 8) {
-                if icon.count <= 2 {
-                    Text(icon)
-                        .font(.callout)
-                } else {
-                    Image(systemName: icon)
-                        .font(.footnote)
-                }
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.2))
+                    .frame(width: 40, height: 40)
 
-                Text(title)
-                    .font(.footnote.weight(.medium))
-                    .lineLimit(1)
-
-                Image(systemName: showingOptions ? "chevron.up" : "chevron.down")
-                    .font(.caption2.weight(.bold))
+                Image(systemName: "xmark")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.red)
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 44)
-            .background(Color.primary.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
+            .scaleEffect(isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.25), value: isPressed)
         }
-        .buttonStyle(PlainButtonStyle())
-        .overlay(
-            Group {
-                if showingOptions {
-                    VStack(spacing: 0) {
-                        ForEach(options.indices, id: \.self) { index in
-                            Button(action: {
-                                KeyboardHaptics.selection()
-                                onSelect(options[index].value)
-                                withAnimation(KeyboardTheme.quickSpring) {
-                                    showingOptions = false
-                                }
-                            }) {
-                                HStack(spacing: 8) {
-                                    if options[index].icon.count <= 2 {
-                                        Text(options[index].icon)
-                                            .font(.footnote)
-                                    } else {
-                                        Image(systemName: options[index].icon)
-                                            .font(.caption)
-                                    }
-
-                                    Text(options[index].title)
-                                        .font(.footnote)
-
-                                    Spacer()
-                                }
-                                .foregroundStyle(.primary)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 10)
-                                .frame(minHeight: 44)
-                            }
-
-                            if index < options.count - 1 {
-                                Divider()
-                            }
-                        }
-                    }
-                    .background(.regularMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
-                    .shadow(color: .black.opacity(0.3), radius: 10)
-                    .offset(y: -CGFloat(options.count * 44 + 10))
-                }
-            }
-            , alignment: .top
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
         )
-        .zIndex(showingOptions ? 1 : 0)
     }
 }
 
-// MARK: - Power Mode (minimal for keyboard)
+// MARK: - Toolbar Button
+struct ToolbarButton: View {
+    let icon: String
+    var isActive: Bool = false
+    var isLocked: Bool = false
+    var accentColor: Color = .white
+
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(isActive ? accentColor.opacity(0.25) : Color.white.opacity(0.1))
+                    .frame(width: 40, height: 40)
+
+                if icon.count <= 2 {
+                    Text(icon)
+                        .font(.system(size: 16))
+                        .opacity(isLocked ? 0.4 : 1.0)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(isLocked ? 0.4 : 0.9))
+                }
+
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 7))
+                        .foregroundStyle(.white.opacity(0.5))
+                        .offset(x: 12, y: 12)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+
+// MARK: - Main Action Button (Hero Mic Button)
+struct MainActionButton: View {
+    let isConfigured: Bool
+    var isSwiftLinkActive: Bool = false
+    var isSwiftLinkRecording: Bool = false
+    var isEditMode: Bool = false  // Phase 12: Edit mode when text exists in field
+    let action: () -> Void
+
+    @State private var isPressed = false
+    @State private var wavePhase: Double = 0
+    @State private var pulseScale: CGFloat = 1.0
+    @State private var ringScale: CGFloat = 0.8
+    @State private var ringOpacity: Double = 0.6
+
+    private var buttonColor: LinearGradient {
+        if isSwiftLinkRecording {
+            // Red pulsing for recording
+            return LinearGradient(colors: [.red, .red.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else if isEditMode && isSwiftLinkActive {
+            // Green for edit mode during SwiftLink
+            return LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else if isSwiftLinkActive {
+            // Orange for SwiftLink session active
+            return LinearGradient(colors: [.orange, .orange.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else if isEditMode {
+            // Green for edit mode (text in field)
+            return LinearGradient(colors: [.green, .green.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else if isConfigured {
+            return LinearGradient(colors: [KeyboardTheme.accent, KeyboardTheme.accent.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        } else {
+            return LinearGradient(colors: [.orange, .red.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+    }
+
+    private var glowColor: Color {
+        if isSwiftLinkRecording {
+            return .red
+        } else if isEditMode {
+            return .green
+        } else if isSwiftLinkActive {
+            return .orange
+        } else if isConfigured {
+            return KeyboardTheme.accent
+        } else {
+            return .orange
+        }
+    }
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.mediumTap()
+            action()
+        }) {
+            ZStack {
+                // Animated expanding rings (recording only)
+                if isSwiftLinkRecording {
+                    ForEach(0..<3, id: \.self) { i in
+                        Circle()
+                            .stroke(Color.red.opacity(ringOpacity - Double(i) * 0.15), lineWidth: 2)
+                            .frame(width: 80 + CGFloat(i) * 22, height: 80 + CGFloat(i) * 22)
+                            .scaleEffect(ringScale + CGFloat(i) * 0.1)
+                    }
+                }
+
+                // Glow effect - pulsing when recording
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [glowColor.opacity(isSwiftLinkRecording ? 0.6 : 0.4), .clear],
+                            center: .center,
+                            startRadius: 25,
+                            endRadius: isSwiftLinkRecording ? 85 : 60
+                        )
+                    )
+                    .frame(width: isSwiftLinkRecording ? 145 : 110, height: isSwiftLinkRecording ? 145 : 110)
+                    .scaleEffect(isSwiftLinkRecording ? pulseScale : 1.0)
+
+                // Main button with logo
+                Circle()
+                    .fill(buttonColor)
+                    .frame(width: 80, height: 80)
+                    .shadow(color: glowColor.opacity(isSwiftLinkRecording ? 0.8 : 0.5), radius: isSwiftLinkRecording ? 15 : 8, y: 2)
+
+                // Content - SwiftSpeak logo or status icons
+                if isSwiftLinkRecording {
+                    // Animated voice waveform when recording
+                    RecordingWaveform(phase: wavePhase)
+                } else if !isConfigured {
+                    // Warning icon when not configured
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(.white)
+                } else if isEditMode {
+                    // Pencil icon for edit mode (Phase 12)
+                    Image(systemName: "pencil")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(.white)
+                } else {
+                    // SwiftSpeak logo with mic fallback - fills circle, maintains aspect ratio
+                    SwiftSpeakLogoView()
+                        .frame(width: 105, height: 105)
+                        .foregroundStyle(.white)
+                }
+
+                // SwiftLink indicator badge (top-right) - only when active
+                if isSwiftLinkActive && !isSwiftLinkRecording {
+                    Circle()
+                        .fill(.orange)
+                        .frame(width: 18, height: 18)
+                        .overlay(
+                            Image(systemName: "link")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                        )
+                        .offset(x: 28, y: -28)
+                }
+
+                // Label below button
+                if isSwiftLinkRecording {
+                    Text("Tap to stop")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.red.opacity(0.9))
+                        .offset(y: 56)
+                } else if isEditMode && !isSwiftLinkRecording {
+                    // Edit mode label (Phase 12)
+                    Text("Edit text")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.green.opacity(0.9))
+                        .offset(y: 56)
+                }
+            }
+            .scaleEffect(isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
+        .onChange(of: isSwiftLinkRecording) { _, isRecording in
+            if isRecording {
+                startRecordingAnimation()
+            } else {
+                stopRecordingAnimation()
+            }
+        }
+        .onAppear {
+            if isSwiftLinkRecording {
+                startRecordingAnimation()
+            }
+        }
+    }
+
+    private func startRecordingAnimation() {
+        // Continuous wave animation
+        withAnimation(.linear(duration: 0.8).repeatForever(autoreverses: false)) {
+            wavePhase = .pi * 2
+        }
+
+        // Pulse animation
+        withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+            pulseScale = 1.15
+        }
+
+        // Ring expansion animation
+        withAnimation(.easeOut(duration: 1.5).repeatForever(autoreverses: false)) {
+            ringScale = 1.5
+            ringOpacity = 0
+        }
+    }
+
+    private func stopRecordingAnimation() {
+        wavePhase = 0
+        pulseScale = 1.0
+        ringScale = 0.8
+        ringOpacity = 0.6
+    }
+}
+
+// MARK: - Recording Waveform Animation
+struct RecordingWaveform: View {
+    let phase: Double
+    private let barCount = 7
+
+    var body: some View {
+        HStack(spacing: 2.5) {
+            ForEach(0..<barCount, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(.white)
+                    .frame(width: 3, height: barHeight(for: i))
+            }
+        }
+    }
+
+    private func barHeight(for index: Int) -> CGFloat {
+        // Create a flowing wave effect
+        let normalizedIndex = Double(index) / Double(barCount - 1)
+        let waveOffset = phase + normalizedIndex * .pi * 2
+
+        // Sine wave for smooth animation
+        let sineValue = sin(waveOffset)
+
+        // Map sine (-1 to 1) to height range (8 to 28)
+        let minHeight: CGFloat = 8
+        let maxHeight: CGFloat = 28
+        let height = minHeight + (maxHeight - minHeight) * CGFloat((sineValue + 1) / 2)
+
+        return height
+    }
+}
+
+// MARK: - Typing Keyboard View (iOS Standard Layout)
+struct TypingKeyboardView: View {
+    @ObservedObject var viewModel: KeyboardViewModel
+    let onNextKeyboard: () -> Void
+    let onSwitchToVoice: () -> Void
+
+    @State private var isShiftActive = false
+    @State private var isCapsLock = false
+    @State private var isNumberMode = false
+    @State private var isSymbolMode = false
+
+    // Standard iOS keyboard layout
+    private let letterRows = [
+        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+        ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+        ["Z", "X", "C", "V", "B", "N", "M"]
+    ]
+
+    private let numberRows = [
+        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+        ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""],
+        [".", ",", "?", "!", "'"]
+    ]
+
+    private let symbolRows = [
+        ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="],
+        ["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"],
+        [".", ",", "?", "!", "'"]
+    ]
+
+    private let keySpacing: CGFloat = 6
+    private let rowSpacing: CGFloat = 11
+    private let keyHeight: CGFloat = 42
+    private let horizontalPadding: CGFloat = 3
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Swipe hint bar
+            HStack {
+                Button(action: onSwitchToVoice) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "mic.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                        Text("Voice")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(KeyboardTheme.accent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(KeyboardTheme.accent.opacity(0.15), in: Capsule())
+                }
+
+                Spacer()
+
+                Text("← swipe for voice")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
+
+                Spacer()
+
+                Button(action: onNextKeyboard) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+
+            // Keyboard rows
+            VStack(spacing: rowSpacing) {
+                if isNumberMode || isSymbolMode {
+                    // Number/Symbol mode
+                    let rows = isSymbolMode ? symbolRows : numberRows
+
+                    // Row 1: Numbers or symbols (10 keys)
+                    HStack(spacing: keySpacing) {
+                        ForEach(rows[0], id: \.self) { key in
+                            StandardKey(letter: key, height: keyHeight) {
+                                viewModel.textDocumentProxy?.insertText(key)
+                                KeyboardHaptics.lightTap()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, horizontalPadding)
+
+                    // Row 2: More characters (10 keys)
+                    HStack(spacing: keySpacing) {
+                        ForEach(rows[1], id: \.self) { key in
+                            StandardKey(letter: key, height: keyHeight) {
+                                viewModel.textDocumentProxy?.insertText(key)
+                                KeyboardHaptics.lightTap()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, horizontalPadding)
+
+                    // Row 3: Symbol toggle + punctuation + backspace
+                    HStack(spacing: keySpacing) {
+                        // Symbol/Number toggle
+                        StandardActionKey(
+                            text: isSymbolMode ? "123" : "#+="
+                        ) {
+                            isSymbolMode.toggle()
+                            KeyboardHaptics.lightTap()
+                        }
+                        .frame(width: 42)
+
+                        ForEach(rows[2], id: \.self) { key in
+                            StandardKey(letter: key, height: keyHeight) {
+                                viewModel.textDocumentProxy?.insertText(key)
+                                KeyboardHaptics.lightTap()
+                            }
+                        }
+
+                        // Backspace
+                        StandardActionKey(icon: "delete.left") {
+                            viewModel.textDocumentProxy?.deleteBackward()
+                            KeyboardHaptics.lightTap()
+                        }
+                        .frame(width: 42)
+                    }
+                    .padding(.horizontal, horizontalPadding)
+
+                } else {
+                    // Letter mode
+
+                    // Row 1: Q W E R T Y U I O P (10 keys)
+                    HStack(spacing: keySpacing) {
+                        ForEach(letterRows[0], id: \.self) { key in
+                            let displayKey = (isShiftActive || isCapsLock) ? key : key.lowercased()
+                            StandardKey(letter: displayKey, height: keyHeight) {
+                                viewModel.textDocumentProxy?.insertText(displayKey)
+                                KeyboardHaptics.lightTap()
+                                if isShiftActive && !isCapsLock {
+                                    isShiftActive = false
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, horizontalPadding)
+
+                    // Row 2: A S D F G H J K L (9 keys, centered)
+                    HStack(spacing: keySpacing) {
+                        ForEach(letterRows[1], id: \.self) { key in
+                            let displayKey = (isShiftActive || isCapsLock) ? key : key.lowercased()
+                            StandardKey(letter: displayKey, height: keyHeight) {
+                                viewModel.textDocumentProxy?.insertText(displayKey)
+                                KeyboardHaptics.lightTap()
+                                if isShiftActive && !isCapsLock {
+                                    isShiftActive = false
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, horizontalPadding + 18) // Extra padding for centering
+
+                    // Row 3: Shift + Z X C V B N M + Backspace
+                    HStack(spacing: keySpacing) {
+                        // Shift key
+                        StandardActionKey(
+                            icon: isCapsLock ? "capslock.fill" : (isShiftActive ? "shift.fill" : "shift"),
+                            isHighlighted: isShiftActive || isCapsLock
+                        ) {
+                            if isShiftActive {
+                                // Double tap for caps lock
+                                isCapsLock = true
+                                isShiftActive = false
+                            } else if isCapsLock {
+                                isCapsLock = false
+                            } else {
+                                isShiftActive = true
+                            }
+                            KeyboardHaptics.lightTap()
+                        }
+                        .frame(width: 42)
+
+                        ForEach(letterRows[2], id: \.self) { key in
+                            let displayKey = (isShiftActive || isCapsLock) ? key : key.lowercased()
+                            StandardKey(letter: displayKey, height: keyHeight) {
+                                viewModel.textDocumentProxy?.insertText(displayKey)
+                                KeyboardHaptics.lightTap()
+                                if isShiftActive && !isCapsLock {
+                                    isShiftActive = false
+                                }
+                            }
+                        }
+
+                        // Backspace key
+                        StandardActionKey(icon: "delete.left") {
+                            viewModel.textDocumentProxy?.deleteBackward()
+                            KeyboardHaptics.lightTap()
+                        }
+                        .frame(width: 42)
+                    }
+                    .padding(.horizontal, horizontalPadding)
+                }
+
+                // Row 4: 123/ABC + space + return
+                HStack(spacing: keySpacing) {
+                    // Number/Letter toggle
+                    StandardActionKey(text: isNumberMode ? "ABC" : "123") {
+                        isNumberMode.toggle()
+                        isSymbolMode = false
+                        KeyboardHaptics.lightTap()
+                    }
+                    .frame(width: 87)
+
+                    // Space bar
+                    Button(action: {
+                        viewModel.textDocumentProxy?.insertText(" ")
+                        KeyboardHaptics.lightTap()
+                    }) {
+                        Text("space")
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundStyle(.black)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: keyHeight)
+                            .background(Color.white, in: RoundedRectangle(cornerRadius: 5))
+                            .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
+                    }
+                    .buttonStyle(.plain)
+
+                    // Return key
+                    StandardActionKey(text: "return") {
+                        viewModel.textDocumentProxy?.insertText("\n")
+                        KeyboardHaptics.mediumTap()
+                    }
+                    .frame(width: 87)
+                }
+                .padding(.horizontal, horizontalPadding)
+            }
+            .padding(.bottom, 4)
+        }
+        .background(Color(white: 0.82))
+    }
+}
+
+// MARK: - Standard Key (Letter/Number)
+struct StandardKey: View {
+    let letter: String
+    let height: CGFloat
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: action) {
+            Text(letter)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: height)
+                .background(
+                    RoundedRectangle(cornerRadius: 5)
+                        .fill(isPressed ? Color(white: 0.75) : .white)
+                        .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in isPressed = false }
+        )
+    }
+}
+
+// MARK: - Standard Action Key (Shift, Backspace, etc.)
+struct StandardActionKey: View {
+    var icon: String? = nil
+    var text: String? = nil
+    var isHighlighted: Bool = false
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    private var backgroundColor: Color {
+        if isHighlighted {
+            return .white
+        }
+        return Color(white: 0.67)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 18, weight: .medium))
+                } else if let text = text {
+                    Text(text)
+                        .font(.system(size: 15, weight: .regular))
+                }
+            }
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(isPressed ? Color(white: 0.55) : backgroundColor)
+                    .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isPressed {
+                        isPressed = true
+                    }
+                }
+                .onEnded { _ in isPressed = false }
+        )
+    }
+}
+
+// MARK: - Compact Button
+struct CompactButton: View {
+    let icon: String
+    let title: String
+    var isLocked: Bool = false
+    var accentColor: Color = .white
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isLocked ? Color.white.opacity(0.08) : accentColor.opacity(0.15))
+                        .frame(width: 44, height: 44)
+
+                    if icon.count <= 2 {
+                        Text(icon)
+                            .font(.system(size: 18))
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white.opacity(isLocked ? 0.5 : 0.9))
+                    }
+
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .offset(x: 14, y: 14)
+                    }
+                }
+
+                Text(title)
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Secondary Action Button
+struct SecondaryActionButton: View {
+    let icon: String
+    let title: String
+    let color: Color
+    var isLocked: Bool = false
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.lightTap()
+            action()
+        }) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9))
+                }
+            }
+            .foregroundStyle(isLocked ? .white.opacity(0.5) : .white)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(isLocked ? Color.gray.opacity(0.3) : color.opacity(0.85))
+            )
+            .scaleEffect(isPressed ? 0.95 : 1.0)
+            .animation(.spring(response: 0.25), value: isPressed)
+        }
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
+    }
+}
+
+// MARK: - Insert Last Button
+struct InsertLastButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.lightTap()
+            action()
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: "doc.on.clipboard")
+                    .font(.system(size: 11))
+                Text("Insert")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(KeyboardTheme.accent)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(KeyboardTheme.accent.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Pending Badge
+struct PendingBadge: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.warning()
+            action()
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: "waveform.badge.exclamationmark")
+                    .font(.system(size: 11))
+                Text("\(count)")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.orange.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - SwiftLink Start Button
+struct SwiftLinkStartButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.lightTap()
+            action()
+        }) {
+            HStack(spacing: 5) {
+                Image(systemName: "link.circle.fill")
+                    .font(.system(size: 11))
+                Text("SwiftLink")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.orange.opacity(0.15), in: Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Status Banner
+struct StatusBanner: View {
+    let status: KeyboardProcessingStatus
+    let onDismiss: () -> Void
+    let onRetry: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if status.currentStep == "streaming" {
+                // Animated waveform icon for streaming
+                Image(systemName: "waveform")
+                    .font(.system(size: 12, weight: .semibold))
+                    .symbolEffect(.pulse, options: .repeating)
+            } else if status.currentStep == "transcribing" || status.currentStep == "formatting" ||
+               status.currentStep == "translating" || status.currentStep == "retrying" {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.7)
+            } else {
+                Image(systemName: status.icon)
+                    .font(.system(size: 12, weight: .semibold))
+            }
+
+            Text(status.displayText)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(1)
+
+            Spacer()
+
+            if status.currentStep == "failed" {
+                Button(action: onRetry) {
+                    Text("Retry")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.blue, in: Capsule())
+                }
+            }
+
+            if status.currentStep == "complete" || status.currentStep == "failed" {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+            }
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(status.color.opacity(0.9), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+// MARK: - Language Wheel Picker
+struct LanguageWheelPicker: View {
+    let selectedLanguage: Language
+    let onSelect: (Language) -> Void
+    let onCancel: () -> Void
+
+    @State private var selection: Language = .english
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                Text("Language")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Button(action: { onSelect(selection) }) {
+                    Text("Done")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(KeyboardTheme.accent)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Divider().background(Color.white.opacity(0.1))
+
+            // Wheel picker
+            Picker("Language", selection: $selection) {
+                ForEach(Language.allCases, id: \.self) { language in
+                    HStack(spacing: 10) {
+                        Text(language.flag)
+                        Text(language.displayName)
+                    }
+                    .foregroundStyle(.white)
+                    .tag(language)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.12), Color(white: 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .onAppear {
+            selection = selectedLanguage
+        }
+    }
+}
+
+// MARK: - Translation Wheel Picker
+struct TranslationWheelPicker: View {
+    let isTranslationEnabled: Bool
+    let selectedLanguage: Language
+    let onSelect: (Bool, Language?) -> Void  // (enabled, language)
+    let onCancel: () -> Void
+
+    @State private var selection: String = "none"
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "globe")
+                        .foregroundStyle(.pink)
+                    Text("Translation")
+                        .foregroundStyle(.white)
+                }
+                .font(.system(size: 16, weight: .semibold))
+
+                Spacer()
+
+                Button(action: {
+                    if selection == "none" {
+                        onSelect(false, nil)
+                    } else if let lang = Language(rawValue: selection) {
+                        onSelect(true, lang)
+                    }
+                }) {
+                    Text("Done")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.pink)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Divider().background(Color.white.opacity(0.1))
+
+            // Wheel picker with "No Translation" + languages
+            Picker("Translation", selection: $selection) {
+                // No translation option
+                HStack(spacing: 10) {
+                    Image(systemName: "mic.fill")
+                        .foregroundStyle(.secondary)
+                    Text("No Translation")
+                }
+                .foregroundStyle(.white)
+                .tag("none")
+
+                // Language options
+                ForEach(Language.allCases, id: \.self) { language in
+                    HStack(spacing: 10) {
+                        Text(language.flag)
+                        Text("→ \(language.displayName)")
+                    }
+                    .foregroundStyle(.white)
+                    .tag(language.rawValue)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.12), Color(white: 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .onAppear {
+            selection = isTranslationEnabled ? selectedLanguage.rawValue : "none"
+        }
+    }
+}
+
+// MARK: - Context Wheel Picker
+struct ContextWheelPicker: View {
+    let contexts: [KeyboardContext]
+    let activeContextId: UUID?
+    let onSelect: (KeyboardContext?) -> Void
+    let onCancel: () -> Void
+
+    @State private var selection: String = "none"
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                Text("Context")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Button(action: {
+                    if selection == "none" {
+                        onSelect(nil)
+                    } else if let context = contexts.first(where: { $0.id.uuidString == selection }) {
+                        onSelect(context)
+                    }
+                }) {
+                    Text("Done")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.purple)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Divider().background(Color.white.opacity(0.1))
+
+            // Wheel picker
+            Picker("Context", selection: $selection) {
+                HStack(spacing: 10) {
+                    Image(systemName: "circle.slash")
+                    Text("No Context")
+                }
+                .foregroundStyle(.white)
+                .tag("none")
+
+                ForEach(contexts) { context in
+                    HStack(spacing: 10) {
+                        Text(context.icon)
+                        Text(context.name)
+                    }
+                    .foregroundStyle(.white)
+                    .tag(context.id.uuidString)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.12), Color(white: 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .onAppear {
+            selection = activeContextId?.uuidString ?? "none"
+        }
+    }
+}
+
+// MARK: - Power Mode Wheel Picker
+struct PowerModeWheelPicker: View {
+    let powerModes: [KeyboardPowerMode]
+    let onSelect: (KeyboardPowerMode) -> Void
+    let onCancel: () -> Void
+
+    @State private var selection: String = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "bolt.fill")
+                        .foregroundStyle(.orange)
+                    Text("Power Mode")
+                        .foregroundStyle(.white)
+                }
+                .font(.system(size: 16, weight: .semibold))
+
+                Spacer()
+
+                Button(action: {
+                    if let mode = powerModes.first(where: { $0.id.uuidString == selection }) {
+                        onSelect(mode)
+                    }
+                }) {
+                    Text("Run")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Divider().background(Color.white.opacity(0.1))
+
+            // Wheel picker
+            Picker("Power Mode", selection: $selection) {
+                ForEach(powerModes) { mode in
+                    HStack(spacing: 10) {
+                        Image(systemName: mode.icon)
+                            .foregroundStyle(.orange)
+                        Text(mode.name)
+                    }
+                    .foregroundStyle(.white)
+                    .tag(mode.id.uuidString)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.12), Color(white: 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .onAppear {
+            selection = powerModes.first?.id.uuidString ?? ""
+        }
+    }
+}
+
+// MARK: - SwiftLink App Picker
+struct SwiftLinkAppPicker: View {
+    let apps: [KeyboardSwiftLinkApp]
+    let onSelect: (KeyboardSwiftLinkApp) -> Void
+    let onCancel: () -> Void
+
+    @State private var selection: String = ""
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            HStack {
+                Button(action: onCancel) {
+                    Text("Cancel")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "link.circle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Start SwiftLink")
+                        .foregroundStyle(.white)
+                }
+                .font(.system(size: 16, weight: .semibold))
+
+                Spacer()
+
+                Button(action: {
+                    if let app = apps.first(where: { $0.bundleId == selection }) {
+                        onSelect(app)
+                    }
+                }) {
+                    Text("Start")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+
+            Divider().background(Color.white.opacity(0.1))
+
+            // App list picker
+            Picker("App", selection: $selection) {
+                ForEach(apps) { app in
+                    HStack(spacing: 10) {
+                        if let iconName = app.iconName {
+                            Image(systemName: iconName)
+                                .foregroundStyle(.orange)
+                        }
+                        Text(app.name)
+                    }
+                    .foregroundStyle(.white)
+                    .tag(app.bundleId)
+                }
+            }
+            .pickerStyle(.wheel)
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            LinearGradient(
+                colors: [Color(white: 0.12), Color(white: 0.08)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
+        .onAppear {
+            selection = apps.first?.bundleId ?? ""
+        }
+    }
+}
+
+// MARK: - Supporting Types
+
 struct KeyboardPowerMode: Identifiable {
     let id: UUID
     let name: String
     let icon: String
 }
 
-// MARK: - Keyboard AI Provider (minimal representation)
 struct KeyboardAIProviderInfo {
     let name: String
     let model: String?
     let isConfigured: Bool
 }
 
-// MARK: - Custom Template (for keyboard)
 struct KeyboardCustomTemplate: Identifiable, Codable {
     let id: UUID
     let name: String
     let icon: String
 }
 
-// MARK: - Keyboard Context (minimal for keyboard)
 struct KeyboardContext: Identifiable {
     let id: UUID
     let name: String
     let icon: String
 }
 
-// MARK: - Keyboard Processing Status (Phase 11)
+struct KeyboardSwiftLinkApp: Identifiable, Codable {
+    var id: String { bundleId }
+    let bundleId: String
+    let name: String
+    let urlScheme: String?
+    let iconName: String?
+}
+
+// MARK: - Processing Status
 struct KeyboardProcessingStatus: Codable, Equatable {
     var isProcessing: Bool = false
-    var currentStep: String = "idle"  // idle, recording, transcribing, formatting, translating, retrying, complete, failed
+    var currentStep: String = "idle"
     var retryAttempt: Int = 0
     var maxRetries: Int = 3
     var errorMessage: String?
     var pendingAutoInsert: Bool = false
     var lastCompletedText: String?
+    /// Live streaming transcript (partial/interim results)
+    var streamingTranscript: String?
 
     var displayText: String {
         switch currentStep {
+        case "streaming":
+            // Show live transcript or placeholder
+            if let transcript = streamingTranscript, !transcript.isEmpty {
+                // Truncate if too long for banner
+                let maxLength = 50
+                if transcript.count > maxLength {
+                    return "..." + String(transcript.suffix(maxLength))
+                }
+                return transcript
+            }
+            return "Listening..."
         case "transcribing": return "Transcribing..."
         case "formatting": return "Formatting..."
         case "translating": return "Translating..."
-        case "retrying": return "Retrying (\(retryAttempt)/\(maxRetries))..."
+        case "retrying": return "Retry \(retryAttempt)/\(maxRetries)..."
         case "complete": return "Done!"
         case "failed": return errorMessage ?? "Failed"
         default: return ""
@@ -720,16 +1866,16 @@ struct KeyboardProcessingStatus: Codable, Equatable {
 
     var icon: String {
         switch currentStep {
-        case "transcribing", "formatting", "translating": return "circle.dotted"
-        case "retrying": return "arrow.clockwise"
+        case "streaming": return "waveform"
         case "complete": return "checkmark.circle.fill"
         case "failed": return "xmark.circle.fill"
-        default: return ""
+        default: return "circle.dotted"
         }
     }
 
     var color: Color {
         switch currentStep {
+        case "streaming": return .orange
         case "transcribing", "formatting", "translating", "retrying": return .blue
         case "complete": return .green
         case "failed": return .red
@@ -738,11 +1884,12 @@ struct KeyboardProcessingStatus: Codable, Equatable {
     }
 }
 
-// MARK: - Keyboard ViewModel
+// MARK: - ViewModel
 class KeyboardViewModel: ObservableObject {
     @Published var selectedMode: FormattingMode = .raw
     @Published var selectedCustomTemplateId: UUID?
     @Published var selectedLanguage: Language = .spanish
+    @Published var isTranslationEnabled: Bool = false
     @Published var lastTranscription: String?
     @Published var isPro: Bool = false
     @Published var isPower: Bool = false
@@ -751,38 +1898,418 @@ class KeyboardViewModel: ObservableObject {
     @Published var transcriptionProvider: KeyboardAIProviderInfo?
     @Published var contexts: [KeyboardContext] = []
     @Published var activeContext: KeyboardContext?
-
-    // Phase 11: Processing status and pending audio
     @Published var processingStatus: KeyboardProcessingStatus = KeyboardProcessingStatus()
     @Published var pendingAudioCount: Int = 0
+
+    // SwiftLink state
+    @Published var isSwiftLinkSessionActive: Bool = false
+    @Published var isSwiftLinkRecording: Bool = false
+    @Published var swiftLinkProcessingStatus: String = ""
+    @Published var swiftLinkApps: [KeyboardSwiftLinkApp] = []
+    /// Whether SwiftLink is currently streaming (live transcription)
+    @Published var isSwiftLinkStreaming: Bool = false
+    /// Live streaming transcript from SwiftLink
+    @Published var swiftLinkStreamingTranscript: String = ""
 
     weak var textDocumentProxy: UITextDocumentProxy?
     weak var hostViewController: UIViewController?
 
-    init() {
-        loadSettings()
+    private let darwinManager = DarwinNotificationManager.shared
+
+    // SwiftLink timeout handling
+    private var swiftLinkTimeoutTimer: Timer?
+    private var swiftLinkStatusCheckTimer: Timer?
+    private static let swiftLinkTimeoutSeconds: TimeInterval = 5.0
+    private static let swiftLinkMaxSessionAge: TimeInterval = 600.0  // 10 minutes max session age
+    private static let swiftLinkStatusCheckInterval: TimeInterval = 30.0  // Check every 30 seconds
+
+    /// Returns true if there's any text in the current text field
+    var hasTextInField: Bool {
+        guard let proxy = textDocumentProxy else { return false }
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        return !before.isEmpty || !after.isEmpty
     }
 
-    /// Check for auto-insert when keyboard appears (Phase 11)
+    /// Returns the existing text in the text field (Phase 12)
+    var existingTextInField: String? {
+        guard let proxy = textDocumentProxy else { return nil }
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        let combined = before + after
+        return combined.isEmpty ? nil : combined
+    }
+
+    init() {
+        loadSettings()
+        setupSwiftLinkObservers()
+    }
+
+    private func setupSwiftLinkObservers() {
+        // Check initial SwiftLink session state
+        checkSwiftLinkSession()
+
+        // Observe session started
+        darwinManager.observeSessionStarted { [weak self] in
+            DispatchQueue.main.async {
+                self?.isSwiftLinkSessionActive = true
+                self?.checkSwiftLinkSession()
+                keyboardLog("SwiftLink session started notification received", category: "SwiftLink")
+            }
+        }
+
+        // Observe session ended
+        darwinManager.observeSessionEnded { [weak self] in
+            DispatchQueue.main.async {
+                self?.isSwiftLinkSessionActive = false
+                self?.isSwiftLinkRecording = false
+                keyboardLog("SwiftLink session ended notification received", category: "SwiftLink")
+            }
+        }
+
+        // Observe result ready
+        darwinManager.observeResultReady { [weak self] in
+            DispatchQueue.main.async {
+                self?.handleSwiftLinkResult()
+            }
+        }
+
+        // Observe streaming updates
+        darwinManager.observeStreamingUpdate { [weak self] in
+            DispatchQueue.main.async {
+                self?.handleStreamingUpdate()
+            }
+        }
+    }
+
+    /// Handle streaming transcript update from main app
+    private func handleStreamingUpdate() {
+        keyboardLog("handleStreamingUpdate called", category: "SwiftLink")
+
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? ""
+        let transcript = defaults?.string(forKey: Constants.Keys.swiftLinkStreamingTranscript) ?? ""
+
+        keyboardLog("Streaming status: '\(status)', transcript length: \(transcript.count)", category: "SwiftLink")
+
+        if status == "streaming" {
+            isSwiftLinkStreaming = true
+            swiftLinkStreamingTranscript = transcript
+            swiftLinkProcessingStatus = "streaming"
+            keyboardLog("Updated streaming transcript: \(transcript.prefix(50))...", category: "SwiftLink")
+        } else {
+            // Streaming ended
+            keyboardLog("Streaming ended or not active (status: \(status))", category: "SwiftLink")
+            isSwiftLinkStreaming = false
+        }
+    }
+
+    private func checkSwiftLinkSession() {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        isSwiftLinkSessionActive = defaults?.bool(forKey: Constants.Keys.swiftLinkSessionActive) ?? false
+    }
+
+    private func handleSwiftLinkResult() {
+        // Cancel any pending timeout - we got a response
+        cancelSwiftLinkTimeout()
+
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Force sync to ensure we have latest data from main app
+        defaults?.synchronize()
+
+        let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? ""
+        let wasEdit = defaults?.bool(forKey: Constants.EditMode.lastResultWasEdit) ?? false
+
+        keyboardLog("SwiftLink result received (status: \(status), wasEdit: \(wasEdit))", category: "SwiftLink")
+
+        swiftLinkProcessingStatus = status
+        isSwiftLinkRecording = false
+        isSwiftLinkStreaming = false
+        swiftLinkStreamingTranscript = ""
+
+        if status == "complete", let result = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) {
+            keyboardLog("SwiftLink result received (\(result.count) chars, edit: \(wasEdit))", category: "SwiftLink")
+
+            // Phase 12: If this was an edit, clear existing text first
+            if wasEdit {
+                keyboardLog("Clearing existing text for edit replacement", category: "SwiftLink")
+                deleteAllTextInField()
+            }
+
+            // Insert the result
+            keyboardLog("Inserting result text", category: "SwiftLink")
+            textDocumentProxy?.insertText(result)
+
+            // Clear the result and edit flag
+            defaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
+            defaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
+            defaults?.removeObject(forKey: Constants.EditMode.lastResultWasEdit)
+            defaults?.removeObject(forKey: Constants.EditMode.swiftLinkEditOriginalText)
+            defaults?.synchronize()
+
+            // Update last transcription
+            lastTranscription = result
+        } else if status == "error" {
+            let errorMsg = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) ?? "Unknown error"
+            keyboardLog("SwiftLink error: \(errorMsg)", category: "SwiftLink", level: .error)
+
+            // Check if session expired - mark SwiftLink as inactive and fall back to app
+            if errorMsg.contains("expired") || errorMsg.contains("not active") || errorMsg.contains("Session") {
+                keyboardLog("SwiftLink session is invalid - marking as inactive", category: "SwiftLink", level: .warning)
+                isSwiftLinkSessionActive = false
+
+                // Clear the stale session flag in App Groups
+                defaults?.set(false, forKey: Constants.Keys.swiftLinkSessionActive)
+            }
+
+            // Clear error state
+            defaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
+            defaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
+            defaults?.removeObject(forKey: Constants.EditMode.lastResultWasEdit)
+            defaults?.removeObject(forKey: Constants.EditMode.swiftLinkEditOriginalText)
+            defaults?.synchronize()
+        } else {
+            keyboardLog("SwiftLink result not ready yet (status: '\(status)')", category: "SwiftLink", level: .warning)
+        }
+    }
+
+    /// Delete all text in the current text field (Phase 12: for edit mode replacement)
+    private func deleteAllTextInField() {
+        guard let proxy = textDocumentProxy else {
+            keyboardLog("No textDocumentProxy available for deletion", category: "Action", level: .error)
+            return
+        }
+
+        // Get the total length of text in the field
+        let beforeCount = (proxy.documentContextBeforeInput ?? "").count
+        let afterCount = (proxy.documentContextAfterInput ?? "").count
+        let totalCount = beforeCount + afterCount
+
+        keyboardLog("Deleting \(totalCount) chars (before: \(beforeCount), after: \(afterCount))", category: "Action")
+
+        guard totalCount > 0 else { return }
+
+        // Move to end of text first
+        if afterCount > 0 {
+            proxy.adjustTextPosition(byCharacterOffset: afterCount)
+        }
+
+        // Now delete all text (we're at the end, so delete backward)
+        for _ in 0..<totalCount {
+            proxy.deleteBackward()
+        }
+
+        keyboardLog("Cleared existing text for edit replacement", category: "Action")
+    }
+
+    /// Public method to clear all text in the field
+    func clearAllText() {
+        KeyboardHaptics.mediumTap()
+        deleteAllTextInField()
+        // Force view to re-check hasTextInField by sending objectWillChange
+        objectWillChange.send()
+    }
+
+    func toggleSwiftLinkRecording() {
+        if isSwiftLinkRecording {
+            stopSwiftLinkRecording()
+        } else {
+            // Start recording
+            isSwiftLinkRecording = true
+            darwinManager.postDictationStart()
+            swiftLinkProcessingStatus = "recording"
+            startSwiftLinkTimeout()  // Start timeout to detect stale session
+            keyboardLog("SwiftLink dictation started", category: "SwiftLink")
+        }
+    }
+
+    /// Stop SwiftLink recording and trigger processing
+    func stopSwiftLinkRecording() {
+        guard isSwiftLinkRecording || isSwiftLinkStreaming else { return }
+
+        isSwiftLinkRecording = false
+        isSwiftLinkStreaming = false
+        cancelSwiftLinkTimeout()
+        darwinManager.postDictationStop()
+        swiftLinkProcessingStatus = "processing"
+        startSwiftLinkTimeout()  // Start timeout for processing phase
+        keyboardLog("SwiftLink dictation stopped", category: "SwiftLink")
+    }
+
+    // MARK: - SwiftLink Timeout Handling
+
+    private func startSwiftLinkTimeout() {
+        cancelSwiftLinkTimeout()
+
+        keyboardLog("SwiftLink timeout started (\(Self.swiftLinkTimeoutSeconds)s)", category: "SwiftLink")
+
+        swiftLinkTimeoutTimer = Timer.scheduledTimer(withTimeInterval: Self.swiftLinkTimeoutSeconds, repeats: false) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.handleSwiftLinkTimeout()
+            }
+        }
+    }
+
+    private func cancelSwiftLinkTimeout() {
+        if swiftLinkTimeoutTimer != nil {
+            keyboardLog("SwiftLink timeout cancelled", category: "SwiftLink")
+        }
+        swiftLinkTimeoutTimer?.invalidate()
+        swiftLinkTimeoutTimer = nil
+    }
+
+    private func handleSwiftLinkTimeout() {
+        keyboardLog("SwiftLink TIMEOUT - no response from main app after \(Self.swiftLinkTimeoutSeconds)s", category: "SwiftLink", level: .warning)
+        keyboardLog("Session state before timeout: active=\(isSwiftLinkSessionActive), recording=\(isSwiftLinkRecording)", category: "SwiftLink", level: .warning)
+
+        // Mark session as inactive
+        markSwiftLinkAsStale(reason: "Timeout - no response from main app")
+    }
+
+    /// Verify SwiftLink session is still valid before using it.
+    /// Returns true if session is valid, false if stale (and marks it inactive).
+    private func verifySwiftLinkSession() -> Bool {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        // Check if session is marked active
+        guard defaults?.bool(forKey: Constants.Keys.swiftLinkSessionActive) == true else {
+            keyboardLog("SwiftLink verify: session not marked active", category: "SwiftLink")
+            isSwiftLinkSessionActive = false
+            return false
+        }
+
+        // Check session start timestamp
+        let sessionStartTime = defaults?.double(forKey: Constants.Keys.swiftLinkSessionStartTime) ?? 0
+        guard sessionStartTime > 0 else {
+            keyboardLog("SwiftLink verify: no session start timestamp", category: "SwiftLink", level: .warning)
+            markSwiftLinkAsStale(reason: "No session timestamp")
+            return false
+        }
+
+        // Check if session is too old
+        let sessionAge = Date().timeIntervalSince1970 - sessionStartTime
+        if sessionAge > Self.swiftLinkMaxSessionAge {
+            keyboardLog("SwiftLink verify: session too old (\(Int(sessionAge))s > \(Int(Self.swiftLinkMaxSessionAge))s)", category: "SwiftLink", level: .warning)
+            markSwiftLinkAsStale(reason: "Session expired (\(Int(sessionAge/60)) minutes old)")
+            return false
+        }
+
+        keyboardLog("SwiftLink verify: session valid (age: \(Int(sessionAge))s)", category: "SwiftLink")
+        return true
+    }
+
+    /// Mark SwiftLink session as stale and clean up
+    private func markSwiftLinkAsStale(reason: String) {
+        keyboardLog("SwiftLink marked as stale: \(reason)", category: "SwiftLink", level: .warning)
+
+        isSwiftLinkSessionActive = false
+        isSwiftLinkRecording = false
+        swiftLinkProcessingStatus = ""
+
+        // Clear the stale session flag in App Groups
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.set(false, forKey: Constants.Keys.swiftLinkSessionActive)
+        defaults?.removeObject(forKey: Constants.Keys.swiftLinkSessionStartTime)
+        defaults?.removeObject(forKey: Constants.EditMode.swiftLinkEditOriginalText)
+        defaults?.removeObject(forKey: Constants.EditMode.lastResultWasEdit)
+        defaults?.synchronize()
+
+        // Provide haptic feedback
+        KeyboardHaptics.warning()
+    }
+
+    // MARK: - SwiftLink Periodic Status Check
+
+    /// Start periodic SwiftLink status checks
+    private func startSwiftLinkStatusChecks() {
+        stopSwiftLinkStatusChecks()
+
+        // Immediate check
+        performSwiftLinkStatusCheck()
+
+        // Schedule periodic checks
+        swiftLinkStatusCheckTimer = Timer.scheduledTimer(withTimeInterval: Self.swiftLinkStatusCheckInterval, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                self?.performSwiftLinkStatusCheck()
+            }
+        }
+
+        keyboardLog("SwiftLink status checks started (every \(Int(Self.swiftLinkStatusCheckInterval))s)", category: "SwiftLink")
+    }
+
+    /// Stop periodic SwiftLink status checks
+    private func stopSwiftLinkStatusChecks() {
+        swiftLinkStatusCheckTimer?.invalidate()
+        swiftLinkStatusCheckTimer = nil
+    }
+
+    /// Perform a SwiftLink status check and update UI
+    private func performSwiftLinkStatusCheck() {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        let wasActive = isSwiftLinkSessionActive
+
+        // Check if session is still valid
+        if defaults?.bool(forKey: Constants.Keys.swiftLinkSessionActive) == true {
+            let sessionStartTime = defaults?.double(forKey: Constants.Keys.swiftLinkSessionStartTime) ?? 0
+
+            if sessionStartTime > 0 {
+                let sessionAge = Date().timeIntervalSince1970 - sessionStartTime
+
+                if sessionAge > Self.swiftLinkMaxSessionAge {
+                    // Session is too old
+                    keyboardLog("SwiftLink status check: session expired (\(Int(sessionAge))s old)", category: "SwiftLink", level: .warning)
+                    markSwiftLinkAsStale(reason: "Session expired during status check")
+                } else {
+                    // Session is valid
+                    if !wasActive {
+                        keyboardLog("SwiftLink status check: session now active (age: \(Int(sessionAge))s)", category: "SwiftLink")
+                    }
+                    isSwiftLinkSessionActive = true
+                }
+            } else {
+                // No timestamp but marked active - stale
+                if wasActive {
+                    keyboardLog("SwiftLink status check: no timestamp, marking stale", category: "SwiftLink", level: .warning)
+                    markSwiftLinkAsStale(reason: "No session timestamp")
+                }
+                isSwiftLinkSessionActive = false
+            }
+        } else {
+            // Not marked active
+            if wasActive {
+                keyboardLog("SwiftLink status check: session no longer active", category: "SwiftLink")
+            }
+            isSwiftLinkSessionActive = false
+        }
+    }
+
     func checkAutoInsert() {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
 
-        // Load processing status
         if let data = defaults?.data(forKey: "processingStatus"),
            let status = try? JSONDecoder().decode(KeyboardProcessingStatus.self, from: data) {
             processingStatus = status
 
-            // Auto-insert if pending
             if status.pendingAutoInsert, let text = status.lastCompletedText, !text.isEmpty {
                 keyboardLog("Auto-inserting text (\(text.count) chars)", category: "Action")
                 textDocumentProxy?.insertText(text)
 
-                // Clear the auto-insert flag
                 var updatedStatus = status
                 updatedStatus.pendingAutoInsert = false
                 updatedStatus.lastCompletedText = nil
                 saveProcessingStatus(updatedStatus)
                 processingStatus = updatedStatus
+
+                // Auto-dismiss "Done" banner after 1 second
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    self.dismissStatus()
+                }
             }
         }
     }
@@ -794,7 +2321,6 @@ class KeyboardViewModel: ObservableObject {
         }
     }
 
-    /// Dismiss error banner
     func dismissError() {
         var updatedStatus = processingStatus
         updatedStatus.isProcessing = false
@@ -804,13 +2330,21 @@ class KeyboardViewModel: ObservableObject {
         processingStatus = updatedStatus
     }
 
-    /// All mode options for dropdown (built-in modes + custom templates for Pro users)
+    func dismissStatus() {
+        var updatedStatus = processingStatus
+        updatedStatus.isProcessing = false
+        updatedStatus.currentStep = "idle"
+        updatedStatus.errorMessage = nil
+        saveProcessingStatus(updatedStatus)
+        processingStatus = updatedStatus
+        keyboardLog("Status banner auto-dismissed", category: "Action")
+    }
+
     var modeOptions: [(icon: String, title: String, value: String)] {
         var options = FormattingMode.allCases.map { mode in
             (mode.icon, mode.displayName, mode.rawValue)
         }
 
-        // Add custom templates only for Pro users
         if isPro && !customTemplates.isEmpty {
             for template in customTemplates {
                 options.append((template.icon, template.name, "custom:\(template.id.uuidString)"))
@@ -820,7 +2354,6 @@ class KeyboardViewModel: ObservableObject {
         return options
     }
 
-    /// Current display name for mode selector
     var currentModeDisplayName: String {
         if let templateId = selectedCustomTemplateId,
            let template = customTemplates.first(where: { $0.id == templateId }) {
@@ -829,7 +2362,6 @@ class KeyboardViewModel: ObservableObject {
         return selectedMode.displayName
     }
 
-    /// Current icon for mode selector
     var currentModeIcon: String {
         if let templateId = selectedCustomTemplateId,
            let template = customTemplates.first(where: { $0.id == templateId }) {
@@ -858,40 +2390,71 @@ class KeyboardViewModel: ObservableObject {
             isPower = tierRaw == "power"
         }
 
-        // Load configured AI providers for transcription
         loadAIProviders(from: defaults)
-
-        // Load custom templates (Pro only)
         loadCustomTemplates(from: defaults)
 
-        // Load power modes (mock data for now)
         powerModes = [
-            KeyboardPowerMode(id: UUID(), name: "Research Assistant", icon: "magnifyingglass.circle.fill"),
-            KeyboardPowerMode(id: UUID(), name: "Email Composer", icon: "envelope.fill"),
-            KeyboardPowerMode(id: UUID(), name: "Daily Planner", icon: "calendar"),
-            KeyboardPowerMode(id: UUID(), name: "Idea Expander", icon: "lightbulb.fill")
+            KeyboardPowerMode(id: UUID(), name: "Research", icon: "magnifyingglass"),
+            KeyboardPowerMode(id: UUID(), name: "Email", icon: "envelope.fill"),
+            KeyboardPowerMode(id: UUID(), name: "Planner", icon: "calendar"),
+            KeyboardPowerMode(id: UUID(), name: "Ideas", icon: "lightbulb.fill")
         ]
 
-        // Load contexts (Pro only)
-        if isPro {
-            loadContexts(from: defaults)
+        // Load contexts for all users (presets available to everyone)
+        loadContexts(from: defaults)
+
+        loadPendingAudioCount(from: defaults)
+        loadSwiftLinkApps(from: defaults)
+
+        // Refresh SwiftLink session state
+        checkSwiftLinkSession()
+    }
+
+    private func loadSwiftLinkApps(from defaults: UserDefaults?) {
+        guard let data = defaults?.data(forKey: Constants.Keys.swiftLinkApps) else {
+            // Load default popular apps if none configured
+            swiftLinkApps = defaultSwiftLinkApps
+            return
         }
 
-        // Phase 11: Load pending audio count
-        loadPendingAudioCount(from: defaults)
+        do {
+            let apps = try JSONDecoder().decode([KeyboardSwiftLinkApp].self, from: data)
+            swiftLinkApps = apps.isEmpty ? defaultSwiftLinkApps : apps
+        } catch {
+            swiftLinkApps = defaultSwiftLinkApps
+        }
+    }
+
+    private var defaultSwiftLinkApps: [KeyboardSwiftLinkApp] {
+        [
+            KeyboardSwiftLinkApp(bundleId: "net.whatsapp.WhatsApp", name: "WhatsApp", urlScheme: "whatsapp://", iconName: "message.fill"),
+            KeyboardSwiftLinkApp(bundleId: "com.apple.MobileSMS", name: "Messages", urlScheme: "sms://", iconName: "message.fill"),
+            KeyboardSwiftLinkApp(bundleId: "com.apple.mobilemail", name: "Mail", urlScheme: "mailto://", iconName: "envelope.fill"),
+            KeyboardSwiftLinkApp(bundleId: "com.slack.Slack", name: "Slack", urlScheme: "slack://", iconName: "number"),
+            KeyboardSwiftLinkApp(bundleId: "org.telegram.Telegram", name: "Telegram", urlScheme: "telegram://", iconName: "paperplane.fill"),
+        ]
+    }
+
+    /// Called when keyboard appears to refresh all state
+    func refreshState() {
+        loadSettings()
+        checkSwiftLinkSession()
+        startSwiftLinkStatusChecks()  // Start periodic status checks
+    }
+
+    /// Called when keyboard disappears to clean up
+    func cleanup() {
+        stopSwiftLinkStatusChecks()
+        cancelSwiftLinkTimeout()
     }
 
     private func loadPendingAudioCount(from defaults: UserDefaults?) {
-        // Decode pending audio queue to get count
         guard let data = defaults?.data(forKey: "pendingAudioQueue") else {
             pendingAudioCount = 0
             return
         }
 
-        // Simple struct just to decode the array
-        struct SimplePendingAudio: Codable {
-            let id: UUID
-        }
+        struct SimplePendingAudio: Codable { let id: UUID }
 
         do {
             let queue = try JSONDecoder().decode([SimplePendingAudio].self, from: data)
@@ -902,41 +2465,61 @@ class KeyboardViewModel: ObservableObject {
     }
 
     private func loadContexts(from defaults: UserDefaults?) {
-        guard let data = defaults?.data(forKey: Constants.Keys.contexts) else {
-            contexts = []
-            activeContext = nil
-            return
-        }
+        // Start with preset contexts (available to all users)
+        let presetContexts: [KeyboardContext] = [
+            KeyboardContext(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                name: "Work",
+                icon: "💼"
+            ),
+            KeyboardContext(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                name: "Personal",
+                icon: "😊"
+            ),
+            KeyboardContext(
+                id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                name: "Creative",
+                icon: "✨"
+            )
+        ]
 
-        // Decode contexts (simplified struct for keyboard)
-        struct SimpleContext: Codable {
-            let id: UUID
-            let name: String
-            let icon: String
-        }
-
-        do {
-            let loadedContexts = try JSONDecoder().decode([SimpleContext].self, from: data)
-            contexts = loadedContexts.map { KeyboardContext(id: $0.id, name: $0.name, icon: $0.icon) }
-
-            // Load active context ID
-            if let activeIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
-               let activeId = UUID(uuidString: activeIdString),
-               let context = contexts.first(where: { $0.id == activeId }) {
-                activeContext = context
-            } else {
-                activeContext = nil
+        // Load custom contexts from shared defaults
+        var customContexts: [KeyboardContext] = []
+        if let data = defaults?.data(forKey: Constants.Keys.contexts) {
+            struct SimpleContext: Codable {
+                let id: UUID
+                let name: String
+                let icon: String
+                let isPreset: Bool?
             }
-        } catch {
-            contexts = []
+
+            do {
+                let loadedContexts = try JSONDecoder().decode([SimpleContext].self, from: data)
+                // Filter out presets (they're hardcoded above)
+                customContexts = loadedContexts
+                    .filter { $0.isPreset != true }
+                    .map { KeyboardContext(id: $0.id, name: $0.name, icon: $0.icon) }
+            } catch {
+                customContexts = []
+            }
+        }
+
+        // Combine presets + custom
+        contexts = presetContexts + customContexts
+
+        // Set active context if one is selected
+        if let activeIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
+           let activeId = UUID(uuidString: activeIdString),
+           let context = contexts.first(where: { $0.id == activeId }) {
+            activeContext = context
+        } else {
             activeContext = nil
         }
     }
 
     func selectContext(_ context: KeyboardContext?) {
         activeContext = context
-
-        // Save to UserDefaults
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
         if let context = context {
             defaults?.set(context.id.uuidString, forKey: Constants.Keys.activeContextId)
@@ -946,17 +2529,11 @@ class KeyboardViewModel: ObservableObject {
     }
 
     private func loadCustomTemplates(from defaults: UserDefaults?) {
-        guard isPro else {
+        guard isPro, let data = defaults?.data(forKey: Constants.Keys.customTemplates) else {
             customTemplates = []
             return
         }
 
-        guard let data = defaults?.data(forKey: Constants.Keys.customTemplates) else {
-            customTemplates = []
-            return
-        }
-
-        // Decode custom templates (use same struct as main app)
         struct SimpleCustomTemplate: Codable {
             let id: UUID
             let name: String
@@ -977,8 +2554,6 @@ class KeyboardViewModel: ObservableObject {
             return
         }
 
-        // Decode the AI provider configs to find transcription provider
-        // Using a simplified struct to decode just what we need
         struct SimpleAIProviderConfig: Codable {
             let provider: String
             let apiKey: String
@@ -989,14 +2564,11 @@ class KeyboardViewModel: ObservableObject {
         do {
             let configs = try JSONDecoder().decode([SimpleAIProviderConfig].self, from: data)
 
-            // Find first provider configured for transcription
-            if let transcriptionConfig = configs.first(where: { $0.usageCategories.contains("transcription") }) {
-                let isConfigured = !transcriptionConfig.apiKey.isEmpty
-                let providerName = transcriptionConfig.provider.capitalized
+            if let config = configs.first(where: { $0.usageCategories.contains("transcription") }) {
                 transcriptionProvider = KeyboardAIProviderInfo(
-                    name: providerName,
-                    model: transcriptionConfig.transcriptionModel,
-                    isConfigured: isConfigured
+                    name: config.provider.capitalized,
+                    model: config.transcriptionModel,
+                    isConfigured: !config.apiKey.isEmpty
                 )
             } else {
                 transcriptionProvider = nil
@@ -1016,17 +2588,14 @@ class KeyboardViewModel: ObservableObject {
         defaults?.set(selectedLanguage.rawValue, forKey: Constants.Keys.selectedTargetLanguage)
     }
 
-    /// Select mode from dropdown (handles both built-in modes and custom templates)
     func selectMode(value: String) {
         if value.hasPrefix("custom:") {
-            // Custom template selected
-            let uuidString = String(value.dropFirst(7))  // Remove "custom:" prefix
+            let uuidString = String(value.dropFirst(7))
             if let uuid = UUID(uuidString: uuidString) {
                 selectedCustomTemplateId = uuid
-                selectedMode = .raw  // Use raw as base mode
+                selectedMode = .raw
             }
         } else {
-            // Built-in mode selected
             selectedCustomTemplateId = nil
             if let mode = FormattingMode(rawValue: value) {
                 selectedMode = mode
@@ -1035,51 +2604,163 @@ class KeyboardViewModel: ObservableObject {
     }
 
     func startTranscription() {
+        // If no provider configured, open setup instead
+        guard isProviderConfigured else {
+            keyboardLog("No provider configured, opening setup", category: "Action")
+            if let url = URL(string: "swiftspeak://setup") {
+                openURL(url)
+            }
+            return
+        }
+
+        // Phase 12: Check for edit mode (existing text in field)
+        // Edit mode is Pro-only feature - free users always do normal transcription
+        let isEditMode = hasTextInField && isPro
+
+        if hasTextInField && !isPro {
+            keyboardLog("Edit mode requires Pro - using normal transcription", category: "Action")
+        }
+
+        // Check for active SwiftLink session - use inline dictation
+        if isSwiftLinkSessionActive {
+            // If already recording, stop it (regardless of edit mode)
+            if isSwiftLinkRecording {
+                keyboardLog("Stopping SwiftLink recording", category: "SwiftLink")
+                toggleSwiftLinkRecording()
+                return
+            }
+
+            // Verify session is still valid before starting new recording
+            guard verifySwiftLinkSession() else {
+                keyboardLog("SwiftLink session invalid - falling back to app workflow", category: "SwiftLink", level: .warning)
+                // Session is stale, continue to normal app workflow below
+                saveSettings()
+                startNormalTranscription(isEditMode: isEditMode)
+                return
+            }
+
+            // Start new recording
+            if isEditMode {
+                keyboardLog("Using SwiftLink inline edit mode", category: "SwiftLink")
+                startSwiftLinkEdit()
+            } else {
+                keyboardLog("Using SwiftLink inline dictation", category: "SwiftLink")
+                toggleSwiftLinkRecording()
+            }
+            return
+        }
+
         saveSettings()
-        keyboardLog("Transcription requested (mode: \(selectedMode.rawValue))", category: "Action")
+        startNormalTranscription(isEditMode: isEditMode)
+    }
 
-        var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=false"
+    /// Start normal transcription flow via main app (non-SwiftLink)
+    private func startNormalTranscription(isEditMode: Bool) {
+        // Phase 12: Edit mode via URL scheme
+        if isEditMode {
+            startEditModeViaURL()
+            return
+        }
 
-        // Add custom template ID if selected
+        // Normal transcription flow
+        let translate = isTranslationEnabled && isPro
+        keyboardLog("Transcription requested via app (translate: \(translate))", category: "Action")
+
+        var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=\(translate)"
+        if translate {
+            urlString += "&target=\(selectedLanguage.rawValue)"
+        }
         if let templateId = selectedCustomTemplateId {
             urlString += "&template=\(templateId.uuidString)"
         }
 
-        if let url = URL(string: urlString) {
+        if let url = URL(string: urlString) { openURL(url) }
+    }
+
+    // MARK: - Phase 12: Edit Mode
+
+    /// Start edit mode by opening main app with original text (non-SwiftLink flow)
+    private func startEditModeViaURL() {
+        guard let originalText = existingTextInField else { return }
+
+        // Store original text in App Groups (URL encoding large text is problematic)
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.set(originalText, forKey: Constants.EditMode.pendingEditText)
+
+        keyboardLog("Edit mode requested (\(originalText.count) chars)", category: "Action")
+
+        // Open main app in edit mode
+        if let url = URL(string: "swiftspeak://\(Constants.URLHosts.edit)") {
             openURL(url)
         }
     }
 
+    /// Start edit mode via SwiftLink (stays in keyboard)
+    private func startSwiftLinkEdit() {
+        guard let originalText = existingTextInField else { return }
+
+        // Store original text in App Groups
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.set(originalText, forKey: Constants.EditMode.swiftLinkEditOriginalText)
+        defaults?.set(true, forKey: Constants.EditMode.lastResultWasEdit)
+        defaults?.synchronize()
+
+        // Update UI state
+        isSwiftLinkRecording = true
+        swiftLinkProcessingStatus = "recording"
+
+        // Start timeout to detect stale session
+        startSwiftLinkTimeout()
+
+        // Send startEdit notification (different from startDictation)
+        darwinManager.post(name: Constants.SwiftLinkNotifications.startEdit)
+
+        keyboardLog("SwiftLink edit started (\(originalText.count) chars)", category: "SwiftLink")
+    }
+
+    // Keep for backward compatibility
     func startTranslation() {
         guard isPro else { return }
+        isTranslationEnabled = true
         saveSettings()
-        keyboardLog("Translation requested (mode: \(selectedMode.rawValue), target: \(selectedLanguage.rawValue))", category: "Action")
+        keyboardLog("Translation requested", category: "Action")
 
         var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=true&target=\(selectedLanguage.rawValue)"
-
-        // Add custom template ID if selected
         if let templateId = selectedCustomTemplateId {
             urlString += "&template=\(templateId.uuidString)"
         }
 
-        if let url = URL(string: urlString) {
-            openURL(url)
-        }
+        if let url = URL(string: urlString) { openURL(url) }
     }
 
     func startPowerMode(_ powerMode: KeyboardPowerMode) {
         guard isPower else { return }
-        keyboardLog("Power Mode requested: \(powerMode.name)", category: "Action")
+        keyboardLog("Power Mode: \(powerMode.name)", category: "Action")
 
         let urlString = "swiftspeak://powermode?id=\(powerMode.id.uuidString)&autostart=true"
-        if let url = URL(string: urlString) {
-            openURL(url)
+        if let url = URL(string: urlString) { openURL(url) }
+    }
+
+    func startSwiftLinkSession(with app: KeyboardSwiftLinkApp) {
+        keyboardLog("Starting SwiftLink session for \(app.name)", category: "SwiftLink")
+
+        // Open main app with SwiftLink start request
+        // URL encode parameters properly
+        let encodedName = app.name.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? app.name
+        var urlString = "swiftspeak://swiftlink?action=start&bundleId=\(app.bundleId)&app=\(encodedName)"
+        if let scheme = app.urlScheme {
+            // URL encode the scheme parameter since it contains :// which can confuse URL parsing
+            let encodedScheme = scheme.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? scheme
+            urlString += "&scheme=\(encodedScheme)"
         }
+
+        keyboardLog("SwiftLink URL: \(urlString)", category: "SwiftLink")
+        if let url = URL(string: urlString) { openURL(url) }
     }
 
     func insertLastTranscription() {
         if let text = lastTranscription {
-            keyboardLog("Inserting last transcription (\(text.count) chars)", category: "Action")
+            keyboardLog("Insert last (\(text.count) chars)", category: "Action")
             textDocumentProxy?.insertText(text)
         }
     }
@@ -1088,25 +2769,23 @@ class KeyboardViewModel: ObservableObject {
         textDocumentProxy?.deleteBackward()
     }
 
-    /// Open a URL from the keyboard (used for pending recordings, main app, etc)
     func openAppURL(_ url: URL) {
         openURL(url)
     }
 
     private func openURL(_ url: URL) {
-        // Keyboard extensions must use the extensionContext to open URLs
-        guard let hostVC = hostViewController else { return }
+        // Method 1: Try to get UIApplication.shared via KVC (works in extensions)
+        guard let application = UIApplication.value(forKeyPath: "sharedApplication") as? UIApplication else {
+            keyboardLog("Could not get shared application", category: "Action", level: .error)
+            return
+        }
 
-        // Use the responder chain to find a way to open URLs
-        // This is the standard approach for keyboard extensions
-        let selector = sel_registerName("openURL:")
-        var responder: UIResponder? = hostVC
-        while responder != nil {
-            if responder!.responds(to: selector) {
-                responder!.perform(selector, with: url)
-                return
+        application.open(url, options: [:]) { success in
+            if success {
+                keyboardLog("URL opened successfully", category: "Action")
+            } else {
+                keyboardLog("Failed to open URL", category: "Action", level: .error)
             }
-            responder = responder?.next
         }
     }
 }
@@ -1114,6 +2793,5 @@ class KeyboardViewModel: ObservableObject {
 // MARK: - Preview
 #Preview {
     KeyboardView(viewModel: KeyboardViewModel(), onNextKeyboard: {})
-        .frame(height: 220)
         .preferredColorScheme(.dark)
 }
