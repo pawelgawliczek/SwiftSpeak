@@ -515,16 +515,33 @@ struct CostAnalyticsView: View {
             dailyCosts[day, default: 0] += cost
         }
 
-        // Fill in missing days with zero
-        let startDate = selectedPeriod.startDate
+        // For "All Time", use earliest record date instead of distantPast
+        // to avoid iterating through billions of days
+        let startDate: Date
+        if selectedPeriod == .all {
+            if let earliestRecord = filteredRecords.min(by: { $0.timestamp < $1.timestamp }) {
+                startDate = calendar.startOfDay(for: earliestRecord.timestamp)
+            } else {
+                // No records, just return empty
+                return []
+            }
+        } else {
+            startDate = selectedPeriod.startDate
+        }
+
         let endDate = Date()
         var currentDate = startDate
         var result: [DailyCostItem] = []
 
-        while currentDate <= endDate {
+        // Safety limit: max 365 days to prevent runaway loops
+        let maxDays = 365
+        var dayCount = 0
+
+        while currentDate <= endDate && dayCount < maxDays {
             let day = calendar.startOfDay(for: currentDate)
             result.append(DailyCostItem(date: day, cost: dailyCosts[day] ?? 0))
             currentDate = calendar.date(byAdding: .day, value: 1, to: currentDate) ?? endDate
+            dayCount += 1
         }
 
         return result
