@@ -387,6 +387,7 @@ extension AppInfo {
             "com.snapchat.snapchat": "snapchat",
             "com.viber": "viber",
             "com.kakao.talk": "kakaotalk",
+            "com.google.messages": "googlemessages",
 
             // Email
             "com.google.Gmail": "gmail",
@@ -408,6 +409,7 @@ extension AppInfo {
             "org.joinmastodon.app": "mastodon",
             "com.threads.ios": "threads",
             "com.bluesky.app": "bluesky",
+            "com.tumblr.tumblr": "tumblr",
 
             // Work
             "com.tinyspeck.chatlyio": "slack",
@@ -429,6 +431,8 @@ extension AppInfo {
             "com.microsoft.Office.Excel": "excel",
             "com.microsoft.Office.Powerpoint": "powerpoint",
             "com.microsoft.onenote": "onenote",
+            "com.clickup.app": "clickup",
+            "com.basecamp.bc3-ios": "basecamp",
 
             // Browsers
             "com.apple.mobilesafari": "safari",
@@ -445,6 +449,7 @@ extension AppInfo {
             "md.obsidian": "obsidian",
             "com.google.Keep": "googlekeep",
             "com.todoist.ios": "todoist",
+            "com.automattic.simplenote": "simplenote",
 
             // Finance
             "com.paypal.PPClient": "paypal",
@@ -453,6 +458,8 @@ extension AppInfo {
             "com.revolut.revolut": "revolut",
             "com.coinbase.Coinbase": "coinbase",
             "com.robinhood.release": "robinhood",
+            "com.n26": "n26",
+            "com.wise.android": "wise",
 
             // Dating (bumble, hinge, grindr not in SimpleIcons)
             "com.cardify.tinder": "tinder",
@@ -464,6 +471,8 @@ extension AppInfo {
             "com.playstation.PlayStationApp": "playstation",
             "com.microsoft.xboxone.smartglass": "xbox",
             "com.nintendo.znca": "nintendo",
+            "com.epicgames.fortnite": "fortnite",
+            "com.pubg.krmobile": "pubg",
 
             // Other (disneyplus not in SimpleIcons)
             "com.spotify.client": "spotify",
@@ -482,6 +491,8 @@ extension AppInfo {
             "com.ebay.ebay": "ebay",
             "com.strava.Strava": "strava",
             "com.nike.omega": "nike",
+            "com.expedia.app": "expedia",
+            "com.apple.podcasts": "applepodcasts",
         ]
 
         return iconMap[id]

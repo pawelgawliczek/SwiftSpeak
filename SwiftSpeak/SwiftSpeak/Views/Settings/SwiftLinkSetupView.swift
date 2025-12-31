@@ -15,14 +15,24 @@ struct SwiftLinkSetupView: View {
 
     @State private var showAppPicker = false
     @State private var showStartSession = false
-    @State private var selectedCategory: AppCategory?
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
     }
 
-    private var rowBackground: Color {
-        colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
+    private var groupedSwiftLinkApps: [(category: AppCategory, apps: [SwiftLinkApp])] {
+        var groups: [AppCategory: [SwiftLinkApp]] = [:]
+
+        for app in settings.swiftLinkApps {
+            let appInfo = AppLibrary.apps.first(where: { $0.id == app.bundleId })
+            let category = appInfo?.defaultCategory ?? .other
+            groups[category, default: []].append(app)
+        }
+
+        return AppCategory.allCases.compactMap { category in
+            guard let apps = groups[category], !apps.isEmpty else { return nil }
+            return (category: category, apps: apps.sorted { $0.name < $1.name })
+        }
     }
 
     var body: some View {
@@ -53,10 +63,9 @@ struct SwiftLinkSetupView: View {
             .scrollContentBackground(.hidden)
         }
         .navigationTitle("SwiftLink")
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showAppPicker) {
             SwiftLinkAppPickerSheet(
-                selectedCategory: $selectedCategory,
                 onSelectApp: { appInfo in
                     settings.addSwiftLinkApp(from: appInfo)
                     showAppPicker = false
@@ -178,9 +187,10 @@ struct SwiftLinkSetupView: View {
 
     // MARK: - Apps Section
 
+    @ViewBuilder
     private var appsSection: some View {
-        Section {
-            if settings.swiftLinkApps.isEmpty {
+        if settings.swiftLinkApps.isEmpty {
+            Section {
                 VStack(spacing: 12) {
                     Image(systemName: "app.badge.checkmark")
                         .font(.largeTitle)
@@ -196,29 +206,42 @@ struct SwiftLinkSetupView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 20)
-            } else {
-                ForEach(settings.swiftLinkApps) { app in
-                    SwiftLinkAppRow(app: app) {
-                        settings.removeSwiftLinkApp(bundleId: app.bundleId)
-                    }
+
+                Button {
+                    showAppPicker = true
+                } label: {
+                    Label("Add App", systemImage: "plus.circle.fill")
                 }
-                .onDelete { indexSet in
-                    for index in indexSet {
-                        let app = settings.swiftLinkApps[index]
-                        settings.removeSwiftLinkApp(bundleId: app.bundleId)
+            } header: {
+                Text("SwiftLink Apps")
+            }
+        } else {
+            ForEach(groupedSwiftLinkApps, id: \.category) { group in
+                Section {
+                    ForEach(group.apps) { app in
+                        SwiftLinkAppRow(app: app) {
+                            settings.removeSwiftLinkApp(bundleId: app.bundleId)
+                        }
                     }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            let app = group.apps[index]
+                            settings.removeSwiftLinkApp(bundleId: app.bundleId)
+                        }
+                    }
+                } header: {
+                    Label(group.category.displayName, systemImage: group.category.icon)
+                        .foregroundStyle(group.category.color)
                 }
             }
 
-            Button {
-                showAppPicker = true
-            } label: {
-                Label("Add App", systemImage: "plus.circle.fill")
-            }
-        } header: {
-            Text("SwiftLink Apps (\(settings.swiftLinkApps.count))")
-        } footer: {
-            if !settings.swiftLinkApps.isEmpty {
+            Section {
+                Button {
+                    showAppPicker = true
+                } label: {
+                    Label("Add App", systemImage: "plus.circle.fill")
+                }
+            } footer: {
                 Text("Swipe left on an app to remove it from the list.")
             }
         }
@@ -300,31 +323,29 @@ struct SwiftLinkAppRow: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(app.name)
-                    .font(.body)
-
-                // Category label with category color (consistent with Contexts)
                 HStack(spacing: 4) {
-                    Image(systemName: category.icon)
-                        .font(.caption2)
-                    Text(category.displayName)
-                        .font(.caption)
+                    Text(app.name)
+                        .font(.body)
+                        .foregroundStyle(.primary)
+
+                    // URL scheme indicator next to name
+                    if app.urlScheme == nil {
+                        Image(systemName: "link.badge.plus")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
                 }
-                .foregroundStyle(category.color)
+
+                Text(category.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            // URL scheme indicator
-            if app.urlScheme != nil {
-                Image(systemName: "link")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                Image(systemName: "link.badge.plus")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-            }
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
     }
 }
@@ -333,90 +354,105 @@ struct SwiftLinkAppRow: View {
 
 struct SwiftLinkAppPickerSheet: View {
     @Environment(\.dismiss) var dismiss
-    @Binding var selectedCategory: AppCategory?
+    @EnvironmentObject var settings: SharedSettings
     let onSelectApp: (AppInfo) -> Void
 
     @State private var searchText = ""
+    @State private var isSearching = false
+    @FocusState private var isSearchFocused: Bool
 
     private var filteredApps: [AppInfo] {
-        var apps = AppLibrary.apps
+        if searchText.isEmpty {
+            return AppLibrary.apps
+        }
+        return AppLibrary.search(query: searchText)
+    }
 
-        if let category = selectedCategory {
-            apps = apps.filter { $0.defaultCategory == category }
+    private var groupedApps: [(category: AppCategory, apps: [AppInfo])] {
+        let apps = filteredApps
+        var groups: [AppCategory: [AppInfo]] = [:]
+
+        for app in apps {
+            let category = settings.effectiveCategory(for: app.id) ?? app.defaultCategory
+            groups[category, default: []].append(app)
         }
 
-        if !searchText.isEmpty {
-            apps = apps.filter { $0.matches(query: searchText) }
+        return AppCategory.allCases.compactMap { category in
+            guard let apps = groups[category], !apps.isEmpty else { return nil }
+            return (category: category, apps: apps.sorted { $0.name < $1.name })
         }
-
-        return apps
     }
 
     var body: some View {
         NavigationStack {
-            List {
-                // Category filter
-                Section {
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            CategoryChip(
-                                category: nil,
-                                isSelected: selectedCategory == nil,
-                                onTap: { selectedCategory = nil }
-                            )
+            ZStack {
+                // Main content
+                List {
+                    ForEach(groupedApps, id: \.category) { group in
+                        Section {
+                            ForEach(group.apps) { app in
+                                Button {
+                                    onSelectApp(app)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        AppIcon(app, size: .large, style: .filled)
 
-                            ForEach(AppCategory.allCases) { category in
-                                CategoryChip(
-                                    category: category,
-                                    isSelected: selectedCategory == category,
-                                    onTap: { selectedCategory = category }
-                                )
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(app.name)
+                                                .font(.body)
+                                                .foregroundStyle(.primary)
+
+                                            Text(group.category.displayName)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+
+                                        Spacer()
+
+                                        Image(systemName: "plus.circle.fill")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                                .buttonStyle(.plain)
                             }
+                        } header: {
+                            Label(group.category.displayName, systemImage: group.category.icon)
+                                .foregroundStyle(group.category.color)
                         }
-                        .padding(.horizontal, 4)
                     }
                 }
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
+                .blur(radius: isSearching ? 2 : 0)
+                .allowsHitTesting(!isSearching)
 
-                // Apps list
-                Section {
-                    ForEach(filteredApps) { app in
-                        Button {
+                // Search overlay
+                if isSearching {
+                    OverlaySearchView(
+                        searchText: $searchText,
+                        isSearching: $isSearching,
+                        isSearchFocused: _isSearchFocused,
+                        results: filteredApps,
+                        onSelectApp: { app in
                             onSelectApp(app)
-                        } label: {
-                            HStack(spacing: 12) {
-                                AppIcon(app, size: .medium, style: .filled)
-
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.name)
-                                        .foregroundStyle(.primary)
-
-                                    // Category label with category color
-                                    HStack(spacing: 4) {
-                                        Image(systemName: app.defaultCategory.icon)
-                                            .font(.caption2)
-                                        Text(app.defaultCategory.displayName)
-                                            .font(.caption)
-                                    }
-                                    .foregroundStyle(app.defaultCategory.color)
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "plus.circle.fill")
-                                    .foregroundStyle(.blue)
-                            }
                         }
-                    }
-                } header: {
-                    Text("\(filteredApps.count) Apps")
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .searchable(text: $searchText, prompt: "Search apps...")
+            .animation(.spring(duration: 0.3), value: isSearching)
             .navigationTitle("Add App")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        withAnimation {
+                            isSearching = true
+                            isSearchFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") {
                         dismiss()
@@ -427,33 +463,105 @@ struct SwiftLinkAppPickerSheet: View {
     }
 }
 
-// MARK: - Category Chip
+// MARK: - Overlay Search View
 
-struct CategoryChip: View {
-    let category: AppCategory?
-    let isSelected: Bool
-    let onTap: () -> Void
+private struct OverlaySearchView: View {
+    @Binding var searchText: String
+    @Binding var isSearching: Bool
+    @FocusState var isSearchFocused: Bool
+    let results: [AppInfo]
+    let onSelectApp: (AppInfo) -> Void
 
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 4) {
-                if let category = category {
-                    Image(systemName: category.icon)
-                        .font(.caption)
-                    Text(category.displayName)
-                } else {
-                    Image(systemName: "square.grid.2x2")
-                        .font(.caption)
-                    Text("All")
+        VStack(spacing: 0) {
+            // Search bar
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+
+                    TextField("Search apps...", text: $searchText)
+                        .focused($isSearchFocused)
+                        .textFieldStyle(.plain)
+
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                Button("Cancel") {
+                    withAnimation {
+                        searchText = ""
+                        isSearching = false
+                    }
+                }
+                .foregroundStyle(.primary)
             }
-            .font(.caption)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(isSelected ? Color.blue : Color.white.opacity(0.1))
-            .foregroundStyle(isSelected ? .white : .primary)
-            .clipShape(Capsule())
+            .padding(.horizontal)
+            .padding(.top, 12)
+
+            // Results
+            if !searchText.isEmpty {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(results.prefix(20)) { app in
+                            Button {
+                                onSelectApp(app)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    AppIcon(app, size: .large, style: .filled)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(app.name)
+                                            .font(.body)
+                                            .foregroundStyle(.primary)
+
+                                        Text(app.defaultCategory.displayName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    Spacer()
+
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(.blue)
+                                }
+                                .padding(.horizontal)
+                                .padding(.vertical, 12)
+                                .background(.ultraThinMaterial)
+                            }
+                            .buttonStyle(.plain)
+
+                            Divider()
+                                .padding(.leading, 68)
+                        }
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .padding()
+            }
+
+            Spacer()
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            Color.black.opacity(0.3)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation {
+                        searchText = ""
+                        isSearching = false
+                    }
+                }
+        )
     }
 }
 
@@ -463,6 +571,21 @@ struct SwiftLinkStartSheet: View {
     @Environment(\.dismiss) var dismiss
     let apps: [SwiftLinkApp]
     let onSelectApp: (SwiftLinkApp) -> Void
+
+    private var groupedApps: [(category: AppCategory, apps: [SwiftLinkApp])] {
+        var groups: [AppCategory: [SwiftLinkApp]] = [:]
+
+        for app in apps {
+            let appInfo = AppLibrary.apps.first(where: { $0.id == app.bundleId })
+            let category = appInfo?.defaultCategory ?? .other
+            groups[category, default: []].append(app)
+        }
+
+        return AppCategory.allCases.compactMap { category in
+            guard let apps = groups[category], !apps.isEmpty else { return nil }
+            return (category: category, apps: apps.sorted { $0.name < $1.name })
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -485,58 +608,63 @@ struct SwiftLinkStartSheet: View {
                     .padding(.vertical, 12)
                 }
 
-                Section("Select App") {
-                    ForEach(apps) { app in
-                        let appInfo = AppLibrary.apps.first(where: { $0.id == app.bundleId })
-                        let category = appInfo?.defaultCategory ?? .other
+                ForEach(groupedApps, id: \.category) { group in
+                    Section {
+                        ForEach(group.apps) { app in
+                            let appInfo = AppLibrary.apps.first(where: { $0.id == app.bundleId })
 
-                        Button {
-                            onSelectApp(app)
-                        } label: {
-                            HStack(spacing: 12) {
-                                // Look up AppInfo from AppLibrary to get the icon
-                                if let appInfo = appInfo {
-                                    AppIcon(appInfo, size: .medium, style: .filled)
-                                } else {
-                                    // Fallback for apps not in library
-                                    ZStack {
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .fill(Color.secondary.opacity(0.1))
-                                        Image(systemName: "app.fill")
+                            Button {
+                                onSelectApp(app)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    if let appInfo = appInfo {
+                                        AppIcon(appInfo, size: .large, style: .filled)
+                                    } else {
+                                        ZStack {
+                                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                                .fill(Color.secondary.opacity(0.1))
+                                            Image(systemName: "app.fill")
+                                                .font(.body)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        .frame(width: 40, height: 40)
+                                    }
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        HStack(spacing: 4) {
+                                            Text(app.name)
+                                                .font(.body)
+                                                .foregroundStyle(.primary)
+
+                                            if app.urlScheme == nil {
+                                                Image(systemName: "link.badge.plus")
+                                                    .font(.caption)
+                                                    .foregroundStyle(.orange)
+                                            }
+                                        }
+
+                                        Text(group.category.displayName)
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
-                                    .frame(width: 28, height: 28)
-                                }
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(app.name)
-                                        .foregroundStyle(.primary)
+                                    Spacer()
 
-                                    // Category label with category color
-                                    HStack(spacing: 4) {
-                                        Image(systemName: category.icon)
-                                            .font(.caption2)
-                                        Text(category.displayName)
-                                            .font(.caption)
-                                    }
-                                    .foregroundStyle(category.color)
-                                }
-
-                                Spacer()
-
-                                if app.urlScheme != nil {
-                                    Image(systemName: "link")
+                                    Image(systemName: "chevron.right")
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(.tertiary)
                                 }
                             }
+                            .buttonStyle(.plain)
                         }
+                    } header: {
+                        Label(group.category.displayName, systemImage: group.category.icon)
+                            .foregroundStyle(group.category.color)
                     }
                 }
             }
-            .navigationTitle("SwiftLink")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Start Session")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Cancel") {
