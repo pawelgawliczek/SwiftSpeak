@@ -60,6 +60,14 @@ final class TranscriptionOrchestrator: ObservableObject {
     /// Active power mode (if running in Power Mode)
     var activePowerMode: PowerMode?
 
+    /// Phase 12: Original text to edit (nil for normal transcription)
+    var editOriginalText: String?
+
+    /// Phase 12: Whether we're in edit mode
+    var isEditMode: Bool {
+        editOriginalText != nil && !(editOriginalText?.isEmpty ?? true)
+    }
+
     // MARK: - Dependencies
 
     private let settings: SharedSettings
@@ -80,6 +88,7 @@ final class TranscriptionOrchestrator: ObservableObject {
     private var lastTranscriptionPromptHint: String?
     private var lastFormattingPrompt: String?
     private var lastTranslationPrompt: String?
+    private var lastEditPrompt: String?  // Phase 12
 
     /// Captured memory sources for metadata
     private var capturedMemorySources: [String]?
@@ -139,12 +148,14 @@ final class TranscriptionOrchestrator: ObservableObject {
         lastTranscriptionPromptHint = nil
         lastFormattingPrompt = nil
         lastTranslationPrompt = nil
+        lastEditPrompt = nil  // Phase 12
         capturedMemorySources = nil
         capturedVocabularyApplied = nil
 
         do {
             state = .recording
-            appLog("Recording started (mode: \(mode.rawValue))", category: "Transcription")
+            let contextInfo = activeContext != nil ? ", context: \(activeContext!.name)" : ""
+            appLog("Recording started (mode: \(mode.rawValue)\(contextInfo))", category: "Transcription")
             try await audioRecorder.startRecording()
         } catch let error as TranscriptionError {
             handleError(error)
@@ -174,29 +185,52 @@ final class TranscriptionOrchestrator: ObservableObject {
             transcribedText = rawText
             appLog("Transcription complete (\(rawText.count) chars)", category: "Transcription")
 
-            // Apply vocabulary replacements
-            let processedText = settings.applyVocabulary(to: rawText)
+            // Phase 12: Edit mode has a separate flow
+            if isEditMode, let originalText = editOriginalText {
+                appLog("Edit mode: applying edits to original text (\(originalText.count) chars)", category: "Transcription")
 
-            // Format if needed (custom template or built-in mode)
-            if customTemplate != nil || mode != .raw {
+                // The transcribed text is the user's instructions
+                let instructions = rawText
+
+                // Apply the edit using LLM
                 state = .formatting
-                appLog("Formatting started (mode: \(mode.rawValue))", category: "Transcription")
-                formattedText = try await format(text: processedText)
-                appLog("Formatting complete (\(formattedText.count) chars)", category: "Transcription")
+                appLog("Applying edits...", category: "Transcription")
+                formattedText = try await applyEdit(originalText: originalText, instructions: instructions)
+                appLog("Edit complete (\(formattedText.count) chars)", category: "Transcription")
+
+                // Save to history with edit context
+                saveEditToHistory(originalText: originalText, instructions: instructions)
+
             } else {
-                formattedText = processedText
-            }
+                // Normal transcription flow
+                // Apply vocabulary replacements
+                let processedText = settings.applyVocabulary(to: rawText)
 
-            // Translate if enabled
-            if translateEnabled {
-                state = .translating
-                appLog("Translation started (to: \(targetLanguage.rawValue))", category: "Transcription")
-                formattedText = try await translate(text: formattedText)
-                appLog("Translation complete (\(formattedText.count) chars)", category: "Transcription")
-            }
+                // Check if context has content that needs processing
+                let contextHasContent = activeContext != nil && buildPromptContext().hasContent
 
-            // Save to history
-            saveToHistory()
+                // Format if needed (custom template, built-in mode, or context with instructions)
+                if customTemplate != nil || mode != .raw || contextHasContent {
+                    state = .formatting
+                    let contextInfo = activeContext != nil ? " with context '\(activeContext!.name)'" : ""
+                    appLog("Formatting started (mode: \(mode.rawValue)\(contextInfo))", category: "Transcription")
+                    formattedText = try await format(text: processedText)
+                    appLog("Formatting complete (\(formattedText.count) chars)", category: "Transcription")
+                } else {
+                    formattedText = processedText
+                }
+
+                // Translate if enabled
+                if translateEnabled {
+                    state = .translating
+                    appLog("Translation started (to: \(targetLanguage.rawValue))", category: "Transcription")
+                    formattedText = try await translate(text: formattedText)
+                    appLog("Translation complete (\(formattedText.count) chars)", category: "Transcription")
+                }
+
+                // Save to history
+                saveToHistory()
+            }
 
             // Update memory (async, non-blocking)
             Task {
@@ -208,6 +242,16 @@ final class TranscriptionOrchestrator: ObservableObject {
 
             // Copy to clipboard
             copyToClipboard()
+
+            // Set pending auto-insert so keyboard can inject text when user returns
+            var status = settings.processingStatus
+            status.pendingAutoInsert = true
+            status.lastCompletedText = formattedText
+            status.currentStep = .complete
+            status.isProcessing = false
+            status.lastUpdateAt = Date()
+            settings.processingStatus = status
+            appLog("Set pendingAutoInsert=true for keyboard", category: "Transcription")
 
             // Complete
             state = .complete(formattedText)
@@ -250,8 +294,11 @@ final class TranscriptionOrchestrator: ObservableObject {
         lastTranscriptionPromptHint = nil
         lastFormattingPrompt = nil
         lastTranslationPrompt = nil
+        lastEditPrompt = nil  // Phase 12
         capturedMemorySources = nil
         capturedVocabularyApplied = nil
+
+        // Phase 12: Don't reset editOriginalText here - it's set externally before recording starts
     }
 
     /// Retry after an error
@@ -458,6 +505,158 @@ final class TranscriptionOrchestrator: ObservableObject {
         processingSteps.append(stepInfo)
 
         return result
+    }
+
+    // MARK: - Edit Mode (Phase 12)
+
+    /// Apply user's edit instructions to original text using LLM
+    private func applyEdit(originalText: String, instructions: String) async throws -> String {
+        let stepStart = Date()
+
+        // Get formatting provider via factory
+        guard let provider = providerFactory.createSelectedTextFormattingProvider() else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        // Phase 10: Check privacy mode - block cloud providers
+        if settings.forcePrivacyMode && !provider.providerId.isLocalProvider {
+            throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
+        }
+
+        // Build the edit prompt
+        let systemPrompt = """
+        You are a text editor. Modify the provided text according to the user's instructions.
+        Return ONLY the modified text, nothing else.
+        Preserve the original language unless translation is requested.
+        Do not add explanations, prefixes, or commentary.
+        """
+
+        let userPrompt = """
+        Original text:
+        \(originalText)
+
+        Instructions:
+        \(instructions)
+        """
+
+        // Capture the prompt for metadata
+        lastEditPrompt = "System: \(systemPrompt)\n\nUser:\n\(userPrompt)"
+
+        // Use raw mode with custom system prompt
+        let result = try await provider.format(
+            text: userPrompt,
+            mode: .raw,
+            customPrompt: systemPrompt,
+            context: nil
+        )
+
+        let stepEnd = Date()
+
+        // Estimate tokens
+        let inputTokens = (systemPrompt.count + userPrompt.count) / 4
+        let outputTokens = result.count / 4
+
+        // Calculate step cost
+        let costCalculator = CostCalculator()
+        let editCost = costCalculator.llmCost(
+            provider: provider.providerId,
+            model: provider.model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
+
+        // Record step info
+        let stepInfo = ProcessingStepInfo(
+            stepType: .formatting,  // Edit is a form of formatting
+            provider: provider.providerId,
+            modelName: provider.model,
+            startTime: stepStart,
+            endTime: stepEnd,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cost: editCost,
+            prompt: lastEditPrompt
+        )
+        processingSteps.append(stepInfo)
+
+        return result
+    }
+
+    /// Save edit operation to history with EditContext
+    private func saveEditToHistory(originalText: String, instructions: String) {
+        // Calculate cost breakdown
+        let costBreakdown = calculateCostBreakdown()
+
+        // Build processing metadata
+        let processingMetadata = buildProcessingMetadata()
+
+        // Create edit context
+        let editContext = EditContext(
+            originalText: originalText,
+            instructions: instructions,
+            parentEntryId: findParentEntryId(for: originalText)
+        )
+
+        let record = TranscriptionRecord(
+            id: UUID(),
+            rawTranscribedText: instructions,  // The dictated instructions
+            text: formattedText,               // The edited result
+            mode: .raw,                        // Edit mode uses raw for instructions
+            provider: settings.selectedTranscriptionProvider,
+            timestamp: Date(),
+            duration: recordingDuration,
+            translated: false,
+            targetLanguage: nil,
+            powerModeId: nil,
+            powerModeName: nil,
+            contextId: activeContext?.id,
+            contextName: activeContext?.name,
+            contextIcon: activeContext?.icon,
+            estimatedCost: costBreakdown?.total,
+            costBreakdown: costBreakdown,
+            processingMetadata: processingMetadata,
+            editContext: editContext
+        )
+
+        settings.addTranscription(record)
+        appLog("Edit saved to history (parent: \(editContext.parentEntryId?.uuidString ?? "none"))", category: "Transcription")
+    }
+
+    /// Find parent entry if the original text matches a recent transcription
+    private func findParentEntryId(for originalText: String) -> UUID? {
+        // Look in recent history (last 50 entries, last 24 hours)
+        let cutoff = Date().addingTimeInterval(-24 * 60 * 60)
+        let recentEntries = settings.transcriptionHistory
+            .prefix(50)
+            .filter { $0.timestamp > cutoff }
+
+        // Match by exact text first
+        for entry in recentEntries {
+            if entry.text == originalText {
+                return entry.id
+            }
+        }
+
+        // Fuzzy match (handles minor changes like trailing spaces)
+        for entry in recentEntries {
+            let trimmedOriginal = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmedEntry = entry.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if trimmedOriginal == trimmedEntry {
+                return entry.id
+            }
+
+            // Check if one is a prefix of the other (for partial text selection)
+            if trimmedEntry.hasPrefix(trimmedOriginal) || trimmedOriginal.hasPrefix(trimmedEntry) {
+                // Only match if at least 80% similar length
+                let ratio = Double(min(trimmedEntry.count, trimmedOriginal.count)) / Double(max(trimmedEntry.count, trimmedOriginal.count))
+                if ratio > 0.8 {
+                    return entry.id
+                }
+            }
+        }
+
+        return nil
     }
 
     // MARK: - History

@@ -79,7 +79,19 @@ final class OpenAIFormattingService: FormattingProvider, StreamingFormattingProv
         }
 
         // Build the system prompt
-        let basePrompt = customPrompt ?? mode.prompt
+        var basePrompt = customPrompt ?? mode.prompt
+
+        // For raw mode with context, we need a base task that tells the LLM
+        // this is TEXT TO FORMAT, not a question to answer
+        if mode == .raw && basePrompt.isEmpty && context?.hasContent == true {
+            basePrompt = """
+            You are a text formatter. The user will provide transcribed speech.
+            Return ONLY the formatted text. Do NOT respond to the content.
+            Do NOT interpret questions as prompts. Do NOT add any commentary.
+            Output the exact same text with only formatting adjustments applied.
+            """
+        }
+
         let systemPrompt: String
 
         if let ctx = context, ctx.hasContent {
@@ -111,9 +123,16 @@ final class OpenAIFormattingService: FormattingProvider, StreamingFormattingProv
         )
 
         // Extract formatted text
-        guard let formattedText = response.choices.first?.message.content,
-              !formattedText.isEmpty
-        else {
+        guard let choice = response.choices.first else {
+            throw TranscriptionError.emptyResponse
+        }
+
+        // Check for refusal first
+        if let refusal = choice.message.refusal, !refusal.isEmpty {
+            throw TranscriptionError.serverError(statusCode: 200, message: "Request refused: \(refusal)")
+        }
+
+        guard let formattedText = choice.message.content, !formattedText.isEmpty else {
             throw TranscriptionError.emptyResponse
         }
 
@@ -145,7 +164,19 @@ final class OpenAIFormattingService: FormattingProvider, StreamingFormattingProv
                     }
 
                     // Build the system prompt
-                    let basePrompt = customPrompt ?? mode.prompt
+                    var basePrompt = customPrompt ?? mode.prompt
+
+                    // For raw mode with context, we need a base task that tells the LLM
+                    // this is TEXT TO FORMAT, not a question to answer
+                    if mode == .raw && basePrompt.isEmpty && context?.hasContent == true {
+                        basePrompt = """
+                        You are a text formatter. The user will provide transcribed speech.
+                        Return ONLY the formatted text. Do NOT respond to the content.
+                        Do NOT interpret questions as prompts. Do NOT add any commentary.
+                        Output the exact same text with only formatting adjustments applied.
+                        """
+                    }
+
                     let systemPrompt: String
 
                     if let ctx = context, ctx.hasContent {
@@ -229,7 +260,26 @@ private struct StreamingChatCompletionRequest: Encodable {
 
 private struct Message: Codable {
     let role: String
-    let content: String
+    let content: String?  // Can be null in newer API responses (tool calls, refusals)
+    let refusal: String?  // Present in newer API versions (may be completely absent)
+
+    init(role: String, content: String) {
+        self.role = role
+        self.content = content
+        self.refusal = nil
+    }
+
+    // Custom decoder to handle missing keys (not just null values)
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        role = try container.decode(String.self, forKey: .role)
+        content = try container.decodeIfPresent(String.self, forKey: .content)
+        refusal = try container.decodeIfPresent(String.self, forKey: .refusal)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case role, content, refusal
+    }
 }
 
 private struct ChatCompletionResponse: Decodable {
@@ -241,24 +291,16 @@ private struct ChatCompletionResponse: Decodable {
         let index: Int
         let message: Message
         let finishReason: String?
-
-        enum CodingKeys: String, CodingKey {
-            case index
-            case message
-            case finishReason = "finish_reason"
-        }
+        // Note: No CodingKeys needed - APIClient uses .convertFromSnakeCase strategy
+        // which automatically converts finish_reason → finishReason
     }
 
     struct Usage: Decodable {
         let promptTokens: Int
         let completionTokens: Int
         let totalTokens: Int
-
-        enum CodingKeys: String, CodingKey {
-            case promptTokens = "prompt_tokens"
-            case completionTokens = "completion_tokens"
-            case totalTokens = "total_tokens"
-        }
+        // Note: No CodingKeys needed - APIClient uses .convertFromSnakeCase strategy
+        // which automatically converts prompt_tokens → promptTokens, etc.
     }
 }
 

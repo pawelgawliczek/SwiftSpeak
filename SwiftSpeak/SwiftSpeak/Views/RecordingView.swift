@@ -21,19 +21,65 @@ enum WaveformType: CaseIterable {
 struct RecordingView: View {
     @Binding var isPresented: Bool
     var translateAfterRecording: Bool = false
+    var editModeOriginalText: String? = nil  // Phase 12: Edit mode
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.openURL) private var openURL
 
     // Use real orchestrator for actual transcription
     @StateObject private var orchestrator = TranscriptionOrchestrator()
+    @StateObject private var streamingOrchestrator = StreamingTranscriptionOrchestrator()
+    @StateObject private var swiftLinkManager = SwiftLinkSessionManager.shared
 
     @State private var cardScale: CGFloat = 0.8
     @State private var cardOpacity: Double = 0
     @State private var selectedWaveform: WaveformType = .bars
     @State private var showingContextPicker = false
+    @State private var showingSwiftLinkQuickStart = false
+    @State private var showingOriginalText = false  // Phase 12: Toggle for original text preview
+
+    /// Whether streaming mode is active and available
+    private var useStreamingMode: Bool {
+        settings.transcriptionStreamingEnabled && streamingOrchestrator.isStreamingAvailable
+    }
+
+    /// Current streaming transcript for display
+    private var streamingTranscript: String {
+        if !streamingOrchestrator.partialTranscript.isEmpty {
+            return streamingOrchestrator.partialTranscript
+        }
+        return streamingOrchestrator.fullTranscript
+    }
+
+    /// Phase 12: Whether we're in edit mode (modifying existing text)
+    private var isEditMode: Bool {
+        editModeOriginalText != nil && !(editModeOriginalText?.isEmpty ?? true)
+    }
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    /// Convert streaming state to RecordingState for RecordingCard compatibility
+    private var streamingStateToRecordingState: RecordingState {
+        switch streamingOrchestrator.state {
+        case .idle: return .idle
+        case .connecting: return .processing
+        case .streaming: return .recording
+        case .processing: return .formatting
+        case .complete: return .complete(streamingOrchestrator.fullTranscript)
+        case .error: return .error(streamingOrchestrator.error?.errorDescription ?? "Unknown error")
+        }
+    }
+
+    /// Get audio levels for streaming mode
+    private var streamingAudioLevels: [Float] {
+        let level = streamingOrchestrator.audioLevel
+        return (0..<12).map { index in
+            let variance = Float.random(in: -0.15...0.15)
+            let phase = sin(Float(index) * 0.5)
+            return max(0, min(1, level + variance * phase * level))
+        }
     }
 
     var body: some View {
@@ -47,29 +93,47 @@ struct RecordingView: View {
                     }
                 }
 
-            // Recording card
-            RecordingCard(
-                state: orchestrator.state,
-                duration: orchestrator.recordingDuration,
-                mode: settings.selectedMode,
-                isTranslationEnabled: translateAfterRecording,
-                targetLanguage: settings.selectedTargetLanguage,
-                transcriptionProvider: settings.selectedTranscriptionProvider,
-                modeProvider: settings.selectedPowerModeProvider,
-                translationProvider: settings.selectedTranslationProvider,
-                waveformType: selectedWaveform,
-                audioLevels: orchestrator.audioLevels,
-                colorScheme: colorScheme,
-                activeContext: settings.activeContext,
-                onTap: handleCardTap,
-                onCancel: cancelRecording,
-                onChangeContext: {
-                    HapticManager.selection()
-                    showingContextPicker = true
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Recording card
+                RecordingCard(
+                    state: useStreamingMode ? streamingStateToRecordingState : orchestrator.state,
+                    duration: useStreamingMode ? 0 : orchestrator.recordingDuration,
+                    mode: settings.selectedMode,
+                    isTranslationEnabled: translateAfterRecording,
+                    targetLanguage: settings.selectedTargetLanguage,
+                    transcriptionProvider: settings.selectedTranscriptionProvider,
+                    modeProvider: settings.selectedPowerModeProvider,
+                    translationProvider: settings.selectedTranslationProvider,
+                    waveformType: selectedWaveform,
+                    audioLevels: useStreamingMode ? streamingAudioLevels : orchestrator.audioLevels,
+                    colorScheme: colorScheme,
+                    activeContext: settings.activeContext,
+                    isEditMode: isEditMode,
+                    editOriginalText: editModeOriginalText,
+                    showingOriginalText: $showingOriginalText,
+                    streamingTranscript: useStreamingMode ? streamingTranscript : nil,
+                    onTap: handleCardTap,
+                    onCancel: cancelRecording,
+                    onChangeContext: {
+                        HapticManager.selection()
+                        showingContextPicker = true
+                    }
+                )
+                .scaleEffect(cardScale)
+                .opacity(cardOpacity)
+
+                Spacer()
+
+                // SwiftLink quick start banner (only when no session active)
+                if !swiftLinkManager.isSessionActive {
+                    swiftLinkBanner
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.bottom, 40)
+                        .padding(.horizontal, 8)
                 }
-            )
-            .scaleEffect(cardScale)
-            .opacity(cardOpacity)
+            }
         }
         .sheet(isPresented: $showingContextPicker) {
             RecordingContextPicker(
@@ -77,23 +141,47 @@ struct RecordingView: View {
                 activeContextId: settings.activeContextId,
                 onSelect: { context in
                     settings.setActiveContext(context)
+                    orchestrator.activeContext = context  // Update orchestrator too
                     showingContextPicker = false
                 }
             )
             .presentationDetents([.medium])
         }
+        .sheet(isPresented: $showingSwiftLinkQuickStart) {
+            SwiftLinkQuickStartSheet(onSessionStarted: { urlScheme in
+                // Open the target app after session starts
+                if let scheme = urlScheme, let url = URL(string: scheme) {
+                    openURL(url)
+                }
+            })
+            .environmentObject(settings)
+            .presentationDetents([.medium, .large])
+        }
         .onAppear {
+            // Reset orchestrator for fresh start
+            orchestrator.reset()
+
             // Configure orchestrator with current settings
             orchestrator.mode = settings.selectedMode
             orchestrator.customTemplate = settings.selectedCustomTemplate
             orchestrator.translateEnabled = translateAfterRecording
             orchestrator.targetLanguage = settings.selectedTargetLanguage
+            orchestrator.sourceLanguage = settings.selectedDictationLanguage
+            orchestrator.activeContext = settings.activeContext  // Apply selected context
+
+            // Phase 12: Configure edit mode if active
+            orchestrator.editOriginalText = editModeOriginalText
 
             // Clear the selected custom template after configuring orchestrator
             settings.selectedCustomTemplate = nil
 
             // Randomly select a waveform type
             selectedWaveform = WaveformType.allCases.randomElement() ?? .bars
+
+            // Reset card animation state
+            cardScale = 0.8
+            cardOpacity = 0
+
             showCard()
             startRecording()
         }
@@ -125,7 +213,15 @@ struct RecordingView: View {
         HapticManager.lightTap()
 
         Task {
-            await orchestrator.startRecording()
+            if useStreamingMode {
+                do {
+                    try await streamingOrchestrator.startStreaming()
+                } catch {
+                    HapticManager.error()
+                }
+            } else {
+                await orchestrator.startRecording()
+            }
         }
     }
 
@@ -133,50 +229,150 @@ struct RecordingView: View {
         HapticManager.mediumTap()
 
         Task {
-            await orchestrator.stopRecording()
+            if useStreamingMode {
+                let result = await streamingOrchestrator.stopStreaming()
+                if let text = result {
+                    HapticManager.success()
+                    // Copy to clipboard and save to history
+                    UIPasteboard.general.string = text
+                    settings.lastTranscription = text
 
-            // Check if completed successfully
-            if orchestrator.isComplete {
-                HapticManager.success()
-
-                // Auto-dismiss after showing result (if enabled in settings)
-                if settings.autoReturnEnabled {
-                    try? await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
-                    hideCard {
-                        isPresented = false
-                    }
+                    // Save to history
+                    let record = TranscriptionRecord(
+                        id: UUID(),
+                        rawTranscribedText: streamingOrchestrator.fullTranscript,
+                        text: text,
+                        mode: settings.selectedMode,
+                        provider: settings.selectedTranscriptionProvider,
+                        timestamp: Date(),
+                        duration: 0,  // Streaming doesn't track duration the same way
+                        translated: settings.isTranslationEnabled,
+                        targetLanguage: settings.isTranslationEnabled ? settings.selectedTargetLanguage : nil,
+                        powerModeId: nil,
+                        powerModeName: nil,
+                        contextId: settings.activeContext?.id,
+                        contextName: settings.activeContext?.name,
+                        contextIcon: settings.activeContext?.icon,
+                        estimatedCost: nil,
+                        costBreakdown: nil,
+                        processingMetadata: nil
+                    )
+                    settings.addTranscription(record)
+                } else if streamingOrchestrator.error != nil {
+                    HapticManager.error()
                 }
-            } else if orchestrator.hasError {
-                HapticManager.error()
+            } else {
+                await orchestrator.stopRecording()
+
+                // Check if completed successfully
+                if orchestrator.isComplete {
+                    HapticManager.success()
+                    // Stay on completion screen - user uses Return button to go back
+                } else if orchestrator.hasError {
+                    HapticManager.error()
+                }
             }
         }
     }
 
     private func cancelRecording() {
-        orchestrator.cancel()
+        if useStreamingMode {
+            streamingOrchestrator.cancel()
+        } else {
+            orchestrator.cancel()
+        }
         hideCard {
             isPresented = false
         }
     }
 
     private func handleCardTap() {
-        switch orchestrator.state {
-        case .idle:
-            startRecording()
-        case .recording:
-            stopRecording()
-        case .complete:
-            hideCard {
-                isPresented = false
+        if useStreamingMode {
+            switch streamingOrchestrator.state {
+            case .idle:
+                startRecording()
+            case .streaming:
+                stopRecording()
+            case .complete:
+                hideCard {
+                    isPresented = false
+                }
+            case .error:
+                // Tap to retry on error
+                streamingOrchestrator.reset()
+                startRecording()
+            default:
+                break
             }
-        case .error:
-            // Tap to retry on error
-            Task {
-                await orchestrator.retry()
+        } else {
+            switch orchestrator.state {
+            case .idle:
+                startRecording()
+            case .recording:
+                stopRecording()
+            case .complete:
+                hideCard {
+                    isPresented = false
+                }
+            case .error:
+                // Tap to retry on error
+                Task {
+                    await orchestrator.retry()
+                }
+            default:
+                break
             }
-        default:
-            break
         }
+    }
+
+    // MARK: - SwiftLink Quick Start Banner
+
+    private var swiftLinkBanner: some View {
+        Button(action: {
+            HapticManager.selection()
+            showingSwiftLinkQuickStart = true
+        }) {
+            HStack(spacing: 12) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(Color.orange.opacity(0.15))
+                        .frame(width: 40, height: 40)
+
+                    Image(systemName: "link.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(.orange)
+                }
+
+                // Text
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable SwiftLink")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+
+                    Text("Dictate without leaving apps")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.08) : .white)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .padding(.horizontal, 24)
     }
 }
 
@@ -209,6 +405,12 @@ struct RecordingCard: View {
     let audioLevels: [Float]
     let colorScheme: ColorScheme
     let activeContext: ConversationContext?
+    // Phase 12: Edit mode
+    var isEditMode: Bool = false
+    var editOriginalText: String? = nil
+    @Binding var showingOriginalText: Bool
+    /// Live streaming transcript (shown while recording in streaming mode)
+    var streamingTranscript: String? = nil
     let onTap: () -> Void
     let onCancel: () -> Void
     let onChangeContext: () -> Void
@@ -225,6 +427,21 @@ struct RecordingCard: View {
         VStack(spacing: 24) {
             // Status badges row
             HStack(spacing: 8) {
+                // Phase 12: Edit mode badge
+                if isEditMode {
+                    HStack(spacing: 4) {
+                        Image(systemName: "pencil")
+                            .font(.caption.weight(.semibold))
+                        Text("Edit")
+                            .font(.caption.weight(.medium))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.green)
+                    .clipShape(Capsule())
+                }
+
                 // Context badge (if active)
                 if let context = activeContext {
                     Button(action: onChangeContext) {
@@ -242,13 +459,13 @@ struct RecordingCard: View {
                     }
                 }
 
-                // Mode badge (if not raw)
-                if mode != .raw {
+                // Mode badge (if not raw and not in edit mode)
+                if mode != .raw && !isEditMode {
                     ModeBadge(icon: mode.icon, text: mode.displayName)
                 }
 
-                // Translation badge (if enabled)
-                if isTranslationEnabled {
+                // Translation badge (if enabled and not in edit mode)
+                if isTranslationEnabled && !isEditMode {
                     HStack(spacing: 4) {
                         Text(targetLanguage.flag)
                             .font(.subheadline)
@@ -260,6 +477,41 @@ struct RecordingCard: View {
                     .padding(.vertical, 6)
                     .background(Color.blue.opacity(0.15))
                     .clipShape(Capsule())
+                }
+            }
+
+            // Phase 12: Original text preview (only in edit mode, while recording)
+            if isEditMode, let originalText = editOriginalText, case .recording = state {
+                VStack(spacing: 8) {
+                    Button(action: {
+                        withAnimation(AppTheme.quickSpring) {
+                            showingOriginalText.toggle()
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Text("Original text")
+                                .font(.caption.weight(.medium))
+                                .foregroundStyle(.secondary)
+
+                            Image(systemName: showingOriginalText ? "chevron.up" : "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+
+                    if showingOriginalText {
+                        Text(originalText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.secondary.opacity(0.1))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    }
                 }
             }
 
@@ -302,8 +554,21 @@ struct RecordingCard: View {
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.center)
 
-            // Duration (only while recording)
-            if case .recording = state {
+            // Live streaming transcript (only while recording with streaming enabled)
+            if case .recording = state, let transcript = streamingTranscript, !transcript.isEmpty {
+                ScrollView {
+                    Text(transcript)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                }
+                .frame(maxHeight: 80)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            // Duration (only while recording, not in streaming mode)
+            if case .recording = state, streamingTranscript == nil {
                 Text(formattedDuration)
                     .font(.subheadline.monospaced())
                     .foregroundStyle(.secondary)
@@ -317,6 +582,40 @@ struct RecordingCard: View {
                     .lineLimit(3)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
+
+                // Return instructions
+                VStack(spacing: 16) {
+                    // Arrow pointing to top-left status bar
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.up.left")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(AppTheme.accent)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Tap \"← Back\" in status bar")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                            Text("Text copied & ready to paste")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.secondary.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    // Stay in app button
+                    Button(action: {
+                        HapticManager.lightTap()
+                        onTap() // Dismiss overlay, stay in SwiftSpeak
+                    }) {
+                        Text("Stay in SwiftSpeak")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 8)
             }
 
             // Action hint
@@ -386,9 +685,12 @@ struct RecordingCard: View {
     private var statusText: String {
         switch state {
         case .idle:
-            return "Tap to start"
+            return isEditMode ? "Describe your changes" : "Tap to start"
         case .recording:
-            if isTranslationEnabled && mode != .raw {
+            // Phase 12: Edit mode has special status
+            if isEditMode {
+                return "Describe your changes..."
+            } else if isTranslationEnabled && mode != .raw {
                 // Translate button + Mode selected
                 return "Transcribing & Translating\nwith \(mode.displayName) mode"
             } else if isTranslationEnabled {
@@ -402,7 +704,10 @@ struct RecordingCard: View {
                 return "Transcribing"
             }
         case .processing:
-            if isTranslationEnabled && mode != .raw {
+            // Phase 12: Edit mode processing status
+            if isEditMode {
+                return "Transcribing instructions..."
+            } else if isTranslationEnabled && mode != .raw {
                 return "Processing transcription,\ntranslation & \(mode.displayName) mode..."
             } else if isTranslationEnabled {
                 return "Processing transcription\n& translation..."
@@ -411,13 +716,17 @@ struct RecordingCard: View {
             }
             return "Processing transcription..."
         case .formatting:
+            // Phase 12: Edit mode formatting status
+            if isEditMode {
+                return "Applying your edits..."
+            }
             return "Applying \(mode.displayName) mode..."
         case .translating:
             return "Translating to \(targetLanguage.displayName)..."
         case .retrying(let attempt, let maxAttempts, let reason):
             return "Retrying (\(attempt)/\(maxAttempts))...\n\(reason)"
         case .complete:
-            return "Done!"
+            return isEditMode ? "Text edited!" : "Done!"
         case .error(let message):
             return message
         }

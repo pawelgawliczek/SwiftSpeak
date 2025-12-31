@@ -128,9 +128,9 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 icon: "💼",
                 color: PowerModeColorPreset.blue,
                 description: "Professional business communication",
-                toneDescription: "Professional and formal. Use proper business language and avoid casual expressions.",
+                toneDescription: "Professional formatting with proper punctuation.",
                 formality: ContextFormality.formal,
-                customInstructions: "Maintain professional tone. Use formal salutations and sign-offs in emails.",
+                customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use proper punctuation, capitalize appropriately. Do NOT rephrase, summarize, or change the content.",
                 isPreset: true
             ),
             ConversationContext(
@@ -139,9 +139,9 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 icon: "😊",
                 color: PowerModeColorPreset.green,
                 description: "Casual, friendly conversations",
-                toneDescription: "Casual and friendly. Use natural, conversational language.",
+                toneDescription: "Casual and friendly formatting.",
                 formality: ContextFormality.informal,
-                customInstructions: "Keep the tone relaxed and natural.",
+                customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use relaxed punctuation, add emoticons like 😊 🙂 👍 at the end of sentences. Do NOT rephrase, summarize, or change the content.",
                 isPreset: true
             ),
             ConversationContext(
@@ -150,9 +150,9 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 icon: "✨",
                 color: PowerModeColorPreset.purple,
                 description: "Creative writing and brainstorming",
-                toneDescription: "Creative and expressive. Encourage unique ideas and vivid language.",
+                toneDescription: "Expressive formatting.",
                 formality: ContextFormality.auto,
-                customInstructions: "Be creative and help with brainstorming. Use vivid, engaging language.",
+                customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use expressive punctuation (em dashes, ellipses). Do NOT rephrase, summarize, or change the content.",
                 isPreset: true
             )
         ]
