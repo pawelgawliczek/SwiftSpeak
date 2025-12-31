@@ -72,7 +72,7 @@ final class DeepgramStreamingService: NSObject, StreamingTranscriptionProvider {
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int) async throws {
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
@@ -93,6 +93,24 @@ final class DeepgramStreamingService: NSObject, StreamingTranscriptionProvider {
 
         if let language = language {
             queryItems.append(URLQueryItem(name: "language", value: language.rawValue))
+        }
+
+        // Extract keywords from transcription prompt for Deepgram word boosting
+        // Format: "Context: Work. Keywords: SwiftSpeak, API, transcription"
+        if let prompt = transcriptionPrompt, !prompt.isEmpty {
+            // Extract words after "Keywords:" if present, otherwise use all words
+            let keywordsSection = prompt.components(separatedBy: "Keywords:").last ?? prompt
+            let keywords = keywordsSection
+                .components(separatedBy: CharacterSet(charactersIn: ",.:"))
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0.count > 2 }
+                .prefix(20) // Limit to 20 keywords
+
+            for keyword in keywords {
+                // Add keyword with moderate boost (1.5)
+                queryItems.append(URLQueryItem(name: "keywords", value: "\(keyword):1.5"))
+            }
+            appLog("Deepgram keywords: \(Array(keywords).joined(separator: ", "))", category: "DeepgramStreaming")
         }
 
         components.queryItems = queryItems

@@ -52,6 +52,7 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
     private var isFinishing = false
     private var currentLanguage: Language?
+    private var currentTranscriptionPrompt: String?
     private var sessionConfigured = false
 
     /// Timer for periodic audio commits to get real-time transcription
@@ -93,8 +94,8 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int) async throws {
-        appLog("connect() called - language: \(language?.whisperCode ?? "auto"), sampleRate: \(sampleRate)", category: "OpenAIStreaming")
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
+        appLog("connect() called - language: \(language?.whisperCode ?? "auto"), sampleRate: \(sampleRate), prompt: \(transcriptionPrompt != nil ? "yes (\(transcriptionPrompt!.count) chars)" : "none")", category: "OpenAIStreaming")
 
         guard isConfigured else {
             appLog("API key not configured", category: "OpenAIStreaming", level: .error)
@@ -115,6 +116,7 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
         appLog("Connecting to: \(url.absoluteString)", category: "OpenAIStreaming")
         currentLanguage = language
+        currentTranscriptionPrompt = transcriptionPrompt
         connectionState = .connecting
         fullTranscript = ""
         isFinishing = false
@@ -161,15 +163,30 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     }
 
     private func configureSession(language: Language?) {
-        appLog("Configuring session with model: \(self.model), language: \(language?.whisperCode ?? "auto")", category: "OpenAIStreaming")
+        appLog("Configuring session with model: \(self.model), language: \(language?.whisperCode ?? "auto"), hasPrompt: \(currentTranscriptionPrompt != nil)", category: "OpenAIStreaming")
+
+        // Build transcription config
+        var transcriptionConfig: [String: Any] = [
+            "model": model
+        ]
+
+        // Add language if specified (omit for auto-detect)
+        if let lang = language?.whisperCode, !lang.isEmpty {
+            transcriptionConfig["language"] = lang
+        }
+
+        // Add transcription prompt if provided (context + vocabulary)
+        // This helps the model understand the context and recognize specific terms
+        if let prompt = currentTranscriptionPrompt, !prompt.isEmpty {
+            transcriptionConfig["prompt"] = prompt
+            appLog("Injecting transcription prompt: \(prompt.prefix(100))...", category: "OpenAIStreaming")
+        }
 
         // Build session configuration message
         // OpenAI Realtime API requires config wrapped in a "session" object
         var sessionConfig: [String: Any] = [
             "input_audio_format": "pcm16",
-            "input_audio_transcription": [
-                "model": model
-            ] as [String : Any],
+            "input_audio_transcription": transcriptionConfig,
             "turn_detection": [
                 "type": "server_vad",
                 "threshold": 0.5,           // Speech detection sensitivity (0.0-1.0)
@@ -177,13 +194,6 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
                 "silence_duration_ms": 300  // Shorter silence = faster transcript delivery
             ] as [String : Any]
         ]
-
-        // Add language if specified (omit for auto-detect)
-        if let lang = language?.whisperCode, !lang.isEmpty {
-            var transcriptionConfig = sessionConfig["input_audio_transcription"] as? [String: Any] ?? [:]
-            transcriptionConfig["language"] = lang
-            sessionConfig["input_audio_transcription"] = transcriptionConfig
-        }
 
         let config: [String: Any] = [
             "type": "transcription_session.update",

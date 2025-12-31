@@ -244,11 +244,14 @@ final class SwiftLinkSessionManager: ObservableObject {
                 // Subscribe to provider transcripts
                 setupStreamingProviderSubscriptions(provider)
 
-                // Connect to streaming service
+                // Connect to streaming service with context and vocabulary
                 let settings = SharedSettings.shared
+                let transcriptionPrompt = self.buildTranscriptionPrompt(settings: settings)
+
                 try await provider.connect(
                     language: settings.selectedDictationLanguage,
-                    sampleRate: streamingTargetSampleRate
+                    sampleRate: streamingTargetSampleRate,
+                    transcriptionPrompt: transcriptionPrompt
                 )
 
                 appLog("Streaming provider connected, forwarding audio from existing tap", category: "SwiftLink")
@@ -264,6 +267,46 @@ final class SwiftLinkSessionManager: ObservableObject {
                 startSegmentRecording()
             }
         }
+    }
+
+    /// Build transcription prompt from active context and vocabulary
+    /// - Returns: Prompt string for transcription providers, or nil if no context/vocabulary
+    private func buildTranscriptionPrompt(settings: SharedSettings) -> String? {
+        var hints: [String] = []
+
+        // Get active context
+        if let context = settings.activeContext {
+            // Add context name
+            hints.append("Context: \(context.name)")
+
+            // Add language hints from context
+            if !context.languageHints.isEmpty {
+                let languages = context.languageHints.map { $0.displayName }.joined(separator: ", ")
+                hints.append("This audio may contain: \(languages)")
+            }
+
+            // Add tone hint
+            if !context.toneDescription.isEmpty {
+                hints.append("Tone: \(context.toneDescription)")
+            }
+        }
+
+        // Add vocabulary words as keywords
+        let vocabWords = settings.vocabularyEntries
+            .filter { $0.isEnabled }
+            .map { $0.replacementWord }
+            .prefix(20)
+
+        if !vocabWords.isEmpty {
+            let words = vocabWords.joined(separator: ", ")
+            hints.append("Keywords: \(words)")
+        }
+
+        guard !hints.isEmpty else { return nil }
+
+        let prompt = hints.joined(separator: ". ") + "."
+        appLog("Built transcription prompt: \(prompt.prefix(100))...", category: "SwiftLink")
+        return prompt
     }
 
     /// Create streaming provider based on selected transcription provider
@@ -528,7 +571,61 @@ final class SwiftLinkSessionManager: ObservableObject {
             settings.lastTranscription = processedText
             UIPasteboard.general.string = processedText
 
-            appLog("Streaming result processed: \(processedText.count) chars", category: "SwiftLink")
+            // Build transcription prompt used for this session
+            let transcriptionPrompt = buildTranscriptionPrompt(settings: settings)
+
+            // Get active context info
+            let activeContext = settings.activeContext
+
+            // Build vocabulary words list
+            let vocabularyWords = settings.vocabularyEntries
+                .filter { $0.isEnabled }
+                .map { $0.replacementWord }
+
+            // Create history record with full metadata
+            let record = TranscriptionRecord(
+                rawTranscribedText: transcript,
+                text: processedText,
+                mode: mode,
+                provider: settings.selectedTranscriptionProvider,
+                timestamp: Date(),
+                duration: currentDictationDuration,
+                translated: settings.isTranslationEnabled,
+                targetLanguage: settings.isTranslationEnabled ? settings.selectedTargetLanguage : nil,
+                powerModeId: nil,
+                powerModeName: nil,
+                contextId: activeContext?.id,
+                contextName: activeContext?.name,
+                contextIcon: activeContext?.icon,
+                estimatedCost: nil,  // TODO: Calculate streaming cost
+                costBreakdown: nil,
+                processingMetadata: ProcessingMetadata(
+                    steps: [
+                        ProcessingStepInfo(
+                            stepType: .transcription,
+                            provider: settings.selectedTranscriptionProvider,
+                            modelName: "streaming",
+                            startTime: dictationStartTime ?? Date(),
+                            endTime: Date(),
+                            inputTokens: nil,
+                            outputTokens: nil,
+                            cost: 0,
+                            prompt: transcriptionPrompt
+                        )
+                    ],
+                    totalProcessingTime: currentDictationDuration,
+                    sourceLanguageHint: settings.selectedDictationLanguage,
+                    vocabularyApplied: vocabularyWords.isEmpty ? nil : vocabularyWords,
+                    memorySourcesUsed: activeContext != nil ? [activeContext!.name] : nil,
+                    ragDocumentsQueried: nil,
+                    webhooksExecuted: nil
+                ),
+                editContext: nil
+            )
+
+            settings.addTranscription(record)
+
+            appLog("Streaming result saved to history (\(processedText.count) chars)", category: "SwiftLink")
             DarwinNotificationManager.shared.postResultReady()
 
         } catch {

@@ -70,7 +70,7 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int) async throws {
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }
@@ -88,6 +88,27 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
         } else {
             // Enable automatic language detection
             queryItems.append(URLQueryItem(name: "language_detection", value: "true"))
+        }
+
+        // Extract keywords from transcription prompt for AssemblyAI word boosting
+        if let prompt = transcriptionPrompt, !prompt.isEmpty {
+            // Extract words after "Keywords:" if present
+            let keywordsSection = prompt.components(separatedBy: "Keywords:").last ?? prompt
+            let keywords = keywordsSection
+                .components(separatedBy: CharacterSet(charactersIn: ",.:"))
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty && $0.count > 2 }
+                .prefix(20)
+
+            if !keywords.isEmpty {
+                // AssemblyAI uses word_boost parameter with JSON array
+                let keywordArray = Array(keywords)
+                if let jsonData = try? JSONSerialization.data(withJSONObject: keywordArray),
+                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                    queryItems.append(URLQueryItem(name: "word_boost", value: jsonString))
+                }
+                appLog("AssemblyAI word_boost: \(keywordArray.joined(separator: ", "))", category: "AssemblyAIStreaming")
+            }
         }
 
         components.queryItems = queryItems
