@@ -213,16 +213,21 @@ struct ProviderSelectionIcon: View {
 // MARK: - App Icon View
 
 /// Displays an app icon from the AppLibrary
+/// Shows original brand colors with a subtle background, and a category indicator
 struct AppIcon: View {
     let app: AppInfo
     let size: ProviderIcon.IconSize
     let style: ProviderIcon.IconStyle
+    let showCategoryBadge: Bool
     private let hasCustomIcon: Bool
 
-    init(_ app: AppInfo, size: ProviderIcon.IconSize = .medium, style: ProviderIcon.IconStyle = .filled) {
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(_ app: AppInfo, size: ProviderIcon.IconSize = .medium, style: ProviderIcon.IconStyle = .filled, showCategoryBadge: Bool = false) {
         self.app = app
         self.size = size
         self.style = style
+        self.showCategoryBadge = showCategoryBadge
         // Pre-check if custom icon exists to avoid conditional Image init issues
         if let assetName = app.iconAssetName {
             self.hasCustomIcon = UIImage(named: assetName) != nil
@@ -231,45 +236,70 @@ struct AppIcon: View {
         }
     }
 
+    private var backgroundColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.05)
+    }
+
     var body: some View {
         ZStack {
-            // Background
+            // Subtle neutral background
             if style == .filled {
-                Circle()
-                    .fill(app.defaultCategory.color.gradient)
+                RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
+                    .fill(backgroundColor)
             } else if style == .outline {
-                Circle()
-                    .stroke(app.defaultCategory.color, lineWidth: 1.5)
+                RoundedRectangle(cornerRadius: size.cornerRadius, style: .continuous)
+                    .stroke(Color.secondary.opacity(0.3), lineWidth: 1)
             }
 
-            // Icon
+            // Icon in original colors
             iconImage
                 .frame(width: size.dimension * size.iconScale, height: size.dimension * size.iconScale)
-                .foregroundStyle(iconColor)
         }
         .frame(width: size.dimension, height: size.dimension)
+        .overlay(alignment: .bottomTrailing) {
+            // Optional category badge
+            if showCategoryBadge && size.dimension >= 40 {
+                categoryBadge
+            }
+        }
     }
 
     @ViewBuilder
     private var iconImage: some View {
         if hasCustomIcon, let assetName = app.iconAssetName {
             Image(assetName)
-                .renderingMode(.template)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
         } else {
+            // Fallback: SF Symbol with category color
             Image(systemName: app.defaultCategory.icon)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
+                .foregroundStyle(app.defaultCategory.color)
         }
     }
 
-    private var iconColor: Color {
-        switch style {
-        case .filled:
-            return .white
-        case .outline, .plain:
-            return app.defaultCategory.color
+    @ViewBuilder
+    private var categoryBadge: some View {
+        Circle()
+            .fill(app.defaultCategory.color)
+            .frame(width: size.dimension * 0.3, height: size.dimension * 0.3)
+            .overlay {
+                Image(systemName: app.defaultCategory.icon)
+                    .font(.system(size: size.dimension * 0.15, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .offset(x: 2, y: 2)
+    }
+}
+
+extension ProviderIcon.IconSize {
+    var cornerRadius: CGFloat {
+        switch self {
+        case .small: return 4
+        case .medium: return 6
+        case .large: return 10
+        case .extraLarge: return 14
         }
     }
 }
