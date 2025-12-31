@@ -17,6 +17,9 @@ struct ContentView: View {
     @State private var showPowerModeExecution = false
     @State private var selectedPowerModeId: UUID?
     @State private var showConfigUpdateSheet = false
+    @State private var editModeOriginalText: String? = nil  // Phase 12: Edit mode
+    @State private var showSwiftLinkQuickStart = false  // SwiftLink quick-start sheet
+    @State private var swiftLinkPreselectedApp: SwiftLinkApp? = nil  // Pre-selected app from keyboard
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -58,7 +61,17 @@ struct ContentView: View {
         }
         .tint(AppTheme.accent)
         .fullScreenCover(isPresented: $showRecording) {
-            RecordingView(isPresented: $showRecording, translateAfterRecording: translateOnRecord)
+            RecordingView(
+                isPresented: $showRecording,
+                translateAfterRecording: translateOnRecord,
+                editModeOriginalText: editModeOriginalText
+            )
+        }
+        .onChange(of: showRecording) { _, isShowing in
+            // Phase 12: Clear edit mode when recording view is dismissed
+            if !isShowing {
+                editModeOriginalText = nil
+            }
         }
         .onOpenURL { url in
             handleURLScheme(url)
@@ -82,6 +95,22 @@ struct ContentView: View {
                 ConfigUpdateSheet(changes: changes, isPresented: $showConfigUpdateSheet)
             }
         }
+        .sheet(isPresented: $showSwiftLinkQuickStart) {
+            SwiftLinkQuickStartSheet(
+                preselectedApp: swiftLinkPreselectedApp,
+                onSessionStarted: { urlScheme in
+                    // Return to the target app after session starts
+                    if let scheme = urlScheme {
+                        let returnURLString = scheme.contains("://") ? scheme : "\(scheme)://"
+                        if let returnURL = URL(string: returnURLString) {
+                            appLog("Returning to app via: \(returnURLString)", category: "SwiftLink")
+                            UIApplication.shared.open(returnURL)
+                        }
+                    }
+                }
+            )
+            .environmentObject(settings)
+        }
     }
 
     private func handleURLScheme(_ url: URL) {
@@ -95,16 +124,73 @@ struct ContentView: View {
         let queryItems = components?.queryItems ?? []
 
         // Handle SwiftLink start request
-        if url.host == "swiftlink" {
+        if url.host == Constants.URLHosts.swiftlink {
             appLog("SwiftLink start requested", category: "Navigation")
-            // Navigate to Settings tab and show SwiftLink setup
-            selectedTab = 1  // Settings tab
-            // The user will navigate to SwiftLink from there
+
+            // Parse app info from URL parameters
+            let appName = queryItems.first(where: { $0.name == "app" })?.value
+            let urlScheme = queryItems.first(where: { $0.name == "scheme" })?.value
+            let bundleId = queryItems.first(where: { $0.name == "bundleId" })?.value
+
+            // If we have all the info, auto-start the session and return immediately
+            if let name = appName, let bundle = bundleId, let scheme = urlScheme {
+                let targetApp = SwiftLinkApp(
+                    bundleId: bundle,
+                    name: name,
+                    urlScheme: scheme
+                )
+
+                // Auto-start SwiftLink session and return to app
+                Task {
+                    do {
+                        if let returnScheme = try await SwiftLinkSessionManager.shared.startSession(targetApp: targetApp) {
+                            // Return to the target app immediately
+                            let returnURLString = returnScheme.contains("://") ? returnScheme : "\(returnScheme)://"
+                            if let returnURL = URL(string: returnURLString) {
+                                appLog("SwiftLink auto-started, returning to: \(returnURLString)", category: "SwiftLink")
+                                await UIApplication.shared.open(returnURL)
+                            }
+                        }
+                    } catch {
+                        appLog("Failed to auto-start SwiftLink: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+                        // Fall back to showing the quick-start sheet
+                        await MainActor.run {
+                            swiftLinkPreselectedApp = targetApp
+                            showSwiftLinkQuickStart = true
+                        }
+                    }
+                }
+            } else {
+                // Missing info - show the quick-start sheet
+                if let name = appName, let bundle = bundleId {
+                    swiftLinkPreselectedApp = SwiftLinkApp(bundleId: bundle, name: name, urlScheme: urlScheme)
+                } else {
+                    swiftLinkPreselectedApp = nil
+                }
+                showSwiftLinkQuickStart = true
+            }
+            return
+        }
+
+        // Phase 12: Handle Edit Text request from keyboard
+        if url.host == Constants.URLHosts.edit {
+            let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+            let originalText = defaults?.string(forKey: Constants.EditMode.pendingEditText) ?? ""
+
+            // Clear after reading
+            defaults?.removeObject(forKey: Constants.EditMode.pendingEditText)
+
+            appLog("Edit mode requested (text: \(originalText.count) chars)", category: "Navigation")
+
+            // Set edit mode and show recording
+            editModeOriginalText = originalText
+            translateOnRecord = false
+            showRecording = true
             return
         }
 
         // Check if it's a power mode URL
-        if url.host == "powermode" {
+        if url.host == Constants.URLHosts.powermode {
             // Handle power mode launch from keyboard
             if let modeIdString = queryItems.first(where: { $0.name == "id" })?.value,
                let modeId = UUID(uuidString: modeIdString) {
@@ -159,7 +245,8 @@ struct HomeView: View {
     @State private var showDefaultsSettings = false
     @State private var showPaywall = false
     @State private var providerToSetup: AIProvider? = nil
-    @State private var showLanguagePicker = false
+    @State private var showTranslationPicker = false
+    @State private var isTranslationEnabled = false
 
     /// Whether the user has access to Pro features (contexts, modes, translation)
     private var hasProAccess: Bool {
@@ -206,33 +293,15 @@ struct HomeView: View {
                 VStack(spacing: 0) {
                     Spacer()
 
-                    // Action Buttons Area
+                    // Action Buttons Area - Arch Layout (matches keyboard)
                     if isProviderConfigured {
-                        VStack(spacing: 28) {
-                            // Primary Action Row - Context | Mic | Power Mode (matches keyboard)
-                            HStack(spacing: 0) {
-                                // Context selector (left) - available to all with presets
-                                HomeCompactButton(
-                                    icon: settings.activeContext?.icon ?? "👤",
-                                    title: settings.activeContext?.name ?? "Context",
-                                    accentColor: .purple
-                                ) {
-                                    HapticManager.lightTap()
-                                    showContextPicker = true
-                                }
-                                .frame(maxWidth: .infinity)
-
-                                // Main transcribe button - HERO element
-                                HomeMainActionButton {
-                                    HapticManager.mediumTap()
-                                    translateOnRecord = false
-                                    showRecording = true
-                                }
-
-                                // Power Mode selector (right) - Power tier only
-                                HomeCompactButton(
+                        VStack(spacing: 20) {
+                            // Arch layout container
+                            ZStack {
+                                // Power Mode button - directly above (12 o'clock)
+                                HomeArchButton(
                                     icon: "⚡️",
-                                    title: "Power",
+                                    label: "Power",
                                     isLocked: !hasPowerAccess,
                                     accentColor: .orange
                                 ) {
@@ -243,44 +312,45 @@ struct HomeView: View {
                                         showPaywall = true
                                     }
                                 }
-                                .frame(maxWidth: .infinity)
-                            }
-                            .padding(.horizontal, 20)
+                                .offset(y: -100)
 
-                            // Secondary Actions Row - Translate | Language (matches keyboard)
-                            HStack(spacing: 16) {
-                                // Translate button
-                                HomeSecondaryButton(
-                                    icon: "globe",
-                                    title: "Translate",
-                                    color: .pink,
-                                    isLocked: !hasTranslationAccess
-                                ) {
-                                    if hasTranslationAccess {
-                                        HapticManager.mediumTap()
-                                        translateOnRecord = true
-                                        showRecording = true
-                                    } else {
-                                        showPaywall = true
-                                    }
-                                }
-
-                                // Language selector
-                                HomeSecondaryButton(
-                                    icon: "character.bubble",
-                                    title: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTargetLanguage.displayName)",
-                                    color: .blue,
-                                    isLocked: !hasTranslationAccess
+                                // Translate button - 10:30 position (lower-left)
+                                HomeArchButton(
+                                    icon: isTranslationEnabled ? settings.selectedTargetLanguage.flag : "🌐",
+                                    label: isTranslationEnabled ? settings.selectedTargetLanguage.displayName : "Translate",
+                                    isActive: isTranslationEnabled,
+                                    isLocked: !hasTranslationAccess,
+                                    accentColor: .pink
                                 ) {
                                     if hasTranslationAccess {
                                         HapticManager.lightTap()
-                                        showLanguagePicker = true
+                                        showTranslationPicker = true
                                     } else {
                                         showPaywall = true
                                     }
                                 }
+                                .offset(x: -100, y: -50)
+
+                                // Context button - 1:30 position (lower-right)
+                                HomeArchButton(
+                                    icon: settings.activeContext?.icon ?? "👤",
+                                    label: settings.activeContext?.name ?? "Context",
+                                    isActive: settings.activeContext != nil,
+                                    accentColor: .purple
+                                ) {
+                                    HapticManager.lightTap()
+                                    showContextPicker = true
+                                }
+                                .offset(x: 100, y: -50)
+
+                                // Main transcribe button at center - HERO element
+                                HomeMainActionButton(isTranslationEnabled: isTranslationEnabled) {
+                                    HapticManager.mediumTap()
+                                    translateOnRecord = isTranslationEnabled
+                                    showRecording = true
+                                }
                             }
-                            .padding(.horizontal, 20)
+                            .frame(height: 200) // Give space for arch layout
 
                             // Provider info (subtle)
                             Button(action: {
@@ -331,9 +401,12 @@ struct HomeView: View {
                 ContextPickerSheet()
                     .presentationDetents([.medium, .large])
             }
-            .sheet(isPresented: $showLanguagePicker) {
-                LanguagePickerSheet(selectedLanguage: $settings.selectedTargetLanguage)
-                    .presentationDetents([.medium, .large])
+            .sheet(isPresented: $showTranslationPicker) {
+                TranslationPickerSheet(
+                    isTranslationEnabled: $isTranslationEnabled,
+                    selectedLanguage: $settings.selectedTargetLanguage
+                )
+                .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showDefaultsSettings) {
                 DefaultsSettingsSheet()
@@ -1243,22 +1316,288 @@ struct HomeCompactButton: View {
     }
 }
 
+/// SwiftSpeak logo view for main app (matches keyboard)
+struct SwiftSpeakLogoView: View {
+    var body: some View {
+        if let uiImage = UIImage(named: "SwiftSpeakLogo") {
+            // Use actual logo (rendered as template for tinting)
+            Image(uiImage: uiImage)
+                .renderingMode(.template)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        } else {
+            // Fallback to mic icon
+            Image(systemName: "mic.fill")
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+        }
+    }
+}
+
+/// Arch-style button for home screen (matches keyboard layout)
+struct HomeArchButton: View {
+    let icon: String
+    let label: String
+    var isActive: Bool = false
+    var isLocked: Bool = false
+    var accentColor: Color = .white
+
+    let action: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var background: Color {
+        if isActive {
+            return accentColor.opacity(0.25)
+        }
+        return colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08)
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(background)
+                        .frame(width: 52, height: 52)
+
+                    if icon.count <= 2 {
+                        Text(icon)
+                            .font(.system(size: 22))
+                            .opacity(isLocked ? 0.4 : 1.0)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.system(size: 18, weight: .medium))
+                            .foregroundStyle(isLocked ? .secondary : .primary)
+                    }
+
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.secondary)
+                            .offset(x: 16, y: 16)
+                    }
+                }
+
+                Text(label)
+                    .font(.caption2.weight(.medium))
+                    .foregroundStyle(isLocked ? .secondary : .primary)
+                    .lineLimit(1)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// Main transcribe button - hero element
 struct HomeMainActionButton: View {
+    var isTranslationEnabled: Bool = false
     let action: () -> Void
+
+    private var buttonGradient: LinearGradient {
+        if isTranslationEnabled {
+            return LinearGradient(colors: [.pink, .pink.opacity(0.8)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        }
+        return AppTheme.accentGradient
+    }
+
+    private var glowColor: Color {
+        isTranslationEnabled ? .pink : AppTheme.accent
+    }
 
     var body: some View {
         Button(action: action) {
             ZStack {
+                // Outer glow
                 Circle()
-                    .fill(AppTheme.accentGradient)
-                    .frame(width: 88, height: 88)
-                    .shadow(color: AppTheme.accent.opacity(0.4), radius: 16, y: 4)
+                    .fill(glowColor.opacity(0.15))
+                    .frame(width: 110, height: 110)
+                    .blur(radius: 8)
 
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 32))
+                // Main button
+                Circle()
+                    .fill(buttonGradient)
+                    .frame(width: 80, height: 80)
+                    .shadow(color: glowColor.opacity(0.4), radius: 16, y: 4)
+
+                // Logo
+                SwiftSpeakLogoView()
+                    .frame(width: 105, height: 105)
                     .foregroundStyle(.white)
+
+                // Translation indicator badge
+                if isTranslationEnabled {
+                    Circle()
+                        .fill(.pink)
+                        .frame(width: 20, height: 20)
+                        .overlay(
+                            Image(systemName: "globe")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                        )
+                        .offset(x: 30, y: -30)
+                }
             }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Translation Picker Sheet
+struct TranslationPickerSheet: View {
+    @Binding var isTranslationEnabled: Bool
+    @Binding var selectedLanguage: Language
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) var colorScheme
+
+    private var backgroundColor: Color {
+        colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                backgroundColor.ignoresSafeArea()
+                scrollContent
+            }
+            .navigationTitle("Translation")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
+                }
+            }
+        }
+    }
+
+    private var scrollContent: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                noTranslationOption
+                dividerLabel
+                languageOptions
+            }
+            .padding(20)
+        }
+    }
+
+    private var noTranslationOption: some View {
+        TranslationOptionCard(
+            icon: "xmark.circle",
+            iconIsEmoji: false,
+            name: "No Translation",
+            description: "Transcribe without translation",
+            color: .secondary,
+            isSelected: !isTranslationEnabled,
+            onTap: {
+                HapticManager.selection()
+                isTranslationEnabled = false
+                dismiss()
+            }
+        )
+    }
+
+    private var dividerLabel: some View {
+        HStack {
+            Rectangle()
+                .fill(Color.secondary.opacity(0.3))
+                .frame(height: 1)
+            Text("TRANSLATE TO")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .tracking(1)
+            Rectangle()
+                .fill(Color.secondary.opacity(0.3))
+                .frame(height: 1)
+        }
+        .padding(.vertical, 8)
+    }
+
+    private var languageOptions: some View {
+        ForEach(Language.allCases, id: \.self) { language in
+            TranslationOptionCard(
+                icon: language.flag,
+                iconIsEmoji: true,
+                name: language.displayName,
+                description: "",
+                color: .pink,
+                isSelected: isTranslationEnabled && selectedLanguage == language,
+                onTap: {
+                    HapticManager.selection()
+                    selectedLanguage = language
+                    isTranslationEnabled = true
+                    dismiss()
+                }
+            )
+        }
+    }
+}
+
+// MARK: - Translation Option Card
+struct TranslationOptionCard: View {
+    let icon: String
+    let iconIsEmoji: Bool
+    let name: String
+    let description: String
+    let color: Color
+    let isSelected: Bool
+    let onTap: () -> Void
+
+    @Environment(\.colorScheme) var colorScheme
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.white
+    }
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 14) {
+                // Icon
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.15))
+                        .frame(width: 48, height: 48)
+
+                    if iconIsEmoji {
+                        Text(icon)
+                            .font(.title2)
+                    } else {
+                        Image(systemName: icon)
+                            .font(.title3)
+                            .foregroundStyle(color)
+                    }
+                }
+
+                // Text
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(name)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(.primary)
+
+                    if !description.isEmpty {
+                        Text(description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer()
+
+                // Selection indicator
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.title3)
+                        .foregroundStyle(color)
+                }
+            }
+            .padding(16)
+            .background(cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? color.opacity(0.5) : Color.clear, lineWidth: 2)
+            )
         }
         .buttonStyle(.plain)
     }

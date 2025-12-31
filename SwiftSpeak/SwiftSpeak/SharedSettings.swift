@@ -65,6 +65,17 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Source language for dictation/transcription (nil = auto-detect)
+    @Published var selectedDictationLanguage: Language? = nil {
+        didSet {
+            if let lang = selectedDictationLanguage {
+                defaults?.set(lang.rawValue, forKey: Constants.Keys.selectedDictationLanguage)
+            } else {
+                defaults?.removeObject(forKey: Constants.Keys.selectedDictationLanguage)
+            }
+        }
+    }
+
     @Published var isTranslationEnabled: Bool = false {
         didSet {
             defaults?.set(isTranslationEnabled, forKey: Constants.Keys.isTranslationEnabled)
@@ -150,6 +161,14 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Whether transcription streaming is enabled (live text as you speak)
+    /// Requires a streaming-capable provider (OpenAI Realtime, Deepgram, AssemblyAI)
+    @Published var transcriptionStreamingEnabled: Bool = false {
+        didSet {
+            defaults?.set(transcriptionStreamingEnabled, forKey: Constants.Keys.transcriptionStreamingEnabled)
+        }
+    }
+
     // MARK: - Phase 6: Security & Privacy
 
     /// Whether biometric protection (Face ID/Touch ID) is required for Settings and History
@@ -227,6 +246,22 @@ class SharedSettings: ObservableObject {
     @Published var forcePrivacyMode: Bool = false {
         didSet {
             defaults?.set(forcePrivacyMode, forKey: Constants.Keys.forcePrivacyMode)
+        }
+    }
+
+    // MARK: - SwiftLink: Background Dictation Sessions
+
+    /// Apps configured for SwiftLink
+    @Published var swiftLinkApps: [SwiftLinkApp] = [] {
+        didSet {
+            saveSwiftLinkApps()
+        }
+    }
+
+    /// SwiftLink session duration setting
+    @Published var swiftLinkSessionDuration: Constants.SwiftLinkSessionDuration = .fifteenMinutes {
+        didSet {
+            defaults?.set(swiftLinkSessionDuration.rawValue, forKey: Constants.Keys.swiftLinkSessionDuration)
         }
     }
 
@@ -352,19 +387,27 @@ class SharedSettings: ObservableObject {
         set { defaults?.set(newValue, forKey: Constants.Keys.lastTranscription) }
     }
 
-    var transcriptionHistory: [TranscriptionRecord] {
-        get {
-            guard let data = defaults?.data(forKey: Constants.Keys.transcriptionHistory),
-                  let records = try? JSONDecoder().decode([TranscriptionRecord].self, from: data) else {
-                return []
-            }
-            return records
+    // Cached transcription history - loaded once, saved on change
+    // Previously was computed property that decoded JSON every access, causing performance issues
+    @Published var transcriptionHistory: [TranscriptionRecord] = [] {
+        didSet {
+            saveTranscriptionHistory()
         }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                defaults?.set(data, forKey: Constants.Keys.transcriptionHistory)
-            }
+    }
+
+    private func saveTranscriptionHistory() {
+        if let data = try? JSONEncoder().encode(transcriptionHistory) {
+            defaults?.set(data, forKey: Constants.Keys.transcriptionHistory)
         }
+    }
+
+    private func loadTranscriptionHistory() {
+        guard let data = defaults?.data(forKey: Constants.Keys.transcriptionHistory),
+              let records = try? JSONDecoder().decode([TranscriptionRecord].self, from: data) else {
+            transcriptionHistory = []
+            return
+        }
+        transcriptionHistory = records
     }
 
     var vocabulary: [VocabularyEntry] {
@@ -415,10 +458,16 @@ class SharedSettings: ObservableObject {
             selectedMode = mode
         }
 
-        // Load language
+        // Load target language
         if let langRaw = defaults?.string(forKey: Constants.Keys.selectedTargetLanguage),
            let lang = Language(rawValue: langRaw) {
             selectedTargetLanguage = lang
+        }
+
+        // Load dictation language (nil = auto-detect)
+        if let dictLangRaw = defaults?.string(forKey: Constants.Keys.selectedDictationLanguage),
+           let dictLang = Language(rawValue: dictLangRaw) {
+            selectedDictationLanguage = dictLang
         }
 
         // Load translation enabled
@@ -446,10 +495,21 @@ class SharedSettings: ObservableObject {
         loadPowerModes()
         loadHistoryMemory()
 
+        // Load transcription history (cached, not computed on every access)
+        loadTranscriptionHistory()
+
         // Load global memory (3-tier system)
         globalMemory = defaults?.string(forKey: Constants.Keys.globalMemory)
         if defaults?.object(forKey: Constants.Keys.globalMemoryEnabled) != nil {
             globalMemoryEnabled = defaults?.bool(forKey: Constants.Keys.globalMemoryEnabled) ?? true
+        }
+
+        // Load streaming settings
+        if defaults?.object(forKey: Constants.Keys.powerModeStreamingEnabled) != nil {
+            powerModeStreamingEnabled = defaults?.bool(forKey: Constants.Keys.powerModeStreamingEnabled) ?? true
+        }
+        if defaults?.object(forKey: Constants.Keys.transcriptionStreamingEnabled) != nil {
+            transcriptionStreamingEnabled = defaults?.bool(forKey: Constants.Keys.transcriptionStreamingEnabled) ?? false
         }
 
         // Load user app category overrides
@@ -475,10 +535,13 @@ class SharedSettings: ObservableObject {
             dataRetentionPeriod = retention
         }
 
-        // Load active context ID
+        // Load active context ID (default to Work preset if not set)
         if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
            let contextId = UUID(uuidString: contextIdString) {
             activeContextId = contextId
+        } else {
+            // Default to Work preset context
+            activeContextId = ConversationContext.presets.first(where: { $0.name == "Work" })?.id
         }
 
         // Load selected providers
@@ -530,6 +593,14 @@ class SharedSettings: ObservableObject {
 
         // Clean up expired pending audio on launch
         cleanupExpiredPendingAudio()
+
+        // Load SwiftLink settings
+        loadSwiftLinkApps()
+        if let durationRaw = defaults?.integer(forKey: Constants.Keys.swiftLinkSessionDuration),
+           durationRaw != 0 || defaults?.object(forKey: Constants.Keys.swiftLinkSessionDuration) != nil,
+           let duration = Constants.SwiftLinkSessionDuration(rawValue: durationRaw) {
+            swiftLinkSessionDuration = duration
+        }
     }
 
     // MARK: - AI Provider Management
@@ -546,20 +617,28 @@ class SharedSettings: ObservableObject {
             }
             configuredAIProviders = providers
         } else {
-            // Default: OpenAI with all capabilities
-            // Check if there's a legacy key in Keychain or UserDefaults
-            var apiKey = ""
+            // No saved providers - check for legacy API key migration
+            // If user has a legacy OpenAI key, migrate it to the new system
+            var legacyApiKey = ""
             if let keychainKey = try? keychainManager.retrieve(key: KeychainKeys.openAI), !keychainKey.isEmpty {
-                apiKey = keychainKey
+                legacyApiKey = keychainKey
             } else if let legacyKey = openAIAPIKey, !legacyKey.isEmpty {
-                apiKey = legacyKey
+                legacyApiKey = legacyKey
             }
-            let defaultConfig = AIProviderConfig(
-                provider: .openAI,
-                apiKey: apiKey,
-                usageCategories: [.transcription, .translation, .powerMode]
-            )
-            configuredAIProviders = [defaultConfig]
+
+            // Only add OpenAI by default if there's an existing API key (migration case)
+            // New users start with an empty list and choose their first provider
+            if !legacyApiKey.isEmpty {
+                let defaultConfig = AIProviderConfig(
+                    provider: .openAI,
+                    apiKey: legacyApiKey,
+                    usageCategories: [.transcription, .translation, .powerMode]
+                )
+                configuredAIProviders = [defaultConfig]
+            } else {
+                // New users: start with empty list, let them choose OpenAI or Gemini
+                configuredAIProviders = []
+            }
         }
     }
 
@@ -575,9 +654,10 @@ class SharedSettings: ObservableObject {
         }
 
         // Save configs without API keys to UserDefaults
+        // Use "configured" marker so keyboard can detect configured providers
         var sanitizedConfigs = configuredAIProviders
         for i in sanitizedConfigs.indices {
-            sanitizedConfigs[i].apiKey = "" // Clear before serialization
+            sanitizedConfigs[i].apiKey = sanitizedConfigs[i].apiKey.isEmpty ? "" : "configured"
         }
         if let data = try? JSONEncoder().encode(sanitizedConfigs) {
             defaults?.set(data, forKey: Constants.Keys.configuredAIProviders)
@@ -723,6 +803,55 @@ class SharedSettings: ObservableObject {
 
     func resetOnboarding() {
         hasCompletedOnboarding = false
+        // Also reset the persisted onboarding page
+        UserDefaults.standard.removeObject(forKey: "onboardingCurrentPage")
+    }
+
+    /// Reset all settings to defaults (for debugging)
+    func resetAllSettings() {
+        // Clear all API keys from keychain
+        for provider in AIProvider.allCases where !provider.isLocalProvider {
+            let key = KeychainKeys.key(for: provider)
+            try? keychainManager.delete(key: key)
+        }
+
+        // Reset all published properties to defaults
+        hasCompletedOnboarding = false
+        configuredAIProviders = []
+        selectedMode = .raw
+        selectedTargetLanguage = .spanish
+        isTranslationEnabled = false
+        autoReturnEnabled = true
+        transcriptionHistory = []
+        vocabulary = []
+        customTemplates = []
+        webhooks = []
+        contexts = []
+        activeContextId = nil
+        powerModes = []
+        globalMemory = nil
+        globalMemoryEnabled = true
+        biometricProtectionEnabled = false
+        dataRetentionPeriod = .never
+        whisperKitConfig = .default
+        appleIntelligenceConfig = .default
+        appleTranslationConfig = .default
+        forcePrivacyMode = false
+        knowledgeDocuments = []
+        pendingAudioQueue = []
+        userAppCategoryOverrides = []
+
+        // Clear UserDefaults
+        if let bundleId = Bundle.main.bundleIdentifier {
+            defaults?.removePersistentDomain(forName: bundleId)
+        }
+
+        // Clear shared App Group defaults
+        if let sharedDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier) {
+            sharedDefaults.removePersistentDomain(forName: Constants.appGroupIdentifier)
+        }
+
+        appLog("All settings have been reset", category: "Data")
     }
 
     func hasValidAPIKey(for provider: AIProvider) -> Bool {
@@ -784,8 +913,12 @@ class SharedSettings: ObservableObject {
 
     private func loadContexts() {
         if let data = defaults?.data(forKey: Constants.Keys.contexts),
-           let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
+           let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data),
+           !loadedContexts.isEmpty {
             contexts = loadedContexts
+        } else {
+            // Initialize with preset contexts if none saved
+            contexts = ConversationContext.presets
         }
     }
 
@@ -815,12 +948,14 @@ class SharedSettings: ObservableObject {
     }
 
     func getContext(id: UUID) -> ConversationContext? {
-        contexts.first { $0.id == id }
+        // Check user-created contexts first, then presets
+        contexts.first { $0.id == id } ?? ConversationContext.presets.first { $0.id == id }
     }
 
     var activeContext: ConversationContext? {
         guard let id = activeContextId else { return nil }
-        return contexts.first { $0.id == id }
+        // Check user-created contexts first, then presets
+        return contexts.first { $0.id == id } ?? ConversationContext.presets.first { $0.id == id }
     }
 
     func setActiveContext(_ context: ConversationContext?) {
@@ -1434,6 +1569,63 @@ class SharedSettings: ObservableObject {
             return String(format: "%.1f MB", bytes / (1024 * 1024))
         } else {
             return String(format: "%.1f GB", bytes / (1024 * 1024 * 1024))
+        }
+    }
+
+    // MARK: - SwiftLink App Management
+
+    private func loadSwiftLinkApps() {
+        if let data = defaults?.data(forKey: Constants.Keys.swiftLinkApps),
+           let apps = try? JSONDecoder().decode([SwiftLinkApp].self, from: data) {
+            swiftLinkApps = apps
+        }
+    }
+
+    private func saveSwiftLinkApps() {
+        if let data = try? JSONEncoder().encode(swiftLinkApps) {
+            defaults?.set(data, forKey: Constants.Keys.swiftLinkApps)
+        }
+    }
+
+    /// Add an app to SwiftLink
+    func addSwiftLinkApp(_ app: SwiftLinkApp) {
+        guard !swiftLinkApps.contains(where: { $0.bundleId == app.bundleId }) else { return }
+        swiftLinkApps.append(app)
+    }
+
+    /// Add an app to SwiftLink from AppInfo
+    func addSwiftLinkApp(from appInfo: AppInfo) {
+        let app = SwiftLinkApp(from: appInfo)
+        addSwiftLinkApp(app)
+    }
+
+    /// Remove an app from SwiftLink
+    func removeSwiftLinkApp(bundleId: String) {
+        swiftLinkApps.removeAll { $0.bundleId == bundleId }
+    }
+
+    /// Check if an app is configured for SwiftLink
+    func isSwiftLinkApp(bundleId: String) -> Bool {
+        swiftLinkApps.contains { $0.bundleId == bundleId }
+    }
+
+    /// Get SwiftLink app by bundle ID
+    func getSwiftLinkApp(bundleId: String) -> SwiftLinkApp? {
+        swiftLinkApps.first { $0.bundleId == bundleId }
+    }
+
+    /// Get last used SwiftLink app
+    var lastUsedSwiftLinkApp: SwiftLinkApp? {
+        guard let data = defaults?.data(forKey: Constants.Keys.swiftLinkLastUsedApp),
+              let app = try? JSONDecoder().decode(SwiftLinkApp.self, from: data)
+        else { return nil }
+        return app
+    }
+
+    /// Save last used SwiftLink app
+    func setLastUsedSwiftLinkApp(_ app: SwiftLinkApp) {
+        if let data = try? JSONEncoder().encode(app) {
+            defaults?.set(data, forKey: Constants.Keys.swiftLinkLastUsedApp)
         }
     }
 }

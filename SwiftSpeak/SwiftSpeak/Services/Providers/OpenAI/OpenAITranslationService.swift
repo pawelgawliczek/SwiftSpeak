@@ -191,35 +191,34 @@ private struct TranslationChatRequest: Encodable {
 
 private struct TranslationMessage: Codable {
     let role: String
-    let content: String
+    let content: String?  // Content can be null in some API responses
+
+    // Use manual coding keys to ignore extra fields
+    enum CodingKeys: String, CodingKey {
+        case role
+        case content
+    }
+
+    init(role: String, content: String) {
+        self.role = role
+        self.content = content
+    }
 }
 
 private struct TranslationChatResponse: Decodable {
-    let id: String
     let choices: [TranslationChoice]
-    let usage: TranslationUsage?
 
-    struct TranslationChoice: Decodable {
-        let index: Int
-        let message: TranslationMessage
-        let finishReason: String?
-
-        enum CodingKeys: String, CodingKey {
-            case index
-            case message
-            case finishReason = "finish_reason"
-        }
+    // Only decode what we need, ignore other fields
+    enum CodingKeys: String, CodingKey {
+        case choices
     }
 
-    struct TranslationUsage: Decodable {
-        let promptTokens: Int
-        let completionTokens: Int
-        let totalTokens: Int
+    struct TranslationChoice: Decodable {
+        let message: TranslationMessage
 
+        // Only decode message, ignore index and finish_reason
         enum CodingKeys: String, CodingKey {
-            case promptTokens = "prompt_tokens"
-            case completionTokens = "completion_tokens"
-            case totalTokens = "total_tokens"
+            case message
         }
     }
 }
