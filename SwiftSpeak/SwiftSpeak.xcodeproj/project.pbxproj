@@ -69,10 +69,26 @@
 		83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Services/Logging/SharedLogManager.swift,
 				Shared/AppLibrary.swift,
 				Shared/Constants.swift,
 				Shared/Models.swift,
+				Shared/Models/AIProvider.swift,
+				Shared/Models/AIProviderConfig.swift,
+				Shared/Models/Context.swift,
+				Shared/Models/Cost.swift,
+				Shared/Models/FormattingMode.swift,
+				Shared/Models/Knowledge.swift,
+				Shared/Models/Language.swift,
+				Shared/Models/LocalProvider.swift,
+				Shared/Models/PendingAudio.swift,
+				Shared/Models/PowerMode.swift,
+				Shared/Models/Processing.swift,
+				Shared/Models/ProviderSelection.swift,
+				Shared/Models/RAG.swift,
+				Shared/Models/Subscription.swift,
+				Shared/Models/Transcription.swift,
+				Shared/Models/Vocabulary.swift,
+				Shared/Models/Webhook.swift,
 				Shared/ProviderHelpContent.swift,
 				Shared/ProviderLanguageSupport.swift,
 				Shared/Theme.swift,
@@ -92,8 +108,8 @@
 		83ED79172EFE4CB900880604 /* SwiftSpeak */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */,
 				83ED79802F03000000880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeak" target */,
+				83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */,
 			);
 			path = SwiftSpeak;
 			sourceTree = "<group>";
