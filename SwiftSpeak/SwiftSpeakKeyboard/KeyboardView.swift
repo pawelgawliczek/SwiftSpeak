@@ -1678,7 +1678,10 @@ class KeyboardViewModel: ObservableObject {
     // SwiftLink timeout handling
     private var swiftLinkTimeoutTimer: Timer?
     private var swiftLinkStatusCheckTimer: Timer?
-    private static let swiftLinkTimeoutSeconds: TimeInterval = 5.0
+    /// Timeout for processing phase (after user stops speaking)
+    private static let swiftLinkProcessingTimeoutSeconds: TimeInterval = 30.0
+    /// Timeout during recording (much longer - just to detect app crashes)
+    private static let swiftLinkRecordingTimeoutSeconds: TimeInterval = 300.0  // 5 minutes
     private static let swiftLinkMaxSessionAge: TimeInterval = 600.0  // 10 minutes max session age
     private static let swiftLinkStatusCheckInterval: TimeInterval = 30.0  // Check every 30 seconds
 
@@ -1884,7 +1887,7 @@ class KeyboardViewModel: ObservableObject {
             isSwiftLinkRecording = true
             darwinManager.postDictationStart()
             swiftLinkProcessingStatus = "recording"
-            startSwiftLinkTimeout()  // Start timeout to detect stale session
+            startSwiftLinkTimeout(forRecording: true)  // Long timeout during recording (crash detection)
             keyboardLog("SwiftLink dictation started", category: "SwiftLink")
         }
     }
@@ -1898,18 +1901,24 @@ class KeyboardViewModel: ObservableObject {
         cancelSwiftLinkTimeout()
         darwinManager.postDictationStop()
         swiftLinkProcessingStatus = "processing"
-        startSwiftLinkTimeout()  // Start timeout for processing phase
+        startSwiftLinkTimeout(forRecording: false)  // Short timeout for processing phase
         keyboardLog("SwiftLink dictation stopped", category: "SwiftLink")
     }
 
     // MARK: - SwiftLink Timeout Handling
 
-    private func startSwiftLinkTimeout() {
+    /// Whether current timeout is for recording phase (vs processing phase)
+    private var isRecordingTimeout = false
+
+    private func startSwiftLinkTimeout(forRecording: Bool) {
         cancelSwiftLinkTimeout()
 
-        keyboardLog("SwiftLink timeout started (\(Self.swiftLinkTimeoutSeconds)s)", category: "SwiftLink")
+        isRecordingTimeout = forRecording
+        let timeoutSeconds = forRecording ? Self.swiftLinkRecordingTimeoutSeconds : Self.swiftLinkProcessingTimeoutSeconds
 
-        swiftLinkTimeoutTimer = Timer.scheduledTimer(withTimeInterval: Self.swiftLinkTimeoutSeconds, repeats: false) { [weak self] _ in
+        keyboardLog("SwiftLink timeout started (\(timeoutSeconds)s, \(forRecording ? "recording" : "processing") phase)", category: "SwiftLink")
+
+        swiftLinkTimeoutTimer = Timer.scheduledTimer(withTimeInterval: timeoutSeconds, repeats: false) { [weak self] _ in
             DispatchQueue.main.async {
                 self?.handleSwiftLinkTimeout()
             }
@@ -1925,11 +1934,13 @@ class KeyboardViewModel: ObservableObject {
     }
 
     private func handleSwiftLinkTimeout() {
-        keyboardLog("SwiftLink TIMEOUT - no response from main app after \(Self.swiftLinkTimeoutSeconds)s", category: "SwiftLink", level: .warning)
+        let timeoutSeconds = isRecordingTimeout ? Self.swiftLinkRecordingTimeoutSeconds : Self.swiftLinkProcessingTimeoutSeconds
+        let phase = isRecordingTimeout ? "recording" : "processing"
+        keyboardLog("SwiftLink TIMEOUT - no response from main app after \(timeoutSeconds)s (\(phase) phase)", category: "SwiftLink", level: .warning)
         keyboardLog("Session state before timeout: active=\(isSwiftLinkSessionActive), recording=\(isSwiftLinkRecording)", category: "SwiftLink", level: .warning)
 
         // Mark session as inactive
-        markSwiftLinkAsStale(reason: "Timeout - no response from main app")
+        markSwiftLinkAsStale(reason: "Timeout - no response from main app (\(phase) phase)")
     }
 
     /// Verify SwiftLink session is still valid before using it.
@@ -2472,8 +2483,8 @@ class KeyboardViewModel: ObservableObject {
         isSwiftLinkRecording = true
         swiftLinkProcessingStatus = "recording"
 
-        // Start timeout to detect stale session
-        startSwiftLinkTimeout()
+        // Start timeout to detect stale session (long timeout for recording)
+        startSwiftLinkTimeout(forRecording: true)
 
         // Send startEdit notification (different from startDictation)
         darwinManager.post(name: Constants.SwiftLinkNotifications.startEdit)
