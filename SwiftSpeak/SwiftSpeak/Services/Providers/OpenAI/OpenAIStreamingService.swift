@@ -207,13 +207,13 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         // Build turn detection configuration
         // Semantic VAD is better for transcription as it chunks based on semantic meaning
         // Server VAD uses simple silence detection which can clip words
+        // Note: For transcription-only sessions (intent=transcription), only basic VAD params are supported
+        // create_response and interrupt_response are NOT supported (conversation mode only)
         let turnDetection: [String: Any]
         if useSemanticVAD {
             turnDetection = [
                 "type": "semantic_vad",
-                "eagerness": "medium",       // Balance between speed and accuracy (low/medium/high/auto)
-                "create_response": false,    // We don't need model responses, just transcription
-                "interrupt_response": false
+                "eagerness": "medium"       // Balance between speed and accuracy (low/medium/high/auto)
             ]
             appLog("Using semantic_vad with eagerness: medium", category: "OpenAIStreaming")
         } else {
