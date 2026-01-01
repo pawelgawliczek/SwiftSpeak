@@ -129,33 +129,36 @@ struct SpaceBar: View {
 
 // MARK: - Cursor Mode Overlay
 
-/// Visual indicator showing cursor control is active
+/// Visual indicator showing cursor control is active - arrows at edges, logo stays visible
 struct CursorModeOverlay: View {
     var body: some View {
-        HStack(spacing: 12) {
+        HStack {
+            // Left arrow at far left edge
             Image(systemName: "chevron.left")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(KeyboardTheme.accent)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(KeyboardTheme.accent.opacity(0.2))
+                )
 
-            Image(systemName: "arrow.left.and.right")
-                .font(.system(size: 16, weight: .medium))
-                .foregroundStyle(KeyboardTheme.accent)
+            Spacer()
 
+            // Right arrow at far right edge
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(KeyboardTheme.accent)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(KeyboardTheme.accent.opacity(0.2))
+                )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(
-            Capsule()
-                .fill(KeyboardTheme.accent.opacity(0.2))
-        )
-        .overlay(
-            Capsule()
-                .strokeBorder(KeyboardTheme.accent.opacity(0.4), lineWidth: 1)
-        )
-        .transition(.scale.combined(with: .opacity))
+        .padding(.horizontal, 8)
+        .transition(.opacity)
     }
 }
 
