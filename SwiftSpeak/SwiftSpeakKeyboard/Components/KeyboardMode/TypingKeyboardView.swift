@@ -29,7 +29,7 @@ struct TypingKeyboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Phase 13.10: Show quick settings, emoji panel, or regular keyboard
+            // Phase 13.10: Show quick settings, emoji panel, clipboard panel, or regular keyboard
             if viewModel.showQuickSettings {
                 QuickSettingsPopover(
                     settings: $keyboardSettings,
@@ -45,6 +45,15 @@ struct TypingKeyboardView: View {
                     onDismiss: {
                         KeyboardHaptics.lightTap()
                         viewModel.showEmojiPanel = false
+                    }
+                )
+                .transition(.opacity)
+            } else if viewModel.showClipboardPanel {
+                ClipboardPanel(
+                    viewModel: viewModel,
+                    onDismiss: {
+                        KeyboardHaptics.lightTap()
+                        viewModel.showClipboardPanel = false
                     }
                 )
                 .transition(.opacity)

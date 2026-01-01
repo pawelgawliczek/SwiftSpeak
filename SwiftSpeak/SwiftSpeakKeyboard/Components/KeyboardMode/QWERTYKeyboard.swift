@@ -478,6 +478,14 @@ struct QWERTYKeyboard: View {
     }
 
     private func deleteBackward() {
+        // Capture deleted character for undo stack
+        if let proxy = textDocumentProxy,
+           let beforeText = proxy.documentContextBeforeInput,
+           !beforeText.isEmpty {
+            let deletedChar = String(beforeText.suffix(1))
+            viewModel?.pushToUndoStack(deletedChar)
+        }
+
         textDocumentProxy?.deleteBackward()
         // Phase 13.6: Update typing context after deleting
         viewModel?.updateTypingContext()
@@ -487,6 +495,8 @@ struct QWERTYKeyboard: View {
     private func deleteWords(count: Int) {
         guard let proxy = textDocumentProxy else { return }
 
+        var totalDeletedText = ""
+
         for _ in 0..<count {
             // Get text before cursor
             guard let beforeText = proxy.documentContextBeforeInput, !beforeText.isEmpty else { break }
@@ -495,6 +505,7 @@ struct QWERTYKeyboard: View {
             let trimmed = beforeText.trimmingCharacters(in: .whitespaces)
             if trimmed.isEmpty {
                 // Just spaces, delete one character
+                totalDeletedText = " " + totalDeletedText
                 proxy.deleteBackward()
             } else {
                 // Find the last word and delete it
@@ -514,11 +525,20 @@ struct QWERTYKeyboard: View {
                     }
                 }
 
+                // Capture what we're about to delete
+                let deletedPart = String(beforeText.suffix(charsToDelete))
+                totalDeletedText = deletedPart + totalDeletedText
+
                 // Delete the characters
                 for _ in 0..<charsToDelete {
                     proxy.deleteBackward()
                 }
             }
+        }
+
+        // Push all deleted text to undo stack as a single item
+        if !totalDeletedText.isEmpty {
+            viewModel?.pushToUndoStack(totalDeletedText)
         }
 
         viewModel?.updateTypingContext()

@@ -51,6 +51,15 @@ class KeyboardViewModel: ObservableObject {
     // Phase 13.11: AI Context Processing
     @Published var isAIProcessing = false
 
+    // Phase 13: Undo Stack (Gboard-style)
+    @Published var undoStack: [String] = []  // Stack of deleted text segments
+    private let maxUndoItems = 10
+
+    // Phase 13: Clipboard Panel
+    @Published var showClipboardPanel = false
+    @Published var clipboardItems: [ClipboardItem] = []
+    @Published var pinnedClipboardItems: [ClipboardItem] = []
+
     weak var textDocumentProxy: UITextDocumentProxy?
     weak var hostViewController: UIViewController?
 
@@ -1174,6 +1183,141 @@ class KeyboardViewModel: ObservableObject {
         isAIProcessing = false
     }
 
+    // MARK: - Phase 13: Undo Stack
+
+    /// Push deleted text onto the undo stack
+    func pushToUndoStack(_ text: String) {
+        guard !text.isEmpty else { return }
+
+        undoStack.insert(text, at: 0)
+
+        // Keep stack limited
+        if undoStack.count > maxUndoItems {
+            undoStack = Array(undoStack.prefix(maxUndoItems))
+        }
+
+        keyboardLog("Undo stack push: \(text.count) chars (stack size: \(undoStack.count))", category: "Action")
+    }
+
+    /// Undo last deletion - restores the most recently deleted text
+    func undo() {
+        guard !undoStack.isEmpty else {
+            keyboardLog("Undo: stack empty", category: "Action")
+            KeyboardHaptics.warning()
+            return
+        }
+
+        let text = undoStack.removeFirst()
+        textDocumentProxy?.insertText(text)
+        KeyboardHaptics.success()
+        keyboardLog("Undo: restored \(text.count) chars", category: "Action")
+    }
+
+    /// Check if undo is available
+    var canUndo: Bool {
+        !undoStack.isEmpty
+    }
+
+    /// Clear the undo stack
+    func clearUndoStack() {
+        undoStack.removeAll()
+    }
+
+    // MARK: - Phase 13: Clipboard Panel
+
+    /// Load clipboard items from transcription history and pinned items
+    func loadClipboardItems() {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Load pinned items
+        if let data = defaults?.data(forKey: "pinnedClipboardItems"),
+           let items = try? JSONDecoder().decode([ClipboardItem].self, from: data) {
+            pinnedClipboardItems = items
+        }
+
+        // Load from transcription history
+        if let data = defaults?.data(forKey: Constants.Keys.transcriptionHistory),
+           let history = try? JSONDecoder().decode([ClipboardHistoryRecord].self, from: data) {
+            // Convert to clipboard items (most recent first, limit to 20)
+            clipboardItems = history.prefix(20).map { record in
+                ClipboardItem(
+                    id: record.id,
+                    text: record.text,
+                    timestamp: record.timestamp,
+                    source: .transcription,
+                    isPinned: false
+                )
+            }
+        }
+
+        keyboardLog("Loaded \(clipboardItems.count) clipboard items, \(pinnedClipboardItems.count) pinned", category: "Clipboard")
+    }
+
+    /// Insert a clipboard item into the text field
+    func insertClipboardItem(_ item: ClipboardItem) {
+        textDocumentProxy?.insertText(item.text)
+        KeyboardHaptics.lightTap()
+        keyboardLog("Inserted clipboard item (\(item.text.count) chars)", category: "Clipboard")
+    }
+
+    /// Pin a clipboard item
+    func pinClipboardItem(_ item: ClipboardItem) {
+        var pinned = item
+        pinned.isPinned = true
+
+        // Remove from regular items if present
+        clipboardItems.removeAll { $0.id == item.id }
+
+        // Add to pinned if not already there
+        if !pinnedClipboardItems.contains(where: { $0.id == item.id }) {
+            pinnedClipboardItems.insert(pinned, at: 0)
+        }
+
+        savePinnedItems()
+        KeyboardHaptics.success()
+        keyboardLog("Pinned clipboard item", category: "Clipboard")
+    }
+
+    /// Unpin a clipboard item
+    func unpinClipboardItem(_ item: ClipboardItem) {
+        pinnedClipboardItems.removeAll { $0.id == item.id }
+        savePinnedItems()
+        KeyboardHaptics.lightTap()
+        keyboardLog("Unpinned clipboard item", category: "Clipboard")
+    }
+
+    /// Add custom text to clipboard (pinned)
+    func addCustomClipboardItem(text: String) {
+        guard !text.isEmpty else { return }
+
+        let item = ClipboardItem(
+            id: UUID(),
+            text: text,
+            timestamp: Date(),
+            source: .custom,
+            isPinned: true
+        )
+
+        pinnedClipboardItems.insert(item, at: 0)
+        savePinnedItems()
+        KeyboardHaptics.success()
+        keyboardLog("Added custom clipboard item (\(text.count) chars)", category: "Clipboard")
+    }
+
+    /// Delete a pinned clipboard item
+    func deletePinnedItem(_ item: ClipboardItem) {
+        pinnedClipboardItems.removeAll { $0.id == item.id }
+        savePinnedItems()
+        KeyboardHaptics.lightTap()
+    }
+
+    private func savePinnedItems() {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        if let data = try? JSONEncoder().encode(pinnedClipboardItems) {
+            defaults?.set(data, forKey: "pinnedClipboardItems")
+        }
+    }
+
     private func openURL(_ url: URL) {
         // Method 1: Try to get UIApplication.shared via KVC (works in extensions)
         guard let application = UIApplication.value(forKeyPath: "sharedApplication") as? UIApplication else {
@@ -1189,4 +1333,51 @@ class KeyboardViewModel: ObservableObject {
             }
         }
     }
+}
+
+// MARK: - Clipboard Models
+
+enum ClipboardItemSource: String, Codable {
+    case transcription  // From transcription history
+    case custom        // User-added custom text
+    case system        // From system clipboard
+}
+
+struct ClipboardItem: Identifiable, Codable {
+    let id: UUID
+    let text: String
+    let timestamp: Date
+    let source: ClipboardItemSource
+    var isPinned: Bool
+
+    var preview: String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.count > 50 {
+            return String(trimmed.prefix(47)) + "..."
+        }
+        return trimmed
+    }
+
+    var timeAgo: String {
+        let interval = Date().timeIntervalSince(timestamp)
+        if interval < 60 {
+            return "Just now"
+        } else if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "\(minutes)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else {
+            let days = Int(interval / 86400)
+            return "\(days)d ago"
+        }
+    }
+}
+
+/// Simplified record for decoding transcription history
+struct ClipboardHistoryRecord: Codable {
+    let id: UUID
+    let text: String
+    let timestamp: Date
 }

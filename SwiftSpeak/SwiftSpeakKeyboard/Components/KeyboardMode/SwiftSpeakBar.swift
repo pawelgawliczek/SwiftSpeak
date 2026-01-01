@@ -40,6 +40,19 @@ struct SwiftSpeakBar: View {
                 action: onModeTap
             )
 
+            // Clipboard button
+            ClipboardPill(action: {
+                KeyboardHaptics.lightTap()
+                viewModel.showClipboardPanel = true
+            })
+
+            // Undo button (only when available)
+            if viewModel.canUndo {
+                UndoPill(action: {
+                    viewModel.undo()
+                })
+            }
+
             Spacer()
 
             // SwiftLink pill - enables background processing (tap first to enable AI in background)
@@ -225,6 +238,62 @@ private struct AIProcessPill: View {
                 }
             }
         )
+    }
+}
+
+// MARK: - Clipboard Pill
+private struct ClipboardPill: View {
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Image(systemName: "doc.on.clipboard")
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(.white.opacity(0.6))
+            .frame(width: 36, height: 36)
+            .background(Color.white.opacity(isPressed ? 0.2 : 0.1), in: Circle())
+            .scaleEffect(isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isPressed)
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                if pressing && !isPressed {
+                    HapticManager.lightTap()
+                }
+                isPressed = pressing
+            }, perform: {})
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    action()
+                }
+            )
+    }
+}
+
+// MARK: - Undo Pill
+private struct UndoPill: View {
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        Image(systemName: "arrow.uturn.backward")
+            .font(.system(size: 15, weight: .medium))
+            .foregroundStyle(.white)
+            .frame(width: 36, height: 36)
+            .background(Color.orange.opacity(isPressed ? 0.5 : 0.3), in: Circle())
+            .scaleEffect(isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isPressed)
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                if pressing && !isPressed {
+                    HapticManager.lightTap()
+                }
+                isPressed = pressing
+            }, perform: {})
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    action()
+                }
+            )
     }
 }
 
