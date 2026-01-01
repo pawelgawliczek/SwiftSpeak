@@ -80,23 +80,20 @@ private struct TranslationPill: View {
             HapticManager.lightTap()
             action()
         }) {
-            HStack(spacing: 4) {
-                Image(systemName: "globe")
-                    .font(.system(size: 10, weight: .semibold))
+            Group {
                 if isEnabled {
-                    Text("→\(language.flag)")
-                        .font(.system(size: 12))
+                    Text(language.flag)
+                        .font(.system(size: 18))
                 } else {
-                    Text("OFF")
-                        .font(.system(size: 9, weight: .semibold))
+                    Image(systemName: "globe")
+                        .font(.system(size: 16, weight: .semibold))
                 }
             }
             .foregroundStyle(isEnabled ? .white : .white.opacity(0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
+            .frame(width: 40, height: 40)
             .background(
                 isEnabled ? Color.blue.opacity(0.3) : Color.white.opacity(0.1),
-                in: Capsule()
+                in: Circle()
             )
         }
         .buttonStyle(.plain)
@@ -113,26 +110,20 @@ private struct ContextPill: View {
             HapticManager.lightTap()
             action()
         }) {
-            HStack(spacing: 4) {
+            Group {
                 if let context = activeContext {
                     Text(context.icon)
-                        .font(.system(size: 10))
-                    Text(context.name)
-                        .font(.system(size: 10, weight: .medium))
-                        .lineLimit(1)
+                        .font(.system(size: 18))
                 } else {
-                    Image(systemName: "circle.slash")
-                        .font(.system(size: 9, weight: .semibold))
-                    Text("None")
-                        .font(.system(size: 10, weight: .medium))
+                    Image(systemName: "person.crop.circle")
+                        .font(.system(size: 16, weight: .semibold))
                 }
             }
             .foregroundStyle(.white.opacity(activeContext != nil ? 1.0 : 0.5))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
+            .frame(width: 40, height: 40)
             .background(
                 activeContext != nil ? Color.purple.opacity(0.3) : Color.white.opacity(0.1),
-                in: Capsule()
+                in: Circle()
             )
         }
         .buttonStyle(.plain)
@@ -150,17 +141,11 @@ private struct ModePill: View {
             HapticManager.lightTap()
             action()
         }) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(mode)
-                    .font(.system(size: 10, weight: .medium))
-                    .lineLimit(1)
-            }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(Color.white.opacity(0.15), in: Capsule())
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(Color.white.opacity(0.15), in: Circle())
         }
         .buttonStyle(.plain)
     }
@@ -216,19 +201,14 @@ private struct SwiftLinkPill: View {
             HapticManager.lightTap()
             action()
         }) {
-            HStack(spacing: 4) {
-                Image(systemName: "link.circle.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                Text("Link")
-                    .font(.system(size: 10, weight: .semibold))
-            }
-            .foregroundStyle(isActive ? .white : .white.opacity(0.6))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                isActive ? Color.orange.opacity(0.4) : Color.white.opacity(0.1),
-                in: Capsule()
-            )
+            Image(systemName: "link.circle.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(isActive ? .white : .white.opacity(0.6))
+                .frame(width: 40, height: 40)
+                .background(
+                    isActive ? Color.orange.opacity(0.4) : Color.white.opacity(0.1),
+                    in: Circle()
+                )
         }
         .buttonStyle(.plain)
     }
