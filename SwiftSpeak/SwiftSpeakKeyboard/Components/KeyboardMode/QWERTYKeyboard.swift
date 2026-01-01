@@ -79,7 +79,9 @@ struct QWERTYKeyboard: View {
                     keyFrame: accentPopupKeyFrame,
                     shiftState: shiftState,
                     onSelect: { accent in
-                        insertText(accent)
+                        // Insert directly without auto-return (popup selections stay on current layout)
+                        textDocumentProxy?.insertText(accent)
+                        viewModel?.updateTypingContext()
                         showingAccentPopup = false
                     },
                     onCancel: {

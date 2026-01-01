@@ -80,8 +80,8 @@ struct ClipboardPanel: View {
 
     // MARK: - Clipboard List View
     private var clipboardListView: some View {
-        ScrollView {
-            LazyVStack(spacing: 8) {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(spacing: 8) {
                 // Pinned Section
                 if !viewModel.pinnedClipboardItems.isEmpty {
                     Section {
@@ -231,80 +231,91 @@ struct ClipboardItemRow: View {
     let onUnpin: (() -> Void)?
     let onDelete: (() -> Void)?
 
-    @State private var isPressed = false
-
     var body: some View {
-        Button(action: onTap) {
-            HStack(spacing: 12) {
-                // Icon
-                ZStack {
-                    Circle()
-                        .fill(iconBackgroundColor)
-                        .frame(width: 36, height: 36)
+        HStack(spacing: 12) {
+            // Tappable content area
+            Button(action: {
+                KeyboardHaptics.lightTap()
+                onTap()
+            }) {
+                HStack(spacing: 12) {
+                    // Icon
+                    ZStack {
+                        Circle()
+                            .fill(iconBackgroundColor)
+                            .frame(width: 36, height: 36)
 
-                    Image(systemName: iconName)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(iconColor)
-                }
-
-                // Content
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.preview)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
-
-                    Text(item.timeAgo)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-
-                Spacer()
-
-                // Actions
-                HStack(spacing: 8) {
-                    if let onPin = onPin {
-                        Button(action: onPin) {
-                            Image(systemName: "pin")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.white.opacity(0.5))
-                        }
-                        .buttonStyle(.plain)
+                        Image(systemName: iconName)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(iconColor)
                     }
 
-                    if let onUnpin = onUnpin {
-                        Button(action: onUnpin) {
-                            Image(systemName: "pin.slash")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.yellow)
-                        }
-                        .buttonStyle(.plain)
+                    // Content
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.preview)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+
+                        Text(item.timeAgo)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white.opacity(0.5))
                     }
 
-                    if let onDelete = onDelete {
-                        Button(action: onDelete) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.red.opacity(0.7))
-                        }
-                        .buttonStyle(.plain)
-                    }
+                    Spacer()
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(isPressed ? Color.white.opacity(0.15) : Color.white.opacity(0.08))
-            )
+            .buttonStyle(.plain)
+
+            // Actions (separate from main tap area)
+            HStack(spacing: 12) {
+                if let onPin = onPin {
+                    Button(action: {
+                        KeyboardHaptics.lightTap()
+                        onPin()
+                    }) {
+                        Image(systemName: "pin")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.white.opacity(0.5))
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let onUnpin = onUnpin {
+                    Button(action: {
+                        KeyboardHaptics.lightTap()
+                        onUnpin()
+                    }) {
+                        Image(systemName: "pin.slash")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.yellow)
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if let onDelete = onDelete {
+                    Button(action: {
+                        KeyboardHaptics.lightTap()
+                        onDelete()
+                    }) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.red.opacity(0.7))
+                            .frame(width: 32, height: 32)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in isPressed = true }
-                .onEnded { _ in isPressed = false }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color.white.opacity(0.08))
         )
+        .padding(.horizontal, 16)
     }
 
     private var iconName: String {
