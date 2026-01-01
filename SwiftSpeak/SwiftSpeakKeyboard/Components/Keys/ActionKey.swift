@@ -15,9 +15,12 @@ struct ActionKey: View {
     var isHighlighted: Bool = false
     let action: () -> Void
     var onLongPress: (() -> Void)? = nil
+    var onSwipeDelete: ((Int) -> Void)? = nil  // Swipe delete: passes number of words to delete
 
     @State private var isPressed = false
     @State private var longPressTimer: Timer?
+    @State private var swipeStartX: CGFloat = 0
+    @State private var isSwipeDeleting = false
 
     private var backgroundColor: Color {
         if isHighlighted {
@@ -64,18 +67,39 @@ struct ActionKey: View {
         .buttonStyle(.plain)
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
-                .onChanged { _ in
+                .onChanged { value in
                     if !isPressed {
                         isPressed = true
+                        swipeStartX = value.location.x
+                        KeyboardHaptics.lightTap()
                         // Start long press timer if handler is provided
-                        if onLongPress != nil {
+                        if onLongPress != nil && onSwipeDelete == nil {
                             startLongPressTimer()
                         }
                     }
+
+                    // Check for swipe-delete (swipe left from backspace)
+                    if let _ = onSwipeDelete {
+                        let swipeDistance = swipeStartX - value.location.x
+                        if swipeDistance > 30 && !isSwipeDeleting {
+                            isSwipeDeleting = true
+                            KeyboardHaptics.mediumTap()
+                        }
+                    }
                 }
-                .onEnded { _ in
+                .onEnded { value in
                     isPressed = false
                     stopLongPressTimer()
+
+                    // Handle swipe-delete on release
+                    if isSwipeDeleting, let onSwipeDelete = onSwipeDelete {
+                        let swipeDistance = swipeStartX - value.location.x
+                        // Calculate words to delete based on swipe distance
+                        let wordsToDelete = max(1, Int(swipeDistance / 50))
+                        onSwipeDelete(wordsToDelete)
+                        KeyboardHaptics.success()
+                    }
+                    isSwipeDeleting = false
                 }
         )
     }

@@ -159,11 +159,11 @@ struct QWERTYKeyboard: View {
                     )
                 }
 
-                // Backspace key with long-press repeat
+                // Backspace key with long-press repeat and swipe-delete
                 ActionKey(icon: "delete.left") {
                     deleteBackward()
-                } onLongPress: {
-                    deleteBackward()
+                } onSwipeDelete: { wordCount in
+                    deleteWords(count: wordCount)
                 }
                 .frame(width: 42)
             }
@@ -228,11 +228,11 @@ struct QWERTYKeyboard: View {
                     )
                 }
 
-                // Backspace key with long-press repeat
+                // Backspace key with long-press repeat and swipe-delete
                 ActionKey(icon: "delete.left") {
                     deleteBackward()
-                } onLongPress: {
-                    deleteBackward()
+                } onSwipeDelete: { wordCount in
+                    deleteWords(count: wordCount)
                 }
                 .frame(width: 42)
             }
@@ -480,6 +480,47 @@ struct QWERTYKeyboard: View {
     private func deleteBackward() {
         textDocumentProxy?.deleteBackward()
         // Phase 13.6: Update typing context after deleting
+        viewModel?.updateTypingContext()
+    }
+
+    /// Delete multiple words (swipe-delete feature like Gboard)
+    private func deleteWords(count: Int) {
+        guard let proxy = textDocumentProxy else { return }
+
+        for _ in 0..<count {
+            // Get text before cursor
+            guard let beforeText = proxy.documentContextBeforeInput, !beforeText.isEmpty else { break }
+
+            // Find word boundary
+            let trimmed = beforeText.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty {
+                // Just spaces, delete one character
+                proxy.deleteBackward()
+            } else {
+                // Find the last word and delete it
+                var charsToDelete = 0
+                var foundWord = false
+
+                // Count backwards from end
+                for char in beforeText.reversed() {
+                    if char.isWhitespace {
+                        if foundWord {
+                            break  // End of word
+                        }
+                        charsToDelete += 1  // Delete trailing whitespace
+                    } else {
+                        foundWord = true
+                        charsToDelete += 1
+                    }
+                }
+
+                // Delete the characters
+                for _ in 0..<charsToDelete {
+                    proxy.deleteBackward()
+                }
+            }
+        }
+
         viewModel?.updateTypingContext()
     }
 
