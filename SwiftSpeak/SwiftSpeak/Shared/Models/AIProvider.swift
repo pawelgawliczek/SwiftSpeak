@@ -127,7 +127,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
     /// Default STT models - for local providers, these are fetched dynamically
     var availableSTTModels: [String] {
         switch self {
-        case .openAI: return ["whisper-1"]
+        case .openAI: return ["gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-1"]
         case .elevenLabs: return ["scribe_v1"]
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]
         case .local: return [] // Models are fetched dynamically from the local server
@@ -139,7 +139,7 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
     var defaultSTTModel: String? {
         switch self {
-        case .openAI: return "whisper-1"
+        case .openAI: return "gpt-4o-transcribe"  // Default to streaming-capable model
         case .elevenLabs: return "scribe_v1"
         case .deepgram: return "nova-2"
         case .local: return nil // Must be selected after connecting
@@ -147,6 +147,30 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return "long"
         case .anthropic, .deepL, .azure: return nil
         }
+    }
+
+    /// Whether this provider supports streaming transcription
+    var supportsStreamingTranscription: Bool {
+        switch self {
+        case .openAI, .deepgram, .assemblyAI: return true
+        case .elevenLabs, .google, .local, .anthropic, .deepL, .azure: return false
+        }
+    }
+
+    /// STT models that support streaming transcription (real-time WebSocket)
+    /// Returns empty array if provider doesn't support streaming
+    var streamingSTTModels: [String] {
+        switch self {
+        case .openAI: return ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
+        case .deepgram: return ["nova-2", "nova", "enhanced", "base"]  // All Deepgram models support streaming
+        case .assemblyAI: return ["default", "nano"]  // All AssemblyAI models support streaming
+        case .elevenLabs, .google, .local, .anthropic, .deepL, .azure: return []
+        }
+    }
+
+    /// Check if a specific STT model supports streaming
+    func modelSupportsStreaming(_ model: String) -> Bool {
+        streamingSTTModels.contains(model)
     }
 
     // MARK: - LLM Models (for translation/power mode)

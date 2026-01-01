@@ -38,7 +38,11 @@ except ImportError:
 
 PRICING = {
     "openAI": {
+        # Transcription models
         "whisper-1": {"unit": "minute", "cost": 0.006},
+        "gpt-4o-transcribe": {"unit": "minute", "cost": 0.006},  # Same as whisper
+        "gpt-4o-mini-transcribe": {"unit": "minute", "cost": 0.003},  # Cheaper mini model
+        # LLM models
         "gpt-4o": {"inputPerMToken": 2.50, "outputPerMToken": 10.00},
         "gpt-4o-mini": {"inputPerMToken": 0.15, "outputPerMToken": 0.60},
         "o1": {"inputPerMToken": 15.00, "outputPerMToken": 60.00},
@@ -196,7 +200,9 @@ LANGUAGE_SUPPORT = {
 MODELS = {
     "openAI": {
         "transcription": [
-            {"id": "whisper-1", "name": "Whisper", "isDefault": True},
+            {"id": "gpt-4o-transcribe", "name": "GPT-4o Transcribe", "isDefault": True, "streaming": True},
+            {"id": "gpt-4o-mini-transcribe", "name": "GPT-4o Mini Transcribe", "streaming": True},
+            {"id": "whisper-1", "name": "Whisper", "streaming": False},
         ],
         "translation": [
             {"id": "gpt-4o-mini", "name": "GPT-4o Mini", "isDefault": True},
@@ -221,7 +227,7 @@ MODELS = {
     },
     "google": {
         "transcription": [
-            {"id": "google-stt", "name": "Google Speech-to-Text", "isDefault": True},
+            {"id": "google-stt", "name": "Google Speech-to-Text", "isDefault": True, "streaming": False},
         ],
         "translation": [
             {"id": "gemini-1.5-flash", "name": "Gemini 1.5 Flash", "isDefault": True},
@@ -234,20 +240,20 @@ MODELS = {
     },
     "deepgram": {
         "transcription": [
-            {"id": "nova-2", "name": "Nova 2", "isDefault": True},
-            {"id": "nova", "name": "Nova"},
-            {"id": "enhanced", "name": "Enhanced"},
+            {"id": "nova-2", "name": "Nova 2", "isDefault": True, "streaming": True},
+            {"id": "nova", "name": "Nova", "streaming": True},
+            {"id": "enhanced", "name": "Enhanced", "streaming": True},
         ],
     },
     "assemblyAI": {
         "transcription": [
-            {"id": "best", "name": "Best", "isDefault": True},
-            {"id": "nano", "name": "Nano"},
+            {"id": "best", "name": "Best", "isDefault": True, "streaming": True},
+            {"id": "nano", "name": "Nano", "streaming": True},
         ],
     },
     "elevenLabs": {
         "transcription": [
-            {"id": "scribe_v1", "name": "Scribe v1", "isDefault": True},
+            {"id": "scribe_v1", "name": "Scribe v1", "isDefault": True, "streaming": False},
         ],
     },
     "deepL": {
@@ -262,9 +268,9 @@ MODELS = {
     },
     "local": {
         "transcription": [
-            {"id": "whisperkit-base", "name": "WhisperKit Base", "isDefault": True},
-            {"id": "whisperkit-small", "name": "WhisperKit Small"},
-            {"id": "whisperkit-large", "name": "WhisperKit Large"},
+            {"id": "whisperkit-base", "name": "WhisperKit Base", "isDefault": True, "streaming": False},
+            {"id": "whisperkit-small", "name": "WhisperKit Small", "streaming": False},
+            {"id": "whisperkit-large", "name": "WhisperKit Large", "streaming": False},
         ],
         "translation": [
             {"id": "apple-translation", "name": "Apple Translation", "isDefault": True},

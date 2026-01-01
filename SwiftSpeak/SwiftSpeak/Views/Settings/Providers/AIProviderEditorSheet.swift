@@ -621,11 +621,36 @@ struct AIProviderEditorSheet: View {
             if usageCategories.contains(category) {
                 Picker("Model", selection: modelBinding(for: category)) {
                     ForEach(availableModels(for: category), id: \.self) { model in
-                        Text(model).tag(model)
+                        if category == .transcription && config.provider.supportsStreamingTranscription {
+                            HStack {
+                                Text(model)
+                                if config.provider.modelSupportsStreaming(model) {
+                                    Text("⚡")
+                                }
+                            }.tag(model)
+                        } else {
+                            Text(model).tag(model)
+                        }
                     }
                 }
                 .pickerStyle(.menu)
                 .padding(.leading, 32)
+
+                // Show streaming info for transcription
+                if category == .transcription && config.provider.supportsStreamingTranscription {
+                    let currentModel = modelBinding(for: category).wrappedValue
+                    let supportsStreaming = config.provider.modelSupportsStreaming(currentModel)
+
+                    HStack(spacing: 6) {
+                        Image(systemName: supportsStreaming ? "bolt.fill" : "bolt.slash")
+                            .foregroundStyle(supportsStreaming ? .green : .secondary)
+                            .font(.caption)
+                        Text(supportsStreaming ? "Streaming supported" : "Batch only (no streaming)")
+                            .font(.caption)
+                            .foregroundStyle(supportsStreaming ? .green : .secondary)
+                    }
+                    .padding(.leading, 32)
+                }
             }
         }
         .listRowBackground(rowBackground)
@@ -940,12 +965,23 @@ struct AIProviderEditorSheet: View {
         let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
         let allModels = modelsResponse.data.map { $0.id }
 
-        // Filter STT models (whisper)
-        let sttModels = allModels.filter { $0.contains("whisper") }.sorted()
+        // Filter STT models (whisper and gpt-4o-transcribe variants)
+        var sttModels = allModels.filter {
+            $0.contains("whisper") || $0.contains("transcribe")
+        }.sorted()
 
-        // Filter LLM models (gpt, o1)
+        // If API doesn't return transcribe models yet (new models), add them from defaults
+        let expectedStreamingModels = ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
+        for model in expectedStreamingModels {
+            if !sttModels.contains(model) {
+                sttModels.insert(model, at: 0)  // Add streaming models at the top
+            }
+        }
+
+        // Filter LLM models (gpt, o1, but not transcribe models)
         let llmModels = allModels.filter {
-            $0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("chatgpt-")
+            ($0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("chatgpt-")) &&
+            !$0.contains("transcribe")
         }.sorted().reversed().map { String($0) }
 
         return (sttModels, Array(llmModels))
