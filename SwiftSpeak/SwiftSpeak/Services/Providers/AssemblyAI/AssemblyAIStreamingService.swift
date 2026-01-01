@@ -70,7 +70,8 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
+        // Note: AssemblyAI doesn't support system instructions, only vocabulary via word_boost
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }

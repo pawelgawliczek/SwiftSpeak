@@ -251,7 +251,15 @@ final class TranscriptionOrchestrator: ObservableObject {
             status.isProcessing = false
             status.lastUpdateAt = Date()
             settings.processingStatus = status
-            appLog("Set pendingAutoInsert=true for keyboard", category: "Transcription")
+            appLog("Set pendingAutoInsert=true for keyboard (editMode: \(isEditMode))", category: "Transcription")
+
+            // Phase 12: Set edit mode flag so keyboard knows to replace text
+            if isEditMode {
+                let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+                defaults?.set(true, forKey: Constants.EditMode.lastResultWasEdit)
+                defaults?.synchronize()
+                appLog("Set lastResultWasEdit=true for keyboard", category: "Transcription")
+            }
 
             // Complete
             state = .complete(formattedText)

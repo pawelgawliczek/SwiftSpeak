@@ -9,6 +9,34 @@
 
 import Foundation
 
+// MARK: - Transcription Source (Phase 13.11)
+
+/// Source of the transcription/processing operation
+enum TranscriptionSource: String, Codable {
+    case app = "app"                    // Main app recording
+    case swiftLink = "swiftLink"        // SwiftLink background recording
+    case keyboardAI = "keyboardAI"      // Keyboard AI context/power mode processing
+    case edit = "edit"                  // Text editing operation
+
+    var displayName: String {
+        switch self {
+        case .app: return "App"
+        case .swiftLink: return "SwiftLink"
+        case .keyboardAI: return "Keyboard AI"
+        case .edit: return "Edit"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .app: return "mic.fill"
+        case .swiftLink: return "link"
+        case .keyboardAI: return "keyboard"
+        case .edit: return "pencil"
+        }
+    }
+}
+
 // MARK: - Edit Context (Phase 12)
 
 /// Context for edit operations where user modifies existing text via voice instructions
@@ -61,8 +89,14 @@ struct TranscriptionRecord: Identifiable {
     // Edit context (Phase 12 - Edit Text Feature)
     let editContext: EditContext?
 
+    // Source tracking (Phase 13.11 - Keyboard AI)
+    let source: TranscriptionSource
+
     /// Whether this is an edit operation (modifying existing text)
     var isEditOperation: Bool { editContext != nil }
+
+    /// Whether this is from keyboard AI processing
+    var isKeyboardAI: Bool { source == .keyboardAI }
 
     /// Whether this record has detailed processing info
     var hasProcessingDetails: Bool {
@@ -97,7 +131,8 @@ struct TranscriptionRecord: Identifiable {
         estimatedCost: Double? = nil,
         costBreakdown: CostBreakdown? = nil,
         processingMetadata: ProcessingMetadata? = nil,
-        editContext: EditContext? = nil
+        editContext: EditContext? = nil,
+        source: TranscriptionSource = .app
     ) {
         self.id = id
         // For migration: if rawTranscribedText is nil, use text as raw
@@ -118,6 +153,7 @@ struct TranscriptionRecord: Identifiable {
         self.costBreakdown = costBreakdown
         self.processingMetadata = processingMetadata
         self.editContext = editContext
+        self.source = source
     }
 }
 
@@ -130,6 +166,7 @@ extension TranscriptionRecord: Codable {
         case estimatedCost, costBreakdown
         case rawTranscribedText, processingMetadata
         case editContext  // Phase 12
+        case source       // Phase 13.11
     }
 
     init(from decoder: Decoder) throws {
@@ -159,6 +196,9 @@ extension TranscriptionRecord: Codable {
 
         // Handle migration: editContext might not exist (Phase 12)
         editContext = try container.decodeIfPresent(EditContext.self, forKey: .editContext)
+
+        // Handle migration: source might not exist (Phase 13.11)
+        source = try container.decodeIfPresent(TranscriptionSource.self, forKey: .source) ?? .app
     }
 
     func encode(to encoder: Encoder) throws {
@@ -182,6 +222,7 @@ extension TranscriptionRecord: Codable {
         try container.encode(rawTranscribedText, forKey: .rawTranscribedText)
         try container.encodeIfPresent(processingMetadata, forKey: .processingMetadata)
         try container.encodeIfPresent(editContext, forKey: .editContext)
+        try container.encode(source, forKey: .source)
     }
 }
 

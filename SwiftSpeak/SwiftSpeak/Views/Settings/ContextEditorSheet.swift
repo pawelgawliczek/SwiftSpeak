@@ -29,6 +29,9 @@ struct ContextEditorSheet: View {
     @State private var memoryEnabled: Bool = false
     @State private var memory: String = ""
     @State private var appAssignment: AppAssignment = AppAssignment()
+    @State private var aiAutocorrectEnabled: Bool = false
+    @State private var enterSendsMessage: Bool = true
+    @State private var enterRunsContext: Bool = false
 
     // UI state
     @State private var showingIconPicker = false
@@ -71,6 +74,9 @@ struct ContextEditorSheet: View {
         _memoryEnabled = State(initialValue: context.memoryEnabled)
         _memory = State(initialValue: context.memory ?? "")
         _appAssignment = State(initialValue: context.appAssignment)
+        _aiAutocorrectEnabled = State(initialValue: context.aiAutocorrectEnabled)
+        _enterSendsMessage = State(initialValue: context.enterSendsMessage)
+        _enterRunsContext = State(initialValue: context.enterRunsContext)
     }
 
     var body: some View {
@@ -97,6 +103,12 @@ struct ContextEditorSheet: View {
 
                     // Custom instructions
                     instructionsSection
+
+                    // AI Autocorrect section
+                    aiAutocorrectSection
+
+                    // Enter key behavior section
+                    enterKeySection
 
                     // Memory section
                     memorySection
@@ -415,6 +427,82 @@ struct ContextEditorSheet: View {
         }
     }
 
+    // MARK: - AI Autocorrect Section
+
+    private var aiAutocorrectSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("AI GRAMMAR FIX")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Toggle("", isOn: $aiAutocorrectEnabled)
+                    .labelsHidden()
+                    .tint(color.color)
+            }
+
+            Text("When enabled, AI will fix grammar and punctuation without changing your words")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    // MARK: - Enter Key Section
+
+    private var enterKeySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("ENTER KEY BEHAVIOR")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 12) {
+                // Run Context toggle
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Run Context on Enter")
+                            .font(.subheadline.weight(.medium))
+                        Text("Apply AI processing when pressing Enter")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $enterRunsContext)
+                        .labelsHidden()
+                        .tint(color.color)
+                }
+
+                Divider()
+
+                // Auto-send toggle
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Auto-Send Message")
+                            .font(.subheadline.weight(.medium))
+                        Text("Submit the message after inserting text")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $enterSendsMessage)
+                        .labelsHidden()
+                        .tint(color.color)
+                }
+            }
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
     // MARK: - Memory Section
 
     private var memorySection: some View {
@@ -528,6 +616,9 @@ struct ContextEditorSheet: View {
             lastMemoryUpdate: context.lastMemoryUpdate,
             isActive: context.isActive,
             appAssignment: appAssignment,
+            aiAutocorrectEnabled: aiAutocorrectEnabled,
+            enterSendsMessage: enterSendsMessage,
+            enterRunsContext: enterRunsContext,
             createdAt: context.createdAt,
             updatedAt: Date()
         )

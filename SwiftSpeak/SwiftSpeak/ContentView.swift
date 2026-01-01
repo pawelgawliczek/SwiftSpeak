@@ -20,6 +20,8 @@ struct ContentView: View {
     @State private var editModeOriginalText: String? = nil  // Phase 12: Edit mode
     @State private var showSwiftLinkQuickStart = false  // SwiftLink quick-start sheet
     @State private var swiftLinkPreselectedApp: SwiftLinkApp? = nil  // Pre-selected app from keyboard
+    @State private var showSwiftLinkSetupOverlay = false  // Overlay when setting up SwiftLink for AI
+    @State private var swiftLinkSetupMessage = ""  // Dynamic message for the overlay
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -71,6 +73,16 @@ struct ContentView: View {
             // Phase 12: Clear edit mode when recording view is dismissed
             if !isShowing {
                 editModeOriginalText = nil
+
+                // Auto-start SwiftLink after recording completes (if enabled and not already active)
+                // This allows future dictations to work without opening the main app
+                if settings.swiftLinkAutoStart && !SwiftLinkSessionManager.shared.isSessionActive {
+                    appLog("Auto-starting SwiftLink after recording completed", category: "SwiftLink")
+                    Task {
+                        await SwiftLinkSessionManager.shared.startBackgroundSession()
+                        appLog("SwiftLink session auto-started for future use", category: "SwiftLink")
+                    }
+                }
             }
         }
         .onOpenURL { url in
@@ -111,6 +123,14 @@ struct ContentView: View {
             )
             .environmentObject(settings)
         }
+        // SwiftLink Setup Overlay - shown when AI button pressed without active SwiftLink
+        .overlay {
+            if showSwiftLinkSetupOverlay {
+                SwiftLinkSetupOverlay(message: swiftLinkSetupMessage)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSwiftLinkSetupOverlay)
     }
 
     private func handleURLScheme(_ url: URL) {
@@ -118,6 +138,35 @@ struct ContentView: View {
         guard url.scheme == Constants.urlScheme else { return }
 
         appLog("URL scheme received: \(url.host ?? "unknown")", category: "Navigation")
+
+        // Track if we need to show the setup overlay
+        let needsSwiftLinkSetup = !SwiftLinkSessionManager.shared.isSessionActive
+        let isAIProcess = url.host == "aiprocess"
+        let isSwiftLinkRequest = url.host == Constants.URLHosts.swiftlink
+
+        // Show overlay for AI process when SwiftLink needs setup
+        if needsSwiftLinkSetup && isAIProcess {
+            swiftLinkSetupMessage = "Setting up SwiftLink..."
+            withAnimation {
+                showSwiftLinkSetupOverlay = true
+            }
+        }
+
+        // Auto-start SwiftLink ONLY for aiprocess or swiftlink requests
+        // Do NOT auto-start for "record" as it conflicts with RecordingView's audio
+        // (SwiftLink will be started AFTER recording completes for record flow)
+        if needsSwiftLinkSetup && (isAIProcess || isSwiftLinkRequest) && settings.swiftLinkAutoStart {
+            appLog("Auto-starting SwiftLink for background processing", category: "SwiftLink")
+            Task {
+                await SwiftLinkSessionManager.shared.startBackgroundSession()
+                // Update overlay message after SwiftLink is ready
+                if isAIProcess {
+                    await MainActor.run {
+                        swiftLinkSetupMessage = "Processing your text..."
+                    }
+                }
+            }
+        }
 
         // Parse parameters
         let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
@@ -212,6 +261,12 @@ struct ContentView: View {
             return
         }
 
+        // Phase 13.11: Handle AI Process request from keyboard
+        if url.host == "aiprocess" {
+            handleAIProcessRequest()
+            return
+        }
+
         // Check if it's a power mode URL
         if url.host == Constants.URLHosts.powermode {
             // Handle power mode launch from keyboard
@@ -254,6 +309,287 @@ struct ContentView: View {
 
         // Show recording view
         showRecording = true
+    }
+
+    // MARK: - AI Process Request Handler (Phase 13.11)
+
+    private func handleAIProcessRequest() {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        guard let pendingText = defaults?.string(forKey: Constants.AIProcess.pendingText),
+              !pendingText.isEmpty else {
+            appLog("AI Process: No pending text", category: "AI", level: .warning)
+            return
+        }
+
+        let contextIdString = defaults?.string(forKey: Constants.AIProcess.contextId)
+        let powerModeIdString = defaults?.string(forKey: Constants.AIProcess.powerModeId)
+
+        // Check translation settings
+        let translateEnabled = defaults?.bool(forKey: Constants.AIProcess.translateEnabled) ?? false
+        let targetLanguageString = defaults?.string(forKey: Constants.AIProcess.targetLanguage)
+        let targetLanguage = targetLanguageString.flatMap { Language(rawValue: $0) }
+
+        // Check if auto-return was requested
+        let shouldAutoReturn = defaults?.bool(forKey: Constants.AIProcess.autoReturnRequested) ?? false
+        let sourceAppURLScheme = defaults?.string(forKey: Constants.AIProcess.sourceAppURLScheme)
+
+        // Clear the flags (SwiftLink is now auto-started in handleURLScheme)
+        defaults?.removeObject(forKey: Constants.AIProcess.startSwiftLinkWithProcess)
+        defaults?.removeObject(forKey: Constants.AIProcess.autoReturnRequested)
+        defaults?.removeObject(forKey: Constants.AIProcess.sourceAppURLScheme)
+        defaults?.removeObject(forKey: Constants.AIProcess.translateEnabled)
+        defaults?.removeObject(forKey: Constants.AIProcess.targetLanguage)
+        defaults?.synchronize()
+
+        let translateInfo = translateEnabled ? ", translate to \(targetLanguage?.displayName ?? "unknown")" : ""
+        appLog("AI Process: Starting (text: \(pendingText.count) chars\(translateInfo), autoReturn: \(shouldAutoReturn))", category: "AI")
+
+        // Set status to processing
+        defaults?.set("processing", forKey: Constants.AIProcess.status)
+        defaults?.synchronize()
+
+        Task {
+            do {
+                var result: String = pendingText
+
+                // Step 1: Process with context or power mode if present
+                if let contextIdString = contextIdString,
+                   let contextId = UUID(uuidString: contextIdString),
+                   let context = settings.contexts.first(where: { $0.id == contextId }) {
+
+                    // Process with context
+                    result = try await processTextWithContext(result, context: context)
+
+                } else if let powerModeIdString = powerModeIdString,
+                          let powerModeId = UUID(uuidString: powerModeIdString),
+                          let powerMode = settings.powerModes.first(where: { $0.id == powerModeId }) {
+
+                    // Process with power mode
+                    result = try await processTextWithPowerMode(result, powerMode: powerMode)
+                }
+
+                // Step 2: Apply translation if enabled
+                if translateEnabled, let language = targetLanguage {
+                    appLog("AI Process: Translating to \(language.displayName)", category: "AI")
+                    result = try await translateText(result, to: language)
+                }
+
+                // Store result
+                defaults?.set(result, forKey: Constants.AIProcess.result)
+                defaults?.set("complete", forKey: Constants.AIProcess.status)
+                defaults?.synchronize()
+
+                // Notify keyboard
+                DarwinNotificationManager.shared.post(name: Constants.AIProcess.resultReady)
+
+                appLog("AI Process: Complete (\(result.count) chars)", category: "AI")
+
+                // Auto-return to source app if requested
+                if shouldAutoReturn {
+                    await autoReturnToSourceApp(urlScheme: sourceAppURLScheme)
+                }
+
+            } catch {
+                appLog("AI Process: Error - \(error.localizedDescription)", category: "AI", level: .error)
+                defaults?.set("error", forKey: Constants.AIProcess.status)
+                defaults?.synchronize()
+
+                // Notify keyboard of error
+                DarwinNotificationManager.shared.post(name: Constants.AIProcess.resultReady)
+
+                // Still try to auto-return even on error
+                if shouldAutoReturn {
+                    await autoReturnToSourceApp(urlScheme: sourceAppURLScheme)
+                }
+            }
+        }
+    }
+
+    /// Auto-return to the source app after AI processing
+    @MainActor
+    private func autoReturnToSourceApp(urlScheme: String?) async {
+        // Update overlay message
+        swiftLinkSetupMessage = "Returning to your app..."
+
+        // Small delay to ensure result is stored and notification is sent
+        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+
+        // Hide overlay before returning
+        withAnimation {
+            showSwiftLinkSetupOverlay = false
+        }
+
+        // Try source app URL scheme first
+        if let scheme = urlScheme, !scheme.isEmpty {
+            var urlString = scheme.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !urlString.contains("://") {
+                urlString = "\(urlString)://"
+            }
+
+            if let url = URL(string: urlString) {
+                appLog("AI Process: Auto-returning to source app via: \(urlString)", category: "AI")
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if !success {
+                        appLog("AI Process: Failed to open source app", category: "AI", level: .warning)
+                    }
+                }
+                return
+            }
+        }
+
+        // Try last used SwiftLink app as fallback
+        if let lastApp = settings.lastUsedSwiftLinkApp,
+           let scheme = lastApp.effectiveURLScheme {
+            var urlString = scheme.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !urlString.contains("://") {
+                urlString = "\(urlString)://"
+            }
+
+            if let url = URL(string: urlString) {
+                appLog("AI Process: Auto-returning to last SwiftLink app: \(lastApp.name)", category: "AI")
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if !success {
+                        appLog("AI Process: Failed to open last SwiftLink app", category: "AI", level: .warning)
+                    }
+                }
+            }
+        } else {
+            appLog("AI Process: No source app to return to", category: "AI", level: .warning)
+        }
+    }
+
+    private func processTextWithContext(_ text: String, context: ConversationContext) async throws -> String {
+        // Build prompt based on context and grammar fix setting
+        var systemPrompt = context.customInstructions
+
+        if context.aiAutocorrectEnabled {
+            systemPrompt += "\n\nIMPORTANT: Fix any grammar and punctuation errors in the text, but preserve the original words and meaning. Do not add or remove content, only correct grammatical mistakes."
+        }
+
+        // Use the formatting provider to process
+        let provider = settings.selectedPowerModeProvider
+        guard settings.getAIProviderConfig(for: provider) != nil else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        let factory = ProviderFactory()
+        guard let formattingService = factory.createFormattingProvider(for: provider) else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        // Create a custom prompt that includes context instructions
+        let fullPrompt = """
+        Context: \(context.name) - \(context.description)
+        Tone: \(context.toneDescription)
+        Formality: \(context.formality.displayName)
+
+        \(systemPrompt)
+
+        Process the following text according to the context above. Return only the processed text without any explanation:
+
+        \(text)
+        """
+
+        // Use the formatting service with custom mode
+        return try await formattingService.format(text: text, mode: FormattingMode.raw, customPrompt: fullPrompt)
+    }
+
+    private func processTextWithPowerMode(_ text: String, powerMode: PowerMode) async throws -> String {
+        // Build prompt based on power mode and grammar fix setting
+        var instruction = powerMode.instruction
+
+        if powerMode.aiAutocorrectEnabled {
+            instruction += "\n\nIMPORTANT: Also fix any grammar and punctuation errors in the text, but preserve the original words and meaning."
+        }
+
+        // Get the provider from the override if set
+        let aiProvider: AIProvider
+        if let override = powerMode.providerOverride {
+            switch override.providerType {
+            case .cloud(let provider):
+                aiProvider = provider
+            case .local:
+                aiProvider = settings.selectedPowerModeProvider
+            }
+        } else {
+            aiProvider = settings.selectedPowerModeProvider
+        }
+
+        guard settings.getAIProviderConfig(for: aiProvider) != nil else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        let factory = ProviderFactory()
+        guard let formattingService = factory.createFormattingProvider(for: aiProvider) else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        let fullPrompt = """
+        \(instruction)
+
+        Process the following text:
+
+        \(text)
+        """
+
+        return try await formattingService.format(text: text, mode: FormattingMode.raw, customPrompt: fullPrompt)
+    }
+
+    /// Translate text to target language using the configured translation provider
+    private func translateText(_ text: String, to targetLanguage: Language) async throws -> String {
+        let factory = ProviderFactory()
+        guard let translationProvider = factory.createSelectedTranslationProvider() else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        return try await translationProvider.translate(
+            text: text,
+            from: settings.selectedDictationLanguage,
+            to: targetLanguage
+        )
+    }
+}
+
+// MARK: - SwiftLink Setup Overlay
+/// Full-screen overlay shown when setting up SwiftLink for AI processing
+struct SwiftLinkSetupOverlay: View {
+    let message: String
+
+    var body: some View {
+        ZStack {
+            // Dark background
+            Color.black.opacity(0.85)
+                .ignoresSafeArea()
+
+            VStack(spacing: 24) {
+                // Animated logo
+                Image("SwiftSpeakLogo")
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 80, height: 80)
+                    .foregroundStyle(AppTheme.accent)
+
+                // Loading spinner
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.2)
+
+                // Message
+                Text(message.isEmpty ? "Setting up SwiftLink..." : message)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+
+                // Subtitle
+                Text("Getting you back to your app")
+                    .font(.subheadline)
+                    .foregroundStyle(.white.opacity(0.7))
+            }
+            .padding(40)
+        }
     }
 }
 

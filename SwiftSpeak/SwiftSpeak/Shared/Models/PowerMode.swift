@@ -96,6 +96,13 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // Phase 10: Provider override (nil = use global default)
     var providerOverride: ProviderSelection?
 
+    // Phase 13.11: AI autocorrection when processing text
+    var aiAutocorrectEnabled: Bool
+
+    // Phase 13.11: Enter key behavior
+    var enterSendsMessage: Bool         // Enter key sends/submits after inserting
+    var enterRunsContext: Bool          // Enter key runs power mode AI processing before inserting
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -115,7 +122,10 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         isArchived: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
         enabledWebhookIds: [UUID] = [],
-        providerOverride: ProviderSelection? = nil
+        providerOverride: ProviderSelection? = nil,
+        aiAutocorrectEnabled: Bool = false,
+        enterSendsMessage: Bool = true,
+        enterRunsContext: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -136,6 +146,9 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.appAssignment = appAssignment
         self.enabledWebhookIds = enabledWebhookIds
         self.providerOverride = providerOverride
+        self.aiAutocorrectEnabled = aiAutocorrectEnabled
+        self.enterSendsMessage = enterSendsMessage
+        self.enterRunsContext = enterRunsContext
     }
 
     /// Preset power modes for new users

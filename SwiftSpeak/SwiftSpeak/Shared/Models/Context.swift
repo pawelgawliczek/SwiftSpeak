@@ -68,6 +68,9 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     var isActive: Bool                  // Currently selected context
     var appAssignment: AppAssignment    // Apps/categories that auto-enable this context
     var isPreset: Bool                  // Preset contexts available to all users (free tier)
+    var aiAutocorrectEnabled: Bool      // Phase 13.11: AI autocorrection when processing text
+    var enterSendsMessage: Bool         // Phase 13.11: Enter key sends/submits after inserting
+    var enterRunsContext: Bool          // Phase 13.11: Enter key runs context AI processing before inserting
     let createdAt: Date
     var updatedAt: Date
 
@@ -87,6 +90,9 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         isActive: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
         isPreset: Bool = false,
+        aiAutocorrectEnabled: Bool = false,
+        enterSendsMessage: Bool = true,
+        enterRunsContext: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -105,6 +111,9 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.isActive = isActive
         self.appAssignment = appAssignment
         self.isPreset = isPreset
+        self.aiAutocorrectEnabled = aiAutocorrectEnabled
+        self.enterSendsMessage = enterSendsMessage
+        self.enterRunsContext = enterRunsContext
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -131,7 +140,8 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 toneDescription: "Professional formatting with proper punctuation.",
                 formality: ContextFormality.formal,
                 customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use proper punctuation, capitalize appropriately. Do NOT rephrase, summarize, or change the content.",
-                isPreset: true
+                isPreset: true,
+                aiAutocorrectEnabled: true  // Fixes grammar and punctuation
             ),
             ConversationContext(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
@@ -142,7 +152,8 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 toneDescription: "Casual and friendly formatting.",
                 formality: ContextFormality.informal,
                 customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use relaxed punctuation, add emoticons like 😊 🙂 👍 at the end of sentences. Do NOT rephrase, summarize, or change the content.",
-                isPreset: true
+                isPreset: true,
+                aiAutocorrectEnabled: true  // Fixes grammar
             ),
             ConversationContext(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
@@ -153,7 +164,8 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 toneDescription: "Expressive formatting.",
                 formality: ContextFormality.auto,
                 customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use expressive punctuation (em dashes, ellipses). Do NOT rephrase, summarize, or change the content.",
-                isPreset: true
+                isPreset: true,
+                aiAutocorrectEnabled: false  // No grammar changes - preserve creative intent
             )
         ]
     }

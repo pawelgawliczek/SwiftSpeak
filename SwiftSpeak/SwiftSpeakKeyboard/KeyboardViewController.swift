@@ -12,6 +12,10 @@ class KeyboardViewController: UIInputViewController {
 
     private var keyboardView: UIHostingController<KeyboardView>?
     private var viewModel = KeyboardViewModel()
+    private var heightConstraint: NSLayoutConstraint?
+
+    // Keyboard height - increased for typing mode with SwiftSpeakBar + PredictionRow + QWERTY
+    private let keyboardHeight: CGFloat = 350
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -20,6 +24,11 @@ class KeyboardViewController: UIInputViewController {
 
         // Update Full Access status in shared defaults for main app to detect
         updateFullAccessStatus()
+
+        // Initialize autocorrect service in background
+        Task {
+            await AutocorrectService.shared.initialize()
+        }
 
         // Set up the SwiftUI keyboard view
         viewModel.textDocumentProxy = textDocumentProxy
@@ -45,6 +54,11 @@ class KeyboardViewController: UIInputViewController {
         ])
 
         keyboardView = hostingController
+
+        // Set keyboard height using constraint (proper way for keyboard extensions)
+        heightConstraint = view.heightAnchor.constraint(equalToConstant: keyboardHeight)
+        heightConstraint?.priority = .required
+        heightConstraint?.isActive = true
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -75,10 +89,7 @@ class KeyboardViewController: UIInputViewController {
 
     override func viewWillLayoutSubviews() {
         super.viewWillLayoutSubviews()
-
-        // Set keyboard height
-        let height: CGFloat = 220
-        view.frame.size.height = height
+        // Height is now set via constraint in viewDidLoad
     }
 
     override func textWillChange(_ textInput: UITextInput?) {

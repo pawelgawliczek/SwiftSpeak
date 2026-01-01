@@ -39,6 +39,13 @@ struct PowerModeEditorView: View {
     // Phase 10: Provider override
     @State private var providerOverride: ProviderSelection?
 
+    // Phase 13.11: AI Autocorrect
+    @State private var aiAutocorrectEnabled: Bool = false
+
+    // Phase 13.11: Enter key behavior
+    @State private var enterSendsMessage: Bool = true
+    @State private var enterRunsContext: Bool = false
+
     // UI state
     @State private var showingIconPicker = false
     @State private var showingKnowledgeBase = false
@@ -64,7 +71,10 @@ struct PowerModeEditorView: View {
             knowledgeDocumentIds: knowledgeDocumentIds,
             appAssignment: appAssignment,
             enabledWebhookIds: enabledWebhookIds,
-            providerOverride: providerOverride
+            providerOverride: providerOverride,
+            aiAutocorrectEnabled: aiAutocorrectEnabled,
+            enterSendsMessage: enterSendsMessage,
+            enterRunsContext: enterRunsContext
         )
     }
 
@@ -86,6 +96,9 @@ struct PowerModeEditorView: View {
             _knowledgeDocumentIds = State(initialValue: mode.knowledgeDocumentIds)
             _enabledWebhookIds = State(initialValue: mode.enabledWebhookIds)
             _providerOverride = State(initialValue: mode.providerOverride)
+            _aiAutocorrectEnabled = State(initialValue: mode.aiAutocorrectEnabled)
+            _enterSendsMessage = State(initialValue: mode.enterSendsMessage)
+            _enterRunsContext = State(initialValue: mode.enterRunsContext)
         }
     }
 
@@ -113,6 +126,12 @@ struct PowerModeEditorView: View {
 
                     // Provider override section (Phase 10)
                     providerOverrideSection
+
+                    // AI Autocorrect section (Phase 13.11)
+                    aiAutocorrectSection
+
+                    // Enter key behavior section (Phase 13.11)
+                    enterKeySection
 
                     // App assignment section
                     appAssignmentSection
@@ -690,6 +709,112 @@ struct PowerModeEditorView: View {
         return selections
     }
 
+    // MARK: - AI Autocorrect Section (Phase 13.11)
+
+    private var aiAutocorrectSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("AI GRAMMAR FIX")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Image(systemName: "text.badge.checkmark")
+                    .font(.title2)
+                    .foregroundStyle(aiAutocorrectEnabled ? AppTheme.powerAccent : .secondary)
+                    .frame(width: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Fix Grammar & Punctuation")
+                        .font(.subheadline.weight(.medium))
+
+                    Text("AI will fix grammar and punctuation without changing your words")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $aiAutocorrectEnabled)
+                    .labelsHidden()
+                    .tint(AppTheme.powerAccent)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+        }
+    }
+
+    // MARK: - Enter Key Section (Phase 13.11)
+
+    private var enterKeySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ENTER KEY BEHAVIOR")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 8) {
+                // Run Power Mode toggle
+                HStack(spacing: 12) {
+                    Image(systemName: "bolt.fill")
+                        .font(.title3)
+                        .foregroundStyle(enterRunsContext ? AppTheme.powerAccent : .secondary)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Run Power Mode on Enter")
+                            .font(.subheadline.weight(.medium))
+
+                        Text("Automatically apply this power mode when pressing Enter")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $enterRunsContext)
+                        .labelsHidden()
+                        .tint(AppTheme.powerAccent)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                // Auto-send toggle
+                HStack(spacing: 12) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.title3)
+                        .foregroundStyle(enterSendsMessage ? AppTheme.powerAccent : .secondary)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Auto-Send Message")
+                            .font(.subheadline.weight(.medium))
+
+                        Text("Submit the message after inserting text")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $enterSendsMessage)
+                        .labelsHidden()
+                        .tint(AppTheme.powerAccent)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
+
+            Text("Use the AI button for manual processing, or enable Enter key to automate it")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
     // MARK: - App Assignment Section
 
     private var appAssignmentSection: some View {
@@ -728,7 +853,10 @@ struct PowerModeEditorView: View {
             isArchived: powerMode?.isArchived ?? false,
             appAssignment: appAssignment,
             enabledWebhookIds: enabledWebhookIds,
-            providerOverride: providerOverride
+            providerOverride: providerOverride,
+            aiAutocorrectEnabled: aiAutocorrectEnabled,
+            enterSendsMessage: enterSendsMessage,
+            enterRunsContext: enterRunsContext
         )
         HapticManager.success()
         onSave(savedMode)

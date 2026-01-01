@@ -1,0 +1,603 @@
+//
+//  QWERTYKeyboard.swift
+//  SwiftSpeakKeyboard
+//
+//  Main QWERTY keyboard view assembling all key components
+//
+
+import SwiftUI
+import UIKit
+
+// MARK: - QWERTY Keyboard
+struct QWERTYKeyboard: View {
+    let textDocumentProxy: UITextDocumentProxy?
+    let onNextKeyboard: () -> Void
+    var viewModel: KeyboardViewModel?  // Phase 13.6: For predictions
+
+    @State private var shiftState: ShiftState = .lowercase
+    @State private var layoutState: KeyboardLayoutState = .letters
+
+    // Accent popup state
+    @State private var showingAccentPopup: Bool = false
+    @State private var accentPopupLetter: String = ""
+    @State private var accentPopupKeyFrame: CGRect = .zero
+
+    // Phase 13.8: Swipe typing state
+    @StateObject private var swipeEngine = SwipeTypingEngine()
+    @State private var keyFrames: [String: CGRect] = [:]
+    @State private var keyboardFrame: CGRect = .zero  // Track keyboard frame for accent popup
+
+    // Load swipe typing enabled from settings
+    private var swipeTypingEnabled: Bool {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        // Use object(forKey:) because bool(forKey:) returns false for missing keys
+        return (defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) as? Bool) ?? true
+    }
+
+    // Auto-capitalization tracking
+    private var shouldAutoCapitalize: Bool {
+        guard let proxy = textDocumentProxy else { return false }
+        let before = proxy.documentContextBeforeInput ?? ""
+
+        // Capitalize at start of text
+        if before.isEmpty {
+            return true
+        }
+
+        // Capitalize after sentence-ending punctuation
+        let trimmed = before.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") {
+            return true
+        }
+
+        return false
+    }
+
+    var body: some View {
+        VStack(spacing: KeyboardTheme.rowSpacing) {
+            if layoutState == .letters {
+                letterLayout
+            } else {
+                numberSymbolLayout
+            }
+
+            bottomRow
+        }
+        .padding(.horizontal, KeyboardTheme.horizontalPadding)
+        .padding(.vertical, 4)
+        .background(
+            GeometryReader { geometry in
+                KeyboardTheme.keyboardBackground
+                    .onAppear {
+                        keyboardFrame = geometry.frame(in: .global)
+                    }
+                    .onChange(of: geometry.frame(in: .global)) { _, newFrame in
+                        keyboardFrame = newFrame
+                    }
+            }
+        )
+        .onChange(of: textDocumentProxy?.documentContextBeforeInput) { _, _ in
+            // Auto-capitalize if needed
+            if shiftState == .lowercase && shouldAutoCapitalize {
+                shiftState = .shift
+            }
+        }
+        // Phase 13.8: Swipe path overlay
+        .overlay {
+            if swipeEngine.isSwipeActive {
+                SwipePathView(path: swipeEngine.swipePath)
+            }
+        }
+        // Phase 13.8: Swipe gesture (only on letters layout, when enabled)
+        // Use highPriorityGesture to take precedence over key-level gestures
+        .highPriorityGesture(
+            swipeTypingEnabled && layoutState == .letters ?
+            DragGesture(minimumDistance: 15, coordinateSpace: .global)
+                .onChanged { value in
+                    handleSwipeContinue(at: value.location)
+                }
+                .onEnded { _ in
+                    handleSwipeEnd()
+                }
+            : nil
+        )
+        // Phase 13.8: Capture key frames for swipe tracking
+        .onPreferenceChange(KeyFramePreferenceKey.self) { frames in
+            self.keyFrames = frames
+        }
+        // Accent popup as true overlay - floats above everything
+        .overlay {
+            if showingAccentPopup, let accents = AccentMappings.accentsFor(accentPopupLetter) {
+                AccentPopup(
+                    accents: accents,
+                    keyFrame: accentPopupKeyFrame,
+                    shiftState: shiftState,
+                    onSelect: { accent in
+                        insertText(accent)
+                        showingAccentPopup = false
+                    },
+                    onCancel: {
+                        showingAccentPopup = false
+                    },
+                    keyboardFrame: keyboardFrame
+                )
+                .transition(.opacity)
+            }
+        }
+    }
+
+    // MARK: - Letter Layout
+
+    private var letterLayout: some View {
+        VStack(spacing: KeyboardTheme.rowSpacing) {
+            // Row 1: Q W E R T Y U I O P
+            HStack(spacing: KeyboardTheme.keySpacing) {
+                ForEach(KeyboardLayout.qwertyRow1, id: \.self) { key in
+                    let displayKey = shouldUppercase ? key : key.lowercased()
+                    LetterKey(
+                        letter: displayKey,
+                        shiftState: shiftState,
+                        action: {
+                            insertText(displayKey)
+                            afterLetterInsert()
+                        },
+                        onShowAccentPopup: { letter, frame in
+                            showAccentPopup(for: letter, at: frame)
+                        }
+                    )
+                }
+            }
+
+            // Row 2: A S D F G H J K L (centered)
+            HStack(spacing: KeyboardTheme.keySpacing) {
+                ForEach(KeyboardLayout.qwertyRow2, id: \.self) { key in
+                    let displayKey = shouldUppercase ? key : key.lowercased()
+                    LetterKey(
+                        letter: displayKey,
+                        shiftState: shiftState,
+                        action: {
+                            insertText(displayKey)
+                            afterLetterInsert()
+                        },
+                        onShowAccentPopup: { letter, frame in
+                            showAccentPopup(for: letter, at: frame)
+                        }
+                    )
+                }
+            }
+            .padding(.horizontal, 18) // Center middle row
+
+            // Row 3: Shift + Z X C V B N M + Backspace
+            HStack(spacing: KeyboardTheme.keySpacing) {
+                // Shift key
+                ActionKey(
+                    icon: shiftIconName,
+                    isHighlighted: shiftState != .lowercase
+                ) {
+                    handleShiftTap()
+                }
+                .frame(width: 42)
+
+                ForEach(KeyboardLayout.qwertyRow3, id: \.self) { key in
+                    let displayKey = shouldUppercase ? key : key.lowercased()
+                    LetterKey(
+                        letter: displayKey,
+                        shiftState: shiftState,
+                        action: {
+                            insertText(displayKey)
+                            afterLetterInsert()
+                        },
+                        onShowAccentPopup: { letter, frame in
+                            showAccentPopup(for: letter, at: frame)
+                        }
+                    )
+                }
+
+                // Backspace key with long-press repeat
+                ActionKey(icon: "delete.left") {
+                    deleteBackward()
+                } onLongPress: {
+                    deleteBackward()
+                }
+                .frame(width: 42)
+            }
+        }
+    }
+
+    // MARK: - Number/Symbol Layout
+
+    private var numberSymbolLayout: some View {
+        let rows = layoutState == .symbols ? symbolRows : numberRows
+
+        return VStack(spacing: KeyboardTheme.rowSpacing) {
+            // Row 1: Numbers or symbols
+            HStack(spacing: KeyboardTheme.keySpacing) {
+                ForEach(rows.0, id: \.self) { key in
+                    LetterKey(
+                        letter: key,
+                        shiftState: shiftState,
+                        action: {
+                            insertText(key)
+                        },
+                        onShowAccentPopup: nil  // No accents on numbers/symbols
+                    )
+                }
+            }
+
+            // Row 2: More characters
+            HStack(spacing: KeyboardTheme.keySpacing) {
+                ForEach(rows.1, id: \.self) { key in
+                    LetterKey(
+                        letter: key,
+                        shiftState: shiftState,
+                        action: {
+                            insertText(key)
+                        },
+                        onShowAccentPopup: nil  // No accents on numbers/symbols
+                    )
+                }
+            }
+
+            // Row 3: Symbol toggle + punctuation + backspace
+            HStack(spacing: KeyboardTheme.keySpacing) {
+                // Symbol/Number toggle
+                ActionKey(text: layoutState == .symbols ? "123" : "#+=") {
+                    toggleSymbols()
+                }
+                .frame(width: 42)
+
+                ForEach(rows.2, id: \.self) { key in
+                    LetterKey(
+                        letter: key,
+                        shiftState: shiftState,
+                        action: {
+                            insertText(key)
+                        },
+                        onShowAccentPopup: nil  // No accents on numbers/symbols
+                    )
+                }
+
+                // Backspace key with long-press repeat
+                ActionKey(icon: "delete.left") {
+                    deleteBackward()
+                } onLongPress: {
+                    deleteBackward()
+                }
+                .frame(width: 42)
+            }
+        }
+    }
+
+    // MARK: - Bottom Row
+
+    private var bottomRow: some View {
+        HStack(spacing: KeyboardTheme.keySpacing) {
+            // 123/ABC toggle - slightly bigger for easier access
+            ActionKey(text: layoutState == .letters ? "123" : "ABC") {
+                toggleLayout()
+            }
+            .frame(width: 58)
+
+            // Emoji button
+            ActionKey(icon: "face.smiling") {
+                KeyboardHaptics.lightTap()
+                viewModel?.showEmojiPanel = true
+            }
+            .frame(width: 42)
+
+            // Space bar (Phase 13.5: with cursor control, Phase 13.6: triggers LLM predictions)
+            SpaceBar(
+                action: {
+                    insertText(" ")
+                    // Phase 13.6: Trigger LLM predictions on space
+                    viewModel?.triggerLLMPredictions()
+                },
+                textDocumentProxy: textDocumentProxy
+            )
+
+            // Return key - Phase 13.11: Check for context processing
+            ActionKey(text: "return") {
+                // Check if context wants to process on Enter
+                if viewModel?.handleReturnKey() == true {
+                    // Context handled the return key (with AI processing or special behavior)
+                    KeyboardHaptics.mediumTap()
+                } else {
+                    // Normal return key behavior
+                    insertText("\n")
+                    KeyboardHaptics.mediumTap()
+                }
+            }
+            .frame(width: 95)
+        }
+    }
+
+    // MARK: - Helper Properties
+
+    private var shouldUppercase: Bool {
+        shiftState == .shift || shiftState == .capsLock
+    }
+
+    private var shiftIconName: String {
+        switch shiftState {
+        case .lowercase:
+            return "shift"
+        case .shift:
+            return "shift.fill"
+        case .capsLock:
+            return "capslock.fill"
+        }
+    }
+
+    private var numberRows: ([String], [String], [String]) {
+        (KeyboardLayout.numbersRow1, KeyboardLayout.numbersRow2, KeyboardLayout.numbersRow3)
+    }
+
+    private var symbolRows: ([String], [String], [String]) {
+        (KeyboardLayout.symbolsRow1, KeyboardLayout.symbolsRow2, KeyboardLayout.symbolsRow3)
+    }
+
+    // MARK: - Actions
+
+    private func insertText(_ text: String) {
+        guard let proxy = textDocumentProxy else { return }
+        let contextBefore = proxy.documentContextBeforeInput
+
+        // Check for autocorrect before inserting space or punctuation
+        // Must complete BEFORE inserting the triggering character
+        if autocorrectEnabled && (text == " " || text == "." || text == "," || text == "!" || text == "?") {
+            performAutocorrectThenInsert(text, proxy: proxy, contextBefore: contextBefore)
+            return
+        }
+
+        // Apply smart punctuation if enabled
+        if smartPunctuationEnabled {
+            // Handle double space → period
+            if text == " " {
+                if let result = SmartPunctuationService.handleDoubleSpace(contextBefore: contextBefore) {
+                    if result.shouldDeleteSpace {
+                        proxy.deleteBackward()
+                    }
+                    proxy.insertText(result.text)
+                    viewModel?.updateTypingContext()
+                    return
+                }
+            }
+
+            // Handle smart quotes
+            if text == "\"" || text == "'" {
+                let smartQuote = SmartPunctuationService.smartQuote(for: text, contextBefore: contextBefore)
+                proxy.insertText(smartQuote)
+                viewModel?.updateTypingContext()
+                return
+            }
+
+            // Handle dash → em dash (when typing second -)
+            if text == "-" {
+                if let result = SmartPunctuationService.handleDash(contextBefore: contextBefore) {
+                    for _ in 0..<result.deleteCount {
+                        proxy.deleteBackward()
+                    }
+                    proxy.insertText(result.text)
+                    viewModel?.updateTypingContext()
+                    return
+                }
+            }
+
+            // Handle ellipsis (when typing third .)
+            if text == "." {
+                if let result = SmartPunctuationService.handleEllipsis(contextBefore: contextBefore) {
+                    for _ in 0..<result.deleteCount {
+                        proxy.deleteBackward()
+                    }
+                    proxy.insertText(result.text)
+                    viewModel?.updateTypingContext()
+                    return
+                }
+            }
+        }
+
+        proxy.insertText(text)
+        // Phase 13.6: Update typing context after inserting text
+        viewModel?.updateTypingContext()
+    }
+
+    /// Check if autocorrect is enabled
+    private var autocorrectEnabled: Bool {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        return (defaults?.object(forKey: "keyboardAutocorrect") as? Bool) ?? true
+    }
+
+    /// Check if smart punctuation is enabled
+    private var smartPunctuationEnabled: Bool {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        return (defaults?.object(forKey: "keyboardSmartPunctuation") as? Bool) ?? true
+    }
+
+    /// Perform autocorrection on the last typed word, then insert the triggering character
+    private func performAutocorrectThenInsert(_ text: String, proxy: UITextDocumentProxy, contextBefore: String?) {
+        guard let beforeText = contextBefore else {
+            // No context, just insert the text with smart punctuation
+            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+            return
+        }
+
+        // Find the last word
+        let words = beforeText.split(separator: " ", omittingEmptySubsequences: true)
+        guard let lastWord = words.last else {
+            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+            return
+        }
+
+        let wordString = String(lastWord)
+
+        // Skip autocorrect if word is too short or contains numbers
+        guard wordString.count >= 2,
+              !wordString.contains(where: { $0.isNumber }) else {
+            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+            return
+        }
+
+        // Check for correction, then insert the triggering character
+        Task {
+            let result = await AutocorrectService.shared.processWord(wordString)
+
+            await MainActor.run {
+                // Apply correction if found
+                if let (original, correction) = result, let corrected = correction {
+                    // Delete the original word
+                    for _ in 0..<original.count {
+                        proxy.deleteBackward()
+                    }
+                    // Insert the correction
+                    proxy.insertText(corrected)
+                    KeyboardHaptics.lightTap()
+                    keyboardLog("Autocorrected '\(original)' to '\(corrected)'", category: "Autocorrect")
+                }
+
+                // Now insert the triggering character (space, period, etc.)
+                // Re-read context after potential correction
+                let newContextBefore = proxy.documentContextBeforeInput
+                self.insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: newContextBefore)
+            }
+        }
+    }
+
+    /// Insert text with smart punctuation applied
+    private func insertTextWithSmartPunctuation(_ text: String, proxy: UITextDocumentProxy, contextBefore: String?) {
+        if smartPunctuationEnabled {
+            // Handle double space → period
+            if text == " " {
+                if let result = SmartPunctuationService.handleDoubleSpace(contextBefore: contextBefore) {
+                    if result.shouldDeleteSpace {
+                        proxy.deleteBackward()
+                    }
+                    proxy.insertText(result.text)
+                    viewModel?.updateTypingContext()
+                    return
+                }
+            }
+
+            // Handle ellipsis (when typing third .)
+            if text == "." {
+                if let result = SmartPunctuationService.handleEllipsis(contextBefore: contextBefore) {
+                    for _ in 0..<result.deleteCount {
+                        proxy.deleteBackward()
+                    }
+                    proxy.insertText(result.text)
+                    viewModel?.updateTypingContext()
+                    return
+                }
+            }
+        }
+
+        proxy.insertText(text)
+        viewModel?.updateTypingContext()
+    }
+
+    private func deleteBackward() {
+        textDocumentProxy?.deleteBackward()
+        // Phase 13.6: Update typing context after deleting
+        viewModel?.updateTypingContext()
+    }
+
+    private func handleShiftTap() {
+        switch shiftState {
+        case .lowercase:
+            shiftState = .shift
+        case .shift:
+            shiftState = .capsLock
+        case .capsLock:
+            shiftState = .lowercase
+        }
+    }
+
+    private func afterLetterInsert() {
+        // After inserting a letter, turn off single shift (but not caps lock)
+        if shiftState == .shift {
+            shiftState = .lowercase
+        }
+    }
+
+    private func toggleLayout() {
+        if layoutState == .letters {
+            layoutState = .numbers
+        } else {
+            layoutState = .letters
+        }
+    }
+
+    private func toggleSymbols() {
+        if layoutState == .numbers {
+            layoutState = .symbols
+        } else {
+            layoutState = .numbers
+        }
+    }
+
+    // MARK: - Accent Popup
+
+    private func showAccentPopup(for letter: String, at frame: CGRect) {
+        accentPopupLetter = letter
+        accentPopupKeyFrame = frame
+        withAnimation(.spring(response: 0.2, dampingFraction: 0.8)) {
+            showingAccentPopup = true
+        }
+    }
+
+    // MARK: - Phase 13.8: Swipe Typing
+
+    private func handleSwipeContinue(at point: CGPoint) {
+        guard swipeTypingEnabled else { return }
+
+        if !swipeEngine.isSwipeActive {
+            // Start swipe if we're near a key
+            if let nearestKey = nearestKey(to: point) {
+                swipeEngine.startSwipe(at: point, key: nearestKey)
+            }
+        } else {
+            // Continue swipe
+            let nearestKey = nearestKey(to: point)
+            swipeEngine.continueSwipe(to: point, nearestKey: nearestKey)
+        }
+    }
+
+    private func handleSwipeEnd() {
+        guard swipeTypingEnabled else { return }
+
+        if let word = swipeEngine.endSwipe() {
+            // Insert the word
+            let finalWord = shouldUppercase ? word.capitalized : word
+            insertText(finalWord)
+            afterLetterInsert()
+        }
+    }
+
+    private func nearestKey(to point: CGPoint) -> String? {
+        var nearest: (key: String, distance: CGFloat)?
+
+        for (key, frame) in keyFrames {
+            let center = CGPoint(x: frame.midX, y: frame.midY)
+            let distance = hypot(point.x - center.x, point.y - center.y)
+
+            if nearest == nil || distance < nearest!.distance {
+                nearest = (key, distance)
+            }
+        }
+
+        // Only return key if point is reasonably close (within 100 points)
+        if let result = nearest, result.distance < 100 {
+            return result.key
+        }
+
+        return nil
+    }
+}
+
+// MARK: - Preview
+#Preview {
+    QWERTYKeyboard(
+        textDocumentProxy: nil,
+        onNextKeyboard: { print("Next keyboard") }
+    )
+    .preferredColorScheme(.dark)
+}

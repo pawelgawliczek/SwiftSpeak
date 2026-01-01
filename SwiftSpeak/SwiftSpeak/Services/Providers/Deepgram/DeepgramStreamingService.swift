@@ -72,7 +72,8 @@ final class DeepgramStreamingService: NSObject, StreamingTranscriptionProvider {
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
+        // Note: Deepgram doesn't support system instructions, only keywords via transcriptionPrompt
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
         }

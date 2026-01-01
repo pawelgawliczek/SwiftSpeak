@@ -895,10 +895,22 @@ struct SettingsView: View {
                 )
             }
             .listRowBackground(rowBackground)
+
+            Toggle(isOn: $settings.swiftLinkAutoStart) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-start SwiftLink")
+                        .font(.callout)
+                    Text("Enable SwiftLink when using voice input")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
         } header: {
             Text("Background Dictation")
         } footer: {
-            Text("Start a session to dictate from your keyboard without leaving apps.")
+            Text("Auto-start enables SwiftLink once, letting you dictate from your keyboard without leaving apps. You can disable it to always use the main app for recording.")
         }
     }
 

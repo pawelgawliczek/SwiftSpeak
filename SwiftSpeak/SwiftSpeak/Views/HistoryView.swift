@@ -25,6 +25,7 @@ struct HistoryView: View {
     // Interactive filters (used when showFilterBar is true)
     @State private var selectedPowerModeFilter: UUID?
     @State private var selectedContextFilter: UUID?
+    @State private var selectedSourceFilter: TranscriptionSource?
     @State private var showFilterSheet = false
 
     private var backgroundColor: Color {
@@ -32,7 +33,7 @@ struct HistoryView: View {
     }
 
     private var hasActiveFilters: Bool {
-        selectedPowerModeFilter != nil || selectedContextFilter != nil
+        selectedPowerModeFilter != nil || selectedContextFilter != nil || selectedSourceFilter != nil
     }
 
     var filteredHistory: [TranscriptionRecord] {
@@ -49,6 +50,11 @@ struct HistoryView: View {
             result = result.filter { $0.contextId == contextId }
         } else if let selected = selectedContextFilter {
             result = result.filter { $0.contextId == selected }
+        }
+
+        // Source filter (Phase 13.11 - Keyboard AI tracking)
+        if let source = selectedSourceFilter {
+            result = result.filter { $0.source == source }
         }
 
         // Text search
@@ -219,10 +225,11 @@ struct HistoryView: View {
                 HistoryFilterSheet(
                     selectedPowerModeId: $selectedPowerModeFilter,
                     selectedContextId: $selectedContextFilter,
+                    selectedSource: $selectedSourceFilter,
                     powerModes: settings.powerModes,
                     contexts: settings.contexts
                 )
-                .presentationDetents([.medium])
+                .presentationDetents([.medium, .large])
             }
             .sheet(item: $selectedRecord) { record in
                 HistoryDetailView(record: record)

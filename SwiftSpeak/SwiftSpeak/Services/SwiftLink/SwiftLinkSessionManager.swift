@@ -69,6 +69,12 @@ final class SwiftLinkSessionManager: ObservableObject {
     private var audioConverter: AVAudioConverter?
     private var inputFormat: AVAudioFormat?
 
+    // Audio buffering during streaming provider connection
+    // Buffers audio while WebSocket is connecting so we don't lose the first 1-2 seconds
+    private var pendingStreamingAudio: [Data] = []
+    private var isStreamingProviderConnecting = false
+    private let maxPendingAudioChunks = 100  // ~2-3 seconds at typical chunk rate
+
     // MARK: - Initialization
 
     private init() {
@@ -116,6 +122,45 @@ final class SwiftLinkSessionManager: ObservableObject {
         appLog("SwiftLink session started successfully", category: "SwiftLink")
 
         return targetApp.urlScheme
+    }
+
+    /// Start a SwiftLink session for background processing (without specific target app).
+    /// Used when AI processing is requested but SwiftLink is not yet active.
+    func startBackgroundSession() async {
+        guard !isSessionActive else {
+            appLog("SwiftLink background session already active (isSessionActive=\(isSessionActive))", category: "SwiftLink")
+            return
+        }
+
+        appLog("Starting SwiftLink background session for AI processing", category: "SwiftLink")
+
+        do {
+            // Configure audio session for background
+            try await configureAudioSession()
+            appLog("Audio session configured for background", category: "SwiftLink")
+
+            // Start continuous recording (silent mode)
+            try startContinuousRecording()
+            appLog("Continuous recording started", category: "SwiftLink")
+
+            // Update state
+            isSessionActive = true
+            sessionStartTime = Date()
+            persistSessionState(active: true)
+            appLog("Session state persisted (active=true)", category: "SwiftLink")
+
+            // Start session timer if duration is set
+            startSessionTimer()
+
+            // Notify keyboard that session started
+            DarwinNotificationManager.shared.postSessionStarted()
+            appLog("Darwin notification posted: sessionStarted", category: "SwiftLink")
+
+            appLog("SwiftLink background session started successfully", category: "SwiftLink")
+
+        } catch {
+            appLog("Failed to start SwiftLink background session: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+        }
     }
 
     /// End the current SwiftLink session.
@@ -191,6 +236,8 @@ final class SwiftLinkSessionManager: ObservableObject {
         dictationStartTime = Date()
         isRecording = true
         isStreamingMode = false
+        isStreamingProviderConnecting = false
+        pendingStreamingAudio.removeAll()
         currentDictationDuration = 0
 
         // Store in App Groups for keyboard to read
@@ -198,11 +245,39 @@ final class SwiftLinkSessionManager: ObservableObject {
         sharedDefaults?.set("recording", forKey: Constants.Keys.swiftLinkProcessingStatus)
         sharedDefaults?.synchronize()
 
+        // Ensure audio engine is running (may have been suspended in background)
+        ensureAudioEngineRunning()
+
         // Start dictation duration timer
         startDictationTimer()
 
         // Start writing to file from this point
         startSegmentRecording()
+    }
+
+    /// Ensure the audio engine is running - iOS may suspend it in background
+    private func ensureAudioEngineRunning() {
+        if !audioEngine.isRunning {
+            appLog("Audio engine was suspended, restarting...", category: "SwiftLink", level: .warning)
+            do {
+                // Reactivate audio session
+                try AVAudioSession.sharedInstance().setActive(true)
+
+                // Reinstall tap and start engine
+                let inputNode = audioEngine.inputNode
+                inputNode.removeTap(onBus: 0)  // Remove old tap if any
+
+                let format = inputNode.outputFormat(forBus: 0)
+                inputNode.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
+                    self?.handleAudioBuffer(buffer)
+                }
+
+                try audioEngine.start()
+                appLog("Audio engine restarted successfully", category: "SwiftLink")
+            } catch {
+                appLog("Failed to restart audio engine: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+            }
+        }
     }
 
     /// Start streaming dictation by forwarding audio from existing tap to streaming provider
@@ -219,6 +294,9 @@ final class SwiftLinkSessionManager: ObservableObject {
         sharedDefaults?.set("", forKey: Constants.Keys.swiftLinkStreamingTranscript)
         sharedDefaults?.synchronize()
 
+        // Ensure audio engine is running (may have been suspended in background)
+        ensureAudioEngineRunning()
+
         // Notify keyboard that streaming started
         DarwinNotificationManager.shared.postStreamingUpdate()
 
@@ -226,10 +304,13 @@ final class SwiftLinkSessionManager: ObservableObject {
         startDictationTimer()
 
         // Create streaming provider directly (don't use orchestrator - we have our own audio)
+        // Mark as connecting so audio gets buffered while WebSocket connects
+        isStreamingProviderConnecting = true
+        pendingStreamingAudio.removeAll()
+
         Task {
             do {
                 let provider = try createStreamingProvider()
-                self.streamingProvider = provider
 
                 // Determine sample rate based on provider
                 if provider.providerId == .openAI {
@@ -238,26 +319,47 @@ final class SwiftLinkSessionManager: ObservableObject {
                     streamingTargetSampleRate = 16000  // Deepgram/AssemblyAI use 16kHz
                 }
 
-                // Setup audio format converter
+                // Setup audio format converter BEFORE connecting
+                // This allows us to buffer converted audio during connection
                 setupAudioConverter()
 
                 // Subscribe to provider transcripts
                 setupStreamingProviderSubscriptions(provider)
 
-                // Connect to streaming service with context and vocabulary
+                // Connect to streaming service with vocabulary and instructions
                 let settings = SharedSettings.shared
-                let transcriptionPrompt = self.buildTranscriptionPrompt(settings: settings)
+                let vocabularyPrompt = self.buildVocabularyPrompt(settings: settings)
+                let instructions = self.buildTranscriptionInstructions(settings: settings)
 
                 try await provider.connect(
                     language: settings.selectedDictationLanguage,
                     sampleRate: streamingTargetSampleRate,
-                    transcriptionPrompt: transcriptionPrompt
+                    transcriptionPrompt: vocabularyPrompt,
+                    instructions: instructions
                 )
+
+                // NOW set the provider - this signals audio forwarding can begin
+                self.streamingProvider = provider
+                self.isStreamingProviderConnecting = false
+
+                // Flush any audio that was buffered during connection
+                let bufferedChunks = self.pendingStreamingAudio.count
+                if bufferedChunks > 0 {
+                    appLog("Flushing \(bufferedChunks) buffered audio chunks to streaming provider", category: "SwiftLink")
+                    for audioData in self.pendingStreamingAudio {
+                        provider.sendAudio(audioData)
+                    }
+                    self.pendingStreamingAudio.removeAll()
+                }
 
                 appLog("Streaming provider connected, forwarding audio from existing tap", category: "SwiftLink")
 
             } catch {
                 appLog("Failed to start streaming: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+                // Reset connection state
+                self.isStreamingProviderConnecting = false
+                self.pendingStreamingAudio.removeAll()
+
                 // Fall back to batch mode
                 isStreamingMode = false
                 streamingProvider = nil
@@ -269,44 +371,68 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
     }
 
-    /// Build transcription prompt from active context and vocabulary
-    /// - Returns: Prompt string for transcription providers, or nil if no context/vocabulary
-    private func buildTranscriptionPrompt(settings: SharedSettings) -> String? {
-        var hints: [String] = []
+    /// Build vocabulary prompt from vocabulary entries only
+    /// - Returns: Comma-separated vocabulary words for transcription providers, or nil if no vocabulary
+    /// Note: OpenAI's transcription prompt should ONLY contain vocabulary hints (words that might
+    /// appear in the audio). Do NOT include descriptive metadata like "Context:" or "Tone:" as
+    /// the model will echo these back in the transcript.
+    private func buildVocabularyPrompt(settings: SharedSettings) -> String? {
+        // ONLY use vocabulary words - descriptive context confuses the streaming transcription
+        // and causes the model to echo back the context metadata in the transcript
+        var vocabWords: [String] = []
 
-        // Get active context
-        if let context = settings.activeContext {
-            // Add context name
-            hints.append("Context: \(context.name)")
-
-            // Add language hints from context
-            if !context.languageHints.isEmpty {
-                let languages = context.languageHints.map { $0.displayName }.joined(separator: ", ")
-                hints.append("This audio may contain: \(languages)")
-            }
-
-            // Add tone hint
-            if !context.toneDescription.isEmpty {
-                hints.append("Tone: \(context.toneDescription)")
-            }
-        }
-
-        // Add vocabulary words as keywords
-        let vocabWords = settings.vocabularyEntries
+        // Add vocabulary replacement words
+        vocabWords.append(contentsOf: settings.vocabularyEntries
             .filter { $0.isEnabled }
             .map { $0.replacementWord }
-            .prefix(20)
+        )
 
-        if !vocabWords.isEmpty {
-            let words = vocabWords.joined(separator: ", ")
-            hints.append("Keywords: \(words)")
+        // Add context-specific language hints (just the words, not descriptions)
+        if let context = settings.activeContext {
+            // Add language names if multiple languages expected
+            if context.languageHints.count > 1 {
+                vocabWords.append(contentsOf: context.languageHints.map { $0.displayName })
+            }
         }
 
-        guard !hints.isEmpty else { return nil }
+        // Limit to 30 words and deduplicate
+        let uniqueWords = Array(Set(vocabWords)).prefix(30)
 
-        let prompt = hints.joined(separator: ". ") + "."
-        appLog("Built transcription prompt: \(prompt.prefix(100))...", category: "SwiftLink")
+        guard !uniqueWords.isEmpty else { return nil }
+
+        // Format as comma-separated vocabulary list
+        let prompt = uniqueWords.joined(separator: ", ")
+        appLog("Built vocabulary prompt: \(prompt.prefix(100))...", category: "SwiftLink")
         return prompt
+    }
+
+    /// Build system instructions for transcription formatting
+    /// - Returns: Instructions string for formatting/style, or nil if no context
+    /// These are passed as the `instructions` parameter to OpenAI Realtime API,
+    /// NOT the `prompt` parameter (which is for vocabulary only).
+    private func buildTranscriptionInstructions(settings: SharedSettings) -> String? {
+        var instructions: [String] = []
+
+        // Base instruction for proper transcription
+        instructions.append("Transcribe the audio accurately with proper punctuation and capitalization.")
+
+        // Get active context for style guidance
+        if let context = settings.activeContext {
+            // Add context-specific formatting hints
+            if !context.toneDescription.isEmpty {
+                instructions.append("Use \(context.toneDescription.lowercased()) formatting style.")
+            }
+
+            // Professional context = more formal punctuation
+            if context.name.lowercased().contains("work") || context.name.lowercased().contains("professional") {
+                instructions.append("Use professional formatting with complete sentences.")
+            }
+        }
+
+        // Always return at least the base instructions
+        let result = instructions.joined(separator: " ")
+        appLog("Built transcription instructions: \(result.prefix(100))...", category: "SwiftLink")
+        return result
     }
 
     /// Create streaming provider based on selected transcription provider
@@ -513,6 +639,8 @@ final class SwiftLinkSessionManager: ObservableObject {
             audioConverter = nil
             streamingCancellables.removeAll()
             isStreamingMode = false
+            isStreamingProviderConnecting = false
+            pendingStreamingAudio.removeAll()
 
             appLog("Streaming stopped, transcript: \(finalTranscript.count) chars", category: "SwiftLink")
 
@@ -530,23 +658,41 @@ final class SwiftLinkSessionManager: ObservableObject {
     }
 
     /// Process the final streaming transcript (formatting, translation)
+    /// Two-step process: streaming transcription returns raw text, then we apply formatting/translation
     private func processStreamingResult(_ transcript: String) async {
         let settings = SharedSettings.shared
         let providerFactory = ProviderFactory(settings: settings)
 
         var processedText = settings.applyVocabulary(to: transcript)
 
+        // Get active context for context-aware formatting
+        let activeContext = settings.activeContext
+
         do {
-            // Apply formatting if not raw mode
+            // Apply formatting if not raw mode OR if context is active
             let mode = settings.selectedMode
             let customTemplate = settings.selectedCustomTemplate
 
-            if customTemplate != nil || mode != .raw {
+            // Build context for formatting (includes memory, tone, instructions)
+            let promptContext = PromptContext.from(
+                settings: settings,
+                context: activeContext,
+                powerMode: nil
+            )
+
+            // Determine if we need formatting:
+            // 1. Custom template selected
+            // 2. Mode is not raw
+            // 3. Context is active with content (memory, tone, instructions)
+            let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasContent
+
+            if needsFormatting {
                 if let formattingProvider = providerFactory.createSelectedTextFormattingProvider() {
                     processedText = try await formattingProvider.format(
                         text: processedText,
                         mode: mode,
-                        customPrompt: customTemplate?.prompt
+                        customPrompt: customTemplate?.prompt,
+                        context: promptContext
                     )
                 }
             }
@@ -571,11 +717,8 @@ final class SwiftLinkSessionManager: ObservableObject {
             settings.lastTranscription = processedText
             UIPasteboard.general.string = processedText
 
-            // Build transcription prompt used for this session
-            let transcriptionPrompt = buildTranscriptionPrompt(settings: settings)
-
-            // Get active context info
-            let activeContext = settings.activeContext
+            // Build vocabulary prompt used for this session
+            let vocabularyPrompt = buildVocabularyPrompt(settings: settings)
 
             // Build vocabulary words list
             let vocabularyWords = settings.vocabularyEntries
@@ -610,7 +753,7 @@ final class SwiftLinkSessionManager: ObservableObject {
                             inputTokens: nil,
                             outputTokens: nil,
                             cost: 0,
-                            prompt: transcriptionPrompt
+                            prompt: vocabularyPrompt
                         )
                     ],
                     totalProcessingTime: currentDictationDuration,
@@ -743,10 +886,20 @@ final class SwiftLinkSessionManager: ObservableObject {
     private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer) {
         guard isRecording else { return }
 
-        // If streaming mode, forward audio to streaming provider
-        if isStreamingMode, let provider = streamingProvider {
-            forwardAudioToStreamingProvider(buffer: buffer, provider: provider)
-            return
+        // If streaming mode, handle audio for streaming
+        if isStreamingMode {
+            // Check if provider is connected and ready
+            if let provider = streamingProvider, provider.connectionState == .connected {
+                // Provider ready - forward audio directly
+                forwardAudioToStreamingProvider(buffer: buffer, provider: provider)
+                return
+            }
+
+            // Provider is connecting or temporarily disconnected - buffer the audio
+            if isStreamingProviderConnecting || streamingProvider != nil {
+                bufferAudioForStreaming(buffer: buffer)
+                return
+            }
         }
 
         // Otherwise, write to file for batch processing
@@ -756,6 +909,39 @@ final class SwiftLinkSessionManager: ObservableObject {
             try file.write(from: buffer)
         } catch {
             // Log but don't interrupt - we'll handle errors when processing
+        }
+    }
+
+    /// Buffer audio during streaming provider connection or temporary disconnect
+    private func bufferAudioForStreaming(buffer: AVAudioPCMBuffer) {
+        guard let converter = audioConverter else { return }
+
+        // Calculate output buffer size based on sample rate ratio
+        let ratio = Double(streamingTargetSampleRate) / buffer.format.sampleRate
+        let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio)
+
+        guard let outputBuffer = AVAudioPCMBuffer(
+            pcmFormat: converter.outputFormat,
+            frameCapacity: outputFrameCapacity
+        ) else {
+            return
+        }
+
+        var error: NSError?
+        let status = converter.convert(to: outputBuffer, error: &error) { inNumPackets, outStatus in
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        guard status != .error, error == nil else { return }
+
+        // Extract PCM16 data
+        guard let int16Data = outputBuffer.int16ChannelData else { return }
+        let data = Data(bytes: int16Data[0], count: Int(outputBuffer.frameLength) * 2)
+
+        // Add to buffer (with limit to prevent memory issues)
+        if pendingStreamingAudio.count < maxPendingAudioChunks {
+            pendingStreamingAudio.append(data)
         }
     }
 
@@ -838,21 +1024,37 @@ final class SwiftLinkSessionManager: ObservableObject {
                     providerFactory: providerFactory
                 )
             } else {
-                // Normal formatting flow
+                // Normal formatting flow (two-step: transcription done, now format/translate)
                 let mode = settings.selectedMode
                 let customTemplate = settings.selectedCustomTemplate
+                let activeContext = settings.activeContext
 
-                if customTemplate != nil || mode != .raw {
+                // Build context for formatting (includes memory, tone, instructions)
+                let promptContext = PromptContext.from(
+                    settings: settings,
+                    context: activeContext,
+                    powerMode: nil
+                )
+
+                // Determine if we need formatting:
+                // 1. Custom template selected
+                // 2. Mode is not raw
+                // 3. Context is active with content (memory, tone, instructions)
+                let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasContent
+
+                if needsFormatting {
                     if let formattingProvider = providerFactory.createSelectedTextFormattingProvider() {
                         processedText = try await formattingProvider.format(
                             text: processedText,
                             mode: mode,
-                            customPrompt: customTemplate?.prompt
+                            customPrompt: customTemplate?.prompt,
+                            context: promptContext
                         )
                     }
                 }
 
                 // Translate if enabled (not in edit mode)
+                // Translation is always a separate step after formatting
                 if settings.isTranslationEnabled {
                     if let translationProvider = providerFactory.createSelectedTranslationProvider() {
                         processedText = try await translationProvider.translate(
@@ -1101,6 +1303,252 @@ final class SwiftLinkSessionManager: ObservableObject {
                 self?.markEditStart()
             }
         }
+
+        // Phase 13.11: Observe AI process request from keyboard
+        DarwinNotificationManager.shared.startObserving(name: Constants.AIProcess.startProcess) { [weak self] in
+            Task { @MainActor in
+                self?.handleAIProcessRequest()
+            }
+        }
+    }
+
+    // MARK: - Phase 13.11: AI Process Request Handler
+
+    /// Handle AI process request from keyboard (runs context/power mode on entered text)
+    private func handleAIProcessRequest() {
+        appLog("Received AI process request from keyboard", category: "SwiftLink")
+
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        guard let pendingText = defaults?.string(forKey: Constants.AIProcess.pendingText),
+              !pendingText.isEmpty else {
+            appLog("AI Process: No pending text", category: "SwiftLink", level: .warning)
+            defaults?.set("error", forKey: Constants.AIProcess.status)
+            defaults?.synchronize()
+            DarwinNotificationManager.shared.post(name: Constants.AIProcess.resultReady)
+            return
+        }
+
+        let contextIdString = defaults?.string(forKey: Constants.AIProcess.contextId)
+        let powerModeIdString = defaults?.string(forKey: Constants.AIProcess.powerModeId)
+
+        appLog("AI Process: Starting (text: \(pendingText.count) chars, context: \(contextIdString ?? "none"))", category: "SwiftLink")
+
+        // Set status to processing
+        defaults?.set("processing", forKey: Constants.AIProcess.status)
+        defaults?.synchronize()
+
+        Task {
+            do {
+                let settings = SharedSettings.shared
+                let startTime = Date()
+                var result: String
+                var processedWithContext: ConversationContext?
+                var processedWithPowerMode: PowerMode?
+                var usedProvider: AIProvider = .openAI
+
+                if let contextIdString = contextIdString,
+                   let contextId = UUID(uuidString: contextIdString),
+                   let context = settings.contexts.first(where: { $0.id == contextId }) {
+
+                    // Process with context
+                    result = try await processTextWithContext(pendingText, context: context)
+                    processedWithContext = context
+                    usedProvider = settings.selectedPowerModeProvider
+
+                } else if let powerModeIdString = powerModeIdString,
+                          let powerModeId = UUID(uuidString: powerModeIdString),
+                          let powerMode = settings.powerModes.first(where: { $0.id == powerModeId }) {
+
+                    // Process with power mode
+                    result = try await processTextWithPowerMode(pendingText, powerMode: powerMode)
+                    processedWithPowerMode = powerMode
+                    // Get provider from power mode override or default
+                    if let override = powerMode.providerOverride {
+                        switch override.providerType {
+                        case .cloud(let provider): usedProvider = provider
+                        case .local: usedProvider = settings.selectedPowerModeProvider
+                        }
+                    } else {
+                        usedProvider = settings.selectedPowerModeProvider
+                    }
+
+                } else {
+                    // No context or power mode - just return original text
+                    appLog("AI Process: No context/power mode found, returning original", category: "SwiftLink", level: .warning)
+                    result = pendingText
+                }
+
+                // Save history entry if processing was done
+                if processedWithContext != nil || processedWithPowerMode != nil {
+                    await saveKeyboardAIHistoryEntry(
+                        originalText: pendingText,
+                        resultText: result,
+                        context: processedWithContext,
+                        powerMode: processedWithPowerMode,
+                        provider: usedProvider,
+                        duration: Date().timeIntervalSince(startTime)
+                    )
+                }
+
+                // Store result
+                defaults?.set(result, forKey: Constants.AIProcess.result)
+                defaults?.set("complete", forKey: Constants.AIProcess.status)
+                defaults?.synchronize()
+
+                // Notify keyboard
+                DarwinNotificationManager.shared.post(name: Constants.AIProcess.resultReady)
+
+                appLog("AI Process: Complete (\(result.count) chars)", category: "SwiftLink")
+
+            } catch {
+                appLog("AI Process: Error - \(error.localizedDescription)", category: "SwiftLink", level: .error)
+                defaults?.set("error", forKey: Constants.AIProcess.status)
+                defaults?.synchronize()
+
+                // Notify keyboard of error
+                DarwinNotificationManager.shared.post(name: Constants.AIProcess.resultReady)
+            }
+        }
+    }
+
+    /// Save history entry for keyboard AI processing
+    private func saveKeyboardAIHistoryEntry(
+        originalText: String,
+        resultText: String,
+        context: ConversationContext?,
+        powerMode: PowerMode?,
+        provider: AIProvider,
+        duration: TimeInterval
+    ) async {
+        let settings = SharedSettings.shared
+
+        // Calculate cost for formatting operation using CostCalculator
+        let inputTokens = originalText.count / 4  // Rough token estimate
+        let outputTokens = resultText.count / 4
+
+        let costCalculator = CostCalculator()
+        let formattingCost = costCalculator.llmCost(
+            provider: provider,
+            model: provider.defaultLLMModel ?? "unknown",
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
+
+        let costBreakdown = CostBreakdown(
+            transcriptionCost: 0,  // No transcription for keyboard AI
+            formattingCost: formattingCost,
+            translationCost: nil,
+            powerModeCost: nil,
+            ragCost: nil,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
+
+        let record = TranscriptionRecord(
+            rawTranscribedText: originalText,
+            text: resultText,
+            mode: .raw,  // Keyboard AI uses custom prompts
+            provider: provider,
+            duration: duration,
+            powerModeId: powerMode?.id,
+            powerModeName: powerMode?.name,
+            contextId: context?.id,
+            contextName: context?.name,
+            contextIcon: context?.icon,
+            estimatedCost: costBreakdown.total,
+            costBreakdown: costBreakdown,
+            source: .keyboardAI
+        )
+
+        // Save to history
+        await MainActor.run {
+            settings.transcriptionHistory.insert(record, at: 0)
+        }
+
+        appLog("AI Process: History entry saved (cost: $\(String(format: "%.4f", costBreakdown.total)))", category: "SwiftLink")
+    }
+
+    private func processTextWithContext(_ text: String, context: ConversationContext) async throws -> String {
+        let settings = SharedSettings.shared
+
+        // Build prompt based on context and grammar fix setting
+        var systemPrompt = context.customInstructions
+
+        if context.aiAutocorrectEnabled {
+            systemPrompt += "\n\nIMPORTANT: Fix any grammar and punctuation errors in the text, but preserve the original words and meaning. Do not add or remove content, only correct grammatical mistakes."
+        }
+
+        // Use the formatting provider to process
+        let provider = settings.selectedPowerModeProvider
+        guard settings.getAIProviderConfig(for: provider) != nil else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        let factory = ProviderFactory()
+        guard let formattingService = factory.createFormattingProvider(for: provider) else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        // Create a custom prompt that includes context instructions
+        let fullPrompt = """
+        Context: \(context.name) - \(context.description)
+        Tone: \(context.toneDescription)
+        Formality: \(context.formality.displayName)
+
+        \(systemPrompt)
+
+        Process the following text according to the context above. Return only the processed text without any explanation:
+
+        \(text)
+        """
+
+        // Use the formatting service with custom mode
+        return try await formattingService.format(text: text, mode: FormattingMode.raw, customPrompt: fullPrompt)
+    }
+
+    private func processTextWithPowerMode(_ text: String, powerMode: PowerMode) async throws -> String {
+        let settings = SharedSettings.shared
+
+        // Build prompt based on power mode and grammar fix setting
+        var instruction = powerMode.instruction
+
+        if powerMode.aiAutocorrectEnabled {
+            instruction += "\n\nIMPORTANT: Also fix any grammar and punctuation errors in the text, but preserve the original words and meaning."
+        }
+
+        // Get the provider from the override if set
+        let aiProvider: AIProvider
+        if let override = powerMode.providerOverride {
+            switch override.providerType {
+            case .cloud(let provider):
+                aiProvider = provider
+            case .local:
+                aiProvider = settings.selectedPowerModeProvider
+            }
+        } else {
+            aiProvider = settings.selectedPowerModeProvider
+        }
+
+        guard settings.getAIProviderConfig(for: aiProvider) != nil else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        let factory = ProviderFactory()
+        guard let formattingService = factory.createFormattingProvider(for: aiProvider) else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        let fullPrompt = """
+        \(instruction)
+
+        Process the following text:
+
+        \(text)
+        """
+
+        return try await formattingService.format(text: text, mode: FormattingMode.raw, customPrompt: fullPrompt)
     }
 
     // MARK: - Phase 12: Edit Mode
@@ -1144,6 +1592,8 @@ final class SwiftLinkSessionManager: ObservableObject {
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
         }
+        // Force flush to ensure keyboard extension sees the updated state immediately
+        sharedDefaults?.synchronize()
     }
 
     private func restoreSessionStateIfNeeded() {

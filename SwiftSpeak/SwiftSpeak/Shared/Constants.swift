@@ -74,11 +74,16 @@ enum Constants {
         static let providerDefaults = "providerDefaults"
         static let forcePrivacyMode = "forcePrivacyMode"
 
+        // Phase 13.8: Swipe Typing
+        static let swipeTypingEnabled = "swipeTypingEnabled"
+
         // SwiftLink: Background Dictation Sessions
         static let swiftLinkApps = "swiftLinkApps"
         static let swiftLinkSessionDuration = "swiftLinkSessionDuration"
         static let swiftLinkLastUsedApp = "swiftLinkLastUsedApp"
         static let swiftLinkSessionActive = "swiftLinkSessionActive"
+        /// Auto-start SwiftLink when using voice input (enabled by default)
+        static let swiftLinkAutoStart = "swiftLinkAutoStart"
         static let swiftLinkSessionStartTime = "swiftLinkSessionStartTime"
         static let swiftLinkDictationStartTime = "swiftLinkDictationStartTime"
         static let swiftLinkDictationEndTime = "swiftLinkDictationEndTime"
@@ -173,6 +178,34 @@ enum Constants {
         static let swiftLinkEditOriginalText = "swiftLinkEditOriginalText"
         /// Key for tracking if last result was an edit (for keyboard to know to clear field first)
         static let lastResultWasEdit = "lastResultWasEdit"
+    }
+
+    // MARK: - AI Context Processing (Phase 13.11)
+    enum AIProcess {
+        /// Key for storing text to process
+        static let pendingText = "aiProcessPendingText"
+        /// Key for storing context ID
+        static let contextId = "aiProcessContextId"
+        /// Key for storing power mode ID (alternative to context)
+        static let powerModeId = "aiProcessPowerModeId"
+        /// Key for storing result
+        static let result = "aiProcessResult"
+        /// Key for storing status ("processing", "complete", "error")
+        static let status = "aiProcessStatus"
+        /// Key for storing source app URL scheme for auto-return
+        static let sourceAppURLScheme = "aiProcessSourceAppURLScheme"
+        /// Key for requesting auto-return after processing
+        static let autoReturnRequested = "aiProcessAutoReturnRequested"
+        /// Key for requesting SwiftLink to be started along with AI process
+        static let startSwiftLinkWithProcess = "aiProcessStartSwiftLink"
+        /// Key for requesting translation (when no context, just translate)
+        static let translateEnabled = "aiProcessTranslateEnabled"
+        /// Key for storing target language for translation
+        static let targetLanguage = "aiProcessTargetLanguage"
+        /// Darwin notification name for starting AI process (keyboard -> app)
+        static let startProcess = "swiftspeak.aiprocess.startProcess"
+        /// Darwin notification name for result ready (app -> keyboard)
+        static let resultReady = "swiftspeak.aiprocess.resultReady"
     }
 
     // MARK: - SwiftLink Session Duration

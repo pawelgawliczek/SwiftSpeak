@@ -249,6 +249,15 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    // MARK: - Phase 13.8: Swipe Typing
+
+    /// Enable swipe/glide typing on QWERTY keyboard
+    @Published var swipeTypingEnabled: Bool = true {
+        didSet {
+            defaults?.set(swipeTypingEnabled, forKey: Constants.Keys.swipeTypingEnabled)
+        }
+    }
+
     // MARK: - SwiftLink: Background Dictation Sessions
 
     /// Apps configured for SwiftLink
@@ -262,6 +271,13 @@ class SharedSettings: ObservableObject {
     @Published var swiftLinkSessionDuration: Constants.SwiftLinkSessionDuration = .fifteenMinutes {
         didSet {
             defaults?.set(swiftLinkSessionDuration.rawValue, forKey: Constants.Keys.swiftLinkSessionDuration)
+        }
+    }
+
+    /// Auto-start SwiftLink when using voice input (enabled by default)
+    @Published var swiftLinkAutoStart: Bool = true {
+        didSet {
+            defaults?.set(swiftLinkAutoStart, forKey: Constants.Keys.swiftLinkAutoStart)
         }
     }
 
@@ -528,6 +544,11 @@ class SharedSettings: ObservableObject {
         loadProviderDefaults()
         forcePrivacyMode = defaults?.bool(forKey: Constants.Keys.forcePrivacyMode) ?? false
 
+        // Load Phase 13.8: Swipe typing
+        if defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) != nil {
+            swipeTypingEnabled = defaults?.bool(forKey: Constants.Keys.swipeTypingEnabled) ?? true
+        }
+
         // Load security settings (Phase 6)
         biometricProtectionEnabled = defaults?.bool(forKey: Constants.Keys.biometricProtectionEnabled) ?? false
         if let retentionRaw = defaults?.string(forKey: Constants.Keys.dataRetentionPeriod),
@@ -600,6 +621,13 @@ class SharedSettings: ObservableObject {
            durationRaw != 0 || defaults?.object(forKey: Constants.Keys.swiftLinkSessionDuration) != nil,
            let duration = Constants.SwiftLinkSessionDuration(rawValue: durationRaw) {
             swiftLinkSessionDuration = duration
+        }
+
+        // Load SwiftLink auto-start (defaults to true if not set)
+        if defaults?.object(forKey: Constants.Keys.swiftLinkAutoStart) != nil {
+            swiftLinkAutoStart = defaults?.bool(forKey: Constants.Keys.swiftLinkAutoStart) ?? true
+        } else {
+            swiftLinkAutoStart = true  // Default to enabled
         }
     }
 

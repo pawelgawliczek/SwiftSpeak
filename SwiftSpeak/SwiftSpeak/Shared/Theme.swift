@@ -100,6 +100,29 @@ struct AppTheme {
 
     /// Smooth spring for cards
     static let smoothSpring = Animation.spring(response: 0.5, dampingFraction: 0.8)
+
+    // MARK: - Keyboard-Specific Properties
+
+    /// Keyboard layout spacing
+    static let keySpacing: CGFloat = 6
+    static let rowSpacing: CGFloat = 12
+    static let keyHeight: CGFloat = 46
+    static let horizontalPadding: CGFloat = 3
+
+    /// Keyboard key background colors (dark mode to match SwiftSpeak overlay)
+    static let keyBackground: Color = Color(white: 0.22)
+    static let keyBackgroundPressed: Color = Color(white: 0.30)
+    static let actionKeyBackground: Color = Color(white: 0.18)
+    static let actionKeyBackgroundPressed: Color = Color(white: 0.25)
+    static let keyboardBackground: Color = Color(white: 0.12)
+
+    /// Keyboard text colors
+    static let keyText: Color = .white
+
+    /// Keyboard shadows
+    static let keyShadow: Color = .black.opacity(0.5)
+    static let keyShadowRadius: CGFloat = 0
+    static let keyShadowOffset: CGSize = CGSize(width: 0, height: 1)
 }
 
 // MARK: - Keyboard Theme Compatibility
@@ -172,9 +195,58 @@ enum HapticManager {
     }
 }
 
-// MARK: - Keyboard Haptics Compatibility
-/// Typealias for backward compatibility with keyboard extension code
-typealias KeyboardHaptics = HapticManager
+// MARK: - Keyboard Haptics
+/// Keyboard-specific haptics that respect the haptic feedback setting
+enum KeyboardHaptics {
+    /// Check if haptic feedback is enabled in keyboard settings
+    private static var isEnabled: Bool {
+        let defaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
+        // Use object(forKey:) because bool(forKey:) returns false for missing keys
+        return (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
+    }
+
+    /// Light tap for minor interactions (key press)
+    static func lightTap() {
+        guard isEnabled else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    /// Medium tap for primary actions (start/stop recording)
+    static func mediumTap() {
+        guard isEnabled else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    /// Heavy tap for significant actions
+    static func heavyTap() {
+        guard isEnabled else { return }
+        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+    }
+
+    /// Success notification (task complete)
+    static func success() {
+        guard isEnabled else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+    }
+
+    /// Warning notification
+    static func warning() {
+        guard isEnabled else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+    }
+
+    /// Error notification
+    static func error() {
+        guard isEnabled else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+    }
+
+    /// Selection changed (mode switch, picker)
+    static func selection() {
+        guard isEnabled else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+}
 
 // MARK: - Glass Background Modifier
 /// Glassmorphic background following branding guidelines

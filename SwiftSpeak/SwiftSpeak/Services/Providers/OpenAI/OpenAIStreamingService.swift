@@ -52,7 +52,8 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
     private var isFinishing = false
     private var currentLanguage: Language?
-    private var currentTranscriptionPrompt: String?
+    private var currentTranscriptionPrompt: String?  // Vocabulary hints
+    private var currentInstructions: String?  // System instructions for formatting
     private var sessionConfigured = false
 
     /// Timer for periodic audio commits to get real-time transcription
@@ -94,8 +95,8 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
-        appLog("connect() called - language: \(language?.whisperCode ?? "auto"), sampleRate: \(sampleRate), prompt: \(transcriptionPrompt != nil ? "yes (\(transcriptionPrompt!.count) chars)" : "none")", category: "OpenAIStreaming")
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
+        appLog("connect() called - language: \(language?.whisperCode ?? "auto"), sampleRate: \(sampleRate), vocab: \(transcriptionPrompt != nil ? "yes (\(transcriptionPrompt!.count) chars)" : "none"), instructions: \(instructions != nil ? "yes (\(instructions!.count) chars)" : "none")", category: "OpenAIStreaming")
 
         guard isConfigured else {
             appLog("API key not configured", category: "OpenAIStreaming", level: .error)
@@ -117,6 +118,7 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         appLog("Connecting to: \(url.absoluteString)", category: "OpenAIStreaming")
         currentLanguage = language
         currentTranscriptionPrompt = transcriptionPrompt
+        currentInstructions = instructions
         connectionState = .connecting
         fullTranscript = ""
         isFinishing = false
@@ -163,7 +165,7 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     }
 
     private func configureSession(language: Language?) {
-        appLog("Configuring session with model: \(self.model), language: \(language?.whisperCode ?? "auto"), hasPrompt: \(currentTranscriptionPrompt != nil)", category: "OpenAIStreaming")
+        appLog("Configuring session with model: \(self.model), language: \(language?.whisperCode ?? "auto"), hasVocab: \(currentTranscriptionPrompt != nil), hasInstructions: \(currentInstructions != nil)", category: "OpenAIStreaming")
 
         // Build transcription config
         var transcriptionConfig: [String: Any] = [
@@ -175,16 +177,32 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
             transcriptionConfig["language"] = lang
         }
 
-        // Add transcription prompt if provided (context + vocabulary)
-        // This helps the model understand the context and recognize specific terms
+        // Add vocabulary prompt if provided (words that might appear in audio)
+        // This helps the model recognize specific terms, names, etc.
+        // Note: OpenAI Realtime Transcription API only supports 'prompt' for hints,
+        // NOT 'instructions'. If we have instructions, we combine them with the prompt.
+        var combinedPrompt: String = ""
+
         if let prompt = currentTranscriptionPrompt, !prompt.isEmpty {
-            transcriptionConfig["prompt"] = prompt
-            appLog("Injecting transcription prompt: \(prompt.prefix(100))...", category: "OpenAIStreaming")
+            combinedPrompt = prompt
+        }
+
+        // Append instructions to prompt if provided (API doesn't support separate instructions)
+        if let instructions = currentInstructions, !instructions.isEmpty {
+            if !combinedPrompt.isEmpty {
+                combinedPrompt += " "
+            }
+            combinedPrompt += instructions
+        }
+
+        if !combinedPrompt.isEmpty {
+            transcriptionConfig["prompt"] = combinedPrompt
+            appLog("Injecting transcription prompt: \(combinedPrompt.prefix(100))...", category: "OpenAIStreaming")
         }
 
         // Build session configuration message
         // OpenAI Realtime API requires config wrapped in a "session" object
-        var sessionConfig: [String: Any] = [
+        let sessionConfig: [String: Any] = [
             "input_audio_format": "pcm16",
             "input_audio_transcription": transcriptionConfig,
             "turn_detection": [

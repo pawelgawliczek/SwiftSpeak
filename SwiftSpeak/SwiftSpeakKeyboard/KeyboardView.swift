@@ -19,7 +19,7 @@ enum KeyboardPickerMode {
 }
 
 // MARK: - Keyboard Display Mode
-enum KeyboardDisplayMode {
+enum KeyboardDisplayMode: String {
     case voice   // Main SwiftSpeak voice interface
     case typing  // Standard typing keyboard
 }
@@ -33,6 +33,19 @@ struct KeyboardView: View {
     @State private var displayMode: KeyboardDisplayMode = .voice
     @State private var dragOffset: CGFloat = 0
 
+    // Load last keyboard mode from UserDefaults
+    init(viewModel: KeyboardViewModel, onNextKeyboard: @escaping () -> Void) {
+        self.viewModel = viewModel
+        self.onNextKeyboard = onNextKeyboard
+
+        // Load saved mode
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        if let modeRaw = defaults?.string(forKey: "lastKeyboardMode"),
+           let mode = KeyboardDisplayMode(rawValue: modeRaw) {
+            _displayMode = State(initialValue: mode)
+        }
+    }
+
     private var shouldShowStatusBanner: Bool {
         let step = viewModel.processingStatus.currentStep
         return step == "streaming" || step == "transcribing" || step == "formatting" ||
@@ -44,15 +57,40 @@ struct KeyboardView: View {
         ZStack {
             // Voice keyboard (main)
             mainKeyboardContent
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .opacity(activePicker == .none && displayMode == .voice ? 1 : 0)
                 .offset(x: displayMode == .voice ? dragOffset : -UIScreen.main.bounds.width + dragOffset)
 
             // Typing keyboard
-            TypingKeyboardView(viewModel: viewModel, onNextKeyboard: onNextKeyboard) {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                    displayMode = .voice
+            TypingKeyboardView(
+                viewModel: viewModel,
+                onNextKeyboard: onNextKeyboard,
+                onSwitchToVoice: {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        displayMode = .voice
+                    }
+                },
+                onTranslationTap: {
+                    withAnimation(.spring(response: 0.3)) {
+                        activePicker = .translation
+                    }
+                },
+                onContextTap: {
+                    withAnimation(.spring(response: 0.3)) {
+                        activePicker = .context
+                    }
+                },
+                onModeTap: {
+                    // TODO: Phase 13.5 - Mode picker
+                    KeyboardHaptics.lightTap()
+                },
+                onSwiftLinkTap: {
+                    withAnimation(.spring(response: 0.3)) {
+                        activePicker = .swiftLink
+                    }
                 }
-            }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .opacity(displayMode == .typing ? 1 : 0)
             .offset(x: displayMode == .typing ? dragOffset : UIScreen.main.bounds.width + dragOffset)
 
@@ -134,7 +172,7 @@ struct KeyboardView: View {
                 .transition(.opacity)
             }
         }
-        .frame(height: 235)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
                 colors: [Color(white: 0.12), Color(white: 0.08)],
@@ -174,6 +212,11 @@ struct KeyboardView: View {
                 }
         )
         .clipped()
+        .onChange(of: displayMode) { _, newMode in
+            // Save mode preference
+            let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+            defaults?.set(newMode.rawValue, forKey: "lastKeyboardMode")
+        }
     }
 
     // MARK: - Main Keyboard Content
@@ -897,327 +940,6 @@ struct RecordingWaveform: View {
     }
 }
 
-// MARK: - Typing Keyboard View (iOS Standard Layout)
-struct TypingKeyboardView: View {
-    @ObservedObject var viewModel: KeyboardViewModel
-    let onNextKeyboard: () -> Void
-    let onSwitchToVoice: () -> Void
-
-    @State private var isShiftActive = false
-    @State private var isCapsLock = false
-    @State private var isNumberMode = false
-    @State private var isSymbolMode = false
-
-    // Standard iOS keyboard layout
-    private let letterRows = [
-        ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
-        ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
-        ["Z", "X", "C", "V", "B", "N", "M"]
-    ]
-
-    private let numberRows = [
-        ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
-        ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""],
-        [".", ",", "?", "!", "'"]
-    ]
-
-    private let symbolRows = [
-        ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="],
-        ["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"],
-        [".", ",", "?", "!", "'"]
-    ]
-
-    private let keySpacing: CGFloat = 6
-    private let rowSpacing: CGFloat = 11
-    private let keyHeight: CGFloat = 42
-    private let horizontalPadding: CGFloat = 3
-
-    var body: some View {
-        VStack(spacing: 0) {
-            // Swipe hint bar
-            HStack {
-                Button(action: onSwitchToVoice) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                        Text("Voice")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(KeyboardTheme.accent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(KeyboardTheme.accent.opacity(0.15), in: Capsule())
-                }
-
-                Spacer()
-
-                Text("← swipe for voice")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.35))
-
-                Spacer()
-
-                Button(action: onNextKeyboard) {
-                    Image(systemName: "globe")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-
-            // Keyboard rows
-            VStack(spacing: rowSpacing) {
-                if isNumberMode || isSymbolMode {
-                    // Number/Symbol mode
-                    let rows = isSymbolMode ? symbolRows : numberRows
-
-                    // Row 1: Numbers or symbols (10 keys)
-                    HStack(spacing: keySpacing) {
-                        ForEach(rows[0], id: \.self) { key in
-                            StandardKey(letter: key, height: keyHeight) {
-                                viewModel.textDocumentProxy?.insertText(key)
-                                KeyboardHaptics.lightTap()
-                            }
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-
-                    // Row 2: More characters (10 keys)
-                    HStack(spacing: keySpacing) {
-                        ForEach(rows[1], id: \.self) { key in
-                            StandardKey(letter: key, height: keyHeight) {
-                                viewModel.textDocumentProxy?.insertText(key)
-                                KeyboardHaptics.lightTap()
-                            }
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-
-                    // Row 3: Symbol toggle + punctuation + backspace
-                    HStack(spacing: keySpacing) {
-                        // Symbol/Number toggle
-                        StandardActionKey(
-                            text: isSymbolMode ? "123" : "#+="
-                        ) {
-                            isSymbolMode.toggle()
-                            KeyboardHaptics.lightTap()
-                        }
-                        .frame(width: 42)
-
-                        ForEach(rows[2], id: \.self) { key in
-                            StandardKey(letter: key, height: keyHeight) {
-                                viewModel.textDocumentProxy?.insertText(key)
-                                KeyboardHaptics.lightTap()
-                            }
-                        }
-
-                        // Backspace
-                        StandardActionKey(icon: "delete.left") {
-                            viewModel.textDocumentProxy?.deleteBackward()
-                            KeyboardHaptics.lightTap()
-                        }
-                        .frame(width: 42)
-                    }
-                    .padding(.horizontal, horizontalPadding)
-
-                } else {
-                    // Letter mode
-
-                    // Row 1: Q W E R T Y U I O P (10 keys)
-                    HStack(spacing: keySpacing) {
-                        ForEach(letterRows[0], id: \.self) { key in
-                            let displayKey = (isShiftActive || isCapsLock) ? key : key.lowercased()
-                            StandardKey(letter: displayKey, height: keyHeight) {
-                                viewModel.textDocumentProxy?.insertText(displayKey)
-                                KeyboardHaptics.lightTap()
-                                if isShiftActive && !isCapsLock {
-                                    isShiftActive = false
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-
-                    // Row 2: A S D F G H J K L (9 keys, centered)
-                    HStack(spacing: keySpacing) {
-                        ForEach(letterRows[1], id: \.self) { key in
-                            let displayKey = (isShiftActive || isCapsLock) ? key : key.lowercased()
-                            StandardKey(letter: displayKey, height: keyHeight) {
-                                viewModel.textDocumentProxy?.insertText(displayKey)
-                                KeyboardHaptics.lightTap()
-                                if isShiftActive && !isCapsLock {
-                                    isShiftActive = false
-                                }
-                            }
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding + 18) // Extra padding for centering
-
-                    // Row 3: Shift + Z X C V B N M + Backspace
-                    HStack(spacing: keySpacing) {
-                        // Shift key
-                        StandardActionKey(
-                            icon: isCapsLock ? "capslock.fill" : (isShiftActive ? "shift.fill" : "shift"),
-                            isHighlighted: isShiftActive || isCapsLock
-                        ) {
-                            if isShiftActive {
-                                // Double tap for caps lock
-                                isCapsLock = true
-                                isShiftActive = false
-                            } else if isCapsLock {
-                                isCapsLock = false
-                            } else {
-                                isShiftActive = true
-                            }
-                            KeyboardHaptics.lightTap()
-                        }
-                        .frame(width: 42)
-
-                        ForEach(letterRows[2], id: \.self) { key in
-                            let displayKey = (isShiftActive || isCapsLock) ? key : key.lowercased()
-                            StandardKey(letter: displayKey, height: keyHeight) {
-                                viewModel.textDocumentProxy?.insertText(displayKey)
-                                KeyboardHaptics.lightTap()
-                                if isShiftActive && !isCapsLock {
-                                    isShiftActive = false
-                                }
-                            }
-                        }
-
-                        // Backspace key
-                        StandardActionKey(icon: "delete.left") {
-                            viewModel.textDocumentProxy?.deleteBackward()
-                            KeyboardHaptics.lightTap()
-                        }
-                        .frame(width: 42)
-                    }
-                    .padding(.horizontal, horizontalPadding)
-                }
-
-                // Row 4: 123/ABC + space + return
-                HStack(spacing: keySpacing) {
-                    // Number/Letter toggle
-                    StandardActionKey(text: isNumberMode ? "ABC" : "123") {
-                        isNumberMode.toggle()
-                        isSymbolMode = false
-                        KeyboardHaptics.lightTap()
-                    }
-                    .frame(width: 87)
-
-                    // Space bar
-                    Button(action: {
-                        viewModel.textDocumentProxy?.insertText(" ")
-                        KeyboardHaptics.lightTap()
-                    }) {
-                        Text("space")
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundStyle(.black)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: keyHeight)
-                            .background(Color.white, in: RoundedRectangle(cornerRadius: 5))
-                            .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-                    }
-                    .buttonStyle(.plain)
-
-                    // Return key
-                    StandardActionKey(text: "return") {
-                        viewModel.textDocumentProxy?.insertText("\n")
-                        KeyboardHaptics.mediumTap()
-                    }
-                    .frame(width: 87)
-                }
-                .padding(.horizontal, horizontalPadding)
-            }
-            .padding(.bottom, 4)
-        }
-        .background(Color(white: 0.82))
-    }
-}
-
-// MARK: - Standard Key (Letter/Number)
-struct StandardKey: View {
-    let letter: String
-    let height: CGFloat
-    let action: () -> Void
-
-    @State private var isPressed = false
-
-    var body: some View {
-        Button(action: action) {
-            Text(letter)
-                .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: height)
-                .background(
-                    RoundedRectangle(cornerRadius: 5)
-                        .fill(isPressed ? Color(white: 0.75) : .white)
-                        .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isPressed {
-                        isPressed = true
-                    }
-                }
-                .onEnded { _ in isPressed = false }
-        )
-    }
-}
-
-// MARK: - Standard Action Key (Shift, Backspace, etc.)
-struct StandardActionKey: View {
-    var icon: String? = nil
-    var text: String? = nil
-    var isHighlighted: Bool = false
-    let action: () -> Void
-
-    @State private var isPressed = false
-
-    private var backgroundColor: Color {
-        if isHighlighted {
-            return .white
-        }
-        return Color(white: 0.67)
-    }
-
-    var body: some View {
-        Button(action: action) {
-            Group {
-                if let icon = icon {
-                    Image(systemName: icon)
-                        .font(.system(size: 18, weight: .medium))
-                } else if let text = text {
-                    Text(text)
-                        .font(.system(size: 15, weight: .regular))
-                }
-            }
-            .foregroundStyle(.black)
-            .frame(maxWidth: .infinity)
-            .frame(height: 42)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(isPressed ? Color(white: 0.55) : backgroundColor)
-                    .shadow(color: .black.opacity(0.3), radius: 0, x: 0, y: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if !isPressed {
-                        isPressed = true
-                    }
-                }
-                .onEnded { _ in isPressed = false }
-        )
-    }
-}
-
 // MARK: - Compact Button
 struct CompactButton: View {
     let icon: String
@@ -1844,6 +1566,10 @@ struct KeyboardContext: Identifiable {
     let id: UUID
     let name: String
     let icon: String
+    // Phase 13.11: Enter key behavior
+    var enterSendsMessage: Bool = true
+    var enterRunsContext: Bool = false
+    var aiAutocorrectEnabled: Bool = false
 }
 
 struct KeyboardSwiftLinkApp: Identifiable, Codable {
@@ -1909,7 +1635,15 @@ struct KeyboardProcessingStatus: Codable, Equatable {
     }
 }
 
-// MARK: - ViewModel
+// NOTE: KeyboardViewModel has been extracted to KeyboardViewModel.swift
+
+// MARK: - Supporting Types (keep these in KeyboardView.swift for now)
+
+// Removed: ViewModel class - now in KeyboardViewModel.swift
+// The following models remain here temporarily (will be moved in Phase 13.2)
+
+// NOTE: Below this line is the old ViewModel class - TO BE DELETED
+/*
 class KeyboardViewModel: ObservableObject {
     @Published var selectedMode: FormattingMode = .raw
     @Published var selectedCustomTemplateId: UUID?
@@ -2818,6 +2552,8 @@ class KeyboardViewModel: ObservableObject {
         }
     }
 }
+*/
+// END OF DELETED ViewModel CLASS
 
 // MARK: - Preview
 #Preview {

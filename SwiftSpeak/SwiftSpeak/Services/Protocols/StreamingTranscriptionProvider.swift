@@ -60,8 +60,9 @@ protocol StreamingTranscriptionProvider: AnyObject {
     /// - Parameters:
     ///   - language: Optional language hint
     ///   - sampleRate: Audio sample rate (default 16000)
-    ///   - transcriptionPrompt: Optional context/prompt to guide transcription
-    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws
+    ///   - transcriptionPrompt: Optional vocabulary hints (words that might appear in audio)
+    ///   - instructions: Optional system instructions for formatting/style (e.g., "Use professional punctuation")
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws
 
     /// Send audio data chunk to the service
     /// - Parameter audioData: Raw PCM16 audio data
@@ -83,10 +84,14 @@ extension StreamingTranscriptionProvider {
     var supportsStreaming: Bool { true }
 
     func connect(language: Language?) async throws {
-        try await connect(language: language, sampleRate: 16000, transcriptionPrompt: nil)
+        try await connect(language: language, sampleRate: 16000, transcriptionPrompt: nil, instructions: nil)
     }
 
     func connect(language: Language?, sampleRate: Int) async throws {
-        try await connect(language: language, sampleRate: sampleRate, transcriptionPrompt: nil)
+        try await connect(language: language, sampleRate: sampleRate, transcriptionPrompt: nil, instructions: nil)
+    }
+
+    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?) async throws {
+        try await connect(language: language, sampleRate: sampleRate, transcriptionPrompt: transcriptionPrompt, instructions: nil)
     }
 }
