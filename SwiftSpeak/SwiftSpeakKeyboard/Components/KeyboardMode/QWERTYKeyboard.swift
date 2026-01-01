@@ -23,23 +23,11 @@ struct QWERTYKeyboard: View {
     @State private var accentPopupKeyFrame: CGRect = .zero
     @State private var keyboardFrame: CGRect = .zero  // Track keyboard frame for accent popup
 
-    // Auto-capitalization tracking
+    // Auto-capitalization tracking - uses AutoCapitalizationService
     private var shouldAutoCapitalize: Bool {
         guard let proxy = textDocumentProxy else { return false }
-        let before = proxy.documentContextBeforeInput ?? ""
-
-        // Capitalize at start of text
-        if before.isEmpty {
-            return true
-        }
-
-        // Capitalize after sentence-ending punctuation
-        let trimmed = before.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") {
-            return true
-        }
-
-        return false
+        let before = proxy.documentContextBeforeInput
+        return AutoCapitalizationService.shouldCapitalize(contextBefore: before)
     }
 
     var body: some View {
@@ -430,19 +418,41 @@ struct QWERTYKeyboard: View {
 
         // Check for correction, then insert the triggering character
         Task {
-            let result = await AutocorrectService.shared.processWord(wordString)
+            var finalCorrection: String? = nil
+
+            // 1. Check for contraction fix (dont -> don't)
+            if let contraction = AutoCapitalizationService.fixContraction(wordString) {
+                if !AutoCapitalizationService.ambiguousWords.contains(wordString.lowercased()) {
+                    finalCorrection = contraction
+                }
+            }
+
+            // 2. Check for proper noun capitalization (monday -> Monday)
+            if finalCorrection == nil {
+                if let properNoun = AutoCapitalizationService.shouldAutoCapitalizeWord(wordString, contextBefore: beforeText) {
+                    finalCorrection = properNoun
+                }
+            }
+
+            // 3. Check for spelling correction
+            if finalCorrection == nil {
+                let result = await AutocorrectService.shared.processWord(wordString)
+                if let (_, correction) = result, let corrected = correction {
+                    finalCorrection = corrected
+                }
+            }
 
             await MainActor.run {
                 // Apply correction if found
-                if let (original, correction) = result, let corrected = correction {
+                if let corrected = finalCorrection, corrected != wordString {
                     // Delete the original word
-                    for _ in 0..<original.count {
+                    for _ in 0..<wordString.count {
                         proxy.deleteBackward()
                     }
                     // Insert the correction
                     proxy.insertText(corrected)
                     KeyboardHaptics.lightTap()
-                    keyboardLog("Autocorrected '\(original)' to '\(corrected)'", category: "Autocorrect")
+                    keyboardLog("Autocorrected '\(wordString)' to '\(corrected)'", category: "Autocorrect")
                 }
 
                 // Now insert the triggering character (space, period, etc.)

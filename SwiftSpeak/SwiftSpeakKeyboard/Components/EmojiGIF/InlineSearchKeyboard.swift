@@ -2,7 +2,7 @@
 //  InlineSearchKeyboard.swift
 //  SwiftSpeakKeyboard
 //
-//  Phase 13.9: Inline keyboard for search within emoji/GIF panels
+//  Inline keyboard for emoji search
 //  iOS keyboard extensions can't show another keyboard, so we provide our own
 //
 

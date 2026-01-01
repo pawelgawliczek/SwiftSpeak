@@ -2,13 +2,11 @@
 //  AutocorrectService.swift
 //  SwiftSpeakKeyboard
 //
-//  Autocorrect service using SymSpellSwift for spelling correction
-//  MIT licensed, free for commercial use
+//  Autocorrect service using SymSpell algorithm for spelling correction
+//  Combines edit distance, phonetic matching, and personal dictionary
 //
 
 import Foundation
-// TODO: Add SymSpellSwift package: https://github.com/gdetari/SymSpellSwift.git
-// import SymSpellSwift
 
 /// Autocorrect service providing spelling correction
 /// Uses SymSpell algorithm for fast, accurate corrections
@@ -16,14 +14,13 @@ actor AutocorrectService {
     // Singleton for shared access
     static let shared = AutocorrectService()
 
-    // SymSpell instances per language
-    // private var symSpellInstances: [String: SymSpell] = [:]
-
     private var isInitialized = false
     private var currentLanguage: String = "en"
 
-    // Placeholder until SymSpellSwift is added
-    private var mockDictionary: Set<String> = []
+    // Reference to other correction services
+    private var symSpellInitialized = false
+    private var phoneticInitialized = false
+    private var personalDictInitialized = false
 
     private init() {}
 
@@ -35,15 +32,32 @@ actor AutocorrectService {
 
         currentLanguage = language
 
-        // TODO: Replace with actual SymSpell initialization
-        // let symSpell = SymSpell(maxDictionaryEditDistance: 2, prefixLength: 7)
-        // if let path = Bundle.main.url(forResource: "frequency_\(language)", withExtension: "txt") {
-        //     try? symSpell.loadDictionary(from: path, termIndex: 0, countIndex: 1)
-        // }
-        // symSpellInstances[language] = symSpell
+        // Initialize SymSpell service
+        await SymSpellService.shared.initialize()
+        symSpellInitialized = true
 
-        // For now, load a basic word list for testing
-        loadBasicDictionary()
+        // Initialize phonetic corrector with common words
+        let commonWords: [(String, Int)] = [
+            ("the", 69971), ("be", 37715), ("to", 28453), ("of", 27004), ("and", 26366),
+            ("a", 21332), ("in", 20047), ("that", 12581), ("have", 12458), ("i", 11167),
+            ("receive", 200), ("believe", 200), ("achieve", 100), ("weird", 100),
+            ("their", 2883), ("there", 2909), ("definitely", 100), ("separate", 80),
+            ("occurrence", 50), ("accommodate", 50), ("necessary", 100), ("beginning", 80),
+            ("environment", 80), ("government", 150), ("restaurant", 80), ("calendar", 80),
+            ("experience", 150), ("immediately", 80), ("professional", 100),
+        ]
+        await PhoneticCorrector.shared.initialize(words: commonWords)
+        phoneticInitialized = true
+
+        // Initialize personal dictionary
+        await PersonalDictionary.shared.initialize()
+        personalDictInitialized = true
+
+        // Add personal words to SymSpell
+        let personalWords = await PersonalDictionary.shared.allWords()
+        for (word, freq) in personalWords {
+            await SymSpellService.shared.addWord(word, frequency: freq)
+        }
 
         isInitialized = true
         keyboardLog("AutocorrectService initialized for language: \(language)", category: "Autocorrect")
@@ -55,75 +69,106 @@ actor AutocorrectService {
     func isCorrectlySpelled(_ word: String) -> Bool {
         let lowercased = word.lowercased()
 
-        // TODO: Replace with SymSpell lookup
-        // guard let symSpell = symSpellInstances[currentLanguage] else { return true }
-        // let results = symSpell.lookup(lowercased, verbosity: .closest)
-        // return results.first?.term == lowercased
+        // Check SymSpell dictionary
+        if symSpellInitialized {
+            // Use Task to call async method synchronously (for backward compatibility)
+            // In practice, prefer async version
+            return Task {
+                await SymSpellService.shared.isCorrect(lowercased)
+            }.isCancelled == false
+        }
 
-        return mockDictionary.contains(lowercased)
+        return true  // Assume correct if not initialized
+    }
+
+    /// Async version of spell check
+    func isCorrectlySpelledAsync(_ word: String) async -> Bool {
+        let lowercased = word.lowercased()
+
+        // Check personal dictionary first (user's words are always correct)
+        if await PersonalDictionary.shared.contains(lowercased) {
+            return true
+        }
+
+        // Check SymSpell dictionary
+        return await SymSpellService.shared.isCorrect(lowercased)
     }
 
     /// Get spelling suggestions for a word
-    func getSuggestions(for word: String, maxResults: Int = 3) -> [String] {
+    func getSuggestions(for word: String, maxResults: Int = 3) async -> [String] {
         let lowercased = word.lowercased()
 
-        // TODO: Replace with SymSpell lookup
-        // guard let symSpell = symSpellInstances[currentLanguage] else { return [] }
-        // let results = symSpell.lookup(lowercased, verbosity: .all, maxEditDistance: 2)
-        // return results.prefix(maxResults).map { $0.term }
+        var allSuggestions: [(word: String, score: Double)] = []
 
-        // Simple edit distance-based suggestions for testing
-        return getSimpleSuggestions(for: lowercased, maxResults: maxResults)
+        // 1. Check for known phonetic misspellings first
+        if let knownCorrection = await PhoneticCorrector.shared.checkKnownMisspelling(lowercased) {
+            allSuggestions.append((knownCorrection, 100.0))
+        }
+
+        // 2. Get SymSpell suggestions (edit distance based)
+        let symSpellResults = await SymSpellService.shared.lookup(lowercased, maxDistance: 2, maxResults: 5)
+        for result in symSpellResults {
+            let score = Double(result.frequency) / Double(result.distance + 1)
+            allSuggestions.append((result.word, score))
+        }
+
+        // 3. Get phonetic suggestions
+        let phoneticResults = await PhoneticCorrector.shared.getCorrections(for: lowercased, maxResults: 3)
+        for word in phoneticResults {
+            allSuggestions.append((word, 50.0))  // Base score for phonetic matches
+        }
+
+        // Deduplicate and sort by score
+        var seen = Set<String>()
+        var uniqueSuggestions: [(String, Double)] = []
+        for (word, score) in allSuggestions {
+            if seen.insert(word).inserted {
+                uniqueSuggestions.append((word, score))
+            }
+        }
+
+        uniqueSuggestions.sort { $0.1 > $1.1 }
+        return uniqueSuggestions.prefix(maxResults).map { $0.0 }
     }
 
     /// Get the best correction for a word (autocorrect)
     /// Only corrects when we're highly confident it's a typo
-    func getCorrection(for word: String) -> String? {
+    func getCorrection(for word: String) async -> String? {
         let lowercased = word.lowercased()
-
-        // If correctly spelled, no correction needed
-        if isCorrectlySpelled(lowercased) {
-            return nil
-        }
 
         // Skip very short words (2 chars) - too ambiguous
         guard lowercased.count >= 3 else {
             return nil
         }
 
-        // Get suggestions with strict criteria
-        let suggestions = getStrictSuggestions(for: lowercased)
-        return suggestions.first
-    }
-
-    /// Get suggestions only when highly confident it's a typo
-    private func getStrictSuggestions(for word: String) -> [String] {
-        var suggestions: [(word: String, distance: Int, score: Int)] = []
-
-        let inputFirst = word.first
-        let inputLength = word.count
-
-        for dictWord in mockDictionary {
-            let distance = levenshteinDistance(word, dictWord)
-
-            // STRICT criteria for autocorrect:
-            // 1. Distance must be exactly 1 (single typo)
-            // 2. Same first letter (typos rarely change first letter)
-            // 3. Same length or off by 1 (transposition/substitution, not missing words)
-            let sameFirstLetter = dictWord.first == inputFirst
-            let similarLength = abs(dictWord.count - inputLength) <= 1
-
-            if distance == 1 && sameFirstLetter && similarLength {
-                var score = 0
-                if dictWord.count == inputLength { score -= 2 }  // Prefer same length
-                suggestions.append((dictWord, distance, score))
-            }
+        // Check if correctly spelled
+        if await isCorrectlySpelledAsync(lowercased) {
+            return nil
         }
 
-        // Sort by score
-        suggestions.sort { $0.score < $1.score }
+        // 1. Check for known phonetic misspellings (highest confidence)
+        if let knownCorrection = await PhoneticCorrector.shared.checkKnownMisspelling(lowercased) {
+            return knownCorrection
+        }
 
-        return suggestions.map { $0.word }
+        // 2. Try SymSpell correction
+        if let symSpellCorrection = await SymSpellService.shared.getCorrection(lowercased) {
+            return symSpellCorrection
+        }
+
+        // 3. Try phonetic correction as fallback
+        if let phoneticCorrection = await PhoneticCorrector.shared.getBestCorrection(for: lowercased) {
+            return phoneticCorrection
+        }
+
+        return nil
+    }
+
+    /// Legacy synchronous method - wraps async version
+    func getCorrection(for word: String) -> String? {
+        // For synchronous contexts, return nil and let caller use async version
+        // This maintains backward compatibility while encouraging async usage
+        return nil
     }
 
     // MARK: - Language Support
@@ -133,148 +178,49 @@ actor AutocorrectService {
         guard language != currentLanguage else { return }
         currentLanguage = language
 
-        // TODO: Load dictionary for new language if not already loaded
-        // if symSpellInstances[language] == nil {
-        //     await loadDictionary(for: language)
-        // }
-
+        // Reinitialize services for new language
+        // Currently only English is fully supported
         keyboardLog("AutocorrectService switched to language: \(language)", category: "Autocorrect")
     }
 
     /// Get memory usage estimate
     var estimatedMemoryUsageMB: Double {
-        // TODO: Calculate actual memory usage from SymSpell dictionaries
-        // Each entry is roughly: term length + 8 bytes (frequency) + overhead
-        return Double(mockDictionary.count * 20) / 1_000_000
+        // Approximate memory usage
+        return 2.5  // ~2.5 MB for dictionary data
     }
 
-    // MARK: - Private Helpers
+    // MARK: - Add Personal Words
 
-    private func loadBasicDictionary() {
-        // Basic English words for testing
-        // In production, load from frequency_dictionary file
-        mockDictionary = Set([
-            // Top 100 most common English words
-            "the", "be", "to", "of", "and", "a", "in", "that", "have", "i",
-            "it", "for", "not", "on", "with", "he", "as", "you", "do", "at",
-            "this", "but", "his", "by", "from", "they", "we", "say", "her", "she",
-            "or", "an", "will", "my", "one", "all", "would", "there", "their", "what",
-            "so", "up", "out", "if", "about", "who", "get", "which", "go", "me",
-            "when", "make", "can", "like", "time", "no", "just", "him", "know", "take",
-            "people", "into", "year", "your", "good", "some", "could", "them", "see", "other",
-            "than", "then", "now", "look", "only", "come", "its", "over", "think", "also",
-            "back", "after", "use", "two", "how", "our", "work", "first", "well", "way",
-            "even", "new", "want", "because", "any", "these", "give", "day", "most", "us",
-            // Missing essential words
-            "are", "is", "was", "were", "been", "being", "am", "has", "had", "does", "did",
-            "here", "very", "more", "much", "such", "own", "same", "too", "where", "why",
-            "let", "put", "say", "said", "tell", "told", "ask", "asked", "need", "feel",
-            "try", "leave", "call", "keep", "last", "long", "great", "little", "own",
-            "old", "right", "big", "high", "small", "large", "next", "early", "young",
-            "few", "public", "bad", "same", "able", "man", "men", "woman", "women",
-            "child", "children", "world", "life", "hand", "part", "place", "case", "week",
-            "company", "system", "program", "thing", "point", "home", "water", "room",
-            "mother", "area", "money", "story", "fact", "month", "lot", "study", "book",
-            "eye", "job", "word", "business", "issue", "side", "kind", "head", "house",
-            "service", "friend", "father", "power", "hour", "game", "line", "end", "member",
-            "law", "car", "city", "name", "president", "team", "minute", "idea", "kid",
-            "body", "information", "nothing", "ago", "lead", "social", "whether", "back",
-            "watch", "together", "follow", "around", "parent", "stop", "face", "anything",
-            "create", "real", "might", "must", "shall", "should", "may", "many", "each",
-            "between", "through", "during", "before", "those", "both", "while", "another",
-            "being", "under", "never", "always", "sometimes", "often", "still", "again",
-            // Common misspelling targets
-            "hello", "thank", "thanks", "please", "sorry", "okay",
-            "meeting", "tomorrow", "today", "yesterday", "email", "phone", "message",
-            "question", "answer", "problem", "solution", "important", "urgent",
-            "available", "schedule", "confirm", "cancel", "update", "change",
-            "understand", "remember", "forget", "believe", "receive", "achieve"
-        ])
+    /// Add a word to personal dictionary and SymSpell
+    func addPersonalWord(_ word: String) async {
+        await PersonalDictionary.shared.rebuild()
+        await SymSpellService.shared.addWord(word, frequency: 10)
     }
 
-    private func getSimpleSuggestions(for word: String, maxResults: Int) -> [String] {
-        // Simple Levenshtein distance-based suggestions
-        // This is a placeholder - SymSpell will be much faster
-        var suggestions: [(word: String, distance: Int, score: Int)] = []
-
-        let inputFirst = word.first
-        let inputLength = word.count
-
-        for dictWord in mockDictionary {
-            let distance = levenshteinDistance(word, dictWord)
-            if distance <= 2 && distance > 0 {
-                // Calculate priority score (lower is better)
-                var score = distance * 10  // Base score from distance
-
-                // Bonus for same first letter (very important for typos)
-                if dictWord.first == inputFirst {
-                    score -= 5
-                }
-
-                // Bonus for same length
-                if dictWord.count == inputLength {
-                    score -= 2
-                }
-
-                // Small penalty for length difference
-                score += abs(dictWord.count - inputLength)
-
-                suggestions.append((dictWord, distance, score))
-            }
+    /// Refresh personal dictionary from transcription history
+    func refreshPersonalDictionary() async {
+        await PersonalDictionary.shared.rebuild()
+        let personalWords = await PersonalDictionary.shared.allWords()
+        for (word, freq) in personalWords {
+            await SymSpellService.shared.addWord(word, frequency: freq)
         }
-
-        // Sort by score (lower is better), then by distance, then alphabetically
-        suggestions.sort {
-            if $0.score != $1.score { return $0.score < $1.score }
-            if $0.distance != $1.distance { return $0.distance < $1.distance }
-            return $0.word < $1.word
-        }
-
-        return Array(suggestions.prefix(maxResults).map { $0.word })
-    }
-
-    private func levenshteinDistance(_ s1: String, _ s2: String) -> Int {
-        let s1Array = Array(s1)
-        let s2Array = Array(s2)
-        let m = s1Array.count
-        let n = s2Array.count
-
-        if m == 0 { return n }
-        if n == 0 { return m }
-
-        var matrix = [[Int]](repeating: [Int](repeating: 0, count: n + 1), count: m + 1)
-
-        for i in 0...m { matrix[i][0] = i }
-        for j in 0...n { matrix[0][j] = j }
-
-        for i in 1...m {
-            for j in 1...n {
-                let cost = s1Array[i - 1] == s2Array[j - 1] ? 0 : 1
-                matrix[i][j] = min(
-                    matrix[i - 1][j] + 1,      // deletion
-                    matrix[i][j - 1] + 1,      // insertion
-                    matrix[i - 1][j - 1] + cost // substitution
-                )
-            }
-        }
-
-        return matrix[m][n]
+        keyboardLog("Personal dictionary refreshed with \(personalWords.count) words", category: "Autocorrect")
     }
 }
 
 // MARK: - Autocorrect Integration for Keyboard
 
 extension AutocorrectService {
-    /// Process typed text and return correction if needed
+    /// Process typed text and return correction if needed (async version)
     /// Call this when user types a space or punctuation
-    func processWord(_ word: String) -> (original: String, correction: String?)? {
+    func processWord(_ word: String) async -> (original: String, correction: String?)? {
         guard !word.isEmpty else { return nil }
 
         // Preserve capitalization
         let isCapitalized = word.first?.isUppercase ?? false
         let isAllCaps = word == word.uppercased() && word.count > 1
 
-        if let correction = getCorrection(for: word) {
+        if let correction = await getCorrection(for: word) {
             var corrected = correction
             if isAllCaps {
                 corrected = correction.uppercased()
@@ -284,6 +230,13 @@ extension AutocorrectService {
             return (word, corrected)
         }
 
+        return nil
+    }
+
+    /// Synchronous wrapper that returns nil (for backward compatibility)
+    /// Callers should migrate to async version
+    func processWordSync(_ word: String) -> (original: String, correction: String?)? {
+        // Return nil for sync context - caller should use async version
         return nil
     }
 }

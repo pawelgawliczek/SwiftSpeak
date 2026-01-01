@@ -3,7 +3,7 @@
 //  SwiftSpeakKeyboard
 //
 //  AI-powered prediction engine for smart word suggestions (Phase 13.6)
-//  Combines local vocabulary matching with LLM-powered predictions
+//  Combines N-gram models, personal dictionary, context awareness, and LLM predictions
 //
 
 import Foundation
@@ -15,14 +15,42 @@ actor PredictionEngine {
     private var recentWords: [String] = []
     private var frequentWords: [String: Int] = [:]
     private var lastLLMRequest: Date?
-    private let llmCooldown: TimeInterval = 1.0  // Minimum time between LLM requests
+    private let llmCooldown: TimeInterval = 0.8  // Reduced cooldown for better responsiveness
+
+    // Debouncing for LLM predictions
+    private var pendingPredictionTask: Task<[String], Never>?
+    private var lastPredictionContext: String = ""
+
+    // Service initialization flags
+    private var servicesInitialized = false
 
     // MARK: - Initialization
 
     init() {
         Task {
+            await initializeServices()
             await loadVocabulary()
         }
+    }
+
+    /// Initialize all prediction services
+    private func initializeServices() async {
+        guard !servicesInitialized else { return }
+
+        // Initialize N-gram predictor
+        await NGramPredictor.shared.initialize()
+
+        // Initialize personal dictionary
+        await PersonalDictionary.shared.initialize()
+
+        // Initialize context-aware predictions
+        await ContextAwarePredictions.shared.initialize()
+
+        // Initialize prediction feedback
+        await PredictionFeedback.shared.initialize()
+
+        servicesInitialized = true
+        keyboardLog("PredictionEngine: All services initialized", category: "Prediction")
     }
 
     // MARK: - Load Vocabulary
@@ -46,7 +74,7 @@ actor PredictionEngine {
             }
         }
 
-        // Load recent transcriptions to build frequent words
+        // Load recent transcriptions to build frequent words and train N-gram model
         if let historyData = defaults.data(forKey: Constants.Keys.transcriptionHistory) {
             struct SimpleHistory: Codable {
                 let text: String
@@ -63,6 +91,11 @@ actor PredictionEngine {
                             wordCounts[normalized, default: 0] += 1
                         }
                     }
+
+                    // Train N-gram model with transcription text
+                    Task {
+                        await NGramPredictor.shared.learnFromText(record.text)
+                    }
                 }
 
                 // Keep top 200 most frequent words
@@ -77,74 +110,176 @@ actor PredictionEngine {
 
     // MARK: - Local Predictions
 
-    /// Get predictions based on local vocabulary and frequent words
-    func localPredictions(for context: PredictionContext) -> [String] {
-        var predictions: [Prediction] = []
+    /// Get predictions based on local vocabulary, N-grams, and context
+    func localPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
+        var predictions: [(text: String, score: Double)] = []
 
         let searchTerm = context.currentWord.lowercased()
+        let previousWords = context.previousWords
 
-        // If current word is empty, suggest most frequent words
+        // Detect typing context
+        let typingContext = await ContextAwarePredictions.shared.detectContext(
+            text: context.fullText,
+            activeContextName: activeContext
+        )
+
+        // If current word is empty, use N-gram and context-aware predictions
         if searchTerm.isEmpty {
-            let topFrequent = frequentWords
+            // 1. Get N-gram predictions based on previous words
+            let ngramPredictions = await NGramPredictor.shared.predict(
+                previousWords: previousWords,
+                maxResults: 5
+            )
+            for (index, word) in ngramPredictions.enumerated() {
+                let score = 100.0 - Double(index * 10)
+                predictions.append((word, score))
+            }
+
+            // 2. Get learned follow words from feedback
+            if let lastWord = previousWords.last {
+                let learnedWords = await PredictionFeedback.shared.getLearnedFollowWords(
+                    after: lastWord,
+                    maxResults: 3
+                )
+                for word in learnedWords {
+                    predictions.append((word, 90.0))  // High score for learned patterns
+                }
+            }
+
+            // 3. Get context-aware starter predictions
+            let contextPredictions = await ContextAwarePredictions.shared.getStarterPredictions(for: typingContext)
+            for (index, word) in contextPredictions.prefix(3).enumerated() {
+                predictions.append((word, 50.0 - Double(index * 5)))
+            }
+
+        } else {
+            // Prefix-based predictions
+
+            // 1. N-gram completions (context-aware prefix matching)
+            let ngramCompletions = await NGramPredictor.shared.predictCompletion(
+                prefix: searchTerm,
+                previousWords: previousWords,
+                maxResults: 5
+            )
+            for (index, word) in ngramCompletions.enumerated() {
+                let score = 100.0 - Double(index * 10)
+                predictions.append((word, score))
+            }
+
+            // 2. Personal dictionary matches
+            let personalWords = await PersonalDictionary.shared.wordsWithPrefix(searchTerm, maxResults: 5)
+            for word in personalWords {
+                let freq = await PersonalDictionary.shared.frequency(of: word)
+                let score = 80.0 + min(Double(freq) * 2, 20.0)
+                predictions.append((word.capitalized, score))
+            }
+
+            // 3. Search custom vocabulary for prefix matches
+            for word in vocabulary {
+                if word.lowercased().hasPrefix(searchTerm) && word.lowercased() != searchTerm {
+                    predictions.append((word, 70.0))
+                }
+            }
+
+            // 4. Search frequent words for prefix matches
+            for (word, count) in frequentWords {
+                if word.hasPrefix(searchTerm) && word != searchTerm {
+                    let score = 60.0 + min(Double(count), 20.0)
+                    predictions.append((word.capitalized, score))
+                }
+            }
+
+            // 5. Context-specific vocabulary
+            let contextWords = await ContextAwarePredictions.shared.getPredictions(
+                for: searchTerm,
+                context: typingContext
+            )
+            for (index, word) in contextWords.prefix(3).enumerated() {
+                predictions.append((word, 55.0 - Double(index * 5)))
+            }
+        }
+
+        // Apply feedback boosts
+        var boostedPredictions: [(String, Double)] = []
+        for (text, baseScore) in predictions {
+            let boost = await PredictionFeedback.shared.getBoost(for: text)
+
+            // Also apply contextual boost if we have previous word
+            var contextBoost = 1.0
+            if let lastWord = previousWords.last {
+                contextBoost = await PredictionFeedback.shared.getContextualBoost(for: text, after: lastWord)
+            }
+
+            let finalScore = baseScore * boost * contextBoost
+            boostedPredictions.append((text, finalScore))
+        }
+
+        // Deduplicate, sort by score, and return top 3
+        var seen = Set<String>()
+        var uniquePredictions: [(String, Double)] = []
+        for (text, score) in boostedPredictions {
+            let normalized = text.lowercased()
+            if seen.insert(normalized).inserted {
+                uniquePredictions.append((text, score))
+            }
+        }
+
+        uniquePredictions.sort { $0.1 > $1.1 }
+        return uniquePredictions.prefix(3).map { $0.0 }
+    }
+
+    /// Legacy sync wrapper
+    func localPredictions(for context: PredictionContext) -> [String] {
+        // For backward compatibility, return simple predictions
+        let searchTerm = context.currentWord.lowercased()
+
+        if searchTerm.isEmpty {
+            return frequentWords
                 .sorted { $0.value > $1.value }
                 .prefix(3)
                 .map { $0.key.capitalized }
-
-            return topFrequent
         }
 
-        // Search vocabulary for prefix matches
+        var predictions: [(String, Int)] = []
+
         for word in vocabulary {
             if word.lowercased().hasPrefix(searchTerm) && word.lowercased() != searchTerm {
-                predictions.append(Prediction(
-                    text: word,
-                    source: .vocabulary,
-                    confidence: 1.0
-                ))
+                predictions.append((word, 100))
             }
         }
 
-        // Search frequent words for prefix matches
         for (word, count) in frequentWords {
             if word.hasPrefix(searchTerm) && word != searchTerm {
-                let confidence = Double(count) / 10.0  // Normalize by count
-                predictions.append(Prediction(
-                    text: word.capitalized,
-                    source: .frequent,
-                    confidence: min(confidence, 1.0)
-                ))
+                predictions.append((word.capitalized, count))
             }
         }
 
-        // Sort by confidence and return top 3
-        let sorted = predictions
-            .sorted { $0.confidence > $1.confidence }
+        return predictions
+            .sorted { $0.1 > $1.1 }
             .prefix(3)
-            .map { $0.text }
-
-        return Array(sorted)
+            .map { $0.0 }
     }
 
     // MARK: - LLM Predictions
 
-    /// Get predictions from configured AI provider
-    func llmPredictions(for context: PredictionContext) async -> [String] {
+    /// Get predictions from configured AI provider with debouncing
+    func llmPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
         // Check cooldown to avoid too frequent API calls
         if let lastRequest = lastLLMRequest,
            Date().timeIntervalSince(lastRequest) < llmCooldown {
             keyboardLog("PredictionEngine: LLM cooldown active", category: "Prediction")
-            return localPredictions(for: context)
+            return await localPredictions(for: context, activeContext: activeContext)
         }
 
         guard let defaults = UserDefaults(suiteName: appGroupID) else {
-            return localPredictions(for: context)
+            return await localPredictions(for: context, activeContext: activeContext)
         }
 
         // Check for configured provider
         guard let apiKey = defaults.string(forKey: Constants.Keys.openAIAPIKey),
               !apiKey.isEmpty else {
             keyboardLog("PredictionEngine: No API key configured", category: "Prediction")
-            return localPredictions(for: context)
+            return await localPredictions(for: context, activeContext: activeContext)
         }
 
         lastLLMRequest = Date()
@@ -159,7 +294,7 @@ actor PredictionEngine {
             )
 
             if predictions.isEmpty {
-                return localPredictions(for: context)
+                return await localPredictions(for: context, activeContext: activeContext)
             }
 
             keyboardLog("PredictionEngine: LLM returned \(predictions.count) predictions", category: "Prediction")
@@ -167,8 +302,13 @@ actor PredictionEngine {
 
         } catch {
             keyboardLog("PredictionEngine: LLM error - \(error.localizedDescription)", category: "Prediction", level: .error)
-            return localPredictions(for: context)
+            return await localPredictions(for: context, activeContext: activeContext)
         }
+    }
+
+    /// Legacy wrapper
+    func llmPredictions(for context: PredictionContext) async -> [String] {
+        return await llmPredictions(for: context, activeContext: nil)
     }
 
     // MARK: - OpenAI API Call
@@ -237,12 +377,62 @@ actor PredictionEngine {
 
     // MARK: - Get Predictions
 
-    /// Get predictions for the current typing context
-    func getPredictions(for context: PredictionContext) async -> [String] {
-        if context.shouldUseLLM {
-            return await llmPredictions(for: context)
+    /// Get predictions for the current typing context with debouncing
+    func getPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
+        // Cancel any pending prediction task if context changed significantly
+        if context.fullText != lastPredictionContext {
+            pendingPredictionTask?.cancel()
+            lastPredictionContext = context.fullText
         }
-        return localPredictions(for: context)
+
+        if context.shouldUseLLM {
+            return await llmPredictions(for: context, activeContext: activeContext)
+        }
+        return await localPredictions(for: context, activeContext: activeContext)
+    }
+
+    /// Get predictions with debouncing (waits for typing to pause)
+    func getDebouncedPredictions(for context: PredictionContext, activeContext: String? = nil, delayMs: Int = 150) async -> [String] {
+        // Cancel previous pending task
+        pendingPredictionTask?.cancel()
+
+        // Create new debounced task
+        let task = Task { () -> [String] in
+            // Wait for debounce delay
+            try? await Task.sleep(for: .milliseconds(delayMs))
+
+            // Check if cancelled
+            if Task.isCancelled {
+                return []
+            }
+
+            // Get predictions
+            return await getPredictions(for: context, activeContext: activeContext)
+        }
+
+        pendingPredictionTask = task
+        return await task.value
+    }
+
+    /// Legacy wrapper
+    func getPredictions(for context: PredictionContext) async -> [String] {
+        return await getPredictions(for: context, activeContext: nil)
+    }
+
+    // MARK: - Feedback Recording
+
+    /// Record that user accepted a prediction
+    func recordPredictionAccepted(_ prediction: String, previousWord: String?) async {
+        await PredictionFeedback.shared.recordAccepted(prediction: prediction, previousWord: previousWord)
+    }
+
+    /// Record that user rejected predictions and typed something else
+    func recordPredictionsRejected(_ predictions: [String], actuallyTyped: String, previousWord: String?) async {
+        await PredictionFeedback.shared.recordRejected(
+            predictions: predictions,
+            actuallyTyped: actuallyTyped,
+            previousWord: previousWord
+        )
     }
 }
 

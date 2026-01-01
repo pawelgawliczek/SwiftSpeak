@@ -3,6 +3,7 @@
 //  SwiftSpeakKeyboard
 //
 //  AI prediction row with 3 suggestion slots (Phase 13.6)
+//  Includes feedback loop for learning from user behavior
 //
 
 import SwiftUI
@@ -11,9 +12,14 @@ struct PredictionRow: View {
     @ObservedObject var viewModel: KeyboardViewModel
     @State private var predictions: [String] = []
     @State private var isLoadingLLM = false
+    @State private var lastShownPredictions: [String] = []  // For feedback tracking
+    @State private var previousWord: String? = nil  // For contextual feedback
 
     // Shared prediction engine instance
     private static let predictionEngine = PredictionEngine()
+
+    // Debounce task for predictions
+    @State private var predictionTask: Task<Void, Never>?
 
     var body: some View {
         HStack(spacing: 0) {
@@ -54,9 +60,8 @@ struct PredictionRow: View {
             }
         }
         .onChange(of: viewModel.currentTypingContext) { _, newContext in
-            Task {
-                await updatePredictions(for: newContext, useLLM: false)
-            }
+            // Debounce predictions - wait 150ms after typing stops
+            updatePredictionsDebounced(for: newContext, useLLM: false)
         }
         .onChange(of: viewModel.shouldTriggerLLMPredictions) { _, shouldTrigger in
             if shouldTrigger {
@@ -72,19 +77,50 @@ struct PredictionRow: View {
         await updatePredictions(for: "", useLLM: false)
     }
 
+    /// Debounced prediction update - waits for typing to pause
+    private func updatePredictionsDebounced(for context: String, useLLM: Bool) {
+        // Cancel previous pending prediction
+        predictionTask?.cancel()
+
+        // Create new debounced task
+        predictionTask = Task {
+            // Wait 150ms for typing to settle
+            try? await Task.sleep(for: .milliseconds(150))
+
+            // Check if cancelled (user typed another character)
+            guard !Task.isCancelled else { return }
+
+            await updatePredictions(for: context, useLLM: useLLM)
+        }
+    }
+
     private func updatePredictions(for context: String, useLLM: Bool) async {
         if useLLM {
             isLoadingLLM = true
         }
+
+        // Extract previous word for feedback context
+        let words = context.split(separator: " ").map(String.init)
+        let prevWord = words.dropLast().last
 
         let predictionContext = PredictionContext(
             fullText: context,
             shouldUseLLM: useLLM
         )
 
-        let newPredictions = await Self.predictionEngine.getPredictions(for: predictionContext)
+        // Get active context name for context-aware predictions
+        let activeContextName = viewModel.activeContext?.name
+
+        let newPredictions = await Self.predictionEngine.getPredictions(
+            for: predictionContext,
+            activeContext: activeContextName
+        )
 
         await MainActor.run {
+            // Track what we're showing for feedback
+            lastShownPredictions = predictions
+            previousWord = prevWord
+
             predictions = newPredictions
             isLoadingLLM = false
         }
@@ -95,6 +131,11 @@ struct PredictionRow: View {
 
         KeyboardHaptics.lightTap()
 
+        // Record feedback - user accepted this prediction
+        Task {
+            await Self.predictionEngine.recordPredictionAccepted(text, previousWord: previousWord)
+        }
+
         // Insert prediction with space
         viewModel.textDocumentProxy?.insertText(text + " ")
 
@@ -102,11 +143,42 @@ struct PredictionRow: View {
         viewModel.updateTypingContext()
 
         // Clear predictions momentarily
+        let oldPredictions = predictions
         predictions = []
 
         // Load new predictions for next word
         Task {
+            // Short delay to let context update
+            try? await Task.sleep(for: .milliseconds(50))
             await updatePredictions(for: viewModel.currentTypingContext, useLLM: false)
+        }
+
+        // Record that other predictions were not selected (implicit rejection)
+        let rejectedPredictions = oldPredictions.filter { $0 != text }
+        if !rejectedPredictions.isEmpty {
+            Task {
+                await Self.predictionEngine.recordPredictionsRejected(
+                    rejectedPredictions,
+                    actuallyTyped: text,
+                    previousWord: previousWord
+                )
+            }
+        }
+    }
+
+    /// Call this when user types something without using predictions
+    func recordUserTypedWord(_ word: String) {
+        guard !lastShownPredictions.isEmpty else { return }
+
+        // User typed something different from predictions
+        if !lastShownPredictions.contains(where: { $0.lowercased() == word.lowercased() }) {
+            Task {
+                await Self.predictionEngine.recordPredictionsRejected(
+                    lastShownPredictions,
+                    actuallyTyped: word,
+                    previousWord: previousWord
+                )
+            }
         }
     }
 }

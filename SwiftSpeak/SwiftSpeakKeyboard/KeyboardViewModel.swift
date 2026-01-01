@@ -42,7 +42,7 @@ class KeyboardViewModel: ObservableObject {
     /// Trigger LLM predictions (set to true to request AI predictions)
     @Published var shouldTriggerLLMPredictions = false
 
-    // Phase 13.9: Emoji & GIF Panel
+    // Phase 13.9: Emoji Panel
     @Published var showEmojiPanel = false
 
     // Phase 13.10: Quick Settings Popover
