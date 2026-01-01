@@ -64,7 +64,7 @@ struct SwiftSpeakBar: View {
             )
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
+        .padding(.vertical, 10)
         .background(Color(white: 0.10))
     }
 }
@@ -92,8 +92,8 @@ private struct TranslationPill: View {
                 }
             }
             .foregroundStyle(isEnabled ? .white : .white.opacity(0.5))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(
                 isEnabled ? Color.blue.opacity(0.3) : Color.white.opacity(0.1),
                 in: Capsule()
@@ -128,8 +128,8 @@ private struct ContextPill: View {
                 }
             }
             .foregroundStyle(.white.opacity(activeContext != nil ? 1.0 : 0.5))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(
                 activeContext != nil ? Color.purple.opacity(0.3) : Color.white.opacity(0.1),
                 in: Capsule()
@@ -158,8 +158,8 @@ private struct ModePill: View {
                     .lineLimit(1)
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(Color.white.opacity(0.15), in: Capsule())
         }
         .buttonStyle(.plain)
@@ -190,8 +190,8 @@ private struct AIProcessPill: View {
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundStyle(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(
                 LinearGradient(
                     colors: isProcessing ? [.purple.opacity(0.6), .blue.opacity(0.6)] : [.purple.opacity(0.4), .blue.opacity(0.4)],
@@ -223,8 +223,8 @@ private struct SwiftLinkPill: View {
                     .font(.system(size: 10, weight: .semibold))
             }
             .foregroundStyle(isActive ? .white : .white.opacity(0.6))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
             .background(
                 isActive ? Color.orange.opacity(0.4) : Color.white.opacity(0.1),
                 in: Capsule()
@@ -274,31 +274,31 @@ private struct TranscribeButton: View {
                         RadialGradient(
                             colors: [glowColor.opacity(0.4), .clear],
                             center: .center,
-                            startRadius: 10,
-                            endRadius: 25
+                            startRadius: 12,
+                            endRadius: 30
                         )
                     )
-                    .frame(width: 48, height: 48)
+                    .frame(width: 56, height: 56)
 
                 // Main button
                 Circle()
                     .fill(buttonColor)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 42, height: 42)
                     .shadow(color: glowColor.opacity(0.5), radius: 4, y: 2)
 
                 // Content - SwiftSpeak logo or edit icon
                 if isEditMode {
                     Image(systemName: "pencil")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.white)
                 } else if !isConfigured {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                 } else {
                     // SwiftSpeak logo with mic fallback
                     SwiftSpeakLogoView()
-                        .frame(width: 48, height: 48)
+                        .frame(width: 56, height: 56)
                         .foregroundStyle(.white)
                 }
             }

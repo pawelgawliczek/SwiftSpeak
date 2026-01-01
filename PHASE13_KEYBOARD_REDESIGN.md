@@ -60,7 +60,7 @@ Inspired by Wispr Flow with SwiftSpeak's unique features + innovative additions.
 | 13.5 | Cursor Control (Long-press Space) | ✅ COMPLETE | Dec 31, 2024 |
 | 13.6 | AI Predictions Engine | ✅ COMPLETE | Dec 31, 2024 |
 | 13.7 | Voice Commands Parser | ✅ COMPLETE | Dec 31, 2024 |
-| 13.8 | Swipe Typing (Glide) | ✅ COMPLETE | Dec 31, 2024 |
+| 13.8 | ~~Swipe Typing~~ | ❌ REMOVED | Jan 1, 2025 |
 | 13.9 | Emoji & GIF Panel | ✅ COMPLETE | Dec 31, 2024 |
 | 13.10 | Quick Settings + Final Polish | ✅ COMPLETE | Dec 31, 2024 |
 | 13.11 | Autocorrect + Smart Punctuation | ✅ COMPLETE | Jan 1, 2025 |
@@ -85,7 +85,7 @@ Inspired by Wispr Flow with SwiftSpeak's unique features + innovative additions.
 9. ✅ **Quick settings** - Popover with toggles
 
 ### Premium Features (P2) - ✅ ALL COMPLETE
-10. ✅ **Swipe typing** - Glide across letters (highPriorityGesture fixed)
+10. ❌ **~~Swipe typing~~** - REMOVED (clunky UX, interfered with accents)
 11. ✅ **Full emoji keyboard** - Categories + search + inline keyboard
 12. ✅ **GIF search** - Giphy integration with default API key
 13. ✅ **Smart punctuation** - Curly quotes, em-dash, ellipsis, double-space to period
@@ -128,11 +128,11 @@ SwiftSpeakKeyboard/
 │   │   ├── GIFSearchView.swift              # Giphy search UI (Phase 13.9)
 │   │   └── InlineSearchKeyboard.swift       # Mini QWERTY for search (Phase 13.10)
 │   │
-│   └── SwipePathView.swift                  # Swipe typing path visualization (Phase 13.8)
+│   └── (SwipePathView.swift removed - swipe typing deprecated)
 │
 ├── Services/
 │   ├── PredictionEngine.swift               # Local + LLM predictions (Phase 13.6)
-│   ├── SwipeTypingEngine.swift              # Swipe path → word matching (Phase 13.8)
+│   ├── (SwipeTypingEngine.swift removed - swipe typing deprecated)
 │   ├── VoiceCommandParser.swift             # Edit mode command parsing (Phase 13.7)
 │   ├── CursorController.swift               # Long-press space cursor (Phase 13.5)
 │   ├── GiphyService.swift                   # Giphy API integration (Phase 13.9)
@@ -144,7 +144,7 @@ SwiftSpeakKeyboard/
     ├── AccentMappings.swift                 # Character → accents map (Phase 13.3)
     ├── VoiceCommands.swift                  # Voice command examples (Phase 13.7)
     ├── PredictionModels.swift               # N-gram and bigram models (Phase 13.6)
-    └── SwipeTypingDictionary.swift          # 400+ word dictionary (Phase 13.8)
+    └── (SwipeTypingDictionary.swift removed - swipe typing deprecated)
 ```
 
 ---
@@ -357,47 +357,23 @@ The app already has full edit mode from Phase 12! This phase just adds:
 
 ---
 
-### Phase 13.8: Swipe Typing (Glide) - ✅ COMPLETE
+### Phase 13.8: Swipe Typing (Glide) - ❌ REMOVED
 
-**Goal:** Swipe across letters to type words (like Gboard/SwiftKey).
+**Status:** REMOVED on January 1, 2025
 
-**Files Created:**
-- `Services/SwipeTypingEngine.swift` - Path tracking + word matching
-- `Data/SwipeTypingDictionary.swift` - 400+ word dictionary
-- `Components/SwipePathView.swift` - Visual swipe path
+**Reason for Removal:**
+- User feedback: "very clunky and doesn't work"
+- The `highPriorityGesture` used for swipe detection interfered with long-press accent popups
+- Gesture conflicts made both features unreliable
+- Swipe typing accuracy was low with the simple dictionary-based approach
 
-**Files Modified:**
-- `Components/KeyboardMode/QWERTYKeyboard.swift` - Gesture handling
-- `Components/Keys/LetterKey.swift` - Key frame reporting
+**Original Files (now deleted):**
+- `Services/SwipeTypingEngine.swift`
+- `Data/SwipeTypingDictionary.swift`
+- `Components/SwipePathView.swift`
 
-**Features:**
-- Swipe path visualization (blue gradient stroke)
-- Real-time word matching
-- 400+ common words in dictionary
-- Light haptic on each key passed
-- Medium haptic on word insertion
-- Only active on letters layout (not numbers/symbols)
-- Respects shift state for capitalization
-- Minimum 20-point drag to prevent accidental activation
-
-**Matching Algorithm:**
-1. First/last key must match word's first/last letter
-2. All keys appear in order within word
-3. Scoring: key sequence match + length similarity + exact matches
-4. Top 5 candidates returned
-
-**Dictionary Categories:**
-- Common words (the, be, to, of, and)
-- Messaging (hello, thanks, please, sorry)
-- Work/email (meeting, urgent, deadline)
-- Actions, adjectives, nouns
-- Tech/social media terms
-
-**Performance:**
-- O(1) category access (by word length)
-- Early termination (first/last key filter)
-- Limited search range (±2-3 characters)
-- Key frame caching via SwiftUI preferences
+**Lesson Learned:**
+Swipe typing requires sophisticated ML-based path prediction (like Gboard/SwiftKey) to be usable. A simple dictionary matching approach leads to poor accuracy and gesture conflicts with other keyboard features. If revisited, would require significant investment in ML infrastructure.
 
 ---
 
@@ -456,7 +432,7 @@ The app already has full edit mode from Phase 12! This phase just adds:
 **Files Modified:**
 - `GiphyService.swift` - Added default Giphy API key
 - `SpaceBar.swift` - Added SwiftSpeak branding
-- `QWERTYKeyboard.swift` - Moved emoji button to left, fixed swipe gesture priority
+- `QWERTYKeyboard.swift` - Moved emoji button to left, added auto-return to letters
 - `EmojiKeyboard.swift` - Integrated inline search keyboard
 - `GIFSearchView.swift` - Integrated inline search keyboard
 - `TypingKeyboardView.swift` - Fixed AI Predictions toggle check
@@ -464,14 +440,12 @@ The app already has full edit mode from Phase 12! This phase just adds:
 **Features:**
 
 **Quick Settings Popover:**
-- Gear button in bottom row opens settings
-- Toggle controls for:
-  - Swipe typing on/off
-  - Haptic feedback on/off
-  - Autocorrect on/off
-  - Smart punctuation on/off
-  - AI predictions on/off
-- Smooth slide-up animation
+- Settings icon accessible from SwiftSpeak bar
+- Full-height panel with sections:
+  - Voice: Provider picker, Spoken Language
+  - Keyboard: Haptic feedback, AI Predictions, Autocorrect, Smart punctuation
+  - System: Subscription tier, SwiftLink status
+- "Open Full Settings" button for advanced options
 - Settings persist via App Groups
 
 **UI Polish:**
@@ -482,9 +456,9 @@ The app already has full edit mode from Phase 12! This phase just adds:
 - Default Giphy API key (no user config required)
 
 **Fixes:**
-- Swipe typing now works (changed to `.highPriorityGesture`)
-- LetterKey uses `.onLongPressGesture` to not block parent swipe
+- LetterKey uses `.onLongPressGesture` for accent popup (400ms threshold)
 - Settings changes apply immediately via `.onChange` refresh
+- Removed swipe typing (gesture conflicts with accent popup)
 
 ---
 
@@ -597,7 +571,7 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 2. **Remember last mode** - Persists between sessions
 3. **Hybrid predictions** - Local ongoing, LLM on pause
 4. **Voice commands when text exists** - Mic becomes edit mode (green button)
-5. **Swipe typing configurable** - Toggle in settings
+5. **Auto-return to letters** - After punctuation, keyboard returns to letters
 6. **Built-in emoji/GIF** - Not system keyboard switcher
 7. **Recording transforms bars** - Keyboard stays visible
 8. **No sound feedback** - iOS keyboard extension limitation
@@ -612,10 +586,10 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 - Cached layout calculations
 - Minimal initial state
 
-### Swipe Typing
-- Dictionary organized by word length (O(1) access)
-- Early termination (first/last key filter)
-- Key frame caching via preferences
+### Accent Popup
+- Long-press gesture (400ms threshold)
+- Positioned relative to key frame
+- Slide to select accent variant
 
 ### Predictions
 - Local predictions instant (<10ms)
@@ -637,10 +611,10 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 ## Testing Strategy
 
 ### Unit Tests
-- SwipeTypingEngine word matching
 - PredictionEngine local predictions
 - VoiceCommandParser command detection
 - CursorController position calculations
+- AutocorrectService word matching
 
 ### Integration Tests
 - Mode switching (Voice ↔ Keyboard)
@@ -650,7 +624,6 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 
 ### Manual Testing
 - Long-press accents on all characters
-- Swipe typing accuracy (common words)
 - Cursor control smoothness
 - GIF search performance
 - Multi-language support (accent chars)
@@ -673,7 +646,7 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 - [x] National characters via long-press
 - [x] Voice commands work in edit mode
 - [x] Predictions appear and are useful
-- [x] Swipe typing works for common words
+- [x] Auto-return to letters after punctuation
 - [x] Emoji/GIF insertion functional
 - [x] Existing functionality preserved
 - [x] Quick settings accessible
@@ -690,10 +663,10 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
    - Limited memory (extensions have lower limits)
    - No background network (only when visible)
 
-2. **Swipe Typing:**
-   - 400-word dictionary (vs thousands in commercial keyboards)
-   - No ML-based path prediction
-   - English only (no multi-language support yet)
+2. **Swipe Typing:** REMOVED
+   - Was removed due to gesture conflicts with accent popup
+   - Simple dictionary approach was inaccurate
+   - Would require ML investment to do properly
 
 3. **Predictions:**
    - LLM predictions require network + API key
@@ -710,13 +683,14 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 ## Future Improvements
 
 ### Completed in Session
-- [x] Quick settings popover
+- [x] Quick settings popover (now full-height with provider picker)
 - [x] AI Predictions toggle fix
-- [x] Swipe typing gesture fix
 - [x] Inline search keyboard for emoji/GIF
 - [x] Default Giphy API key
 - [x] Autocorrect service
 - [x] Smart punctuation service
+- [x] Removed swipe typing (gesture conflicts)
+- [x] Auto-return to letters after punctuation
 
 ### Remaining Polish
 - [ ] SymSpellSwift integration (faster autocorrect)
@@ -725,30 +699,24 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 - [ ] iPad/landscape optimization
 
 ### Post-MVP Enhancements
-1. **Swipe Typing:**
-   - Expand dictionary (10,000+ words)
-   - Multi-language support (Spanish, French, German)
-   - ML-based path prediction
-   - User dictionary learning
-
-2. **Predictions:**
+1. **Predictions:**
    - User-specific learning
    - Contextual awareness (time, location, app)
    - Adaptive ML model
    - Offline fallback
 
-3. **Voice Commands:**
+2. **Voice Commands:**
    - Custom command macros
    - Multi-step commands
    - App-specific commands
 
-4. **UI/UX:**
+3. **UI/UX:**
    - Customizable keyboard height
    - Theme customization
    - Key haptic intensity adjustment
    - One-handed mode
 
-5. **Power Features:**
+4. **Power Features:**
    - Clipboard history
    - Text expansion shortcuts
    - Multi-language simultaneous typing
@@ -789,9 +757,11 @@ User Input → Keyboard Extension → UITextDocumentProxy → Target App
 **Recent Changes:**
 - Added AutocorrectService.swift, SmartPunctuationService.swift
 - Added InlineSearchKeyboard.swift
-- Fixed swipe typing gesture priority
+- Removed swipe typing (gesture conflicts with accent popup)
 - Fixed AI Predictions toggle
 - Added default Giphy API key
+- Auto-return to letters keyboard after punctuation
+- Quick Settings now full-height with provider picker
 
 ---
 
@@ -807,7 +777,6 @@ Phase 13 has successfully transformed SwiftSpeak from a voice-only keyboard into
 - ✅ AI predictions (local + LLM hybrid)
 - ✅ Voice commands for text editing
 - ✅ Cursor control (long-press space)
-- ✅ Swipe typing (glide) - with fixed gesture priority
 - ✅ Full emoji keyboard + GIF search + inline keyboard
 - ✅ Quick settings popover with all toggles
 - ✅ Autocorrect (Levenshtein-based, SymSpellSwift ready)
@@ -818,6 +787,6 @@ Phase 13 has successfully transformed SwiftSpeak from a voice-only keyboard into
 - Phase 13.10: Quick settings + UI polish
 - Phase 13.11: Autocorrect + Smart punctuation
 
-**Total Implementation Time:** ~19 days (exceeded 15-day estimate due to scope expansion with premium features like swipe typing, emoji/GIF panel, autocorrect, and smart punctuation)
+**Total Implementation Time:** ~19 days (exceeded 15-day estimate due to scope expansion with premium features like emoji/GIF panel, autocorrect, and smart punctuation)
 
 SwiftSpeak keyboard is now **feature-complete** and ready for beta testing and user feedback!

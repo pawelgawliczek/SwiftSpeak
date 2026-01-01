@@ -63,11 +63,6 @@ struct LetterKey: View {
             .onChange(of: geometry.frame(in: .global)) { _, newFrame in
                 keyFrame = newFrame
             }
-            // Phase 13.8: Report key frame for swipe typing
-            .preference(
-                key: KeyFramePreferenceKey.self,
-                value: [letter.uppercased(): geometry.frame(in: .global)]
-            )
         }
         .frame(height: KeyboardTheme.keyHeight)
     }

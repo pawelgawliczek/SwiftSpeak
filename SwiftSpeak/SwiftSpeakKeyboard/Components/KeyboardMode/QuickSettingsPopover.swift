@@ -14,6 +14,32 @@ struct QuickSettingsPopover: View {
     @ObservedObject var viewModel: KeyboardViewModel
     let onDismiss: () -> Void
 
+    // Available transcription providers from configured providers
+    private var availableProviders: [(String, String)] {
+        var providers: [(String, String)] = []
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        let configuredProviders = defaults?.stringArray(forKey: "configuredProviderIds") ?? []
+
+        for providerId in configuredProviders {
+            switch providerId {
+            case "openAI": providers.append(("openAI", "OpenAI"))
+            case "deepgram": providers.append(("deepgram", "Deepgram"))
+            case "assemblyAI": providers.append(("assemblyAI", "AssemblyAI"))
+            case "elevenLabs": providers.append(("elevenLabs", "ElevenLabs"))
+            case "google": providers.append(("google", "Google"))
+            case "local": providers.append(("local", "On-Device"))
+            default: break
+            }
+        }
+
+        // If no providers configured, show at least OpenAI as option
+        if providers.isEmpty {
+            providers.append(("openAI", "OpenAI"))
+        }
+
+        return providers
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -41,7 +67,21 @@ struct QuickSettingsPopover: View {
                 VStack(spacing: 16) {
                     // SECTION 1: Voice Settings (at top as requested)
                     SettingsSection(title: "Voice") {
-                        // Transcription/Spoken Language picker - most important setting
+                        // Provider picker
+                        PickerRow(
+                            title: "Provider",
+                            selection: Binding(
+                                get: { settings.transcriptionProvider.lowercased().replacingOccurrences(of: " ", with: "") },
+                                set: { newValue in
+                                    settings.transcriptionProvider = availableProviders.first { $0.0 == newValue }?.1 ?? newValue
+                                    settings.save()
+                                    KeyboardHaptics.selection()
+                                }
+                            ),
+                            options: availableProviders
+                        )
+
+                        // Transcription/Spoken Language picker
                         PickerRow(
                             title: "Spoken Language",
                             selection: $settings.spokenLanguage,
@@ -51,51 +91,9 @@ struct QuickSettingsPopover: View {
                             settings.save()
                             KeyboardHaptics.selection()
                         }
-
-                        InfoRow(
-                            title: "Provider",
-                            value: settings.transcriptionProvider
-                        )
-
-                        if let contextName = settings.activeContextName {
-                            InfoRow(
-                                title: "Context",
-                                value: contextName
-                            )
-                        }
                     }
 
-                    // SECTION 2: Translation (translates complete transcription, not word-by-word)
-                    if viewModel.isPro {
-                        SettingsSection(title: "Translation") {
-                            ToggleRow(title: "Auto-Translate", isOn: $settings.autoTranslate) {
-                                settings.save()
-                                KeyboardHaptics.lightTap()
-                                viewModel.isTranslationEnabled = settings.autoTranslate
-                            }
-
-                            if settings.autoTranslate {
-                                PickerRow(
-                                    title: "To",
-                                    selection: $settings.targetLanguage,
-                                    options: languageOptions
-                                )
-                                .onChange(of: settings.targetLanguage) { _, _ in
-                                    settings.save()
-                                    KeyboardHaptics.selection()
-                                }
-
-                                // Explanation of how translation works
-                                Text("Translates your complete transcription after recording")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 12)
-                                    .padding(.bottom, 8)
-                            }
-                        }
-                    }
-
-                    // SECTION 3: Keyboard Behavior
+                    // SECTION 2: Keyboard Behavior
                     SettingsSection(title: "Keyboard") {
                         ToggleRow(title: "Haptic Feedback", isOn: $settings.hapticFeedback) {
                             settings.save()
@@ -110,17 +108,13 @@ struct QuickSettingsPopover: View {
                             settings.save()
                             KeyboardHaptics.lightTap()
                         }
-                        ToggleRow(title: "Swipe Typing", isOn: $settings.swipeTyping) {
-                            settings.save()
-                            KeyboardHaptics.lightTap()
-                        }
                         ToggleRow(title: "Smart Punctuation", isOn: $settings.smartPunctuation) {
                             settings.save()
                             KeyboardHaptics.lightTap()
                         }
                     }
 
-                    // SECTION 4: System Info
+                    // SECTION 3: System Info
                     SettingsSection(title: "System") {
                         InfoRow(
                             title: "Subscription",
@@ -154,7 +148,7 @@ struct QuickSettingsPopover: View {
                 .padding()
             }
         }
-        .frame(width: UIScreen.main.bounds.width, height: 235)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
             LinearGradient(
                 colors: [Color(white: 0.12), Color(white: 0.08)],
@@ -162,7 +156,6 @@ struct QuickSettingsPopover: View {
                 endPoint: .bottom
             )
         )
-        .cornerRadius(0)
         .shadow(color: .black.opacity(0.3), radius: 10, y: -2)
     }
 
@@ -183,21 +176,6 @@ struct QuickSettingsPopover: View {
             ("ar", "Arabic"),
             ("hi", "Hindi"),
             ("auto", "Auto-detect")
-        ]
-    }
-
-    private var languageOptions: [(String, String)] {
-        [
-            ("es", "Spanish"),
-            ("fr", "French"),
-            ("de", "German"),
-            ("it", "Italian"),
-            ("pt", "Portuguese"),
-            ("ja", "Japanese"),
-            ("ko", "Korean"),
-            ("zh", "Chinese"),
-            ("ru", "Russian"),
-            ("ar", "Arabic")
         ]
     }
 

@@ -21,18 +21,7 @@ struct QWERTYKeyboard: View {
     @State private var showingAccentPopup: Bool = false
     @State private var accentPopupLetter: String = ""
     @State private var accentPopupKeyFrame: CGRect = .zero
-
-    // Phase 13.8: Swipe typing state
-    @StateObject private var swipeEngine = SwipeTypingEngine()
-    @State private var keyFrames: [String: CGRect] = [:]
     @State private var keyboardFrame: CGRect = .zero  // Track keyboard frame for accent popup
-
-    // Load swipe typing enabled from settings
-    private var swipeTypingEnabled: Bool {
-        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
-        // Use object(forKey:) because bool(forKey:) returns false for missing keys
-        return (defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) as? Bool) ?? true
-    }
 
     // Auto-capitalization tracking
     private var shouldAutoCapitalize: Bool {
@@ -81,29 +70,6 @@ struct QWERTYKeyboard: View {
             if shiftState == .lowercase && shouldAutoCapitalize {
                 shiftState = .shift
             }
-        }
-        // Phase 13.8: Swipe path overlay
-        .overlay {
-            if swipeEngine.isSwipeActive {
-                SwipePathView(path: swipeEngine.swipePath)
-            }
-        }
-        // Phase 13.8: Swipe gesture (only on letters layout, when enabled)
-        // Use highPriorityGesture to take precedence over key-level gestures
-        .highPriorityGesture(
-            swipeTypingEnabled && layoutState == .letters ?
-            DragGesture(minimumDistance: 15, coordinateSpace: .global)
-                .onChanged { value in
-                    handleSwipeContinue(at: value.location)
-                }
-                .onEnded { _ in
-                    handleSwipeEnd()
-                }
-            : nil
-        )
-        // Phase 13.8: Capture key frames for swipe tracking
-        .onPreferenceChange(KeyFramePreferenceKey.self) { frames in
-            self.keyFrames = frames
         }
         // Accent popup as true overlay - floats above everything
         .overlay {
@@ -206,6 +172,11 @@ struct QWERTYKeyboard: View {
 
     // MARK: - Number/Symbol Layout
 
+    // Characters that should auto-return to letters keyboard after insertion
+    private let autoReturnCharacters: Set<Character> = [
+        ".", ",", "!", "?", ";", ":", "'", "\"", ")", "]", "}"
+    ]
+
     private var numberSymbolLayout: some View {
         let rows = layoutState == .symbols ? symbolRows : numberRows
 
@@ -217,7 +188,7 @@ struct QWERTYKeyboard: View {
                         letter: key,
                         shiftState: shiftState,
                         action: {
-                            insertText(key)
+                            insertTextAndMaybeReturnToLetters(key)
                         },
                         onShowAccentPopup: nil  // No accents on numbers/symbols
                     )
@@ -231,7 +202,7 @@ struct QWERTYKeyboard: View {
                         letter: key,
                         shiftState: shiftState,
                         action: {
-                            insertText(key)
+                            insertTextAndMaybeReturnToLetters(key)
                         },
                         onShowAccentPopup: nil  // No accents on numbers/symbols
                     )
@@ -251,7 +222,7 @@ struct QWERTYKeyboard: View {
                         letter: key,
                         shiftState: shiftState,
                         action: {
-                            insertText(key)
+                            insertTextAndMaybeReturnToLetters(key)
                         },
                         onShowAccentPopup: nil  // No accents on numbers/symbols
                     )
@@ -337,6 +308,18 @@ struct QWERTYKeyboard: View {
     }
 
     // MARK: - Actions
+
+    /// Insert text and automatically return to letters keyboard if it's a punctuation character
+    private func insertTextAndMaybeReturnToLetters(_ text: String) {
+        insertText(text)
+
+        // Auto-return to letters keyboard after punctuation
+        if let char = text.first, autoReturnCharacters.contains(char) {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                layoutState = .letters
+            }
+        }
+    }
 
     private func insertText(_ text: String) {
         guard let proxy = textDocumentProxy else { return }
@@ -544,53 +527,6 @@ struct QWERTYKeyboard: View {
         }
     }
 
-    // MARK: - Phase 13.8: Swipe Typing
-
-    private func handleSwipeContinue(at point: CGPoint) {
-        guard swipeTypingEnabled else { return }
-
-        if !swipeEngine.isSwipeActive {
-            // Start swipe if we're near a key
-            if let nearestKey = nearestKey(to: point) {
-                swipeEngine.startSwipe(at: point, key: nearestKey)
-            }
-        } else {
-            // Continue swipe
-            let nearestKey = nearestKey(to: point)
-            swipeEngine.continueSwipe(to: point, nearestKey: nearestKey)
-        }
-    }
-
-    private func handleSwipeEnd() {
-        guard swipeTypingEnabled else { return }
-
-        if let word = swipeEngine.endSwipe() {
-            // Insert the word
-            let finalWord = shouldUppercase ? word.capitalized : word
-            insertText(finalWord)
-            afterLetterInsert()
-        }
-    }
-
-    private func nearestKey(to point: CGPoint) -> String? {
-        var nearest: (key: String, distance: CGFloat)?
-
-        for (key, frame) in keyFrames {
-            let center = CGPoint(x: frame.midX, y: frame.midY)
-            let distance = hypot(point.x - center.x, point.y - center.y)
-
-            if nearest == nil || distance < nearest!.distance {
-                nearest = (key, distance)
-            }
-        }
-
-        // Only return key if point is reasonably close (within 100 points)
-        if let result = nearest, result.distance < 100 {
-            return result.key
-        }
-
-        return nil
-    }
 }
 
 // MARK: - Preview
