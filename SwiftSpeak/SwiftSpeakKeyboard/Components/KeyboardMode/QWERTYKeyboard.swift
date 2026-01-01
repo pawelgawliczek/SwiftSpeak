@@ -183,7 +183,7 @@ struct QWERTYKeyboard: View {
         let rows = layoutState == .symbols ? symbolRows : numberRows
 
         return VStack(spacing: KeyboardTheme.rowSpacing) {
-            // Row 1: Numbers or symbols
+            // Row 1: Numbers (have fraction popups) or symbols
             HStack(spacing: KeyboardTheme.keySpacing) {
                 ForEach(rows.0, id: \.self) { key in
                     LetterKey(
@@ -192,12 +192,14 @@ struct QWERTYKeyboard: View {
                         action: {
                             insertTextAndMaybeReturnToLetters(key)
                         },
-                        onShowAccentPopup: nil  // No accents on numbers/symbols
+                        onShowAccentPopup: AccentMappings.hasPopup(key) ? { letter, frame in
+                            showAccentPopup(for: letter, at: frame)
+                        } : nil
                     )
                 }
             }
 
-            // Row 2: More characters
+            // Row 2: More characters ($ has currency popup)
             HStack(spacing: KeyboardTheme.keySpacing) {
                 ForEach(rows.1, id: \.self) { key in
                     LetterKey(
@@ -206,12 +208,14 @@ struct QWERTYKeyboard: View {
                         action: {
                             insertTextAndMaybeReturnToLetters(key)
                         },
-                        onShowAccentPopup: nil  // No accents on numbers/symbols
+                        onShowAccentPopup: AccentMappings.hasPopup(key) ? { letter, frame in
+                            showAccentPopup(for: letter, at: frame)
+                        } : nil
                     )
                 }
             }
 
-            // Row 3: Symbol toggle + punctuation + backspace
+            // Row 3: Symbol toggle + punctuation (. has punctuation popup) + backspace
             HStack(spacing: KeyboardTheme.keySpacing) {
                 // Symbol/Number toggle
                 ActionKey(text: layoutState == .symbols ? "123" : "#+=") {
@@ -226,7 +230,9 @@ struct QWERTYKeyboard: View {
                         action: {
                             insertTextAndMaybeReturnToLetters(key)
                         },
-                        onShowAccentPopup: nil  // No accents on numbers/symbols
+                        onShowAccentPopup: AccentMappings.hasPopup(key) ? { letter, frame in
+                            showAccentPopup(for: letter, at: frame)
+                        } : nil
                     )
                 }
 
