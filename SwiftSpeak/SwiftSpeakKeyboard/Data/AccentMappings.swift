@@ -60,6 +60,26 @@ struct AccentMappings {
         "z": ["ź", "ż", "ž"]
     ]
 
+    // MARK: - Punctuation Popup (long-press period)
+    static let punctuation: [String] = [".", ",", "?", "!", ";", ":", "'", "\"", "-", "/", "(", ")"]
+
+    // MARK: - Number Fractions (long-press numbers)
+    static let fractions: [String: [String]] = [
+        "1": ["¹", "½", "⅓", "¼", "⅕", "⅙", "⅛"],
+        "2": ["²", "⅔", "⅖"],
+        "3": ["³", "¾", "⅗", "⅜"],
+        "4": ["⁴", "⅘"],
+        "5": ["⁵", "⅝", "⅚"],
+        "6": ["⁶"],
+        "7": ["⁷", "⅞"],
+        "8": ["⁸"],
+        "9": ["⁹"],
+        "0": ["⁰", "∅", "°"]
+    ]
+
+    // MARK: - Currency Symbols (long-press $)
+    static let currencies: [String] = ["$", "€", "£", "¥", "₹", "₽", "₩", "¢"]
+
     // MARK: - Helper Methods
 
     /// Get accent variations for a given letter
@@ -74,5 +94,32 @@ struct AccentMappings {
     /// - Returns: True if the letter has accents available
     static func hasAccents(_ letter: String) -> Bool {
         return accents[letter] != nil
+    }
+
+    /// Get fraction variations for a number
+    static func fractionsFor(_ number: String) -> [String]? {
+        return fractions[number]
+    }
+
+    /// Check if a number has fractions
+    static func hasFractions(_ number: String) -> Bool {
+        return fractions[number] != nil
+    }
+
+    /// Check if key has any popup (accent, fraction, punctuation, currency)
+    static func hasPopup(_ key: String) -> Bool {
+        return accents[key] != nil ||
+               fractions[key] != nil ||
+               key == "." ||
+               key == "$"
+    }
+
+    /// Get popup options for any key
+    static func popupFor(_ key: String) -> [String]? {
+        if let acc = accents[key] { return acc }
+        if let frac = fractions[key] { return frac }
+        if key == "." { return punctuation }
+        if key == "$" { return currencies }
+        return nil
     }
 }

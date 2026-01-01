@@ -73,7 +73,7 @@ struct QWERTYKeyboard: View {
         }
         // Accent popup as true overlay - floats above everything
         .overlay {
-            if showingAccentPopup, let accents = AccentMappings.accentsFor(accentPopupLetter) {
+            if showingAccentPopup, let accents = AccentMappings.popupFor(accentPopupLetter) {
                 AccentPopup(
                     accents: accents,
                     keyFrame: accentPopupKeyFrame,

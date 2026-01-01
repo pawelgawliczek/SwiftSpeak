@@ -16,6 +16,9 @@ class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
 
+        // Prepare haptic feedback generators for reliable response
+        KeyboardHaptics.prepare()
+
         // Set up the SwiftUI keyboard view
         viewModel.textDocumentProxy = textDocumentProxy
         viewModel.hostViewController = self

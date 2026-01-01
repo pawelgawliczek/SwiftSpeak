@@ -17,8 +17,8 @@ struct LetterKey: View {
     @State private var isPressed = false
     @State private var keyFrame: CGRect = .zero
 
-    private var hasAccents: Bool {
-        AccentMappings.hasAccents(letter)
+    private var hasPopup: Bool {
+        AccentMappings.hasPopup(letter)
     }
 
     var body: some View {
@@ -48,14 +48,14 @@ struct LetterKey: View {
                             }
                         }
                         .onEnded { _ in
-                            // Long press completed - show accent popup
+                            // Long press completed - show popup if available
                             isPressed = false
-                            if hasAccents, let onShowAccentPopup = onShowAccentPopup {
+                            if hasPopup, let onShowAccentPopup = onShowAccentPopup {
                                 let frame = geometry.frame(in: .global)
                                 KeyboardHaptics.mediumTap()
                                 onShowAccentPopup(letter, frame)
                             } else {
-                                // No accents, just insert the letter
+                                // No popup, just insert the letter
                                 action()
                             }
                         }

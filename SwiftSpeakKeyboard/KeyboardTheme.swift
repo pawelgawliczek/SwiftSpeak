@@ -123,40 +123,67 @@ extension Color {
 
 // MARK: - Keyboard Haptics
 /// Centralized haptic feedback for keyboard extension
-/// Mirrors HapticManager from main app
+/// Uses prepared generators for reliable feedback in extensions
 enum KeyboardHaptics {
+    // Pre-created generators for better performance
+    private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+    private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
+    private static let heavyGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private static let selectionGenerator = UISelectionFeedbackGenerator()
+    private static let notificationGenerator = UINotificationFeedbackGenerator()
+
+    /// Prepare all generators (call on keyboard load)
+    static func prepare() {
+        lightGenerator.prepare()
+        mediumGenerator.prepare()
+        heavyGenerator.prepare()
+        selectionGenerator.prepare()
+        notificationGenerator.prepare()
+    }
+
     /// Light tap for minor interactions (key press)
     static func lightTap() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        lightGenerator.impactOccurred()
+        lightGenerator.prepare()
     }
 
     /// Medium tap for primary actions (start/stop recording)
     static func mediumTap() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
     }
 
     /// Heavy tap for significant actions
     static func heavyTap() {
-        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        heavyGenerator.impactOccurred()
+        heavyGenerator.prepare()
     }
 
     /// Success notification (task complete)
     static func success() {
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        notificationGenerator.notificationOccurred(.success)
+        notificationGenerator.prepare()
     }
 
     /// Warning notification
     static func warning() {
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        notificationGenerator.notificationOccurred(.warning)
+        notificationGenerator.prepare()
     }
 
     /// Error notification
     static func error() {
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        notificationGenerator.notificationOccurred(.error)
+        notificationGenerator.prepare()
     }
 
     /// Selection changed (mode switch, picker)
     static func selection() {
-        UISelectionFeedbackGenerator().selectionChanged()
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
     }
 }
+
+// MARK: - HapticManager Alias
+/// Alias for compatibility with main app code
+typealias HapticManager = KeyboardHaptics
