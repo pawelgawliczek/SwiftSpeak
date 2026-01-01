@@ -45,18 +45,19 @@ struct InlineSearchKeyboard: View {
             // Row 3 with backspace and done
             HStack(spacing: 3) {
                 // Done/Search button
-                Button(action: {
+                SearchActionKey(
+                    content: AnyView(
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+                    ),
+                    backgroundColor: KeyboardTheme.accent,
+                    width: 38
+                ) {
                     KeyboardHaptics.mediumTap()
                     onSearch()
                     onDismiss()
-                }) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 38, height: 32)
-                        .background(KeyboardTheme.accent, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
-                .buttonStyle(.plain)
 
                 ForEach(rows[2], id: \.self) { key in
                     SearchKey(letter: key) {
@@ -66,62 +67,65 @@ struct InlineSearchKeyboard: View {
                 }
 
                 // Backspace button
-                Button(action: {
+                SearchActionKey(
+                    content: AnyView(
+                        Image(systemName: "delete.left")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.black)
+                    ),
+                    backgroundColor: Color(white: 0.67),
+                    width: 38
+                ) {
                     if !text.isEmpty {
                         text.removeLast()
                         KeyboardHaptics.lightTap()
                     }
-                }) {
-                    Image(systemName: "delete.left")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.black)
-                        .frame(width: 38, height: 32)
-                        .background(Color(white: 0.67), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
-                .buttonStyle(.plain)
             }
 
             // Space and close row
             HStack(spacing: 4) {
                 // Space bar
-                Button(action: {
+                SearchActionKey(
+                    content: AnyView(
+                        Text("space")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.black)
+                    ),
+                    backgroundColor: .white,
+                    width: nil
+                ) {
                     text += " "
                     KeyboardHaptics.lightTap()
-                }) {
-                    Text("space")
-                        .font(.system(size: 14))
-                        .foregroundStyle(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 32)
-                        .background(Color.white, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
-                .buttonStyle(.plain)
 
                 // Clear button
-                Button(action: {
+                SearchActionKey(
+                    content: AnyView(
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                    ),
+                    backgroundColor: Color(white: 0.67),
+                    width: 44
+                ) {
                     text = ""
                     KeyboardHaptics.lightTap()
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 32)
-                        .background(Color(white: 0.67), in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
-                .buttonStyle(.plain)
 
                 // Done button
-                Button(action: {
+                SearchActionKey(
+                    content: AnyView(
+                        Text("Done")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                    ),
+                    backgroundColor: KeyboardTheme.accent,
+                    width: 60
+                ) {
                     KeyboardHaptics.mediumTap()
                     onDismiss()
-                }) {
-                    Text("Done")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 60, height: 32)
-                        .background(KeyboardTheme.accent, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, 4)
@@ -135,16 +139,64 @@ private struct SearchKey: View {
     let letter: String
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
-        Button(action: action) {
-            Text(letter)
-                .font(.system(size: 18))
-                .foregroundStyle(.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 32)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
-        }
-        .buttonStyle(.plain)
+        Text(letter)
+            .font(.system(size: 18))
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isPressed ? Color(white: 0.85) : Color.white)
+            )
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !isPressed {
+                            isPressed = true
+                        }
+                    }
+                    .onEnded { _ in
+                        isPressed = false
+                        action()
+                    }
+            )
+    }
+}
+
+// MARK: - Search Action Key (for space, backspace, done, etc.)
+private struct SearchActionKey: View {
+    let content: AnyView
+    let backgroundColor: Color
+    let width: CGFloat?
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    var body: some View {
+        content
+            .frame(maxWidth: width == nil ? .infinity : nil)
+            .frame(width: width, height: 32)
+            .background(
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(isPressed ? backgroundColor.opacity(0.7) : backgroundColor)
+            )
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in
+                        if !isPressed {
+                            isPressed = true
+                        }
+                    }
+                    .onEnded { _ in
+                        isPressed = false
+                        action()
+                    }
+            )
     }
 }
 
