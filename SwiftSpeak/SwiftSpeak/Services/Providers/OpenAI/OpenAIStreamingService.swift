@@ -228,22 +228,12 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
         // Build session configuration message
         // OpenAI Realtime API requires config wrapped in a "session" object
-        var sessionConfig: [String: Any] = [
+        // Note: noise_reduction is NOT supported for transcription sessions (only for conversation mode)
+        let sessionConfig: [String: Any] = [
             "input_audio_format": "pcm16",
             "input_audio_transcription": transcriptionConfig,
             "turn_detection": turnDetection
         ]
-
-        // Add noise reduction for better VAD accuracy and transcription quality
-        // near_field is for close microphones (like phone), far_field for distant mics
-        sessionConfig["audio"] = [
-            "input": [
-                "noise_reduction": [
-                    "type": "near_field"  // Best for mobile device microphone
-                ]
-            ]
-        ]
-        appLog("Noise reduction enabled: near_field", category: "OpenAIStreaming")
 
         let config: [String: Any] = [
             "type": "transcription_session.update",
