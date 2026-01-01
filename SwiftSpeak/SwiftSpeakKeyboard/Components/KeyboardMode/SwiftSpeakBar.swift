@@ -75,28 +75,37 @@ private struct TranslationPill: View {
     let language: Language
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
-        Button(action: {
-            HapticManager.lightTap()
-            action()
-        }) {
-            Group {
-                if isEnabled {
-                    Text(language.flag)
-                        .font(.system(size: 18))
-                } else {
-                    Image(systemName: "globe")
-                        .font(.system(size: 16, weight: .semibold))
-                }
+        Group {
+            if isEnabled {
+                Text(language.flag)
+                    .font(.system(size: 18))
+            } else {
+                Image(systemName: "globe")
+                    .font(.system(size: 16, weight: .semibold))
             }
-            .foregroundStyle(isEnabled ? .white : .white.opacity(0.5))
-            .frame(width: 40, height: 40)
-            .background(
-                isEnabled ? Color.blue.opacity(0.3) : Color.white.opacity(0.1),
-                in: Circle()
-            )
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(isEnabled ? .white : .white.opacity(0.5))
+        .frame(width: 40, height: 40)
+        .background(
+            isEnabled ? Color.blue.opacity(isPressed ? 0.5 : 0.3) : Color.white.opacity(isPressed ? 0.2 : 0.1),
+            in: Circle()
+        )
+        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .animation(.easeOut(duration: 0.1), value: isPressed)
+        .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+            if pressing && !isPressed {
+                HapticManager.lightTap()
+            }
+            isPressed = pressing
+        }, perform: {})
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                action()
+            }
+        )
     }
 }
 
@@ -105,28 +114,37 @@ private struct ContextPill: View {
     let activeContext: KeyboardContext?
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
-        Button(action: {
-            HapticManager.lightTap()
-            action()
-        }) {
-            Group {
-                if let context = activeContext {
-                    Text(context.icon)
-                        .font(.system(size: 18))
-                } else {
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 16, weight: .semibold))
-                }
+        Group {
+            if let context = activeContext {
+                Text(context.icon)
+                    .font(.system(size: 18))
+            } else {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 16, weight: .semibold))
             }
-            .foregroundStyle(.white.opacity(activeContext != nil ? 1.0 : 0.5))
-            .frame(width: 40, height: 40)
-            .background(
-                activeContext != nil ? Color.purple.opacity(0.3) : Color.white.opacity(0.1),
-                in: Circle()
-            )
         }
-        .buttonStyle(.plain)
+        .foregroundStyle(.white.opacity(activeContext != nil ? 1.0 : 0.5))
+        .frame(width: 40, height: 40)
+        .background(
+            activeContext != nil ? Color.purple.opacity(isPressed ? 0.5 : 0.3) : Color.white.opacity(isPressed ? 0.2 : 0.1),
+            in: Circle()
+        )
+        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .animation(.easeOut(duration: 0.1), value: isPressed)
+        .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+            if pressing && !isPressed {
+                HapticManager.lightTap()
+            }
+            isPressed = pressing
+        }, perform: {})
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                action()
+            }
+        )
     }
 }
 
@@ -136,18 +154,27 @@ private struct ModePill: View {
     let icon: String
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
-        Button(action: {
-            HapticManager.lightTap()
-            action()
-        }) {
-            Image(systemName: icon)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(Color.white.opacity(0.15), in: Circle())
-        }
-        .buttonStyle(.plain)
+        Image(systemName: icon)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 40, height: 40)
+            .background(Color.white.opacity(isPressed ? 0.25 : 0.15), in: Circle())
+            .scaleEffect(isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isPressed)
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                if pressing && !isPressed {
+                    HapticManager.lightTap()
+                }
+                isPressed = pressing
+            }, perform: {})
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    action()
+                }
+            )
     }
 }
 
@@ -156,38 +183,48 @@ private struct AIProcessPill: View {
     let isProcessing: Bool
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
-        Button(action: {
-            HapticManager.mediumTap()
-            action()
-        }) {
-            HStack(spacing: 4) {
-                if isProcessing {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.6)
-                        .frame(width: 12, height: 12)
-                } else {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 10, weight: .semibold))
-                }
-                Text("AI")
+        HStack(spacing: 4) {
+            if isProcessing {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(0.6)
+                    .frame(width: 12, height: 12)
+            } else {
+                Image(systemName: "sparkles")
                     .font(.system(size: 10, weight: .semibold))
             }
-            .foregroundStyle(.white)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 10)
-            .background(
-                LinearGradient(
-                    colors: isProcessing ? [.purple.opacity(0.6), .blue.opacity(0.6)] : [.purple.opacity(0.4), .blue.opacity(0.4)],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                ),
-                in: Capsule()
-            )
+            Text("AI")
+                .font(.system(size: 10, weight: .semibold))
         }
-        .buttonStyle(.plain)
-        .disabled(isProcessing)
+        .foregroundStyle(.white)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(
+            LinearGradient(
+                colors: isProcessing ? [.purple.opacity(0.6), .blue.opacity(0.6)] : [.purple.opacity(isPressed ? 0.6 : 0.4), .blue.opacity(isPressed ? 0.6 : 0.4)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: Capsule()
+        )
+        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .animation(.easeOut(duration: 0.1), value: isPressed)
+        .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+            if pressing && !isPressed && !isProcessing {
+                HapticManager.mediumTap()
+            }
+            isPressed = pressing
+        }, perform: {})
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                if !isProcessing {
+                    action()
+                }
+            }
+        )
     }
 }
 
@@ -196,21 +233,30 @@ private struct SwiftLinkPill: View {
     let isActive: Bool
     let action: () -> Void
 
+    @State private var isPressed = false
+
     var body: some View {
-        Button(action: {
-            HapticManager.lightTap()
-            action()
-        }) {
-            Image(systemName: "link.circle.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(isActive ? .white : .white.opacity(0.6))
-                .frame(width: 40, height: 40)
-                .background(
-                    isActive ? Color.orange.opacity(0.4) : Color.white.opacity(0.1),
-                    in: Circle()
-                )
-        }
-        .buttonStyle(.plain)
+        Image(systemName: "link.circle.fill")
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(isActive ? .white : .white.opacity(0.6))
+            .frame(width: 40, height: 40)
+            .background(
+                isActive ? Color.orange.opacity(isPressed ? 0.6 : 0.4) : Color.white.opacity(isPressed ? 0.2 : 0.1),
+                in: Circle()
+            )
+            .scaleEffect(isPressed ? 0.92 : 1.0)
+            .animation(.easeOut(duration: 0.1), value: isPressed)
+            .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+                if pressing && !isPressed {
+                    HapticManager.lightTap()
+                }
+                isPressed = pressing
+            }, perform: {})
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    action()
+                }
+            )
     }
 }
 
@@ -243,53 +289,53 @@ private struct TranscribeButton: View {
     }
 
     var body: some View {
-        Button(action: {
-            HapticManager.mediumTap()
-            action()
-        }) {
-            ZStack {
-                // Glow effect
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [glowColor.opacity(0.4), .clear],
-                            center: .center,
-                            startRadius: 12,
-                            endRadius: 30
-                        )
+        ZStack {
+            // Glow effect
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [glowColor.opacity(0.4), .clear],
+                        center: .center,
+                        startRadius: 12,
+                        endRadius: 30
                     )
+                )
+                .frame(width: 56, height: 56)
+
+            // Main button
+            Circle()
+                .fill(buttonColor)
+                .frame(width: 42, height: 42)
+                .shadow(color: glowColor.opacity(0.5), radius: 4, y: 2)
+
+            // Content - SwiftSpeak logo or edit icon
+            if isEditMode {
+                Image(systemName: "pencil")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+            } else if !isConfigured {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+            } else {
+                // SwiftSpeak logo with mic fallback
+                SwiftSpeakLogoView()
                     .frame(width: 56, height: 56)
-
-                // Main button
-                Circle()
-                    .fill(buttonColor)
-                    .frame(width: 42, height: 42)
-                    .shadow(color: glowColor.opacity(0.5), radius: 4, y: 2)
-
-                // Content - SwiftSpeak logo or edit icon
-                if isEditMode {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.white)
-                } else if !isConfigured {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                } else {
-                    // SwiftSpeak logo with mic fallback
-                    SwiftSpeakLogoView()
-                        .frame(width: 56, height: 56)
-                        .foregroundStyle(.white)
-                }
+                    .foregroundStyle(.white)
             }
-            .scaleEffect(isPressed ? 0.92 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
         }
-        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? 0.92 : 1.0)
+        .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
+        .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+            if pressing && !isPressed {
+                HapticManager.mediumTap()
+            }
+            isPressed = pressing
+        }, perform: {})
         .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in isPressed = true }
-                .onEnded { _ in isPressed = false }
+            TapGesture().onEnded {
+                action()
+            }
         )
     }
 }

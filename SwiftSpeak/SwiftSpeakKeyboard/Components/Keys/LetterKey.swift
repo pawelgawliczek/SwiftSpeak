@@ -23,46 +23,57 @@ struct LetterKey: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Button(action: {
-                // Normal tap - insert letter
-                KeyboardHaptics.lightTap()
-                action()
-            }) {
-                Text(letter)
-                    .font(.system(size: 22, weight: .regular))
-                    .foregroundStyle(KeyboardTheme.keyText)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(
-                        RoundedRectangle(cornerRadius: 5, style: .continuous)
-                            .fill(isPressed ? KeyboardTheme.keyBackgroundPressed : KeyboardTheme.keyBackground)
-                            .shadow(
-                                color: KeyboardTheme.keyShadow,
-                                radius: KeyboardTheme.keyShadowRadius,
-                                x: KeyboardTheme.keyShadowOffset.width,
-                                y: KeyboardTheme.keyShadowOffset.height
-                            )
-                    )
-            }
-            .buttonStyle(.plain)
-            // Use LongPressGesture for accent popup instead of DragGesture
-            // This allows parent swipe gesture to work
-            .onLongPressGesture(minimumDuration: 0.4, pressing: { pressing in
-                isPressed = pressing
-            }) {
-                // Long press completed - show accent popup
-                if hasAccents, let onShowAccentPopup = onShowAccentPopup {
-                    let frame = geometry.frame(in: .global)
-                    KeyboardHaptics.mediumTap()
-                    onShowAccentPopup(letter, frame)
+            Text(letter)
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(KeyboardTheme.keyText)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 5, style: .continuous)
+                        .fill(isPressed ? KeyboardTheme.keyBackgroundPressed : KeyboardTheme.keyBackground)
+                        .shadow(
+                            color: KeyboardTheme.keyShadow,
+                            radius: KeyboardTheme.keyShadowRadius,
+                            x: KeyboardTheme.keyShadowOffset.width,
+                            y: KeyboardTheme.keyShadowOffset.height
+                        )
+                )
+                .contentShape(Rectangle())
+                .gesture(
+                    LongPressGesture(minimumDuration: 0.4)
+                        .onChanged { _ in
+                            // Finger down - show pressed state and haptic
+                            if !isPressed {
+                                isPressed = true
+                                KeyboardHaptics.lightTap()
+                            }
+                        }
+                        .onEnded { _ in
+                            // Long press completed - show accent popup
+                            isPressed = false
+                            if hasAccents, let onShowAccentPopup = onShowAccentPopup {
+                                let frame = geometry.frame(in: .global)
+                                KeyboardHaptics.mediumTap()
+                                onShowAccentPopup(letter, frame)
+                            } else {
+                                // No accents, just insert the letter
+                                action()
+                            }
+                        }
+                )
+                .simultaneousGesture(
+                    TapGesture()
+                        .onEnded {
+                            // Quick tap - insert letter
+                            KeyboardHaptics.lightTap()
+                            action()
+                        }
+                )
+                .onAppear {
+                    keyFrame = geometry.frame(in: .global)
                 }
-            }
-            .onAppear {
-                // Capture key frame for popup positioning
-                keyFrame = geometry.frame(in: .global)
-            }
-            .onChange(of: geometry.frame(in: .global)) { _, newFrame in
-                keyFrame = newFrame
-            }
+                .onChange(of: geometry.frame(in: .global)) { _, newFrame in
+                    keyFrame = newFrame
+                }
         }
         .frame(height: KeyboardTheme.keyHeight)
     }
