@@ -79,6 +79,7 @@ final class DeepgramStreamingService: NSObject, StreamingTranscriptionProvider {
         }
 
         // Build WebSocket URL with parameters
+        // Quality optimizations based on Deepgram best practices
         var components = URLComponents(string: "wss://api.deepgram.com/v1/listen")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "model", value: model),
@@ -88,8 +89,11 @@ final class DeepgramStreamingService: NSObject, StreamingTranscriptionProvider {
             URLQueryItem(name: "punctuate", value: "true"),
             URLQueryItem(name: "smart_format", value: "true"),
             URLQueryItem(name: "interim_results", value: "true"),
-            URLQueryItem(name: "endpointing", value: "300"), // 300ms silence for endpointing
-            URLQueryItem(name: "utterance_end_ms", value: "1000")
+            URLQueryItem(name: "endpointing", value: "500"),      // Increased from 300ms to avoid clipping
+            URLQueryItem(name: "utterance_end_ms", value: "1200"), // Increased from 1000ms for better phrase detection
+            URLQueryItem(name: "diarize", value: "false"),        // Disable speaker diarization for lower latency
+            URLQueryItem(name: "filler_words", value: "false"),   // Remove filler words (um, uh) for cleaner output
+            URLQueryItem(name: "profanity_filter", value: "false") // No filtering for accuracy
         ]
 
         if let language = language {

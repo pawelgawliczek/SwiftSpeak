@@ -59,12 +59,16 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     /// Timer for periodic audio commits to get real-time transcription
     private var commitTimer: Timer?
     /// Interval between commits (seconds) - shorter = more responsive, but more API calls
-    private let commitInterval: TimeInterval = 1.0
+    private let commitInterval: TimeInterval = 0.8  // Slightly faster commits for better responsiveness
     /// Track if we have audio to commit
     private var hasUncommittedAudio = false
 
     /// OpenAI Realtime uses 24kHz PCM16
     static let requiredSampleRate = 24000
+
+    /// Use semantic VAD for better transcription quality (vs server_vad)
+    /// Semantic VAD chunks audio based on semantic meaning rather than just silence
+    private let useSemanticVAD = true
 
     // MARK: - Initialization
 
@@ -200,18 +204,46 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
             appLog("Injecting transcription prompt: \(combinedPrompt.prefix(100))...", category: "OpenAIStreaming")
         }
 
-        // Build session configuration message
-        // OpenAI Realtime API requires config wrapped in a "session" object
-        let sessionConfig: [String: Any] = [
-            "input_audio_format": "pcm16",
-            "input_audio_transcription": transcriptionConfig,
-            "turn_detection": [
+        // Build turn detection configuration
+        // Semantic VAD is better for transcription as it chunks based on semantic meaning
+        // Server VAD uses simple silence detection which can clip words
+        let turnDetection: [String: Any]
+        if useSemanticVAD {
+            turnDetection = [
+                "type": "semantic_vad",
+                "eagerness": "medium",       // Balance between speed and accuracy (low/medium/high/auto)
+                "create_response": false,    // We don't need model responses, just transcription
+                "interrupt_response": false
+            ]
+            appLog("Using semantic_vad with eagerness: medium", category: "OpenAIStreaming")
+        } else {
+            turnDetection = [
                 "type": "server_vad",
                 "threshold": 0.5,           // Speech detection sensitivity (0.0-1.0)
-                "prefix_padding_ms": 200,   // Less padding before speech
-                "silence_duration_ms": 300  // Shorter silence = faster transcript delivery
-            ] as [String : Any]
+                "prefix_padding_ms": 300,   // Increased from 200 to capture speech start better
+                "silence_duration_ms": 500  // Increased from 300 to avoid clipping (default is 500)
+            ]
+            appLog("Using server_vad with threshold: 0.5, prefix: 300ms, silence: 500ms", category: "OpenAIStreaming")
+        }
+
+        // Build session configuration message
+        // OpenAI Realtime API requires config wrapped in a "session" object
+        var sessionConfig: [String: Any] = [
+            "input_audio_format": "pcm16",
+            "input_audio_transcription": transcriptionConfig,
+            "turn_detection": turnDetection
         ]
+
+        // Add noise reduction for better VAD accuracy and transcription quality
+        // near_field is for close microphones (like phone), far_field for distant mics
+        sessionConfig["audio"] = [
+            "input": [
+                "noise_reduction": [
+                    "type": "near_field"  // Best for mobile device microphone
+                ]
+            ]
+        ]
+        appLog("Noise reduction enabled: near_field", category: "OpenAIStreaming")
 
         let config: [String: Any] = [
             "type": "transcription_session.update",

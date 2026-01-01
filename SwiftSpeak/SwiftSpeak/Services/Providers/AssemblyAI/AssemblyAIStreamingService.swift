@@ -77,10 +77,13 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
         }
 
         // Build WebSocket URL with parameters
+        // Quality optimizations based on AssemblyAI v3 best practices
         var components = URLComponents(string: "wss://streaming.assemblyai.com/v3/ws")!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "sample_rate", value: String(sampleRate)),
-            URLQueryItem(name: "format_turns", value: "true") // Request formatted final transcripts
+            URLQueryItem(name: "format_turns", value: "true"),  // Request formatted final transcripts
+            URLQueryItem(name: "disable_partial_transcripts", value: "false"), // Keep partials for real-time feedback
+            URLQueryItem(name: "end_of_turn_silence_threshold", value: "600")  // Increased from default ~400ms for better phrase detection
         ]
 
         // AssemblyAI v3 supports language detection or specific language
