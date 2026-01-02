@@ -4,6 +4,7 @@
 //
 //  AI prediction row with 3 suggestion slots (Phase 13.6)
 //  Includes feedback loop for learning from user behavior
+//  Supports autocorrect undo - shows original word when cursor is on corrected word
 //
 
 import SwiftUI
@@ -11,9 +12,11 @@ import SwiftUI
 struct PredictionRow: View {
     @ObservedObject var viewModel: KeyboardViewModel
     @State private var predictions: [String] = []
-    @State private var isLoadingLLM = false
     @State private var lastShownPredictions: [String] = []  // For feedback tracking
     @State private var previousWord: String? = nil  // For contextual feedback
+
+    // Autocorrect undo state
+    @State private var autocorrectUndoSuggestion: AutocorrectUndoSuggestion? = nil
 
     // Shared prediction engine instance
     private static let predictionEngine = PredictionEngine()
@@ -38,17 +41,45 @@ struct PredictionRow: View {
             Divider()
                 .background(Color.white.opacity(0.1))
 
-            ForEach(0..<3, id: \.self) { index in
-                PredictionSlot(
-                    text: index < predictions.count ? predictions[index] : "",
-                    isLoading: isLoadingLLM && index == 0
-                ) {
-                    handlePredictionTap(predictions[index])
+            // Show autocorrect undo as first slot if available
+            if let undoSuggestion = autocorrectUndoSuggestion {
+                AutocorrectUndoSlot(suggestion: undoSuggestion) {
+                    handleAutocorrectUndoTap(undoSuggestion)
                 }
 
-                if index < 2 {
-                    Divider()
-                        .background(Color.white.opacity(0.1))
+                Divider()
+                    .background(Color.white.opacity(0.1))
+
+                // Show remaining 2 predictions
+                ForEach(0..<2, id: \.self) { index in
+                    PredictionSlot(
+                        text: index < predictions.count ? predictions[index] : ""
+                    ) {
+                        if index < predictions.count {
+                            handlePredictionTap(predictions[index])
+                        }
+                    }
+
+                    if index < 1 {
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                    }
+                }
+            } else {
+                // Normal 3-slot predictions
+                ForEach(0..<3, id: \.self) { index in
+                    PredictionSlot(
+                        text: index < predictions.count ? predictions[index] : ""
+                    ) {
+                        if index < predictions.count {
+                            handlePredictionTap(predictions[index])
+                        }
+                    }
+
+                    if index < 2 {
+                        Divider()
+                            .background(Color.white.opacity(0.1))
+                    }
                 }
             }
 
@@ -84,24 +115,16 @@ struct PredictionRow: View {
         }
         .onChange(of: viewModel.currentTypingContext) { _, newContext in
             // Debounce predictions - wait 150ms after typing stops
-            updatePredictionsDebounced(for: newContext, useLLM: false)
-        }
-        .onChange(of: viewModel.shouldTriggerLLMPredictions) { _, shouldTrigger in
-            if shouldTrigger {
-                Task {
-                    await updatePredictions(for: viewModel.currentTypingContext, useLLM: true)
-                    viewModel.shouldTriggerLLMPredictions = false
-                }
-            }
+            updatePredictionsDebounced(for: newContext)
         }
     }
 
     private func loadInitialPredictions() async {
-        await updatePredictions(for: "", useLLM: false)
+        await updatePredictions(for: "")
     }
 
     /// Debounced prediction update - waits for typing to pause
-    private func updatePredictionsDebounced(for context: String, useLLM: Bool) {
+    private func updatePredictionsDebounced(for context: String) {
         // Cancel previous pending prediction
         predictionTask?.cancel()
 
@@ -113,30 +136,32 @@ struct PredictionRow: View {
             // Check if cancelled (user typed another character)
             guard !Task.isCancelled else { return }
 
-            await updatePredictions(for: context, useLLM: useLLM)
+            await updatePredictions(for: context)
         }
     }
 
-    private func updatePredictions(for context: String, useLLM: Bool) async {
-        if useLLM {
-            isLoadingLLM = true
-        }
-
+    private func updatePredictions(for context: String) async {
         // Extract previous word for feedback context
         let words = context.split(separator: " ").map(String.init)
         let prevWord = words.dropLast().last
 
-        let predictionContext = PredictionContext(
-            fullText: context,
-            shouldUseLLM: useLLM
-        )
+        // Check for autocorrect undo opportunity
+        // When cursor is at the end of a word, check if it was recently corrected
+        let undoSuggestion = await checkForAutocorrectUndo(context: context)
+
+        let predictionContext = PredictionContext(fullText: context)
 
         // Get active context name for context-aware predictions
         let activeContextName = viewModel.activeContext?.name
 
+        // Load keyboard settings to get language
+        let settings = KeyboardSettings.load()
+        let language = settings.spokenLanguage  // Use spoken language for predictions
+
         let newPredictions = await Self.predictionEngine.getPredictions(
             for: predictionContext,
-            activeContext: activeContextName
+            activeContext: activeContextName,
+            language: language
         )
 
         await MainActor.run {
@@ -145,12 +170,94 @@ struct PredictionRow: View {
             previousWord = prevWord
 
             predictions = newPredictions
-            isLoadingLLM = false
+            autocorrectUndoSuggestion = undoSuggestion
+        }
+    }
+
+    /// Check if cursor is at/near a recently corrected word and offer undo
+    private func checkForAutocorrectUndo(context: String) async -> AutocorrectUndoSuggestion? {
+        // Get the word at or before the cursor
+        let trimmed = context.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+
+        // Extract the last word (the one the cursor is touching or just left)
+        let words = trimmed.split(separator: " ", omittingEmptySubsequences: true)
+        guard let lastWord = words.last else { return nil }
+
+        // Clean the word of trailing punctuation for lookup
+        let cleanWord = String(lastWord).trimmingCharacters(in: .punctuationCharacters)
+        guard !cleanWord.isEmpty else { return nil }
+
+        // Check if this word was recently corrected
+        if let originalWord = await AutocorrectHistoryService.shared.getRecentCorrectionForUndo(correctedWord: cleanWord) {
+            // Don't suggest if original is same as corrected (shouldn't happen but safety check)
+            guard originalWord.lowercased() != cleanWord.lowercased() else { return nil }
+
+            return AutocorrectUndoSuggestion(
+                originalWord: originalWord,
+                correctedWord: cleanWord
+            )
+        }
+
+        return nil
+    }
+
+    /// Handle tap on autocorrect undo suggestion
+    private func handleAutocorrectUndoTap(_ suggestion: AutocorrectUndoSuggestion) {
+        guard let proxy = viewModel.textDocumentProxy else { return }
+
+        KeyboardHaptics.mediumTap()
+        keyboardLog("Autocorrect undo: '\(suggestion.correctedWord)' → '\(suggestion.originalWord)'", category: "Autocorrect")
+
+        // Delete the corrected word and insert the original
+        if let beforeText = proxy.documentContextBeforeInput {
+            // Find the corrected word at the end
+            var charsToDelete = 0
+            for char in beforeText.reversed() {
+                if char.isWhitespace {
+                    break
+                }
+                charsToDelete += 1
+            }
+
+            // Delete the corrected word
+            for _ in 0..<charsToDelete {
+                proxy.deleteBackward()
+            }
+        }
+
+        // Insert original word with space
+        proxy.insertText(suggestion.originalWord + " ")
+
+        // Learn from this: add original to personal dictionary and ignore this correction
+        Task {
+            // Add to personal dictionary - user confirmed this word is correct
+            await AutocorrectHistoryService.shared.addToPersonalDictionary(suggestion.originalWord)
+
+            // Mark that this correction should be ignored in the future
+            await AutocorrectHistoryService.shared.ignoreCorrection(
+                original: suggestion.originalWord,
+                correctedTo: suggestion.correctedWord
+            )
+
+            // Clear this correction from history
+            await AutocorrectHistoryService.shared.clearCorrection(original: suggestion.originalWord)
+        }
+
+        // Clear the undo suggestion and update context
+        autocorrectUndoSuggestion = nil
+        viewModel.updateTypingContext()
+
+        // Refresh predictions
+        Task {
+            try? await Task.sleep(for: .milliseconds(50))
+            await updatePredictions(for: viewModel.currentTypingContext)
         }
     }
 
     private func handlePredictionTap(_ text: String) {
         guard !text.isEmpty else { return }
+        guard let proxy = viewModel.textDocumentProxy else { return }
 
         KeyboardHaptics.lightTap()
 
@@ -159,8 +266,27 @@ struct PredictionRow: View {
             await Self.predictionEngine.recordPredictionAccepted(text, previousWord: previousWord)
         }
 
+        // Delete the current partial word before inserting the prediction
+        // This ensures clicking a prediction replaces what the user was typing
+        if let beforeText = proxy.documentContextBeforeInput {
+            // Find how many characters of the current word to delete
+            // Go backwards until we hit a space, punctuation, or start of text
+            var charsToDelete = 0
+            for char in beforeText.reversed() {
+                if char.isWhitespace || char.isPunctuation {
+                    break
+                }
+                charsToDelete += 1
+            }
+
+            // Delete the partial word
+            for _ in 0..<charsToDelete {
+                proxy.deleteBackward()
+            }
+        }
+
         // Insert prediction with space
-        viewModel.textDocumentProxy?.insertText(text + " ")
+        proxy.insertText(text + " ")
 
         // Update typing context
         viewModel.updateTypingContext()
@@ -173,7 +299,7 @@ struct PredictionRow: View {
         Task {
             // Short delay to let context update
             try? await Task.sleep(for: .milliseconds(50))
-            await updatePredictions(for: viewModel.currentTypingContext, useLLM: false)
+            await updatePredictions(for: viewModel.currentTypingContext)
         }
 
         // Record that other predictions were not selected (implicit rejection)
@@ -209,41 +335,57 @@ struct PredictionRow: View {
 // MARK: - Prediction Slot
 private struct PredictionSlot: View {
     let text: String
-    let isLoading: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Group {
-                if isLoading {
-                    // Loading indicator
-                    HStack(spacing: 2) {
-                        ForEach(0..<3) { index in
-                            Circle()
-                                .fill(Color.white.opacity(0.5))
-                                .frame(width: 4, height: 4)
-                                .scaleEffect(isLoading ? 1.0 : 0.5)
-                                .animation(
-                                    Animation.easeInOut(duration: 0.6)
-                                        .repeatForever()
-                                        .delay(Double(index) * 0.2),
-                                    value: isLoading
-                                )
-                        }
-                    }
-                } else {
-                    Text(text.isEmpty ? " " : text)
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundStyle(text.isEmpty ? .clear : .white.opacity(0.7))
-                        .lineLimit(1)
-                }
+            Text(text.isEmpty ? " " : text)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(text.isEmpty ? .clear : .white.opacity(0.7))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(text.isEmpty)
+    }
+}
+
+// MARK: - Autocorrect Undo Model
+
+/// Represents an autocorrect undo suggestion
+struct AutocorrectUndoSuggestion {
+    let originalWord: String   // What user originally typed
+    let correctedWord: String  // What it was autocorrected to
+}
+
+// MARK: - Autocorrect Undo Slot
+
+/// Special prediction slot for autocorrect undo with distinct styling
+private struct AutocorrectUndoSlot: View {
+    let suggestion: AutocorrectUndoSuggestion
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 4) {
+                // Undo arrow icon
+                Image(systemName: "arrow.uturn.backward")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.orange.opacity(0.8))
+
+                // Original word with quotes to distinguish from corrections
+                Text("\"\(suggestion.originalWord)\"")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.orange.opacity(0.9))
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 36)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(text.isEmpty || isLoading)
     }
 }
 

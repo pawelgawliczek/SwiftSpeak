@@ -82,7 +82,7 @@ actor PersonalDictionary {
             .map { $0.key }
     }
 
-    /// Get all words as array for SymSpell integration
+    /// Get all words as array with frequencies
     func allWords() -> [(String, Int)] {
         return words.map { ($0.key, $0.value.frequency) }
     }
@@ -180,7 +180,8 @@ actor PersonalDictionary {
 
     private func extractWords(from text: String) -> [String] {
         // Split on whitespace and punctuation, preserving original case
-        let pattern = "[a-zA-Z]+"
+        // Use Unicode letter class \p{L} to support all languages
+        let pattern = "[\\p{L}]+"
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
 
         let range = NSRange(text.startIndex..., in: text)

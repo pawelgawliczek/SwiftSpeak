@@ -69,8 +69,9 @@ actor NGramPredictor {
     /// - Parameters:
     ///   - previousWords: Array of previous words (last 1-2 words)
     ///   - maxResults: Maximum number of predictions
+    ///   - language: Language code (e.g., "pl", "es") for multi-language support
     /// - Returns: Array of predicted words sorted by probability
-    func predict(previousWords: [String], maxResults: Int = 5) async -> [String] {
+    func predict(previousWords: [String], maxResults: Int = 5, language: String? = nil) async -> [String] {
         // Ensure initialized before predicting
         if !isInitialized {
             await initialize()
@@ -113,7 +114,7 @@ actor NGramPredictor {
     }
 
     /// Predict word completion based on prefix
-    func predictCompletion(prefix: String, previousWords: [String], maxResults: Int = 5) async -> [String] {
+    func predictCompletion(prefix: String, previousWords: [String], maxResults: Int = 5, language: String? = nil) async -> [String] {
         // Ensure initialized before predicting
         if !isInitialized {
             await initialize()
@@ -121,7 +122,7 @@ actor NGramPredictor {
 
         let lowercasedPrefix = prefix.lowercased()
         guard !lowercasedPrefix.isEmpty else {
-            return await predict(previousWords: previousWords, maxResults: maxResults)
+            return await predict(previousWords: previousWords, maxResults: maxResults, language: language)
         }
 
         var predictions: [String: Double] = [:]
@@ -130,7 +131,7 @@ actor NGramPredictor {
         let matchingUnigrams = unigrams.filter { $0.key.hasPrefix(lowercasedPrefix) }
 
         // Use n-gram context to boost relevant completions
-        let contextPredictions = Set(await predict(previousWords: previousWords, maxResults: 20).map { $0.lowercased() })
+        let contextPredictions = Set(await predict(previousWords: previousWords, maxResults: 20, language: language).map { $0.lowercased() })
 
         for (word, count) in matchingUnigrams {
             var score = Double(count)
@@ -153,8 +154,9 @@ actor NGramPredictor {
     // MARK: - Helpers
 
     private func tokenize(_ text: String) -> [String] {
+        // Use Unicode letter class \p{L} to support all languages (Polish, Spanish, French, etc.)
         let cleaned = text.lowercased()
-            .replacingOccurrences(of: "[^a-z\\s']", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "[^\\p{L}\\s']", with: " ", options: .regularExpression)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
 
         return cleaned.split(separator: " ").map(String.init).filter { $0.count >= 2 }

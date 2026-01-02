@@ -103,7 +103,7 @@ actor ContextAwarePredictions {
     // MARK: - Context-Specific Predictions
 
     /// Get predictions appropriate for the current context
-    func getPredictions(for prefix: String, context: TypingContextType? = nil) -> [String] {
+    func getPredictions(for prefix: String, context: TypingContextType? = nil, language: String? = nil) -> [String] {
         let ctx = context ?? currentContext
         let lowercased = prefix.lowercased()
 
@@ -130,7 +130,9 @@ actor ContextAwarePredictions {
 
     /// Get starter predictions when no text is typed
     /// Returns lowercase - caller handles smart capitalization
-    func getStarterPredictions(for context: TypingContextType) -> [String] {
+    func getStarterPredictions(for context: TypingContextType, language: String? = nil) -> [String] {
+        // For now, return English predictions regardless of language
+        // TODO: Add multi-language starter predictions in future
         switch context {
         case .email:
             return ["hi", "hello", "dear", "thank", "please", "i", "we"]

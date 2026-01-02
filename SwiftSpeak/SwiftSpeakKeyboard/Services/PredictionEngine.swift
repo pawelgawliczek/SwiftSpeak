@@ -2,8 +2,9 @@
 //  PredictionEngine.swift
 //  SwiftSpeakKeyboard
 //
-//  AI-powered prediction engine for smart word suggestions (Phase 13.6)
-//  Combines N-gram models, personal dictionary, context awareness, and LLM predictions
+//  Local prediction engine for smart word suggestions (Phase 13.6)
+//  Combines N-gram models, personal dictionary, and context awareness
+//  No external API calls - fully offline predictions
 //
 
 import Foundation
@@ -14,10 +15,8 @@ actor PredictionEngine {
     private var vocabulary: [String] = []
     private var recentWords: [String] = []
     private var frequentWords: [String: Int] = [:]
-    private var lastLLMRequest: Date?
-    private let llmCooldown: TimeInterval = 0.8  // Reduced cooldown for better responsiveness
 
-    // Debouncing for LLM predictions
+    // Debouncing for predictions
     private var pendingPredictionTask: Task<[String], Never>?
     private var lastPredictionContext: String = ""
 
@@ -111,7 +110,7 @@ actor PredictionEngine {
     // MARK: - Local Predictions
 
     /// Get predictions based on local vocabulary, N-grams, and context
-    func localPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
+    func localPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [String] {
         // Ensure services are initialized
         if !servicesInitialized {
             await initializeServices()
@@ -133,7 +132,8 @@ actor PredictionEngine {
             // 1. Get N-gram predictions based on previous words
             let ngramPredictions = await NGramPredictor.shared.predict(
                 previousWords: previousWords,
-                maxResults: 5
+                maxResults: 5,
+                language: language
             )
             for (index, word) in ngramPredictions.enumerated() {
                 let score = 100.0 - Double(index * 10)
@@ -152,7 +152,10 @@ actor PredictionEngine {
             }
 
             // 3. Get context-aware starter predictions
-            let contextPredictions = await ContextAwarePredictions.shared.getStarterPredictions(for: typingContext)
+            let contextPredictions = await ContextAwarePredictions.shared.getStarterPredictions(
+                for: typingContext,
+                language: language
+            )
             for (index, word) in contextPredictions.prefix(3).enumerated() {
                 predictions.append((word, 50.0 - Double(index * 5)))
             }
@@ -164,7 +167,8 @@ actor PredictionEngine {
             let ngramCompletions = await NGramPredictor.shared.predictCompletion(
                 prefix: searchTerm,
                 previousWords: previousWords,
-                maxResults: 5
+                maxResults: 5,
+                language: language
             )
             for (index, word) in ngramCompletions.enumerated() {
                 let score = 100.0 - Double(index * 10)
@@ -197,7 +201,8 @@ actor PredictionEngine {
             // 5. Context-specific vocabulary
             let contextWords = await ContextAwarePredictions.shared.getPredictions(
                 for: searchTerm,
-                context: typingContext
+                context: typingContext,
+                language: language
             )
             for (index, word) in contextWords.prefix(3).enumerated() {
                 predictions.append((word, 55.0 - Double(index * 5)))
@@ -318,124 +323,11 @@ actor PredictionEngine {
             .map { applySmartCapitalization($0.0, shouldCapitalize: shouldCapitalize) }
     }
 
-    // MARK: - LLM Predictions
-
-    /// Get predictions from configured AI provider with debouncing
-    func llmPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
-        // Check cooldown to avoid too frequent API calls
-        if let lastRequest = lastLLMRequest,
-           Date().timeIntervalSince(lastRequest) < llmCooldown {
-            keyboardLog("PredictionEngine: LLM cooldown active", category: "Prediction")
-            return await localPredictions(for: context, activeContext: activeContext)
-        }
-
-        guard let defaults = UserDefaults(suiteName: appGroupID) else {
-            return await localPredictions(for: context, activeContext: activeContext)
-        }
-
-        // Get API key from configured providers (formatting category preferred)
-        guard let apiKey = getAPIKeyFromConfiguredProviders(defaults: defaults) else {
-            // Silently fall back to local predictions - no API key is a valid configuration
-            return await localPredictions(for: context, activeContext: activeContext)
-        }
-
-        lastLLMRequest = Date()
-
-        // Get last ~100 characters for context
-        let contextText = String(context.fullText.suffix(100))
-
-        do {
-            let predictions = try await callOpenAIForPredictions(
-                context: contextText,
-                apiKey: apiKey
-            )
-
-            if predictions.isEmpty {
-                return await localPredictions(for: context, activeContext: activeContext)
-            }
-
-            keyboardLog("PredictionEngine: LLM returned \(predictions.count) predictions", category: "Prediction")
-            return predictions
-
-        } catch {
-            keyboardLog("PredictionEngine: LLM error - \(error.localizedDescription)", category: "Prediction", level: .error)
-            return await localPredictions(for: context, activeContext: activeContext)
-        }
-    }
-
-    /// Legacy wrapper
-    func llmPredictions(for context: PredictionContext) async -> [String] {
-        return await llmPredictions(for: context, activeContext: nil)
-    }
-
-    // MARK: - OpenAI API Call
-
-    /// Call OpenAI API for next word predictions
-    private func callOpenAIForPredictions(context: String, apiKey: String) async throws -> [String] {
-        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
-
-        // Build prompt for predictions
-        let systemPrompt = "You are a predictive text assistant. Given the user's current text, suggest 3 likely next words they might type. Return ONLY the 3 words separated by commas, nothing else."
-        let userPrompt = "Current text: \"\(context)\"\n\nSuggest 3 next words:"
-
-        let requestBody: [String: Any] = [
-            "model": "gpt-4o-mini",  // Fast, cheap model for predictions
-            "messages": [
-                ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userPrompt]
-            ],
-            "max_tokens": 20,
-            "temperature": 0.7
-        ]
-
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-        request.timeoutInterval = 3.0  // Quick timeout for predictions
-
-        let (data, response) = try await URLSession.shared.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw PredictionError.invalidResponse
-        }
-
-        guard httpResponse.statusCode == 200 else {
-            keyboardLog("PredictionEngine: OpenAI API error \(httpResponse.statusCode)", category: "Prediction", level: .error)
-            throw PredictionError.apiError(statusCode: httpResponse.statusCode)
-        }
-
-        // Parse response
-        struct OpenAIResponse: Codable {
-            struct Choice: Codable {
-                struct Message: Codable {
-                    let content: String
-                }
-                let message: Message
-            }
-            let choices: [Choice]
-        }
-
-        let apiResponse = try JSONDecoder().decode(OpenAIResponse.self, from: data)
-        guard let content = apiResponse.choices.first?.message.content else {
-            throw PredictionError.emptyResponse
-        }
-
-        // Parse comma-separated predictions
-        let predictions = content
-            .split(separator: ",")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .prefix(3)
-
-        return Array(predictions)
-    }
-
     // MARK: - Get Predictions
 
-    /// Get predictions for the current typing context with debouncing
-    func getPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
+    /// Get predictions for the current typing context
+    /// Uses local predictions only - no external API calls
+    func getPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [String] {
         // Ensure services are initialized before making predictions
         if !servicesInitialized {
             await initializeServices()
@@ -447,14 +339,12 @@ actor PredictionEngine {
             lastPredictionContext = context.fullText
         }
 
-        if context.shouldUseLLM {
-            return await llmPredictions(for: context, activeContext: activeContext)
-        }
-        return await localPredictions(for: context, activeContext: activeContext)
+        // Always use local predictions (no LLM)
+        return await localPredictions(for: context, activeContext: activeContext, language: language)
     }
 
     /// Get predictions with debouncing (waits for typing to pause)
-    func getDebouncedPredictions(for context: PredictionContext, activeContext: String? = nil, delayMs: Int = 150) async -> [String] {
+    func getDebouncedPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil, delayMs: Int = 150) async -> [String] {
         // Cancel previous pending task
         pendingPredictionTask?.cancel()
 
@@ -469,7 +359,7 @@ actor PredictionEngine {
             }
 
             // Get predictions
-            return await getPredictions(for: context, activeContext: activeContext)
+            return await getPredictions(for: context, activeContext: activeContext, language: language)
         }
 
         pendingPredictionTask = task
@@ -478,7 +368,7 @@ actor PredictionEngine {
 
     /// Legacy wrapper
     func getPredictions(for context: PredictionContext) async -> [String] {
-        return await getPredictions(for: context, activeContext: nil)
+        return await getPredictions(for: context, activeContext: nil, language: nil)
     }
 
     // MARK: - Feedback Recording
@@ -496,48 +386,4 @@ actor PredictionEngine {
             previousWord: previousWord
         )
     }
-
-    // MARK: - API Key Retrieval
-
-    /// Get API key from configured AI providers (prefers formatting category)
-    private func getAPIKeyFromConfiguredProviders(defaults: UserDefaults) -> String? {
-        // Try to get from configured providers first
-        guard let data = defaults.data(forKey: Constants.Keys.configuredAIProviders) else {
-            // Fall back to legacy OpenAI key
-            return defaults.string(forKey: Constants.Keys.openAIAPIKey)
-        }
-
-        struct SimpleAIProviderConfig: Codable {
-            let provider: String
-            let apiKey: String
-            let usageCategories: [String]
-        }
-
-        do {
-            let configs = try JSONDecoder().decode([SimpleAIProviderConfig].self, from: data)
-
-            // Look for formatting provider first
-            if let formattingConfig = configs.first(where: { $0.usageCategories.contains("formatting") }) {
-                return formattingConfig.apiKey
-            }
-
-            // Fall back to any OpenAI provider
-            if let openAIConfig = configs.first(where: { $0.provider.lowercased().contains("openai") }) {
-                return openAIConfig.apiKey
-            }
-
-            // Fall back to first available provider
-            return configs.first?.apiKey
-        } catch {
-            // Fall back to legacy key on decode error
-            return defaults.string(forKey: Constants.Keys.openAIAPIKey)
-        }
-    }
-}
-
-// MARK: - Prediction Error
-enum PredictionError: Error {
-    case invalidResponse
-    case apiError(statusCode: Int)
-    case emptyResponse
 }
