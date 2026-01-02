@@ -16,11 +16,13 @@ struct ActionKey: View {
     let action: () -> Void
     var onLongPress: (() -> Void)? = nil
     var onSwipeDelete: ((Int) -> Void)? = nil  // Swipe delete: passes number of words to delete
+    var enableLongPressRepeat: Bool = false    // Enable long-press repeat with acceleration (for backspace)
 
     @State private var isPressed = false
     @State private var longPressTimer: Timer?
     @State private var swipeStartX: CGFloat = 0
     @State private var isSwipeDeleting = false
+    @State private var repeatCount = 0  // Track repeats for acceleration
 
     private var backgroundColor: Color {
         if isHighlighted {
@@ -72,8 +74,9 @@ struct ActionKey: View {
                         isPressed = true
                         swipeStartX = value.location.x
                         KeyboardHaptics.lightTap()
-                        // Start long press timer if handler is provided
-                        if onLongPress != nil && onSwipeDelete == nil {
+
+                        // Start long press timer for either onLongPress or repeat mode
+                        if onLongPress != nil || enableLongPressRepeat {
                             startLongPressTimer()
                         }
                     }
@@ -83,6 +86,8 @@ struct ActionKey: View {
                         let swipeDistance = swipeStartX - value.location.x
                         if swipeDistance > 30 && !isSwipeDeleting {
                             isSwipeDeleting = true
+                            // Stop long-press repeat when swiping
+                            stopLongPressTimer()
                             KeyboardHaptics.mediumTap()
                         }
                     }
@@ -90,6 +95,7 @@ struct ActionKey: View {
                 .onEnded { value in
                     isPressed = false
                     stopLongPressTimer()
+                    repeatCount = 0
 
                     // Handle swipe-delete on release
                     if isSwipeDeleting, let onSwipeDelete = onSwipeDelete {
@@ -104,23 +110,48 @@ struct ActionKey: View {
         )
     }
 
-    // MARK: - Long Press Handling
+    // MARK: - Long Press Handling with Acceleration
 
     private func startLongPressTimer() {
-        guard let onLongPress = onLongPress else { return }
+        // Initial delay before repeat starts (400ms)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { [self] in
+            guard isPressed && !isSwipeDeleting else { return }
+            scheduleNextRepeat()
+        }
+    }
 
-        // Initial delay before repeat starts (500ms)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-            guard isPressed else { return }
+    private func scheduleNextRepeat() {
+        guard isPressed && !isSwipeDeleting else {
+            stopLongPressTimer()
+            return
+        }
 
-            // Start repeating action
-            longPressTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-                guard isPressed else {
-                    stopLongPressTimer()
-                    return
+        // Calculate interval with acceleration
+        // Start at 0.12s, accelerate to 0.03s over ~20 repeats
+        let baseInterval: TimeInterval = 0.12
+        let minInterval: TimeInterval = 0.03
+        let accelerationFactor = min(Double(repeatCount) / 20.0, 1.0)
+        let interval = baseInterval - (accelerationFactor * (baseInterval - minInterval))
+
+        longPressTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: false) { _ in
+            guard isPressed && !isSwipeDeleting else {
+                stopLongPressTimer()
+                return
+            }
+
+            // Execute action
+            if enableLongPressRepeat {
+                action()
+                // Light haptic every 5 deletions, subtler feel
+                if repeatCount % 5 == 0 {
+                    KeyboardHaptics.lightTap()
                 }
+            } else if let onLongPress = onLongPress {
                 onLongPress()
             }
+
+            repeatCount += 1
+            scheduleNextRepeat()
         }
     }
 

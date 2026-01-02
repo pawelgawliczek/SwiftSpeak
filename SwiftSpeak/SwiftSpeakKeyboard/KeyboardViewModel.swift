@@ -51,8 +51,8 @@ class KeyboardViewModel: ObservableObject {
     // Phase 13.11: AI Context Processing
     @Published var isAIProcessing = false
 
-    // Phase 13: Undo Stack (Gboard-style)
-    @Published var undoStack: [String] = []  // Stack of deleted text segments
+    // Phase 13: Undo Stack (Gboard-style, AI-aware)
+    @Published var undoStack: [UndoItem] = []  // Stack of undoable operations
     private let maxUndoItems = 10
 
     // Phase 13: Clipboard Panel
@@ -1155,6 +1155,14 @@ class KeyboardViewModel: ObservableObject {
         if status == "complete", let result = defaults?.string(forKey: Constants.AIProcess.result) {
             keyboardLog("AI Process: Complete (\(result.count) chars)", category: "AI")
 
+            // Get original text before replacing (for undo support)
+            let originalText = defaults?.string(forKey: Constants.AIProcess.pendingText) ?? ""
+
+            // Push AI operation to undo stack (allows reverting to original text)
+            if !originalText.isEmpty {
+                pushAIOperationToUndoStack(originalText: originalText)
+            }
+
             // Replace text in field
             deleteAllTextInField()
             textDocumentProxy?.insertText(result)
@@ -1183,23 +1191,34 @@ class KeyboardViewModel: ObservableObject {
         isAIProcessing = false
     }
 
-    // MARK: - Phase 13: Undo Stack
+    // MARK: - Phase 13: Undo Stack (AI-aware)
 
     /// Push deleted text onto the undo stack
     func pushToUndoStack(_ text: String) {
         guard !text.isEmpty else { return }
+        pushUndoItem(.deletion(text))
+    }
 
-        undoStack.insert(text, at: 0)
+    /// Push an AI operation onto the undo stack (stores original text before AI processing)
+    func pushAIOperationToUndoStack(originalText: String) {
+        guard !originalText.isEmpty else { return }
+        pushUndoItem(.aiOperation(originalText: originalText))
+        keyboardLog("Undo stack: AI operation saved (\(originalText.count) chars)", category: "Action")
+    }
+
+    /// Internal: push any undo item
+    private func pushUndoItem(_ item: UndoItem) {
+        undoStack.insert(item, at: 0)
 
         // Keep stack limited
         if undoStack.count > maxUndoItems {
             undoStack = Array(undoStack.prefix(maxUndoItems))
         }
 
-        keyboardLog("Undo stack push: \(text.count) chars (stack size: \(undoStack.count))", category: "Action")
+        keyboardLog("Undo stack push: \(item.description) (stack size: \(undoStack.count))", category: "Action")
     }
 
-    /// Undo last deletion - restores the most recently deleted text
+    /// Undo last operation - handles both deletions and AI operations
     func undo() {
         guard !undoStack.isEmpty else {
             keyboardLog("Undo: stack empty", category: "Action")
@@ -1207,10 +1226,22 @@ class KeyboardViewModel: ObservableObject {
             return
         }
 
-        let text = undoStack.removeFirst()
-        textDocumentProxy?.insertText(text)
+        let item = undoStack.removeFirst()
+
+        switch item {
+        case .deletion(let text):
+            // Simple deletion: just insert the text back
+            textDocumentProxy?.insertText(text)
+            keyboardLog("Undo: restored deletion (\(text.count) chars)", category: "Action")
+
+        case .aiOperation(let originalText):
+            // AI operation: delete current text and insert original
+            deleteAllTextInField()
+            textDocumentProxy?.insertText(originalText)
+            keyboardLog("Undo: reverted AI operation (\(originalText.count) chars)", category: "Action")
+        }
+
         KeyboardHaptics.success()
-        keyboardLog("Undo: restored \(text.count) chars", category: "Action")
     }
 
     /// Check if undo is available
@@ -1336,6 +1367,26 @@ class KeyboardViewModel: ObservableObject {
 }
 
 // MARK: - Clipboard Models
+
+// MARK: - Undo Item Type
+
+/// Represents an undoable operation
+enum UndoItem {
+    /// Simple text deletion - just insert the text back
+    case deletion(String)
+    /// AI operation - stores original text before AI processing
+    /// On undo: delete current text, insert original
+    case aiOperation(originalText: String)
+
+    var description: String {
+        switch self {
+        case .deletion(let text):
+            return "deletion(\(text.count) chars)"
+        case .aiOperation(let text):
+            return "aiOperation(\(text.count) chars)"
+        }
+    }
+}
 
 enum ClipboardItemSource: String, Codable {
     case transcription  // From transcription history

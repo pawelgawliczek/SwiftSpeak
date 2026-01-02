@@ -152,11 +152,12 @@ struct QWERTYKeyboard: View {
                 }
 
                 // Backspace key with long-press repeat and swipe-delete
-                ActionKey(icon: "delete.left") {
-                    deleteBackward()
-                } onSwipeDelete: { wordCount in
-                    deleteWords(count: wordCount)
-                }
+                ActionKey(
+                    icon: "delete.left",
+                    action: { deleteBackward() },
+                    onSwipeDelete: { wordCount in deleteWords(count: wordCount) },
+                    enableLongPressRepeat: true
+                )
                 .frame(width: 42)
             }
         }
@@ -227,11 +228,12 @@ struct QWERTYKeyboard: View {
                 }
 
                 // Backspace key with long-press repeat and swipe-delete
-                ActionKey(icon: "delete.left") {
-                    deleteBackward()
-                } onSwipeDelete: { wordCount in
-                    deleteWords(count: wordCount)
-                }
+                ActionKey(
+                    icon: "delete.left",
+                    action: { deleteBackward() },
+                    onSwipeDelete: { wordCount in deleteWords(count: wordCount) },
+                    enableLongPressRepeat: true
+                )
                 .frame(width: 42)
             }
         }
