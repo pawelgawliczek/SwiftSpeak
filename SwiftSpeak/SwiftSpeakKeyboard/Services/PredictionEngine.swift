@@ -89,10 +89,22 @@ actor PredictionEngine {
             }
         }
 
+        // Get the current dictation language (fallback to "en" if not set)
+        let dictationLanguage: String
+        if let langRaw = defaults.string(forKey: Constants.Keys.selectedDictationLanguage) {
+            // Extract language code from Language enum rawValue (e.g., "english" -> "en")
+            dictationLanguage = languageCodeFromRawValue(langRaw)
+        } else {
+            dictationLanguage = "en"
+        }
+
         // Load recent transcriptions to build frequent words and train N-gram model
         if let historyData = defaults.data(forKey: Constants.Keys.transcriptionHistory) {
+            // Extended history struct to capture language if available
             struct SimpleHistory: Codable {
                 let text: String
+                // Note: TranscriptionRecord doesn't store dictation language directly,
+                // so we use the current language setting as a reasonable approximation
             }
 
             if let history = try? JSONDecoder().decode([SimpleHistory].self, from: historyData) {
@@ -107,9 +119,9 @@ actor PredictionEngine {
                         }
                     }
 
-                    // Train N-gram model with transcription text
+                    // Train N-gram model with transcription text using current language
                     Task {
-                        await NGramPredictor.shared.learnFromText(record.text)
+                        await NGramPredictor.shared.learnFromText(record.text, language: dictationLanguage)
                     }
                 }
 
@@ -118,8 +130,30 @@ actor PredictionEngine {
                     .prefix(200)
                 frequentWords = Dictionary(uniqueKeysWithValues: topWords.map { ($0.key, $0.value) })
 
-                keyboardLog("PredictionEngine: Loaded \(frequentWords.count) frequent words", category: "Prediction")
+                keyboardLog("PredictionEngine: Loaded \(frequentWords.count) frequent words (language: \(dictationLanguage))", category: "Prediction")
             }
+        }
+    }
+
+    /// Convert Language enum rawValue to language code (e.g., "english" -> "en", "polish" -> "pl")
+    private func languageCodeFromRawValue(_ rawValue: String) -> String {
+        // Map common Language enum rawValues to ISO 639-1 codes
+        switch rawValue.lowercased() {
+        case "english", "en": return "en"
+        case "polish", "pl": return "pl"
+        case "spanish", "es": return "es"
+        case "french", "fr": return "fr"
+        case "german", "de": return "de"
+        case "italian", "it": return "it"
+        case "portuguese", "pt": return "pt"
+        case "dutch", "nl": return "nl"
+        case "russian", "ru": return "ru"
+        case "chinese", "zh": return "zh"
+        case "japanese", "ja": return "ja"
+        case "korean", "ko": return "ko"
+        default:
+            // If it's already a 2-letter code, use it; otherwise fallback to "en"
+            return rawValue.count == 2 ? rawValue.lowercased() : "en"
         }
     }
 

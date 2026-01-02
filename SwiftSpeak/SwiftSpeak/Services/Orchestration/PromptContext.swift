@@ -74,6 +74,9 @@ struct PromptContext {
     /// Vocabulary words for transcription hints
     let vocabularyWords: [String]
 
+    /// Domain-specific jargon type for transcription accuracy
+    let domainJargon: DomainJargon
+
     // MARK: - Initialization
 
     init(
@@ -86,7 +89,8 @@ struct PromptContext {
         explicitFormality: ContextFormality? = nil,
         customInstructions: String? = nil,
         languageHints: [Language] = [],
-        vocabularyWords: [String] = []
+        vocabularyWords: [String] = [],
+        domainJargon: DomainJargon = .none
     ) {
         self.globalMemory = globalMemory
         self.contextMemory = contextMemory
@@ -98,6 +102,7 @@ struct PromptContext {
         self.customInstructions = customInstructions
         self.languageHints = languageHints
         self.vocabularyWords = vocabularyWords
+        self.domainJargon = domainJargon
     }
 
     // MARK: - Factory Methods
@@ -134,7 +139,8 @@ struct PromptContext {
             explicitFormality: formality,
             customInstructions: context?.customInstructions,
             languageHints: context?.languageHints ?? [],
-            vocabularyWords: vocabWords
+            vocabularyWords: vocabWords,
+            domainJargon: context?.domainJargon ?? .none
         )
     }
 
@@ -191,6 +197,11 @@ struct PromptContext {
     /// - Returns: Hint string for transcription, or nil if no hints available
     func buildTranscriptionHint() -> String? {
         var hints: [String] = []
+
+        // Domain-specific jargon (provides terminology context)
+        if domainJargon != .none, let domainHint = domainJargon.transcriptionHint {
+            hints.append(domainHint)
+        }
 
         // Language hints
         if !languageHints.isEmpty {

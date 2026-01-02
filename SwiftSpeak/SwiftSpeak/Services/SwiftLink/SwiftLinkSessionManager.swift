@@ -787,6 +787,8 @@ final class SwiftLinkSessionManager: ObservableObject {
     }
 
     /// Transcribe audio file using batch Whisper API (fallback for streaming)
+    /// Domain jargon hints improve vocabulary recognition
+    /// Full context formatting is handled separately by the LLM in processStreamingResult()
     private func transcribeWithWhisper(audioURL: URL) async throws -> String {
         let settings = SharedSettings.shared
         let providerFactory = ProviderFactory(settings: settings)
@@ -795,13 +797,38 @@ final class SwiftLinkSessionManager: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        appLog("Calling Whisper API for fallback transcription...", category: "SwiftLink")
+        // Build domain-specific vocabulary hint from active context
+        let domainHint = buildDomainTranscriptionHint(settings: settings)
+
+        if let hint = domainHint {
+            appLog("Calling Whisper API with domain hint: \(hint.prefix(60))...", category: "SwiftLink")
+        } else {
+            appLog("Calling Whisper API for transcription...", category: "SwiftLink")
+        }
+
+        // Transcribe with domain hint for vocabulary - full formatting applied by LLM
         let transcript = try await transcriptionProvider.transcribe(
             audioURL: audioURL,
-            language: settings.selectedDictationLanguage
+            language: settings.selectedDictationLanguage,
+            promptHint: domainHint
         )
 
         return transcript
+    }
+
+    /// Build a lightweight domain hint for Whisper transcription
+    /// Only includes domain-specific vocabulary terms, NOT full context instructions
+    /// Full context formatting is handled by the LLM in processStreamingResult()
+    private func buildDomainTranscriptionHint(settings: SharedSettings) -> String? {
+        guard let context = settings.activeContext else { return nil }
+
+        // Get domain-specific terminology hint
+        guard context.domainJargon != .none,
+              let domainHint = context.domainJargon.transcriptionHint else {
+            return nil
+        }
+
+        return domainHint
     }
 
     /// Process the final streaming transcript (formatting, translation)
@@ -891,7 +918,23 @@ final class SwiftLinkSessionManager: ObservableObject {
                 text: processedText
             )
 
-            // Create history record with full metadata
+            // Build processing description for metadata
+            var processingDescription = "Transcription"
+            if needsFormatting {
+                processingDescription += " + Formatting (\(mode.displayName))"
+            }
+            if let context = activeContext {
+                processingDescription += " + Context: \(context.name)"
+                if context.domainJargon != .none {
+                    processingDescription += " (\(context.domainJargon.displayName))"
+                }
+            }
+            if settings.isTranslationEnabled {
+                processingDescription += " + Translation"
+            }
+
+            // Create history record - one entry per transcription session
+            // Cost breakdown includes all components (transcription + formatting + translation)
             let record = TranscriptionRecord(
                 rawTranscribedText: transcript,
                 text: processedText,
@@ -918,8 +961,8 @@ final class SwiftLinkSessionManager: ObservableObject {
                             endTime: Date(),
                             inputTokens: nil,
                             outputTokens: nil,
-                            cost: costBreakdown.transcriptionCost,
-                            prompt: vocabularyPrompt
+                            cost: costBreakdown.total,
+                            prompt: processingDescription
                         )
                     ],
                     totalProcessingTime: currentDictationDuration,

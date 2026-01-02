@@ -109,12 +109,26 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
             }
         }
 
-        // Connect to streaming service
-        appLog("Connecting to streaming service...", category: "StreamingOrch")
+        // Build transcription hints from context (domain jargon, vocabulary, etc.)
+        let promptContext = PromptContext.from(
+            settings: settings,
+            context: settings.activeContext,
+            powerMode: nil
+        )
+        let transcriptionPrompt = promptContext.buildTranscriptionHint()
+
+        if let hint = transcriptionPrompt {
+            appLog("Connecting to streaming service with domain hint: \(hint.prefix(60))...", category: "StreamingOrch")
+        } else {
+            appLog("Connecting to streaming service...", category: "StreamingOrch")
+        }
+
+        // Connect to streaming service with domain hints
         do {
             try await provider.connect(
                 language: settings.selectedDictationLanguage,
-                sampleRate: sampleRate
+                sampleRate: sampleRate,
+                transcriptionPrompt: transcriptionPrompt
             )
             appLog("Connected to streaming service successfully", category: "StreamingOrch")
         } catch {

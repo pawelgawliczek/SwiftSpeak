@@ -456,19 +456,41 @@ struct QWERTYKeyboard: View {
             }
         }
 
-        // 4. Language-specific diacritic corrections (runs for non-English languages)
+        // 4. Language-specific diacritic/spelling corrections (runs for non-English languages)
         if finalCorrection == nil {
             switch currentLang {
+            // Latin-script languages with diacritics
             case "pl":
                 finalCorrection = PolishAutocorrectService.fixPolishWord(wordString)
             case "es":
                 finalCorrection = SpanishAutocorrectService.fixSpanishWord(wordString)
             case "fr":
                 finalCorrection = FrenchAutocorrectService.fixFrenchWord(wordString)
+            case "de":
+                finalCorrection = GermanAutocorrectService.fixGermanWord(wordString)
+            case "it":
+                finalCorrection = ItalianAutocorrectService.fixItalianWord(wordString)
+            case "pt":
+                finalCorrection = PortugueseAutocorrectService.fixPortugueseWord(wordString)
+
+            // Cyrillic
             case "ru":
                 finalCorrection = RussianAutocorrectService.fixRussianWord(wordString)
+
+            // Arabic
             case "ar":
                 finalCorrection = ArabicAutocorrectService.fixArabicWord(wordString)
+            case "arz":
+                finalCorrection = EgyptianArabicAutocorrectService.fixEgyptianArabicWord(wordString)
+
+            // CJK (uses UITextChecker-based correction)
+            case "zh":
+                finalCorrection = ChineseAutocorrectService.fixChineseWord(wordString)
+            case "ja":
+                finalCorrection = JapaneseAutocorrectService.fixJapaneseWord(wordString)
+            case "ko":
+                finalCorrection = KoreanAutocorrectService.fixKoreanWord(wordString)
+
             default:
                 break
             }

@@ -49,6 +49,80 @@ enum ContextFormality: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Domain Jargon Type
+
+/// Domain-specific vocabulary hints for transcription accuracy
+/// When enabled, Whisper and other STT providers receive domain hints
+/// to improve recognition of technical terminology
+enum DomainJargon: String, Codable, CaseIterable, Identifiable {
+    case none = "none"              // No specific domain
+    case medical = "medical"        // Healthcare, pharmaceutical, clinical terms
+    case legal = "legal"            // Law, contracts, litigation terminology
+    case technical = "technical"    // Software, engineering, IT terms
+    case financial = "financial"    // Banking, investment, accounting terms
+    case scientific = "scientific"  // Research, laboratory, academic terms
+    case business = "business"      // Corporate, management, strategy terms
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .none: return "None"
+        case .medical: return "Medical"
+        case .legal: return "Legal"
+        case .technical: return "Technical"
+        case .financial: return "Financial"
+        case .scientific: return "Scientific"
+        case .business: return "Business"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .none: return "No domain-specific vocabulary hints"
+        case .medical: return "Medical, pharmaceutical, and clinical terminology"
+        case .legal: return "Legal, contracts, and litigation terminology"
+        case .technical: return "Software, engineering, and IT terminology"
+        case .financial: return "Banking, investment, and accounting terminology"
+        case .scientific: return "Research, laboratory, and academic terminology"
+        case .business: return "Corporate, management, and strategy terminology"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .none: return "text.bubble"
+        case .medical: return "cross.case.fill"
+        case .legal: return "building.columns.fill"
+        case .technical: return "chevron.left.forwardslash.chevron.right"
+        case .financial: return "chart.line.uptrend.xyaxis"
+        case .scientific: return "atom"
+        case .business: return "briefcase.fill"
+        }
+    }
+
+    /// Whisper prompt hint for this domain
+    /// Provides examples of expected vocabulary to improve recognition
+    var transcriptionHint: String? {
+        switch self {
+        case .none:
+            return nil
+        case .medical:
+            return "Medical terminology: diagnosis, prognosis, prescription, symptoms, treatment, dosage, mg, ml, patient, procedure, surgery, medication, chronic, acute"
+        case .legal:
+            return "Legal terminology: plaintiff, defendant, litigation, contract, clause, jurisdiction, statute, liability, damages, settlement, affidavit, deposition"
+        case .technical:
+            return "Technical terminology: API, SDK, database, server, deployment, repository, commit, merge, branch, function, variable, algorithm, framework"
+        case .financial:
+            return "Financial terminology: portfolio, equity, dividend, ROI, P&L, balance sheet, EBITDA, quarterly, fiscal, revenue, margin, valuation"
+        case .scientific:
+            return "Scientific terminology: hypothesis, methodology, analysis, data, experiment, results, conclusion, peer-reviewed, statistical, correlation"
+        case .business:
+            return "Business terminology: stakeholder, deliverable, KPI, roadmap, synergy, ROI, quarterly, strategy, initiative, metrics, pipeline"
+        }
+    }
+}
+
 // MARK: - Conversation Context (Phase 4)
 
 /// A named context that customizes tone, language, and behavior
@@ -60,6 +134,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     var description: String             // Short description for list view
     var toneDescription: String         // Detailed tone guidance for AI
     var formality: ContextFormality     // Explicit formality for translation (esp. DeepL)
+    var domainJargon: DomainJargon      // Domain-specific vocabulary for transcription hints
     var languageHints: [Language]       // Expected languages in this context
     var customInstructions: String      // Injected into all prompts
     var memoryEnabled: Bool             // Context-level memory toggle
@@ -82,6 +157,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         description: String,
         toneDescription: String = "",
         formality: ContextFormality = .auto,
+        domainJargon: DomainJargon = .none,
         languageHints: [Language] = [],
         customInstructions: String = "",
         memoryEnabled: Bool = false,
@@ -103,6 +179,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.description = description
         self.toneDescription = toneDescription
         self.formality = formality
+        self.domainJargon = domainJargon
         self.languageHints = languageHints
         self.customInstructions = customInstructions
         self.memoryEnabled = memoryEnabled
@@ -139,6 +216,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 description: "Professional business communication",
                 toneDescription: "Professional formatting with proper punctuation.",
                 formality: ContextFormality.formal,
+                domainJargon: .business,  // Business terminology hints for transcription
                 customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use proper punctuation, capitalize appropriately. Do NOT rephrase, summarize, or change the content.",
                 isPreset: true,
                 aiAutocorrectEnabled: true  // Fixes grammar and punctuation
@@ -194,6 +272,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 description: "Professional, formal business communication",
                 toneDescription: "Professional and formal. Use proper business language and avoid casual expressions.",
                 formality: ContextFormality.formal,  // Explicitly formal for DeepL
+                domainJargon: .business,  // Business terminology hints for transcription
                 languageHints: [Language.english],
                 customInstructions: "Maintain professional tone. Use formal salutations and sign-offs in emails.",
                 memoryEnabled: true,

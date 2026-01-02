@@ -149,13 +149,15 @@ actor ContextAwarePredictions {
         // Check for language-specific starters
         if let lang = language {
             switch (lang, context) {
-            // Polish
+            // Polish - comprehensive starters for all contexts
             case ("pl", .email):
-                return ["szanowny", "witam", "dzień", "dziękuję", "proszę", "pozdrawiam"]
+                return ["szanowny", "witam", "dzien", "dziekuje", "prosze", "pozdrawiam", "drogi"]
             case ("pl", .messaging):
-                return ["cześć", "hej", "co", "jak", "spoko", "ok"]
+                return ["czesc", "hej", "co", "jak", "spoko", "ok", "siema"]
             case ("pl", .formal):
-                return ["szanowni", "szanowna", "z", "w", "proszę", "dziękuję"]
+                return ["szanowni", "szanowna", "z", "w", "prosze", "dziekuje", "uprzejmie"]
+            case ("pl", .casual):
+                return ["hej", "siema", "no", "co", "spoko", "wiesz", "stary"]
 
             // Spanish
             case ("es", .email):
@@ -329,36 +331,109 @@ actor ContextAwarePredictions {
     // MARK: - Multi-Language Vocabulary
 
     private func loadMultiLanguageVocabulary() {
-        // Polish (pl)
+        // Polish (pl) - COMPREHENSIVE vocabulary (one of the strongest languages)
         contextVocabularyByLanguage["pl"] = [
             .email: [
-                "szanowny": 500, "szanowna": 480, "witam": 450, "dzień": 430,
-                "dobry": 420, "dziękuję": 400, "proszę": 380, "pozdrawiam": 360,
-                "z poważaniem": 350, "poważaniem": 340, "serdecznie": 320,
-                "w załączeniu": 300, "załączeniu": 290, "odpowiedź": 280,
+                // Greetings & Openings
+                "szanowny": 500, "szanowna": 480, "witam": 450, "dzien": 430,
+                "dobry": 420, "dziekuje": 400, "prosze": 380, "pozdrawiam": 360,
+                "drogi": 350, "droga": 340, "panie": 330, "pani": 320,
+                // Closings
+                "z powazaniem": 350, "powazaniem": 340, "serdecznie": 320,
+                "pozdrawiam": 310, "zyczenia": 300, "milego": 290, "dnia": 280,
+                // Attachments & Documents
+                "w zalaczeniu": 300, "zalaczeniu": 290, "zalaczam": 280,
+                "przesylam": 270, "dokument": 260, "dokumenty": 250, "plik": 240,
+                "pliki": 230, "raport": 220, "sprawozdanie": 210, "prezentacja": 200,
+                // Actions
+                "odpowiedz": 280, "odpowiadam": 270, "informuje": 260, "potwierdzam": 250,
+                "pragne": 240, "zwracam": 230, "prosze": 220, "uprzejmie": 210,
+                // Business terms
                 "spotkanie": 270, "termin": 260, "sprawa": 250, "projekt": 240,
-                "raport": 230, "dokument": 220, "pilne": 210, "priorytetu": 200,
-                "agenda": 190, "prezentacja": 180, "przegląd": 170,
-                "poniedziałek": 100, "wtorek": 95, "środa": 90, "czwartek": 95,
-                "piątek": 100, "jutro": 150, "dzisiaj": 180, "tydzień": 160,
+                "umowa": 230, "oferta": 220, "zamowienie": 210, "faktura": 200,
+                "pilne": 210, "priorytetu": 200, "wazne": 190, "konieczne": 180,
+                "agenda": 190, "przeglad": 170, "analiza": 160, "rozwiazanie": 150,
+                // Days of week
+                "poniedzialek": 100, "wtorek": 95, "sroda": 90, "czwartek": 95,
+                "piatek": 100, "sobota": 80, "niedziela": 75,
+                // Time
+                "jutro": 150, "dzisiaj": 180, "tydzien": 160, "miesiac": 140,
+                "rano": 120, "poludnie": 110, "wieczorem": 100,
+                // Professional phrases
+                "odnosnie": 180, "nawiazujac": 170, "w zwiazku": 160, "zgodnie": 150,
             ],
             .messaging: [
-                "cześć": 500, "hej": 480, "witam": 400, "co": 380,
-                "tam": 370, "jak": 360, "się": 350, "masz": 340,
+                // Greetings
+                "czesc": 500, "hej": 480, "witam": 400, "siema": 390,
+                "yo": 380, "elo": 370, "joł": 360,
+                // Questions
+                "co": 380, "tam": 370, "jak": 360, "sie": 350, "masz": 340,
+                "leci": 330, "slychac": 320, "robisz": 310, "gdzie": 300,
+                "kiedy": 290, "dlaczego": 280, "czemu": 270,
+                // Responses
                 "dzięki": 330, "ok": 320, "okej": 310, "tak": 300,
                 "nie": 290, "jasne": 280, "super": 270, "spoko": 260,
-                "fajnie": 250, "cool": 240, "haha": 230, "lol": 220,
-                "omg": 210, "btw": 200, "zaraz": 190, "później": 180,
+                "fajnie": 250, "cool": 240, "git": 230, "luzik": 220,
+                // Reactions
+                "haha": 230, "lol": 220, "omg": 210, "wtf": 200,
+                "wow": 190, "serio": 180, "nooo": 170, "ale": 160,
+                // Common words
+                "zaraz": 190, "pozniej": 180, "teraz": 170, "juz": 160,
+                "jeszcze": 150, "moze": 140, "chyba": 130, "pewnie": 120,
+                // Farewells
                 "nara": 170, "do": 160, "zobaczenia": 150, "pa": 140,
-                "gdzie": 130, "kiedy": 120, "dlaczego": 110, "kocham": 100,
+                "papa": 130, "buziaki": 120, "do jutra": 110,
+                // Emotions
+                "kocham": 100, "tesknie": 90, "przepraszam": 200, "sorry": 180,
+                // Slang
+                "stary": 150, "ziomek": 140, "koles": 130, "morda": 100,
             ],
             .formal: [
-                "szanowni": 400, "państwo": 390, "z góry": 380,
-                "góry": 370, "dziękuję": 360, "w załączeniu": 350,
-                "uprzejmie": 340, "proszę": 330, "informuję": 320,
-                "zwracam": 310, "się": 300, "odnośnie": 290,
-                "zgodnie": 280, "niniejszym": 270, "w związku": 260,
-                "z tym": 250, "powyższym": 240, "zatem": 230,
+                // Salutations
+                "szanowni": 400, "panstwo": 390, "szanowny": 380, "szanowna": 370,
+                "wielce": 360, "czcigodny": 350, "dostojny": 340,
+                // Opening phrases
+                "z gory": 380, "gory": 370, "dziekuje": 360,
+                "uprzejmie": 340, "prosze": 330, "informuje": 320,
+                "zwracam": 310, "sie": 300, "odnosnie": 290,
+                "nawiazujac": 280, "w odpowiedzi": 270, "odpowiedzi": 260,
+                // Legal/formal terms
+                "zgodnie": 280, "niniejszym": 270, "w zwiazku": 260,
+                "z tym": 250, "powyzszym": 240, "zatem": 230,
+                "w mysl": 220, "na podstawie": 210, "stosownie": 200,
+                "ponadto": 190, "wobec": 180, "czego": 170,
+                // Closings
+                "w zalaczeniu": 350, "lacze": 340, "wyrazy": 330,
+                "szacunku": 320, "powazania": 310, "z powazaniem": 300,
+                "laczę": 290, "pozdrowienia": 280, "serdeczne": 270,
+                // Actions
+                "wnosze": 200, "oswiadczam": 190, "zobowiazuje": 180,
+                "deklaruje": 170, "potwierdza": 160, "zapewniam": 150,
+            ],
+            .casual: [
+                // Greetings
+                "hej": 500, "siema": 480, "czesc": 470, "yo": 460,
+                "elo": 450, "joł": 440, "mordo": 430, "co": 420,
+                // Fillers
+                "no": 400, "wlasnie": 390, "tak": 380, "nie": 370,
+                "wiesz": 360, "jakby": 350, "znaczy": 340, "generalnie": 330,
+                // Reactions
+                "super": 320, "spoko": 310, "git": 300, "luzik": 290,
+                "zajebiscie": 280, "kozacko": 270, "ekstra": 260, "bomba": 250,
+                // Common slang
+                "ogarnac": 240, "ogarniasz": 230, "kumasz": 220, "lapiesz": 210,
+                "leci": 200, "idzie": 190, "jazda": 180, "akcja": 170,
+                // Negatives
+                "zonk": 160, "lipa": 150, "kicha": 140, "dramat": 130,
+                "masakra": 120, "porazka": 110, "klapa": 100,
+                // Questions
+                "powaznie": 250, "serio": 240, "naprawde": 230, "zart": 220,
+                // Expressions
+                "stary": 200, "ziomek": 190, "koles": 180, "gosciu": 170,
+                "czlowieku": 160, "facet": 150, "laska": 140,
+                // Verbs
+                "ogar": 130, "wypad": 120, "bywaj": 110, "spadaj": 100,
+                "luz": 300, "spokoj": 280, "wyluzuj": 260, "chilluj": 240,
             ]
         ]
 
@@ -446,6 +521,84 @@ actor ContextAwarePredictions {
                 "hochachtungsvoll": 340, "mit": 330, "freundlichen": 320,
                 "grüßen": 310, "bezüglich": 300, "betreff": 290,
                 "anlage": 280, "gemäß": 270, "hiermit": 260,
+            ]
+        ]
+
+        // Italian (it)
+        contextVocabularyByLanguage["it"] = [
+            .email: [
+                "gentile": 500, "egregio": 480, "buongiorno": 450, "salve": 420,
+                "grazie": 400, "cordiali": 380, "saluti": 360, "distinti": 340,
+                "allegato": 320, "riunione": 300, "appuntamento": 280,
+                "documento": 260, "urgente": 240, "priorità": 220,
+                "lunedì": 100, "martedì": 95, "mercoledì": 90, "giovedì": 95,
+                "venerdì": 100, "domani": 150, "oggi": 180, "settimana": 160,
+            ],
+            .messaging: [
+                "ciao": 500, "hey": 480, "come": 450, "stai": 440,
+                "bene": 430, "grazie": 420, "ok": 410, "sì": 400,
+                "no": 390, "va": 380, "bene": 370, "super": 360,
+                "fantastico": 350, "haha": 340, "lol": 330, "dove": 320,
+                "quando": 310, "perché": 300, "a": 290, "dopo": 280,
+            ],
+            .formal: [
+                "gentilissimo": 400, "gentilissima": 390, "egregio": 380,
+                "spettabile": 370, "cordialmente": 360, "distinti": 350,
+                "saluti": 340, "ringraziando": 330, "anticipatamente": 320,
+                "porgo": 310, "ossequi": 300, "riferimento": 290,
+                "oggetto": 280, "allegato": 270, "sottoscritto": 260,
+            ]
+        ]
+
+        // Portuguese (pt)
+        contextVocabularyByLanguage["pt"] = [
+            .email: [
+                "prezado": 500, "prezada": 480, "olá": 450, "bom": 420,
+                "dia": 410, "obrigado": 400, "obrigada": 390, "cordialmente": 380,
+                "atenciosamente": 360, "anexo": 340, "reunião": 320,
+                "documento": 300, "urgente": 280, "prioridade": 260,
+                "segunda": 100, "terça": 95, "quarta": 90, "quinta": 95,
+                "sexta": 100, "amanhã": 150, "hoje": 180, "semana": 160,
+            ],
+            .messaging: [
+                "oi": 500, "olá": 480, "como": 450, "vai": 440,
+                "tudo": 430, "bem": 420, "obrigado": 410, "ok": 400,
+                "sim": 390, "não": 380, "legal": 370, "massa": 360,
+                "haha": 350, "lol": 340, "onde": 330, "quando": 320,
+                "por": 310, "quê": 300, "até": 290, "tchau": 280,
+            ],
+            .formal: [
+                "ilustríssimo": 400, "excelentíssimo": 390, "prezados": 380,
+                "senhores": 370, "cordiais": 360, "saudações": 350,
+                "atenciosamente": 340, "respeitosamente": 330, "referente": 320,
+                "conforme": 310, "anexo": 300, "segue": 290,
+                "solicitamos": 280, "informamos": 270, "aguardamos": 260,
+            ]
+        ]
+
+        // Russian (ru)
+        contextVocabularyByLanguage["ru"] = [
+            .email: [
+                "уважаемый": 500, "уважаемая": 480, "здравствуйте": 450,
+                "добрый": 420, "день": 410, "спасибо": 400, "благодарю": 380,
+                "с уважением": 360, "вложение": 340, "встреча": 320,
+                "документ": 300, "срочно": 280, "приоритет": 260,
+                "понедельник": 100, "вторник": 95, "среда": 90, "четверг": 95,
+                "пятница": 100, "завтра": 150, "сегодня": 180, "неделя": 160,
+            ],
+            .messaging: [
+                "привет": 500, "здравствуй": 480, "как": 450, "дела": 440,
+                "хорошо": 430, "спасибо": 420, "ок": 410, "да": 400,
+                "нет": 390, "классно": 380, "круто": 370, "супер": 360,
+                "хаха": 350, "лол": 340, "где": 330, "когда": 320,
+                "почему": 310, "зачем": 300, "пока": 290, "давай": 280,
+            ],
+            .formal: [
+                "глубокоуважаемый": 400, "многоуважаемый": 390, "уважаемые": 380,
+                "господа": 370, "искренне": 360, "ваш": 350,
+                "с уважением": 340, "с почтением": 330, "касательно": 320,
+                "относительно": 310, "приложение": 300, "прилагается": 290,
+                "просим": 280, "сообщаем": 270, "надеемся": 260,
             ]
         ]
     }
