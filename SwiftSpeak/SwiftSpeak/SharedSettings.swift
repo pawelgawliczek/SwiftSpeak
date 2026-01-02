@@ -464,6 +464,43 @@ class SharedSettings: ObservableObject {
         loadFromDefaults()
     }
 
+    /// Refresh settings from UserDefaults (call when app returns to foreground)
+    /// This picks up any changes made by the keyboard extension
+    func refreshFromDefaults() {
+        // Reload dictation language (most likely to be changed by keyboard)
+        if let dictLangRaw = defaults?.string(forKey: Constants.Keys.selectedDictationLanguage),
+           let dictLang = Language(rawValue: dictLangRaw) {
+            if selectedDictationLanguage != dictLang {
+                selectedDictationLanguage = dictLang
+                appLog("Refreshed dictation language from keyboard: \(dictLang.displayName)", category: "Settings")
+            }
+        } else if selectedDictationLanguage != nil {
+            selectedDictationLanguage = nil
+            appLog("Refreshed dictation language to auto-detect", category: "Settings")
+        }
+
+        // Reload mode (can be changed by keyboard)
+        if let modeRaw = defaults?.string(forKey: Constants.Keys.selectedMode),
+           let mode = FormattingMode(rawValue: modeRaw) {
+            if selectedMode != mode {
+                selectedMode = mode
+            }
+        }
+
+        // Reload translation settings
+        let newTranslationEnabled = defaults?.bool(forKey: Constants.Keys.isTranslationEnabled) ?? false
+        if isTranslationEnabled != newTranslationEnabled {
+            isTranslationEnabled = newTranslationEnabled
+        }
+
+        if let targetLangRaw = defaults?.string(forKey: Constants.Keys.selectedTargetLanguage),
+           let targetLang = Language(rawValue: targetLangRaw) {
+            if selectedTargetLanguage != targetLang {
+                selectedTargetLanguage = targetLang
+            }
+        }
+    }
+
     private func loadFromDefaults() {
         // Load hasCompletedOnboarding
         hasCompletedOnboarding = defaults?.bool(forKey: Constants.Keys.hasCompletedOnboarding) ?? false

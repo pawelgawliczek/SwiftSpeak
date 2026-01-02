@@ -45,6 +45,10 @@ final class StreamingAudioRecorder: NSObject, ObservableObject {
     private var startTime: Date?
     private var durationTimer: Timer?
 
+    /// Accumulated audio data for hybrid approach (streaming + final batch transcription)
+    private var accumulatedAudioData = Data()
+    private let audioDataLock = NSLock()
+
     /// Buffer size in samples (50ms chunks at given sample rate)
     private var bufferSize: AVAudioFrameCount {
         AVAudioFrameCount(Double(sampleRate) * 0.05) // 50ms chunks
@@ -128,10 +132,15 @@ final class StreamingAudioRecorder: NSObject, ObservableObject {
                 self.currentLevel = level
             }
 
-            // Send chunk to callback
+            // Accumulate audio data for final batch transcription (hybrid approach)
+            self.audioDataLock.lock()
+            self.accumulatedAudioData.append(audioData)
+            self.audioDataLock.unlock()
+
+            // Send chunk to callback for real-time streaming
             chunkCount += 1
             if chunkCount % 20 == 0 {
-                appLog("Sent \(chunkCount) audio chunks, latest: \(audioData.count) bytes", category: "StreamingRecorder", level: .debug)
+                appLog("Sent \(chunkCount) audio chunks, latest: \(audioData.count) bytes, total: \(self.accumulatedAudioData.count) bytes", category: "StreamingRecorder", level: .debug)
             }
             self.onAudioChunk?(audioData)
         }
@@ -151,6 +160,11 @@ final class StreamingAudioRecorder: NSObject, ObservableObject {
         self.isRecording = true
         self.error = nil
         self.startTime = Date()
+
+        // Clear accumulated audio for new recording
+        audioDataLock.lock()
+        accumulatedAudioData = Data()
+        audioDataLock.unlock()
 
         // Start duration timer
         startDurationTimer()
@@ -274,5 +288,45 @@ final class StreamingAudioRecorder: NSObject, ObservableObject {
     private func stopDurationTimer() {
         durationTimer?.invalidate()
         durationTimer = nil
+    }
+
+    // MARK: - Accumulated Audio (Hybrid Approach)
+
+    /// Get the accumulated raw PCM16 audio data
+    /// Use this for batch transcription after streaming completes
+    func getAccumulatedAudioData() -> Data {
+        audioDataLock.lock()
+        defer { audioDataLock.unlock() }
+        return accumulatedAudioData
+    }
+
+    /// Save accumulated audio to a WAV file for batch transcription
+    /// - Returns: URL to the WAV file, or nil if no audio data
+    func saveAccumulatedAudioAsWAV() -> URL? {
+        audioDataLock.lock()
+        let audioData = accumulatedAudioData
+        audioDataLock.unlock()
+
+        guard !audioData.isEmpty else {
+            appLog("No accumulated audio data to save", category: "StreamingRecorder", level: .warning)
+            return nil
+        }
+
+        guard let fileURL = AudioUtils.saveAsWAV(pcmData: audioData, sampleRate: sampleRate, prefix: "streaming") else {
+            appLog("Failed to save WAV file", category: "StreamingRecorder", level: .error)
+            return nil
+        }
+
+        let durationSec = AudioUtils.duration(dataSize: audioData.count, sampleRate: sampleRate)
+        appLog("Saved accumulated audio to WAV: \(fileURL.lastPathComponent), ~\(String(format: "%.1f", durationSec))s", category: "StreamingRecorder")
+        return fileURL
+    }
+
+    /// Clear accumulated audio data
+    func clearAccumulatedAudio() {
+        audioDataLock.lock()
+        accumulatedAudioData = Data()
+        audioDataLock.unlock()
+        appLog("Cleared accumulated audio data", category: "StreamingRecorder")
     }
 }

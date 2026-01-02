@@ -57,13 +57,23 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     private var currentInstructions: String?  // System instructions for formatting
     private var sessionConfigured = false
 
+    /// Track last completed item ID to avoid double-processing duplicate events
+    private var lastCompletedItemId: String?
+
 
     /// OpenAI Realtime uses 24kHz PCM16
     static let requiredSampleRate = 24000
 
-    /// Use semantic VAD for intelligent speech segmentation
-    /// Semantic VAD chunks based on meaning, not just silence - with high eagerness for responsiveness
-    private let useSemanticVAD = true
+    /// Use server VAD for reliable speech detection with more frequent partials
+    /// Semantic VAD batches too aggressively - server VAD gives better real-time feedback
+    private let useSemanticVAD = false
+
+    /// Timer for periodic audio commits to supplement server_vad
+    /// This ensures real-time updates even during continuous speech
+    private var audioCommitTimer: Timer?
+
+    /// Interval between audio commits in seconds (1s to supplement server_vad)
+    private let audioCommitInterval: TimeInterval = 1.0
 
     // MARK: - Audio Route Detection
 
@@ -154,6 +164,8 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         fullTranscript = ""
         isFinishing = false
         sessionConfigured = false
+        periodicCommitCount = 0
+        lastCompletedItemId = nil
 
         // Create URL request with auth headers
         var request = URLRequest(url: url)
@@ -231,8 +243,8 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         }
 
         // Build turn detection configuration
-        // Semantic VAD chunks based on semantic meaning - handles segmentation intelligently
-        // Let OpenAI decide optimal eagerness with "auto"
+        // Use server_vad with short silence detection for responsive transcription
+        // Combined with periodic commits for real-time updates during speech
         let turnDetection: [String: Any]
         if useSemanticVAD {
             turnDetection = [
@@ -241,13 +253,15 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
             ]
             appLog("Using semantic_vad with eagerness: auto", category: "OpenAIStreaming")
         } else {
+            // Use server_vad with 300ms silence detection (like dictation4mac)
+            // This provides good speech segmentation while periodic commits ensure real-time updates
             turnDetection = [
                 "type": "server_vad",
-                "threshold": 0.5,           // Speech detection sensitivity (0.0-1.0)
-                "prefix_padding_ms": 300,   // Audio to keep before speech starts
-                "silence_duration_ms": 300  // Short for responsiveness
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 300
             ]
-            appLog("Using server_vad with threshold: 0.5, prefix: 300ms, silence: 300ms", category: "OpenAIStreaming")
+            appLog("Using server_vad with 300ms silence, threshold 0.5", category: "OpenAIStreaming")
         }
 
         // Build session configuration message
@@ -288,6 +302,9 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
                 appLog("Session configured successfully", category: "OpenAIStreaming")
                 self?.sessionConfigured = true
                 self?.connectionState = .connected
+
+                // Start periodic audio commits for real-time updates (when VAD is disabled)
+                self?.startAudioCommitTimer()
             }
         }
     }
@@ -323,8 +340,59 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         guard connectionState == .connected, !isFinishing else { return }
         isFinishing = true
 
+        // Stop the periodic commit timer
+        stopAudioCommitTimer()
+
         // Commit any remaining audio buffer to trigger final processing
         appLog("Finishing audio - final commit", category: "OpenAIStreaming")
+        sendAudioCommit()
+    }
+
+    // MARK: - Periodic Audio Commits
+
+    /// Start the periodic audio commit timer for real-time updates
+    /// Supplements server_vad by triggering transcription during continuous speech
+    private func startAudioCommitTimer() {
+        guard !useSemanticVAD else { return }  // Only needed for server_vad mode
+
+        stopAudioCommitTimer()  // Clear any existing timer
+
+        appLog("Starting periodic audio commit timer (interval: \(audioCommitInterval)s)", category: "OpenAIStreaming")
+
+        // Create timer on main run loop
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.audioCommitTimer = Timer.scheduledTimer(withTimeInterval: self.audioCommitInterval, repeats: true) { [weak self] _ in
+                self?.periodicAudioCommit()
+            }
+        }
+    }
+
+    /// Stop the periodic audio commit timer
+    private func stopAudioCommitTimer() {
+        DispatchQueue.main.async { [weak self] in
+            self?.audioCommitTimer?.invalidate()
+            self?.audioCommitTimer = nil
+        }
+    }
+
+    /// Track number of periodic commits for logging
+    private var periodicCommitCount = 0
+
+    /// Called periodically to commit buffered audio for transcription
+    private func periodicAudioCommit() {
+        guard connectionState == .connected, sessionConfigured, !isFinishing else { return }
+
+        periodicCommitCount += 1
+        if periodicCommitCount % 2 == 0 {  // Log every 2 seconds (2 * 1s)
+            appLog("Periodic audio commit #\(periodicCommitCount)", category: "OpenAIStreaming", level: .debug)
+        }
+
+        sendAudioCommit()
+    }
+
+    /// Send audio buffer commit message
+    private func sendAudioCommit() {
         let commitMessage: [String: Any] = [
             "type": "input_audio_buffer.commit"
         ]
@@ -342,11 +410,16 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     }
 
     func disconnect() {
+        appLog("Disconnecting WebSocket...", category: "OpenAIStreaming")
+
+        // Stop periodic commit timer first
+        stopAudioCommitTimer()
+
+        connectionState = .disconnected  // Set state to suppress post-disconnect errors
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         urlSession?.invalidateAndCancel()
         urlSession = nil
-        connectionState = .disconnected
         isFinishing = false
         sessionConfigured = false
     }
@@ -461,8 +534,17 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         case "conversation.item.input_audio_transcription.completed",
              "transcript.text.done":
             // Final transcription for this utterance
+            let itemId = json["item_id"] as? String ?? "<unknown>"
+
+            // Skip if we already processed this exact item (avoid duplicates)
+            if itemId == lastCompletedItemId {
+                appLog("Skipping duplicate completed event for: \(itemId)", category: "OpenAIStreaming", level: .debug)
+                return
+            }
+            lastCompletedItemId = itemId
+
             if let transcript = json["transcript"] as? String, !transcript.isEmpty {
-                appLog("Final transcript: \(transcript.count) chars", category: "OpenAIStreaming")
+                appLog("Final transcript (\(itemId)): \(transcript.count) chars", category: "OpenAIStreaming")
                 fullTranscript += transcript + " "
                 finalTranscriptSubject.send(transcript)
                 delegate?.didReceiveFinalTranscript(transcript)
@@ -513,6 +595,12 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     }
 
     private func handleError(_ error: Error) {
+        // Ignore errors if we've already disconnected (expected after cleanup)
+        guard connectionState != .disconnected else {
+            appLog("Ignoring post-disconnect error: \(error.localizedDescription)", category: "OpenAIStreaming", level: .debug)
+            return
+        }
+
         appLog("WebSocket error: \(error.localizedDescription)", category: "OpenAIStreaming", level: .error)
 
         let transcriptionError: TranscriptionError

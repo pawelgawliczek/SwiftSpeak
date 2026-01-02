@@ -99,15 +99,12 @@ struct QuickSettingsPopover: View {
                             settings.save()
                             KeyboardHaptics.lightTap()
                         }
-                        ToggleRow(title: "AI Predictions", isOn: $settings.aiPredictions) {
-                            settings.save()
-                            KeyboardHaptics.lightTap()
-                            viewModel.objectWillChange.send()
-                        }
                         ToggleRow(title: "Autocorrect", isOn: $settings.autocorrect) {
                             settings.save()
                             KeyboardHaptics.lightTap()
                         }
+                        // Note: Autocorrect language syncs with Spoken Language automatically
+
                         ToggleRow(title: "Smart Punctuation", isOn: $settings.smartPunctuation) {
                             settings.save()
                             KeyboardHaptics.lightTap()
@@ -178,6 +175,7 @@ struct QuickSettingsPopover: View {
             ("auto", "Auto-detect")
         ]
     }
+
 
     private func openMainAppSettings() {
         KeyboardHaptics.mediumTap()

@@ -89,10 +89,13 @@ struct ContentView: View {
         .onOpenURL { url in
             handleURLScheme(url)
         }
-        // Phase 6: Invalidate biometric session when app goes to background
+        // Phase 6: Handle app lifecycle events
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase == .background {
                 BiometricAuthManager.shared.invalidateSession()
+            } else if newPhase == .active {
+                // Refresh settings in case keyboard changed them
+                settings.refreshFromDefaults()
             }
         }
         // Phase 9: Fetch config on launch and show update sheet if needed
@@ -129,6 +132,11 @@ struct ContentView: View {
             if showSwiftLinkSetupOverlay {
                 SwiftLinkSetupOverlay(message: swiftLinkSetupMessage)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                    .onTapGesture {
+                        withAnimation {
+                            showSwiftLinkSetupOverlay = false
+                        }
+                    }
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSwiftLinkSetupOverlay)
@@ -347,6 +355,84 @@ struct ContentView: View {
             settings.selectedCustomTemplate = template
         } else {
             settings.selectedCustomTemplate = nil
+        }
+
+        // Check if we should auto-start SwiftLink instead of showing RecordingView
+        // When swiftLinkAutoStart is ON and SwiftLink is not active:
+        // 1. If we have source app info (from previous SwiftLink setup) → auto-return
+        // 2. If no source app info (first time) → show message to return manually (one-time)
+        if settings.swiftLinkAutoStart && !SwiftLinkSessionManager.shared.isSessionActive {
+            // Read source app info from App Groups (stored by keyboard from lastUsedSwiftLinkApp)
+            let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+            let sourceAppURLScheme = defaults?.string(forKey: Constants.Record.sourceAppURLScheme)
+            let sourceAppName = defaults?.string(forKey: Constants.Record.sourceAppName)
+            let sourceAppBundleId = defaults?.string(forKey: Constants.Record.sourceAppBundleId)
+
+            // Clear the stored info
+            defaults?.removeObject(forKey: Constants.Record.sourceAppURLScheme)
+            defaults?.removeObject(forKey: Constants.Record.sourceAppName)
+            defaults?.removeObject(forKey: Constants.Record.sourceAppBundleId)
+            defaults?.synchronize()
+
+            Task {
+                do {
+                    // If we have source app info, create target app and auto-return
+                    if let bundleId = sourceAppBundleId, let scheme = sourceAppURLScheme, let name = sourceAppName {
+                        appLog("SwiftLink auto-start: starting session and returning to \(name)", category: "Navigation")
+
+                        let targetApp = SwiftLinkApp(
+                            bundleId: bundleId,
+                            name: name,
+                            urlScheme: scheme
+                        )
+
+                        // Start SwiftLink session with target app
+                        _ = try await SwiftLinkSessionManager.shared.startSession(targetApp: targetApp)
+                        appLog("SwiftLink session started for \(name)", category: "SwiftLink")
+
+                        // Return to source app
+                        let returnURLString = scheme.contains("://") ? scheme : "\(scheme)://"
+                        if let returnURL = URL(string: returnURLString) {
+                            await MainActor.run {
+                                UIApplication.shared.open(returnURL) { success in
+                                    if success {
+                                        appLog("Returned to \(name) - ready for SwiftLink dictation", category: "SwiftLink")
+                                    } else {
+                                        appLog("Failed to return to \(name)", category: "SwiftLink", level: .warning)
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        // No source app info (first time) - start SwiftLink and show message
+                        appLog("SwiftLink auto-start: no source app info (first time setup)", category: "Navigation")
+
+                        await SwiftLinkSessionManager.shared.startBackgroundSession()
+                        appLog("SwiftLink session started - user should return manually", category: "SwiftLink")
+
+                        // Show one-time message about Apple limitation
+                        await MainActor.run {
+                            swiftLinkSetupMessage = "SwiftLink is ready!\n\nDue to Apple's security limitations, keyboard extensions cannot detect which app you're using. Please return to your app manually.\n\nThis is a one-time setup - next time it will work automatically."
+                            showSwiftLinkSetupOverlay = true
+                        }
+
+                        // Auto-dismiss overlay after 4 seconds
+                        try? await Task.sleep(nanoseconds: 4_000_000_000)
+                        await MainActor.run {
+                            withAnimation {
+                                showSwiftLinkSetupOverlay = false
+                            }
+                        }
+                    }
+                } catch {
+                    appLog("Failed to start SwiftLink session: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+                    // Fall back to showing RecordingView
+                    await MainActor.run {
+                        showRecording = true
+                    }
+                }
+            }
+            return
         }
 
         // Log the recording request

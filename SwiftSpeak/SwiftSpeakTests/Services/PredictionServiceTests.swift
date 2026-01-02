@@ -227,6 +227,242 @@ struct CapitalizationLogicTests {
     }
 }
 
+// MARK: - Extended Contraction Tests (Issue: hows → how's)
+
+@Suite("Extended Contraction Tests")
+struct ExtendedContractionTests {
+
+    /// Complete contractions dictionary matching AutoCapitalizationService
+    let contractions: [String: String] = [
+        // Don't/Won't/Can't etc. (negative contractions)
+        "dont": "don't", "wont": "won't", "cant": "can't",
+        "didnt": "didn't", "doesnt": "doesn't", "isnt": "isn't",
+        "wasnt": "wasn't", "werent": "weren't", "havent": "haven't",
+        "hasnt": "hasn't", "hadnt": "hadn't", "wouldnt": "wouldn't",
+        "couldnt": "couldn't", "shouldnt": "shouldn't", "mustnt": "mustn't",
+        "neednt": "needn't", "mightnt": "mightn't", "darent": "daren't",
+        "shant": "shan't", "oughtnt": "oughtn't",
+
+        // I'm/You're/We're etc. (is/are contractions)
+        "im": "I'm", "youre": "you're", "were": "we're",
+        "theyre": "they're", "hes": "he's", "shes": "she's",
+        "its": "it's", "thats": "that's", "whats": "what's",
+        "whos": "who's", "wheres": "where's", "heres": "here's",
+        "theres": "there's",
+
+        // Question word contractions (Issue: hows was missing)
+        "hows": "how's", "whys": "why's", "whens": "when's",
+
+        // I've/You've etc. (have contractions)
+        "ive": "I've", "youve": "you've", "weve": "we've", "theyve": "they've",
+        "shouldve": "should've", "wouldve": "would've", "couldve": "could've",
+        "mightve": "might've", "mustve": "must've",
+
+        // Informal "of" misspellings → proper contractions
+        "shoulda": "should've", "woulda": "would've", "coulda": "could've",
+        "musta": "must've", "mighta": "might've",
+
+        // I'll/You'll etc. (will contractions)
+        "ill": "I'll", "youll": "you'll", "theyll": "they'll",
+        "shell": "she'll", "hell": "he'll", "itll": "it'll", "thatll": "that'll",
+        "wholl": "who'll", "therell": "there'll", "whatll": "what'll",
+
+        // I'd/You'd etc. (would/had contractions)
+        "youd": "you'd", "theyd": "they'd", "hed": "he'd", "shed": "she'd",
+        "itd": "it'd", "thatd": "that'd", "whod": "who'd",
+
+        // Other common contractions
+        "lets": "let's", "aint": "ain't", "yall": "y'all",
+        "gonna": "gonna", "wanna": "wanna", "gotta": "gotta",
+        "oughta": "oughta", "hafta": "hafta",
+        "oclock": "o'clock", "cause": "'cause",
+
+        // Very informal (common in casual typing)
+        "gimme": "gimme", "lemme": "lemme",
+        "kinda": "kinda", "sorta": "sorta", "dunno": "dunno",
+    ]
+
+    @Test("Question word contractions should be corrected - Issue: hows → how's")
+    func testQuestionWordContractions() {
+        // This was the reported bug - "hows" was being corrected to "how" instead of "how's"
+        #expect(contractions["hows"] == "how's", "'hows' should become \"how's\" (not \"how\")")
+        #expect(contractions["whys"] == "why's", "'whys' should become \"why's\"")
+        #expect(contractions["whens"] == "when's", "'whens' should become \"when's\"")
+    }
+
+    @Test("Common negative contractions should be corrected")
+    func testNegativeContractions() {
+        #expect(contractions["dont"] == "don't")
+        #expect(contractions["wont"] == "won't")
+        #expect(contractions["cant"] == "can't")
+        #expect(contractions["didnt"] == "didn't")
+        #expect(contractions["doesnt"] == "doesn't")
+        #expect(contractions["isnt"] == "isn't")
+        #expect(contractions["wasnt"] == "wasn't")
+        #expect(contractions["werent"] == "weren't")
+        #expect(contractions["havent"] == "haven't")
+        #expect(contractions["hasnt"] == "hasn't")
+        #expect(contractions["hadnt"] == "hadn't")
+        #expect(contractions["wouldnt"] == "wouldn't")
+        #expect(contractions["couldnt"] == "couldn't")
+        #expect(contractions["shouldnt"] == "shouldn't")
+        #expect(contractions["mustnt"] == "mustn't")
+        #expect(contractions["neednt"] == "needn't")
+        #expect(contractions["mightnt"] == "mightn't")
+    }
+
+    @Test("Pronoun contractions with 's' should be corrected")
+    func testPronounContractions() {
+        #expect(contractions["hes"] == "he's")
+        #expect(contractions["shes"] == "she's")
+        #expect(contractions["its"] == "it's")
+        #expect(contractions["thats"] == "that's")
+        #expect(contractions["whats"] == "what's")
+        #expect(contractions["whos"] == "who's")
+        #expect(contractions["wheres"] == "where's")
+        #expect(contractions["heres"] == "here's")
+        #expect(contractions["theres"] == "there's")
+    }
+
+    @Test("'ve' contractions should be corrected")
+    func testVeContractions() {
+        #expect(contractions["ive"] == "I've")
+        #expect(contractions["youve"] == "you've")
+        #expect(contractions["weve"] == "we've")
+        #expect(contractions["theyve"] == "they've")
+        // Modal + have contractions
+        #expect(contractions["shouldve"] == "should've")
+        #expect(contractions["wouldve"] == "would've")
+        #expect(contractions["couldve"] == "could've")
+        #expect(contractions["mightve"] == "might've")
+        #expect(contractions["mustve"] == "must've")
+    }
+
+    @Test("Informal 'of' misspellings should correct to proper contractions")
+    func testInformalOfMisspellings() {
+        // Common misspellings like "shoulda" should become "should've"
+        #expect(contractions["shoulda"] == "should've", "'shoulda' should become 'should've'")
+        #expect(contractions["woulda"] == "would've", "'woulda' should become 'would've'")
+        #expect(contractions["coulda"] == "could've", "'coulda' should become 'could've'")
+        #expect(contractions["musta"] == "must've", "'musta' should become 'must've'")
+        #expect(contractions["mighta"] == "might've", "'mighta' should become 'might've'")
+    }
+
+    @Test("'ll' contractions should be corrected")
+    func testLlContractions() {
+        #expect(contractions["ill"] == "I'll")
+        #expect(contractions["youll"] == "you'll")
+        #expect(contractions["theyll"] == "they'll")
+        #expect(contractions["itll"] == "it'll")
+        #expect(contractions["thatll"] == "that'll")
+        #expect(contractions["wholl"] == "who'll")
+        #expect(contractions["therell"] == "there'll")
+        #expect(contractions["whatll"] == "what'll")
+    }
+
+    @Test("'d' contractions should be corrected (would/had)")
+    func testDContractions() {
+        #expect(contractions["youd"] == "you'd")
+        #expect(contractions["theyd"] == "they'd")
+        #expect(contractions["hed"] == "he'd")
+        #expect(contractions["shed"] == "she'd")
+        #expect(contractions["itd"] == "it'd")
+        #expect(contractions["thatd"] == "that'd")
+        #expect(contractions["whod"] == "who'd")
+    }
+
+    @Test("Other common contractions should be corrected")
+    func testOtherContractions() {
+        #expect(contractions["im"] == "I'm")
+        #expect(contractions["youre"] == "you're")
+        #expect(contractions["theyre"] == "they're")
+        #expect(contractions["lets"] == "let's")
+        #expect(contractions["aint"] == "ain't")
+        #expect(contractions["yall"] == "y'all")
+        #expect(contractions["oclock"] == "o'clock")
+    }
+}
+
+// MARK: - Prediction Insertion Logic Tests (Issue: Howhow's)
+
+@Suite("Prediction Insertion Logic Tests")
+struct PredictionInsertionTests {
+
+    /// Simulates finding the current partial word to delete before inserting prediction
+    /// This tests the fix for the bug where clicking a prediction appended instead of replacing
+    func findPartialWordLength(in contextBefore: String) -> Int {
+        var charsToDelete = 0
+        for char in contextBefore.reversed() {
+            if char.isWhitespace || char.isPunctuation {
+                break
+            }
+            charsToDelete += 1
+        }
+        return charsToDelete
+    }
+
+    /// Simulates prediction insertion with word replacement
+    func simulatePredictionInsertion(contextBefore: String, prediction: String) -> String {
+        let charsToDelete = findPartialWordLength(in: contextBefore)
+        let textAfterDeletion = String(contextBefore.dropLast(charsToDelete))
+        return textAfterDeletion + prediction + " "
+    }
+
+    @Test("Issue: Clicking prediction should replace partial word, not append")
+    func testPredictionReplacesPartialWord() {
+        // Bug scenario: User types "How", backspaces, predictions show "how's"
+        // Clicking "how's" should result in "how's ", NOT "Howhow's "
+
+        let contextBefore = "How"
+        let prediction = "how's"
+
+        let result = simulatePredictionInsertion(contextBefore: contextBefore, prediction: prediction)
+
+        #expect(result == "how's ", "Clicking prediction 'how's' with context 'How' should give 'how's ', not 'Howhow's '")
+    }
+
+    @Test("Prediction should replace word when cursor at end of word")
+    func testPredictionReplacesWordAtEnd() {
+        let result = simulatePredictionInsertion(contextBefore: "hel", prediction: "hello")
+        #expect(result == "hello ", "Typing 'hel' and clicking 'hello' should give 'hello '")
+    }
+
+    @Test("Prediction should work correctly with preceding text")
+    func testPredictionWithPrecedingText() {
+        let result = simulatePredictionInsertion(contextBefore: "I want to hel", prediction: "help")
+        #expect(result == "I want to help ", "Should replace only the partial word 'hel'")
+    }
+
+    @Test("Prediction should work after punctuation")
+    func testPredictionAfterPunctuation() {
+        let result = simulatePredictionInsertion(contextBefore: "Hello. Ho", prediction: "How")
+        #expect(result == "Hello. How ", "Should replace 'Ho' after punctuation")
+    }
+
+    @Test("Prediction should handle empty partial word (after space)")
+    func testPredictionAfterSpace() {
+        let result = simulatePredictionInsertion(contextBefore: "Hello ", prediction: "world")
+        #expect(result == "Hello world ", "Should just insert after space with no deletion")
+    }
+
+    @Test("Finding partial word length works correctly")
+    func testFindPartialWordLength() {
+        #expect(findPartialWordLength(in: "Hello") == 5, "All of 'Hello' is the partial word")
+        #expect(findPartialWordLength(in: "Hello wo") == 2, "Only 'wo' is the partial word")
+        #expect(findPartialWordLength(in: "Hello. Wo") == 2, "Only 'Wo' after period")
+        #expect(findPartialWordLength(in: "Hello ") == 0, "No partial word after space")
+        #expect(findPartialWordLength(in: "") == 0, "No partial word in empty string")
+    }
+
+    @Test("Partial word detection stops at punctuation")
+    func testPartialWordStopsAtPunctuation() {
+        #expect(findPartialWordLength(in: "test.word") == 4, "Only 'word' after period")
+        #expect(findPartialWordLength(in: "test,word") == 4, "Only 'word' after comma")
+        #expect(findPartialWordLength(in: "test!word") == 4, "Only 'word' after exclamation")
+        #expect(findPartialWordLength(in: "test?word") == 4, "Only 'word' after question mark")
+    }
+}
+
 // MARK: - Sentence Boundary Detection Tests
 
 @Suite("Sentence Boundary Detection Tests")

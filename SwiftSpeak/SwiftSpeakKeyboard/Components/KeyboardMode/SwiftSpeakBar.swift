@@ -69,11 +69,12 @@ struct SwiftSpeakBar: View {
                 )
             }
 
-            // Transcribe button
+            // Transcribe button (tap to record, long press to toggle edit mode)
             TranscribeButton(
                 isConfigured: viewModel.isProviderConfigured,
-                isEditMode: viewModel.hasTextInField && viewModel.isPro,
-                action: onTranscribeTap
+                isEditMode: viewModel.isEditModeEnabled && viewModel.isPro,
+                action: onTranscribeTap,
+                onLongPress: { viewModel.toggleEditMode() }
             )
         }
         .padding(.horizontal, 8)
@@ -334,6 +335,7 @@ private struct TranscribeButton: View {
     let isConfigured: Bool
     let isEditMode: Bool
     let action: () -> Void
+    var onLongPress: (() -> Void)? = nil  // Long press to toggle edit mode
 
     @State private var isPressed = false
 
@@ -395,12 +397,19 @@ private struct TranscribeButton: View {
         }
         .scaleEffect(isPressed ? 0.92 : 1.0)
         .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
-        .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
-            if pressing && !isPressed {
-                HapticManager.mediumTap()
-            }
-            isPressed = pressing
-        }, perform: {})
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    // Long press: toggle edit mode
+                    HapticManager.mediumTap()
+                    onLongPress?()
+                }
+        )
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in isPressed = true }
+                .onEnded { _ in isPressed = false }
+        )
         .simultaneousGesture(
             TapGesture().onEnded {
                 action()

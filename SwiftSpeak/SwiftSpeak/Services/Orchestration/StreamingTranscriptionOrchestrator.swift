@@ -139,7 +139,9 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
         }
     }
 
-    /// Stop streaming and finalize transcription
+    /// Stop streaming and finalize transcription using hybrid approach
+    /// - Real-time streaming provides visual feedback during recording
+    /// - Final transcription uses batch Whisper API for better quality/grammar
     func stopStreaming() async -> String? {
         appLog("stopStreaming() called, current state: \(String(describing: self.state))", category: "StreamingOrch")
 
@@ -148,28 +150,69 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
             return nil
         }
 
-        // Stop recording
+        // Wait for all in-flight audio chunks to be accumulated
+        // The audio tap runs on a background queue and may have data in transit
+        // Use 300ms to ensure we capture the final audio chunks from the audio engine
+        try? await Task.sleep(nanoseconds: 300_000_000)  // 300ms buffer flush time
+
+        // Stop recording and get accumulated audio before cleanup
         appLog("Stopping audio recorder...", category: "StreamingOrch")
+        let audioURL = streamingAudioRecorder?.saveAccumulatedAudioAsWAV()
         streamingAudioRecorder?.stopRecording()
 
-        // Signal end of audio to provider
-        appLog("Signaling end of audio to provider...", category: "StreamingOrch")
+        // Signal end of audio to streaming provider (for cleanup)
+        appLog("Signaling end of audio to streaming provider...", category: "StreamingOrch")
         streamingProvider?.finishAudio()
 
-        // Wait for final transcripts - OpenAI needs time to process and return transcription
-        appLog("Waiting for final transcripts (2 seconds)...", category: "StreamingOrch")
-        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds for transcription to complete
+        // Get provider type before disconnecting
+        let isOpenAI = streamingProvider?.providerId == .openAI
 
-        // Get final transcript
-        let providerTranscript = streamingProvider?.fullTranscript ?? ""
-        let localTranscript = fullTranscript
-        let transcript = providerTranscript.isEmpty ? localTranscript : providerTranscript
-        appLog("Final transcript from provider: \(providerTranscript.count) chars, local: \(localTranscript.count) chars", category: "StreamingOrch")
-
-        // Disconnect
+        // Disconnect streaming service
         appLog("Disconnecting from streaming service...", category: "StreamingOrch")
         streamingProvider?.disconnect()
         streamingProvider = nil
+
+        // HYBRID APPROACH (OpenAI only): Use batch Whisper API for final transcription
+        // OpenAI streaming is good for real-time feedback but Whisper API provides
+        // better quality and grammar handling when processing the full audio
+        // Other providers (Deepgram, AssemblyAI) have good streaming quality, use their result directly
+        var transcript = ""
+
+        if isOpenAI, let audioURL = audioURL {
+            appLog("OpenAI hybrid approach: sending full audio to Whisper API for final transcription...", category: "StreamingOrch")
+            state = .processing
+
+            do {
+                transcript = try await transcribeWithWhisper(audioURL: audioURL)
+                appLog("Whisper transcription complete: \(transcript.count) chars", category: "StreamingOrch")
+
+                // Clean up temp file
+                try? FileManager.default.removeItem(at: audioURL)
+            } catch {
+                appLog("Whisper transcription failed: \(error.localizedDescription), falling back to streaming result", category: "StreamingOrch", level: .warning)
+                // Fall back to streaming result
+                transcript = fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Clean up temp file
+                try? FileManager.default.removeItem(at: audioURL)
+            }
+        } else {
+            // For non-OpenAI providers or if no audio file, use streaming result directly
+            if !isOpenAI {
+                appLog("Using streaming result directly (provider: \(settings.selectedTranscriptionProvider.displayName))", category: "StreamingOrch")
+            } else {
+                appLog("No audio file saved, using streaming result", category: "StreamingOrch", level: .warning)
+            }
+            transcript = fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            // Clean up temp file if exists
+            if let audioURL = audioURL {
+                try? FileManager.default.removeItem(at: audioURL)
+            }
+        }
+
+        // Clean up recorder
+        streamingAudioRecorder?.clearAccumulatedAudio()
         streamingAudioRecorder = nil
 
         if transcript.isEmpty {
@@ -188,6 +231,24 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
 
         // Don't auto-reset - let the view handle dismissal
         return finalText
+    }
+
+    /// Transcribe audio file using batch Whisper API (better quality than streaming)
+    private func transcribeWithWhisper(audioURL: URL) async throws -> String {
+        // Get the transcription provider (should be OpenAI for streaming)
+        guard let provider = providerFactory.createTranscriptionProvider(for: settings.selectedTranscriptionProvider) else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        appLog("Calling Whisper API with audio file: \(audioURL.lastPathComponent)", category: "StreamingOrch")
+
+        // Use the standard transcription method
+        let transcript = try await provider.transcribe(
+            audioURL: audioURL,
+            language: settings.selectedDictationLanguage
+        )
+
+        return transcript
     }
 
     /// Cancel streaming without processing

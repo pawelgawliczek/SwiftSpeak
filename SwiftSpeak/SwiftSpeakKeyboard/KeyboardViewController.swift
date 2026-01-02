@@ -25,23 +25,22 @@ class KeyboardViewController: UIInputViewController {
         // Update Full Access status in shared defaults for main app to detect
         updateFullAccessStatus()
 
-        // Initialize autocorrect service in background
-        Task {
-            await AutocorrectService.shared.initialize()
-        }
-
         // Set up the SwiftUI keyboard view
+        keyboardLog("Setting up viewModel...", category: "Lifecycle")
         viewModel.textDocumentProxy = textDocumentProxy
         viewModel.hostViewController = self
 
+        keyboardLog("Creating KeyboardView...", category: "Lifecycle")
         let swiftUIView = KeyboardView(viewModel: viewModel) { [weak self] in
             self?.advanceToNextInputMode()
         }
 
+        keyboardLog("Creating hostingController...", category: "Lifecycle")
         let hostingController = UIHostingController(rootView: swiftUIView)
         hostingController.view.translatesAutoresizingMaskIntoConstraints = false
         hostingController.view.backgroundColor = .clear
 
+        keyboardLog("Adding hostingController to view...", category: "Lifecycle")
         addChild(hostingController)
         view.addSubview(hostingController.view)
         hostingController.didMove(toParent: self)

@@ -30,7 +30,7 @@ enum PredictionSource {
     case local          // Based on vocabulary and typing context
     case vocabulary     // From custom vocabulary
     case frequent       // From recent/frequent words
-    case llm            // From AI provider
+    case context        // From context-aware predictions
 }
 
 // MARK: - Prediction Context
@@ -38,11 +38,9 @@ struct PredictionContext {
     let fullText: String
     let currentWord: String
     let previousWords: [String]
-    let shouldUseLLM: Bool
 
-    init(fullText: String, shouldUseLLM: Bool = false) {
+    init(fullText: String) {
         self.fullText = fullText
-        self.shouldUseLLM = shouldUseLLM
 
         // Extract current word being typed
         let words = fullText.split(separator: " ").map(String.init)
