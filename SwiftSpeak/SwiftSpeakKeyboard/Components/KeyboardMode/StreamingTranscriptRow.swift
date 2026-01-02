@@ -1,8 +1,12 @@
+// LEGACY: This file is deprecated and kept for reference only
+// Replaced by: SwiftLinkStreamingOverlay in KeyboardView.swift on 2025-01-02
+// Reason: New WhatsApp-style overlay with integrated transcript display
+// DO NOT USE - Will be removed in future cleanup
 //
 //  StreamingTranscriptRow.swift
 //  SwiftSpeakKeyboard
 //
-//  Shows live streaming transcript text during recording (Phase 13.10)
+//  [LEGACY] Shows live streaming transcript text during recording (Phase 13.10)
 //
 
 import SwiftUI

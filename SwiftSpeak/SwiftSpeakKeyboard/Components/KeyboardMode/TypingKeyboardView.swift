@@ -19,14 +19,6 @@ struct TypingKeyboardView: View {
 
     @State private var keyboardSettings: KeyboardSettings = .load()
 
-    private var isRecording: Bool {
-        viewModel.isSwiftLinkRecording ||
-        viewModel.processingStatus.currentStep == "transcribing" ||
-        viewModel.processingStatus.currentStep == "formatting" ||
-        viewModel.processingStatus.currentStep == "translating" ||
-        viewModel.swiftLinkProcessingStatus == "processing"
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             // Phase 13.12: AI Sentence Prediction Panel (replaces keyboard)
@@ -68,42 +60,25 @@ struct TypingKeyboardView: View {
                 )
                 .transition(.opacity)
             } else {
-                // Transform between SwiftSpeak bar and Recording bar
-                if isRecording {
-                    RecordingBar(
-                        viewModel: viewModel,
-                        onStop: {
-                            if viewModel.isSwiftLinkRecording {
-                                viewModel.stopSwiftLinkRecording()
-                            }
-                        }
-                    )
-                    .transition(.opacity)
-
-                    // Show streaming transcript in bottom row during recording
-                    StreamingTranscriptRow(viewModel: viewModel)
-                        .transition(.opacity)
-                } else {
-                    SwiftSpeakBar(
-                        viewModel: viewModel,
-                        onTranslationTap: onTranslationTap,
-                        onContextTap: onContextTap,
-                        onModeTap: onModeTap,
-                        onSwiftLinkTap: onSwiftLinkTap,
-                        onTranscribeTap: {
-                            viewModel.startTranscription()
-                        },
-                        onAIProcessTap: {
-                            viewModel.processTextWithAI()
-                        }
-                    )
-                    .transition(.opacity)
-
-                    // Only show predictions if AI Predictions is enabled
-                    if keyboardSettings.aiPredictions {
-                        PredictionRow(viewModel: viewModel)
+                // SwiftSpeak bar with voice controls
+                // NOTE: Recording UI is now handled by SwiftLinkStreamingOverlay in KeyboardView.swift
+                SwiftSpeakBar(
+                    viewModel: viewModel,
+                    onTranslationTap: onTranslationTap,
+                    onContextTap: onContextTap,
+                    onModeTap: onModeTap,
+                    onSwiftLinkTap: onSwiftLinkTap,
+                    onTranscribeTap: {
+                        viewModel.startTranscription()
+                    },
+                    onAIProcessTap: {
+                        viewModel.processTextWithAI()
                     }
-                }
+                )
+                .transition(.opacity)
+
+                // Always show prediction row (local predictions)
+                PredictionRow(viewModel: viewModel)
 
                 // Main QWERTY keyboard - fills remaining space
                 QWERTYKeyboard(
@@ -115,6 +90,10 @@ struct TypingKeyboardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KeyboardTheme.keyboardBackground)  // Fill entire area with keyboard background
+        // Reload settings on appear to pick up changes from main app
+        .onAppear {
+            keyboardSettings = .load()
+        }
         // Refresh settings when quick settings closes
         .onChange(of: viewModel.showQuickSettings) { _, isShowing in
             if !isShowing {

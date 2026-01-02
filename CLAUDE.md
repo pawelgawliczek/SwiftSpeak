@@ -789,3 +789,27 @@ Each error includes:
 - Any prompt engineering decisions
 
 The exact wording of prompts significantly impacts output quality and user experience. Always present proposed prompts to the user for review before implementing.
+
+## Legacy and Duplicate Code Policy
+
+**IMPORTANT:** When encountering duplicate or legacy code during development:
+
+1. **Remove duplicate code immediately** - Don't leave both old and new implementations active
+2. **Mark legacy files clearly** - Add `// LEGACY:` header comment explaining:
+   - What replaced this code
+   - Why it's kept (reference only, backwards compatibility, etc.)
+   - Date marked as legacy
+3. **Update this CLAUDE.md** if the legacy file was previously documented
+4. **Prefer deletion over marking** - If code is truly unused, delete it entirely
+
+**Legacy File Header Template:**
+```swift
+// LEGACY: This file is deprecated and kept for reference only
+// Replaced by: [NewFile.swift] on [YYYY-MM-DD]
+// Reason: [Brief explanation of why this was replaced]
+// DO NOT USE - Will be removed in future cleanup
+```
+
+**Current Legacy Files:**
+- `RecordingBar.swift` - Replaced by SwiftLinkStreamingOverlay in KeyboardView.swift (2025-01)
+- `StreamingTranscriptRow.swift` - Replaced by SwiftLinkStreamingOverlay in KeyboardView.swift (2025-01)

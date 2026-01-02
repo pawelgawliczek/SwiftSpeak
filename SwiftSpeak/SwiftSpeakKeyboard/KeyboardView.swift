@@ -171,6 +171,23 @@ struct KeyboardView: View {
                 )
                 .transition(.opacity)
             }
+
+            // SwiftLink Streaming Overlay - TOP LEVEL (shows over both voice and typing modes)
+            if shouldShowSwiftLinkOverlay {
+                SwiftLinkStreamingOverlay(
+                    transcript: viewModel.swiftLinkStreamingTranscript,
+                    isProcessing: viewModel.swiftLinkProcessingStatus == "processing",
+                    isComplete: viewModel.swiftLinkProcessingStatus == "complete",
+                    audioLevels: viewModel.swiftLinkAudioLevels,
+                    recordingDuration: viewModel.swiftLinkRecordingDuration,
+                    onStop: {
+                        KeyboardHaptics.mediumTap()
+                        viewModel.stopSwiftLinkRecording()
+                    }
+                )
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.2), value: shouldShowSwiftLinkOverlay)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(
@@ -375,12 +392,14 @@ struct KeyboardView: View {
                     }
 
                     // Main record button at center
+                    // Long press to toggle between transcription and edit modes
                     MainActionButton(
                         isConfigured: viewModel.isProviderConfigured,
                         isSwiftLinkActive: viewModel.isSwiftLinkSessionActive,
                         isSwiftLinkRecording: viewModel.isSwiftLinkRecording,
-                        isEditMode: viewModel.hasTextInField && viewModel.isPro,  // Phase 12: Edit mode (Pro only)
-                        action: { viewModel.startTranscription() }
+                        isEditMode: viewModel.isEditModeEnabled && viewModel.isPro,
+                        action: { viewModel.startTranscription() },
+                        onLongPress: { viewModel.toggleEditMode() }
                     )
 
                     // Enter/Send button - only visible when there's text (right side)
@@ -397,110 +416,247 @@ struct KeyboardView: View {
                 Spacer()
                     .frame(height: 25)
             }
+        }
+    }
 
-            // SwiftLink Streaming Overlay (shows during streaming AND processing)
-            if viewModel.isSwiftLinkStreaming || viewModel.swiftLinkProcessingStatus == "streaming" || viewModel.swiftLinkProcessingStatus == "processing" {
-                SwiftLinkStreamingOverlay(
-                    transcript: viewModel.swiftLinkStreamingTranscript,
-                    isProcessing: viewModel.swiftLinkProcessingStatus == "processing",
-                    onStop: {
-                        KeyboardHaptics.mediumTap()
-                        viewModel.stopSwiftLinkRecording()
-                    }
+    // MARK: - SwiftLink Overlay Condition
+    private var shouldShowSwiftLinkOverlay: Bool {
+        viewModel.isSwiftLinkStreaming ||
+        viewModel.swiftLinkProcessingStatus == "streaming" ||
+        viewModel.swiftLinkProcessingStatus == "processing" ||
+        viewModel.swiftLinkProcessingStatus == "complete" ||
+        viewModel.isSwiftLinkRecording
+    }
+}
+
+// MARK: - SwiftLink Streaming Overlay (Full Screen)
+struct SwiftLinkStreamingOverlay: View {
+    let transcript: String
+    let isProcessing: Bool
+    var isComplete: Bool = false
+    let audioLevels: [Float]
+    let recordingDuration: TimeInterval
+    let onStop: () -> Void
+
+    @State private var pulseScale: CGFloat = 1.0
+
+    private var isRecording: Bool {
+        !isProcessing && !isComplete
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var transcriptDisplayText: String {
+        if isComplete {
+            return "Text inserted!"
+        } else if isProcessing {
+            return transcript.isEmpty ? "Finishing transcription..." : transcript
+        } else {
+            return transcript.isEmpty ? "Listening..." : transcript
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // Top Recording Bar (accent gradient background)
+            HStack(spacing: 12) {
+                // Recording indicator + Timer
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 10, height: 10)
+                        .scaleEffect(isRecording ? pulseScale : 1.0)
+
+                    Text(formatDuration(recordingDuration))
+                        .font(.system(size: 16, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 80, alignment: .leading)
+
+                // Wide Mirrored Waveform
+                SwiftLinkWaveformView(
+                    audioLevels: audioLevels,
+                    accentColor: .white,
+                    isActive: isRecording
                 )
-                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .frame(height: 36)
+
+                // Stop Button
+                Button(action: {
+                    KeyboardHaptics.mediumTap()
+                    onStop()
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 12, weight: .bold))
+                        Text("Stop")
+                            .font(.system(size: 14, weight: .bold))
+                    }
+                    .foregroundStyle(KeyboardTheme.accent)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .background(Color.white, in: Capsule())
+                }
+                .buttonStyle(.plain)
+                .opacity(isRecording ? 1 : 0)
+                .disabled(!isRecording)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                LinearGradient(
+                    colors: [KeyboardTheme.accent, KeyboardTheme.accent.opacity(0.85)],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+
+            // Transcript area with faint logo watermark
+            ZStack {
+                // Faint SwiftSpeak logo watermark
+                Image("SwiftSpeakLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 120, height: 120)
+                    .opacity(0.06)
+
+                // Transcript content
+                VStack(spacing: 0) {
+                    // Status & Transcript Row
+                    HStack(spacing: 10) {
+                        // Status indicator
+                        if isComplete {
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.green)
+                        } else if isProcessing {
+                            ProgressView()
+                                .progressViewStyle(.circular)
+                                .tint(KeyboardTheme.accent)
+                                .scaleEffect(0.6)
+                                .frame(width: 14, height: 14)
+                        } else {
+                            Circle()
+                                .fill(KeyboardTheme.accent)
+                                .frame(width: 8, height: 8)
+                        }
+
+                        // Transcript text
+                        Text(transcriptDisplayText)
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.9))
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+
+                    Spacer()
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(KeyboardTheme.keyboardBackground)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(KeyboardTheme.keyboardBackground)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                pulseScale = 1.5
             }
         }
     }
 }
 
-// MARK: - SwiftLink Streaming Overlay
-struct SwiftLinkStreamingOverlay: View {
-    let transcript: String
-    let isProcessing: Bool
-    let onStop: () -> Void
+// MARK: - Smooth Mirrored Bar Waveform
+struct SwiftLinkWaveformView: View {
+    let audioLevels: [Float]
+    let accentColor: Color
+    let isActive: Bool
 
-    @State private var pulseScale: CGFloat = 1.0
-    @State private var processingRotation: Double = 0
+    private let barCount = 24
+    private let barSpacing: CGFloat = 2
+
+    // Smooth the audio levels to prevent jitter
+    private var smoothedLevels: [Float] {
+        guard !audioLevels.isEmpty else { return [] }
+
+        // Interpolate audio levels to match bar count
+        var result: [Float] = []
+        for i in 0..<barCount {
+            let position = Float(i) / Float(barCount - 1) * Float(audioLevels.count - 1)
+            let index = Int(position)
+            let fraction = position - Float(index)
+
+            if index + 1 < audioLevels.count {
+                let interpolated = audioLevels[index] * (1 - fraction) + audioLevels[index + 1] * fraction
+                result.append(interpolated)
+            } else {
+                result.append(audioLevels[min(index, audioLevels.count - 1)])
+            }
+        }
+        return result
+    }
 
     var body: some View {
-        ZStack {
-            // Semi-transparent green background
-            Color.green.opacity(0.85)
-                .ignoresSafeArea()
+        Canvas { context, size in
+            let centerY = size.height / 2
+            let maxBarHeight = size.height / 2 - 2
+            let totalWidth = size.width
+            let barWidth = (totalWidth - CGFloat(barCount - 1) * barSpacing) / CGFloat(barCount)
 
-            VStack(spacing: 16) {
-                // Status indicator
-                HStack(spacing: 8) {
-                    if isProcessing {
-                        // Processing spinner
-                        Image(systemName: "arrow.trianglehead.2.clockwise")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(.white)
-                            .rotationEffect(.degrees(processingRotation))
-                            .animation(
-                                .linear(duration: 1).repeatForever(autoreverses: false),
-                                value: processingRotation
-                            )
-                    } else {
-                        // Live pulsing dot
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 10, height: 10)
-                            .scaleEffect(pulseScale)
-                            .animation(
-                                .easeInOut(duration: 0.6).repeatForever(autoreverses: true),
-                                value: pulseScale
-                            )
-                    }
+            let levels = smoothedLevels
 
-                    Text(isProcessing ? "PROCESSING" : "LIVE")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.white.opacity(0.2), in: Capsule())
-
-                // Transcript text
-                ScrollView {
-                    Text(isProcessing ? (transcript.isEmpty ? "Finishing transcription..." : transcript) : (transcript.isEmpty ? "Listening..." : transcript))
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                        .frame(maxWidth: .infinity)
-                }
-                .frame(maxHeight: 120)
-
-                // Button - only show stop when not processing
-                if !isProcessing {
-                    Button(action: onStop) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "stop.fill")
-                                .font(.system(size: 14, weight: .semibold))
-                            Text("Stop & Insert")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .foregroundStyle(.green)
-                        .padding(.horizontal, 24)
-                        .padding(.vertical, 12)
-                        .background(Color.white, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
+            for i in 0..<barCount {
+                // Get audio level for this bar
+                let audioLevel: Float
+                if i < levels.count && !levels.isEmpty {
+                    audioLevel = levels[i]
                 } else {
-                    // Processing indicator text
-                    Text("Please wait...")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.8))
-                        .padding(.vertical, 12)
+                    audioLevel = 0.1  // Minimum visible level
                 }
+
+                // Calculate height based on audio level
+                let height: CGFloat
+                if isActive {
+                    // Use real audio level, ensure minimum visibility
+                    let baseHeight = CGFloat(audioLevel) * maxBarHeight
+                    height = max(3, min(maxBarHeight, baseHeight + 3))
+                } else {
+                    // Minimal bars when not active
+                    height = 3
+                }
+
+                let x = CGFloat(i) * (barWidth + barSpacing)
+
+                // Top bar (above center)
+                let topRect = CGRect(
+                    x: x,
+                    y: centerY - height,
+                    width: barWidth,
+                    height: height
+                )
+
+                // Bottom bar (reflection)
+                let bottomRect = CGRect(
+                    x: x,
+                    y: centerY + 1,
+                    width: barWidth,
+                    height: height * 0.6
+                )
+
+                // Draw bars
+                let topPath = RoundedRectangle(cornerRadius: barWidth / 2)
+                    .path(in: topRect)
+                context.fill(topPath, with: .color(accentColor.opacity(0.9)))
+
+                let bottomPath = RoundedRectangle(cornerRadius: barWidth / 2)
+                    .path(in: bottomRect)
+                context.fill(bottomPath, with: .color(accentColor.opacity(0.4)))
             }
-            .padding(.vertical, 20)
-        }
-        .onAppear {
-            pulseScale = 1.3
-            processingRotation = 360
         }
     }
 }
@@ -733,8 +889,9 @@ struct MainActionButton: View {
     let isConfigured: Bool
     var isSwiftLinkActive: Bool = false
     var isSwiftLinkRecording: Bool = false
-    var isEditMode: Bool = false  // Phase 12: Edit mode when text exists in field
+    var isEditMode: Bool = false  // Edit mode toggle (long press to switch)
     let action: () -> Void
+    var onLongPress: (() -> Void)? = nil  // Long press to toggle edit mode
 
     @State private var isPressed = false
     @State private var wavePhase: Double = 0
@@ -863,6 +1020,14 @@ struct MainActionButton: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.6), value: isPressed)
         }
         .buttonStyle(.plain)
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5)
+                .onEnded { _ in
+                    // Long press: toggle edit mode
+                    KeyboardHaptics.mediumTap()
+                    onLongPress?()
+                }
+        )
         .simultaneousGesture(
             DragGesture(minimumDistance: 0)
                 .onChanged { _ in isPressed = true }
@@ -1669,6 +1834,8 @@ class KeyboardViewModel: ObservableObject {
     @Published var isSwiftLinkStreaming: Bool = false
     /// Live streaming transcript from SwiftLink
     @Published var swiftLinkStreamingTranscript: String = ""
+    /// Flag to prevent streaming updates from overwriting "processing" status after stop
+    private var isWaitingForResult: Bool = false
 
     weak var textDocumentProxy: UITextDocumentProxy?
     weak var hostViewController: UIViewController?
@@ -1755,6 +1922,18 @@ class KeyboardViewModel: ObservableObject {
         let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? ""
         let transcript = defaults?.string(forKey: Constants.Keys.swiftLinkStreamingTranscript) ?? ""
 
+        // If we're waiting for the final result, DON'T let streaming updates
+        // overwrite the "processing" status - just update the transcript for display
+        if isWaitingForResult {
+            // Still update transcript for display but keep status as "processing"
+            if !transcript.isEmpty && transcript != swiftLinkStreamingTranscript {
+                swiftLinkStreamingTranscript = transcript
+                keyboardLog("Streaming transcript (waiting): \(transcript.count) chars", category: "SwiftLink")
+            }
+            // Keep swiftLinkProcessingStatus as "processing"
+            return
+        }
+
         if status == "streaming" {
             // Only log when transcript actually changes
             if transcript != swiftLinkStreamingTranscript {
@@ -1763,12 +1942,18 @@ class KeyboardViewModel: ObservableObject {
             isSwiftLinkStreaming = true
             swiftLinkStreamingTranscript = transcript
             swiftLinkProcessingStatus = "streaming"
+        } else if status == "processing" {
+            // Processing started - keep overlay visible with processing state
+            keyboardLog("Streaming update: now processing", category: "SwiftLink")
+            isSwiftLinkStreaming = false
+            swiftLinkProcessingStatus = "processing"  // Sync local state with main app
         } else {
-            // Streaming ended
+            // Streaming ended (unknown status)
             if isSwiftLinkStreaming {
                 keyboardLog("Streaming ended (status: \(status))", category: "SwiftLink")
             }
             isSwiftLinkStreaming = false
+            // Keep current swiftLinkProcessingStatus to avoid hiding overlay prematurely
         }
     }
 
@@ -1781,6 +1966,9 @@ class KeyboardViewModel: ObservableObject {
         // Cancel any pending timeout - we got a response
         cancelSwiftLinkTimeout()
 
+        // Clear the waiting flag - we got the result
+        isWaitingForResult = false
+
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
 
         // Force sync to ensure we have latest data from main app
@@ -1791,10 +1979,9 @@ class KeyboardViewModel: ObservableObject {
 
         keyboardLog("SwiftLink result received (status: \(status), wasEdit: \(wasEdit))", category: "SwiftLink")
 
-        swiftLinkProcessingStatus = status
+        // DON'T update swiftLinkProcessingStatus yet - keep showing "processing" overlay
+        // until text is inserted (better UX - no jarring disappearance)
         isSwiftLinkRecording = false
-        isSwiftLinkStreaming = false
-        swiftLinkStreamingTranscript = ""
 
         if status == "complete", let result = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) {
             keyboardLog("SwiftLink result received (\(result.count) chars, edit: \(wasEdit))", category: "SwiftLink")
@@ -1809,7 +1996,12 @@ class KeyboardViewModel: ObservableObject {
             keyboardLog("Inserting result text", category: "SwiftLink")
             textDocumentProxy?.insertText(result)
 
-            // Clear the result and edit flag
+            // NOW show "complete" state briefly, then clear
+            swiftLinkProcessingStatus = "complete"
+            isSwiftLinkStreaming = false
+            swiftLinkStreamingTranscript = ""
+
+            // Clear the result and edit flag from App Groups
             defaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
             defaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
             defaults?.removeObject(forKey: Constants.EditMode.lastResultWasEdit)
@@ -1818,9 +2010,24 @@ class KeyboardViewModel: ObservableObject {
 
             // Update last transcription
             lastTranscription = result
+
+            // Auto-dismiss "complete" overlay after a brief moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self = self else { return }
+                // Only clear if still in complete state (user hasn't started new recording)
+                if self.swiftLinkProcessingStatus == "complete" {
+                    self.swiftLinkProcessingStatus = ""
+                    keyboardLog("SwiftLink overlay auto-dismissed", category: "SwiftLink")
+                }
+            }
         } else if status == "error" {
             let errorMsg = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) ?? "Unknown error"
             keyboardLog("SwiftLink error: \(errorMsg)", category: "SwiftLink", level: .error)
+
+            // Clear streaming state on error
+            isSwiftLinkStreaming = false
+            swiftLinkStreamingTranscript = ""
+            swiftLinkProcessingStatus = ""
 
             // Check if session expired - mark SwiftLink as inactive and fall back to app
             if errorMsg.contains("expired") || errorMsg.contains("not active") || errorMsg.contains("Session") {
@@ -1838,6 +2045,7 @@ class KeyboardViewModel: ObservableObject {
             defaults?.removeObject(forKey: Constants.EditMode.swiftLinkEditOriginalText)
             defaults?.synchronize()
         } else {
+            // Status not recognized - don't clear streaming state yet, wait for proper result
             keyboardLog("SwiftLink result not ready yet (status: '\(status)')", category: "SwiftLink", level: .warning)
         }
     }
@@ -1885,6 +2093,7 @@ class KeyboardViewModel: ObservableObject {
         } else {
             // Start recording
             isSwiftLinkRecording = true
+            isWaitingForResult = false  // Clear any stale waiting state
             darwinManager.postDictationStart()
             swiftLinkProcessingStatus = "recording"
             startSwiftLinkTimeout(forRecording: true)  // Long timeout during recording (crash detection)
@@ -1898,11 +2107,12 @@ class KeyboardViewModel: ObservableObject {
 
         isSwiftLinkRecording = false
         isSwiftLinkStreaming = false
+        isWaitingForResult = true  // Prevent streaming updates from overwriting processing status
         cancelSwiftLinkTimeout()
         darwinManager.postDictationStop()
         swiftLinkProcessingStatus = "processing"
         startSwiftLinkTimeout(forRecording: false)  // Short timeout for processing phase
-        keyboardLog("SwiftLink dictation stopped", category: "SwiftLink")
+        keyboardLog("SwiftLink dictation stopped, waiting for result", category: "SwiftLink")
     }
 
     // MARK: - SwiftLink Timeout Handling
@@ -1982,6 +2192,7 @@ class KeyboardViewModel: ObservableObject {
 
         isSwiftLinkSessionActive = false
         isSwiftLinkRecording = false
+        isWaitingForResult = false
         swiftLinkProcessingStatus = ""
 
         // Clear the stale session flag in App Groups

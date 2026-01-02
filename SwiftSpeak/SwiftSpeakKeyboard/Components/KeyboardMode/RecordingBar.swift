@@ -1,8 +1,12 @@
+// LEGACY: This file is deprecated and kept for reference only
+// Replaced by: SwiftLinkStreamingOverlay in KeyboardView.swift on 2025-01-02
+// Reason: New WhatsApp-style overlay with real audio-reactive waveform and compact 2-bar layout
+// DO NOT USE - Will be removed in future cleanup
 //
 //  RecordingBar.swift
 //  SwiftSpeakKeyboard
 //
-//  Transforms SwiftSpeak bar during recording to show status, waveform, and streaming preview
+//  [LEGACY] Transforms SwiftSpeak bar during recording to show status, waveform, and streaming preview
 //
 
 import SwiftUI

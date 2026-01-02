@@ -91,6 +91,8 @@ enum Constants {
         static let swiftLinkProcessingStatus = "swiftLinkProcessingStatus"
         /// Live streaming transcript for real-time display in keyboard
         static let swiftLinkStreamingTranscript = "swiftLinkStreamingTranscript"
+        /// Real-time audio levels for waveform visualization (12 float values 0-1)
+        static let swiftLinkAudioLevels = "swiftLinkAudioLevels"
     }
 
     // MARK: - API Endpoints
@@ -202,6 +204,16 @@ enum Constants {
         static let swiftLinkEditOriginalText = "swiftLinkEditOriginalText"
         /// Key for tracking if last result was an edit (for keyboard to know to clear field first)
         static let lastResultWasEdit = "lastResultWasEdit"
+    }
+
+    // MARK: - Record Flow (SwiftLink Auto-Start)
+    enum Record {
+        /// Key for storing source app URL scheme for auto-return after SwiftLink setup
+        static let sourceAppURLScheme = "recordSourceAppURLScheme"
+        /// Key for storing source app name for logging
+        static let sourceAppName = "recordSourceAppName"
+        /// Key for storing source app bundle ID
+        static let sourceAppBundleId = "recordSourceAppBundleId"
     }
 
     // MARK: - AI Context Processing (Phase 13.11)

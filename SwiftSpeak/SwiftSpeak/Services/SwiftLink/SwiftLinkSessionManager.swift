@@ -75,6 +75,17 @@ final class SwiftLinkSessionManager: ObservableObject {
     private var isStreamingProviderConnecting = false
     private let maxPendingAudioChunks = 100  // ~2-3 seconds at typical chunk rate
 
+    // Accumulated audio for hybrid approach (OpenAI: streaming for display, Whisper for final)
+    // This allows fallback to batch transcription if streaming returns empty
+    private var accumulatedStreamingAudio = Data()
+    private let accumulatedAudioLock = NSLock()
+
+    // Audio levels for keyboard waveform visualization
+    private var currentAudioLevel: Float = 0
+    private var audioLevelUpdateTimer: Timer?
+    private let audioLevelBarCount = 16  // Number of bars for waveform
+    private var audioLevelHistory: [Float] = []  // Rolling window of levels
+
     // MARK: - Initialization
 
     private init() {
@@ -169,6 +180,9 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         appLog("Ending SwiftLink session", category: "SwiftLink")
 
+        // Stop audio level sharing
+        stopAudioLevelSharing()
+
         // Stop recording
         stopContinuousRecording()
 
@@ -251,6 +265,9 @@ final class SwiftLinkSessionManager: ObservableObject {
         // Start dictation duration timer
         startDictationTimer()
 
+        // Start audio level sharing for keyboard waveform
+        startAudioLevelSharing()
+
         // Start writing to file from this point
         startSegmentRecording()
     }
@@ -288,6 +305,11 @@ final class SwiftLinkSessionManager: ObservableObject {
         currentDictationDuration = 0
         streamingTranscript = ""
 
+        // Clear accumulated audio for new dictation
+        accumulatedAudioLock.lock()
+        accumulatedStreamingAudio = Data()
+        accumulatedAudioLock.unlock()
+
         // Store in App Groups for keyboard to read
         sharedDefaults?.set(Date().timeIntervalSince1970, forKey: Constants.Keys.swiftLinkDictationStartTime)
         sharedDefaults?.set("streaming", forKey: Constants.Keys.swiftLinkProcessingStatus)
@@ -302,6 +324,9 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         // Start dictation duration timer
         startDictationTimer()
+
+        // Start audio level sharing for keyboard waveform
+        startAudioLevelSharing()
 
         // Create streaming provider directly (don't use orchestrator - we have our own audio)
         // Mark as connecting so audio gets buffered while WebSocket connects
@@ -489,48 +514,70 @@ final class SwiftLinkSessionManager: ObservableObject {
         appLog("Audio converter: \(deviceFormat.sampleRate)Hz → \(streamingTargetSampleRate)Hz", category: "SwiftLink")
     }
 
+    /// Accumulated partial transcript for live display
+    private var accumulatedPartialTranscript: String = ""
+
     /// Setup subscriptions to streaming provider's publishers
     private func setupStreamingProviderSubscriptions(_ provider: StreamingTranscriptionProvider) {
         streamingCancellables.removeAll()
+        accumulatedPartialTranscript = ""  // Reset for new session
+        appLog("Setting up streaming provider subscriptions", category: "SwiftLink")
 
-        // Subscribe to partial transcripts
+        // Subscribe to partial transcripts - accumulate them for real-time display
         provider.partialTranscriptPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] partial in
                 guard let self else { return }
-                // Accumulate partial transcript
-                let combined = provider.fullTranscript + partial
-                if !combined.isEmpty {
-                    self.updateStreamingTranscript(combined)
+                // Accumulate partial transcript for live display
+                // provider.fullTranscript only contains finalized segments, not current partials
+                self.accumulatedPartialTranscript += partial
+                let displayTranscript = provider.fullTranscript + self.accumulatedPartialTranscript
+                appLog("PARTIAL: '\(partial)' -> display: \(displayTranscript.count) chars", category: "SwiftLink", level: .debug)
+                if !displayTranscript.isEmpty {
+                    self.updateStreamingTranscript(displayTranscript)
                 }
             }
             .store(in: &streamingCancellables)
 
-        // Subscribe to final transcripts
+        // Subscribe to final transcripts - when received, reset partial accumulator
         provider.finalTranscriptPublisher
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
+            .sink { [weak self] final in
                 guard let self else { return }
-                // Update with full transcript when a segment is finalized
+                // Clear partial accumulator when segment is finalized
+                self.accumulatedPartialTranscript = ""
+                // Update with full transcript (now includes the finalized segment)
                 let full = provider.fullTranscript
+                appLog("FINAL: '\(final.prefix(30))...' -> fullTranscript: \(full.count) chars", category: "SwiftLink")
                 if !full.isEmpty {
                     self.updateStreamingTranscript(full)
                 }
             }
             .store(in: &streamingCancellables)
+
+        appLog("Streaming subscriptions set up", category: "SwiftLink")
     }
 
     /// Update streaming transcript in App Groups and notify keyboard
     private func updateStreamingTranscript(_ transcript: String) {
-        guard isStreamingMode, isRecording else { return }
+        guard isStreamingMode else {
+            appLog("updateStreamingTranscript skipped: not in streaming mode", category: "SwiftLink", level: .debug)
+            return
+        }
+        guard isRecording else {
+            appLog("updateStreamingTranscript skipped: not recording", category: "SwiftLink", level: .debug)
+            return
+        }
 
         // Only update if transcript actually changed
         guard transcript != streamingTranscript else { return }
 
         streamingTranscript = transcript
+        appLog("Streaming transcript updated: \(transcript.count) chars, notifying keyboard", category: "SwiftLink")
 
-        // Store in App Groups
+        // Store in App Groups - IMPORTANT: Set status to "streaming" so keyboard knows to display it
         sharedDefaults?.set(transcript, forKey: Constants.Keys.swiftLinkStreamingTranscript)
+        sharedDefaults?.set("streaming", forKey: Constants.Keys.swiftLinkProcessingStatus)
         sharedDefaults?.synchronize()
 
         // Notify keyboard of update
@@ -558,17 +605,24 @@ final class SwiftLinkSessionManager: ObservableObject {
         dictationTimer?.invalidate()
         dictationTimer = nil
 
-        isRecording = false
+        // IMPORTANT: Don't set isRecording = false here for streaming mode!
+        // The audio tap checks isRecording and we need to keep accumulating
+        // audio until we've captured everything. Each mode sets isRecording = false
+        // after it has captured all the audio.
 
         if isStreamingMode {
             stopStreamingDictation()
         } else {
+            isRecording = false
             stopBatchDictation()
         }
     }
 
     /// Stop batch dictation and process
     private func stopBatchDictation() {
+        // Stop audio level sharing
+        stopAudioLevelSharing()
+
         // Store end time
         sharedDefaults?.set(Date().timeIntervalSince1970, forKey: Constants.Keys.swiftLinkDictationEndTime)
         sharedDefaults?.set("processing", forKey: Constants.Keys.swiftLinkProcessingStatus)
@@ -602,13 +656,18 @@ final class SwiftLinkSessionManager: ObservableObject {
                 return
             }
 
+            // Get provider type before cleanup
+            let isOpenAI = provider.providerId == .openAI
+            let targetSampleRate = streamingTargetSampleRate
+
             // Signal end of audio to provider
             appLog("Signaling end of audio to streaming provider...", category: "SwiftLink")
             provider.finishAudio()
 
             // Wait for provider to finish processing remaining audio buffer
             // Use a loop to wait until transcript stabilizes or max timeout
-            var lastTranscript = provider.fullTranscript
+            // IMPORTANT: Don't capture transcript yet - it may still be empty
+            var lastTranscript = ""
             var stableCount = 0
             let maxWaitIterations = 20  // 20 * 200ms = 4 seconds max wait
 
@@ -616,24 +675,48 @@ final class SwiftLinkSessionManager: ObservableObject {
                 try? await Task.sleep(nanoseconds: 200_000_000)  // 200ms per check
 
                 let currentTranscript = provider.fullTranscript
-                if currentTranscript == lastTranscript {
+                if currentTranscript == lastTranscript && !currentTranscript.isEmpty {
                     stableCount += 1
                     // If transcript hasn't changed for 3 consecutive checks (600ms), consider it stable
                     if stableCount >= 3 {
-                        appLog("Transcript stabilized after \(iteration * 200)ms", category: "SwiftLink")
+                        appLog("Transcript stabilized after \((iteration + 1) * 200)ms: \(currentTranscript.count) chars", category: "SwiftLink")
                         break
                     }
                 } else {
                     stableCount = 0
                     lastTranscript = currentTranscript
-                    appLog("Transcript still updating: \(currentTranscript.suffix(30))...", category: "SwiftLink")
+                    if !currentTranscript.isEmpty {
+                        appLog("Transcript still updating: '\(currentTranscript.suffix(40))...' (\(currentTranscript.count) chars)", category: "SwiftLink")
+                    }
                 }
             }
 
-            // Get the accumulated transcript
-            let finalTranscript = provider.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            // IMPORTANT: Wait for all in-flight audio chunks to be accumulated
+            // The audio tap runs on a background queue and may have data in transit
+            // Use a longer delay (300ms) to ensure we capture the final audio chunks
+            // from the audio engine's buffer before stopping
+            appLog("Waiting for audio buffer flush...", category: "SwiftLink")
+            try? await Task.sleep(nanoseconds: 300_000_000)  // 300ms buffer flush time
 
-            // Cleanup
+            // Capture accumulated audio BEFORE cleanup (while tap is still forwarding)
+            // This ensures we don't lose the last audio chunks
+            accumulatedAudioLock.lock()
+            let capturedAudioData = accumulatedStreamingAudio
+            accumulatedStreamingAudio = Data()
+            accumulatedAudioLock.unlock()
+
+            appLog("Audio buffer flushed, captured \(capturedAudioData.count) bytes", category: "SwiftLink")
+
+            // NOW we can stop recording - we've captured all the audio
+            isRecording = false
+
+            // Stop audio level sharing
+            stopAudioLevelSharing()
+
+            let audioDuration = AudioUtils.duration(dataSize: capturedAudioData.count, sampleRate: targetSampleRate)
+            appLog("Captured \(capturedAudioData.count) bytes of audio (~\(String(format: "%.1f", audioDuration))s) before cleanup", category: "SwiftLink")
+
+            // Cleanup streaming provider
             provider.disconnect()
             streamingProvider = nil
             audioConverter = nil
@@ -642,7 +725,42 @@ final class SwiftLinkSessionManager: ObservableObject {
             isStreamingProviderConnecting = false
             pendingStreamingAudio.removeAll()
 
-            appLog("Streaming stopped, transcript: \(finalTranscript.count) chars", category: "SwiftLink")
+            // HYBRID APPROACH: Streaming is for live visual feedback only.
+            // ALWAYS use batch Whisper API for final transcription - it provides better
+            // quality with proper grammar/punctuation (VAD creates artificial sentence breaks).
+            // This matches dictation4mac's approach which produces much better results.
+            var finalTranscript = ""
+
+            if isOpenAI && !capturedAudioData.isEmpty {
+                appLog("Using batch Whisper API for final transcription (better quality)...", category: "SwiftLink")
+
+                if let audioURL = saveAccumulatedAudioAsWAV(audioData: capturedAudioData, sampleRate: targetSampleRate) {
+                    do {
+                        finalTranscript = try await transcribeWithWhisper(audioURL: audioURL)
+                        appLog("Whisper transcription successful: \(finalTranscript.count) chars", category: "SwiftLink")
+                        // Clean up temp file
+                        try? FileManager.default.removeItem(at: audioURL)
+                    } catch {
+                        appLog("Whisper transcription failed: \(error.localizedDescription), falling back to streaming result", category: "SwiftLink", level: .error)
+                        // Fall back to streaming result if Whisper fails
+                        finalTranscript = provider.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                        try? FileManager.default.removeItem(at: audioURL)
+                    }
+                } else {
+                    // Couldn't save WAV, use streaming result
+                    appLog("Couldn't save WAV file, using streaming result", category: "SwiftLink", level: .warning)
+                    finalTranscript = provider.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+            } else if !isOpenAI {
+                // For non-OpenAI providers (Deepgram, AssemblyAI), use streaming result directly
+                // Their streaming quality is generally good
+                finalTranscript = provider.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+                appLog("Using streaming result for non-OpenAI provider: \(finalTranscript.count) chars", category: "SwiftLink")
+            } else {
+                // No audio data captured
+                appLog("No audio data captured", category: "SwiftLink", level: .warning)
+                finalTranscript = provider.fullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
 
             // Process the transcript (formatting, translation, etc.)
             if !finalTranscript.isEmpty {
@@ -655,6 +773,35 @@ final class SwiftLinkSessionManager: ObservableObject {
                 DarwinNotificationManager.shared.postResultReady()
             }
         }
+    }
+
+    /// Save accumulated streaming audio as WAV file for Whisper API fallback
+    private func saveAccumulatedAudioAsWAV(audioData: Data, sampleRate: Int) -> URL? {
+        guard let url = AudioUtils.saveAsWAV(pcmData: audioData, sampleRate: sampleRate, prefix: "swiftlink") else {
+            appLog("Failed to save WAV file for Whisper fallback", category: "SwiftLink", level: .error)
+            return nil
+        }
+        let durationSec = AudioUtils.duration(dataSize: audioData.count, sampleRate: sampleRate)
+        appLog("Saved SwiftLink audio to WAV: ~\(String(format: "%.1f", durationSec))s", category: "SwiftLink")
+        return url
+    }
+
+    /// Transcribe audio file using batch Whisper API (fallback for streaming)
+    private func transcribeWithWhisper(audioURL: URL) async throws -> String {
+        let settings = SharedSettings.shared
+        let providerFactory = ProviderFactory(settings: settings)
+
+        guard let transcriptionProvider = providerFactory.createTranscriptionProvider(for: settings.selectedTranscriptionProvider) else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        appLog("Calling Whisper API for fallback transcription...", category: "SwiftLink")
+        let transcript = try await transcriptionProvider.transcribe(
+            audioURL: audioURL,
+            language: settings.selectedDictationLanguage
+        )
+
+        return transcript
     }
 
     /// Process the final streaming transcript (formatting, translation)
@@ -906,6 +1053,9 @@ final class SwiftLinkSessionManager: ObservableObject {
     private func handleAudioBuffer(_ buffer: AVAudioPCMBuffer) {
         guard isRecording else { return }
 
+        // Extract audio level from buffer for waveform visualization
+        updateAudioLevel(from: buffer)
+
         // If streaming mode, handle audio for streaming
         if isStreamingMode {
             // Check if provider is connected and ready
@@ -959,7 +1109,12 @@ final class SwiftLinkSessionManager: ObservableObject {
         guard let int16Data = outputBuffer.int16ChannelData else { return }
         let data = Data(bytes: int16Data[0], count: Int(outputBuffer.frameLength) * 2)
 
-        // Add to buffer (with limit to prevent memory issues)
+        // CRITICAL: Also accumulate for Whisper fallback - don't lose connection-phase audio!
+        accumulatedAudioLock.lock()
+        accumulatedStreamingAudio.append(data)
+        accumulatedAudioLock.unlock()
+
+        // Add to buffer for streaming provider (with limit to prevent memory issues)
         if pendingStreamingAudio.count < maxPendingAudioChunks {
             pendingStreamingAudio.append(data)
         }
@@ -1000,7 +1155,93 @@ final class SwiftLinkSessionManager: ObservableObject {
         guard let int16Data = outputBuffer.int16ChannelData else { return }
 
         let data = Data(bytes: int16Data[0], count: Int(outputBuffer.frameLength) * 2)
+
+        // Accumulate audio for hybrid approach fallback (OpenAI: Whisper API if streaming empty)
+        accumulatedAudioLock.lock()
+        accumulatedStreamingAudio.append(data)
+        accumulatedAudioLock.unlock()
+
         provider.sendAudio(data)
+    }
+
+    // MARK: - Audio Level Visualization
+
+    /// Extract audio level from buffer for waveform visualization
+    private func updateAudioLevel(from buffer: AVAudioPCMBuffer) {
+        guard let channelData = buffer.floatChannelData else { return }
+
+        let frameLength = Int(buffer.frameLength)
+        guard frameLength > 0 else { return }
+
+        let channelDataPtr = channelData[0]
+
+        // Calculate RMS (root mean square) of the audio buffer
+        var sum: Float = 0
+        for i in 0..<frameLength {
+            let sample = channelDataPtr[i]
+            sum += sample * sample
+        }
+        let rms = sqrt(sum / Float(frameLength))
+
+        // Normalize to 0-1 range with some amplification for visibility
+        let level = min(1.0, rms * 5.0)
+
+        // Update current level (will be used for waveform bars)
+        currentAudioLevel = level
+
+        // Add to history for bar visualization
+        audioLevelHistory.append(level)
+        if audioLevelHistory.count > audioLevelBarCount {
+            audioLevelHistory.removeFirst()
+        }
+    }
+
+    /// Start audio level sharing timer
+    private func startAudioLevelSharing() {
+        audioLevelHistory = Array(repeating: 0, count: audioLevelBarCount)
+        audioLevelUpdateTimer?.invalidate()
+        audioLevelUpdateTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.shareAudioLevels()
+        }
+    }
+
+    /// Stop audio level sharing timer
+    private func stopAudioLevelSharing() {
+        audioLevelUpdateTimer?.invalidate()
+        audioLevelUpdateTimer = nil
+
+        // Clear audio levels from App Groups
+        sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkAudioLevels)
+        sharedDefaults?.synchronize()
+    }
+
+    /// Share current audio levels to App Groups for keyboard waveform
+    private func shareAudioLevels() {
+        guard isRecording else { return }
+
+        // Generate audio level bars with variation for natural look
+        var levels: [Float] = []
+        let baseLevel = currentAudioLevel
+
+        for i in 0..<audioLevelBarCount {
+            // Use history if available, otherwise generate from base level
+            if i < audioLevelHistory.count {
+                let historyLevel = audioLevelHistory[audioLevelHistory.count - 1 - i]
+                // Add slight random variation for organic look
+                let variance = Float.random(in: -0.1...0.1)
+                let phase = sin(Float(i) * 0.5) * 0.15
+                let level = max(0, min(1, historyLevel + variance * baseLevel + phase * baseLevel))
+                levels.append(level)
+            } else {
+                levels.append(baseLevel)
+            }
+        }
+
+        // Store as JSON array in App Groups
+        if let data = try? JSONEncoder().encode(levels) {
+            sharedDefaults?.set(data, forKey: Constants.Keys.swiftLinkAudioLevels)
+            // Don't call synchronize on every update - too expensive
+        }
     }
 
     // MARK: - Audio Processing

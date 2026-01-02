@@ -35,12 +35,23 @@ class KeyboardViewModel: ObservableObject {
     @Published var isSwiftLinkStreaming: Bool = false
     /// Live streaming transcript from SwiftLink
     @Published var swiftLinkStreamingTranscript: String = ""
+    /// Flag to prevent streaming updates from overwriting "processing" status after stop
+    private var isWaitingForResult: Bool = false
+    /// Real-time audio levels for waveform visualization
+    @Published var swiftLinkAudioLevels: [Float] = []
+    /// Recording duration for display
+    @Published var swiftLinkRecordingDuration: TimeInterval = 0
+    /// Timer for reading audio levels from App Groups
+    private var audioLevelReadTimer: Timer?
+    /// Recording start time for duration calculation
+    private var recordingStartTime: Date?
+
+    // Edit Mode Toggle (long press to switch between transcription and edit)
+    @Published var isEditModeEnabled: Bool = false
 
     // Phase 13.6: AI Predictions
     /// Current typing context for predictions
     @Published var currentTypingContext: String = ""
-    /// Trigger LLM predictions (set to true to request AI predictions)
-    @Published var shouldTriggerLLMPredictions = false
 
     // Phase 13.9: Emoji Panel
     @Published var showEmojiPanel = false
@@ -150,6 +161,18 @@ class KeyboardViewModel: ObservableObject {
         let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? ""
         let transcript = defaults?.string(forKey: Constants.Keys.swiftLinkStreamingTranscript) ?? ""
 
+        // If we're waiting for the final result, DON'T let streaming updates
+        // overwrite the "processing" status - just update the transcript for display
+        if isWaitingForResult {
+            // Still update transcript for display but keep status as "processing"
+            if !transcript.isEmpty && transcript != swiftLinkStreamingTranscript {
+                swiftLinkStreamingTranscript = transcript
+                keyboardLog("Streaming transcript (waiting): \(transcript.count) chars", category: "SwiftLink")
+            }
+            // Keep swiftLinkProcessingStatus as "processing"
+            return
+        }
+
         if status == "streaming" {
             // Only log when transcript actually changes
             if transcript != swiftLinkStreamingTranscript {
@@ -158,12 +181,18 @@ class KeyboardViewModel: ObservableObject {
             isSwiftLinkStreaming = true
             swiftLinkStreamingTranscript = transcript
             swiftLinkProcessingStatus = "streaming"
+        } else if status == "processing" {
+            // Processing started - keep overlay visible with processing state
+            keyboardLog("Streaming update: now processing", category: "SwiftLink")
+            isSwiftLinkStreaming = false
+            swiftLinkProcessingStatus = "processing"  // Sync local state with main app
         } else {
-            // Streaming ended
+            // Streaming ended (unknown status)
             if isSwiftLinkStreaming {
                 keyboardLog("Streaming ended (status: \(status))", category: "SwiftLink")
             }
             isSwiftLinkStreaming = false
+            // Keep current swiftLinkProcessingStatus to avoid hiding overlay prematurely
         }
     }
 
@@ -182,6 +211,9 @@ class KeyboardViewModel: ObservableObject {
         // Cancel any pending timeout - we got a response
         cancelSwiftLinkTimeout()
 
+        // Clear the waiting flag - we got the result
+        isWaitingForResult = false
+
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
 
         // Force sync to ensure we have latest data from main app
@@ -192,10 +224,9 @@ class KeyboardViewModel: ObservableObject {
 
         keyboardLog("SwiftLink result received (status: \(status), wasEdit: \(wasEdit))", category: "SwiftLink")
 
-        swiftLinkProcessingStatus = status
+        // DON'T update swiftLinkProcessingStatus yet - keep showing "processing" overlay
+        // until text is inserted (better UX - no jarring disappearance)
         isSwiftLinkRecording = false
-        isSwiftLinkStreaming = false
-        swiftLinkStreamingTranscript = ""
 
         if status == "complete", let result = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) {
             keyboardLog("SwiftLink result received (\(result.count) chars, edit: \(wasEdit))", category: "SwiftLink")
@@ -206,11 +237,24 @@ class KeyboardViewModel: ObservableObject {
                 deleteAllTextInField()
             }
 
-            // Insert the result
-            keyboardLog("Inserting result text", category: "SwiftLink")
-            textDocumentProxy?.insertText(result)
+            // Insert the result - verify proxy is available
+            if let proxy = textDocumentProxy {
+                keyboardLog("Inserting result text via proxy", category: "SwiftLink")
+                proxy.insertText(result)
+                keyboardLog("Text insertion completed: '\(result.prefix(30))...'", category: "SwiftLink")
+            } else {
+                keyboardLog("ERROR: textDocumentProxy is nil, cannot insert text!", category: "SwiftLink", level: .error)
+                // Try to copy to clipboard as fallback
+                UIPasteboard.general.string = result
+                keyboardLog("Copied result to clipboard as fallback", category: "SwiftLink")
+            }
 
-            // Clear the result and edit flag
+            // NOW show "complete" state briefly, then clear
+            swiftLinkProcessingStatus = "complete"
+            isSwiftLinkStreaming = false
+            swiftLinkStreamingTranscript = ""
+
+            // Clear the result and edit flag from App Groups
             defaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
             defaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
             defaults?.removeObject(forKey: Constants.EditMode.lastResultWasEdit)
@@ -219,9 +263,23 @@ class KeyboardViewModel: ObservableObject {
 
             // Update last transcription
             lastTranscription = result
+
+            // Auto-dismiss "complete" overlay after a brief moment
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+                guard let self = self else { return }
+                // Only clear if still in complete state (user hasn't started new recording)
+                if self.swiftLinkProcessingStatus == "complete" {
+                    self.swiftLinkProcessingStatus = ""
+                    keyboardLog("SwiftLink overlay auto-dismissed", category: "SwiftLink")
+                }
+            }
         } else if status == "error" {
             let errorMsg = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) ?? "Unknown error"
             keyboardLog("SwiftLink error: \(errorMsg)", category: "SwiftLink", level: .error)
+
+            // Clear streaming state on error
+            isSwiftLinkStreaming = false
+            swiftLinkStreamingTranscript = ""
 
             // Check if session expired - mark SwiftLink as inactive and fall back to app
             if errorMsg.contains("expired") || errorMsg.contains("not active") || errorMsg.contains("Session") {
@@ -239,6 +297,7 @@ class KeyboardViewModel: ObservableObject {
             defaults?.removeObject(forKey: Constants.EditMode.swiftLinkEditOriginalText)
             defaults?.synchronize()
         } else {
+            // Status not recognized - don't clear streaming state yet, wait for proper result
             keyboardLog("SwiftLink result not ready yet (status: '\(status)')", category: "SwiftLink", level: .warning)
         }
     }
@@ -302,8 +361,11 @@ class KeyboardViewModel: ObservableObject {
         } else {
             // Start recording
             isSwiftLinkRecording = true
+            isWaitingForResult = false  // Clear any stale waiting state
+            swiftLinkAudioLevels = []
             darwinManager.postDictationStart()
             swiftLinkProcessingStatus = "recording"
+            startAudioLevelReading()  // This sets recordingStartTime and duration
             // NOTE: Don't start timeout during recording - user may record for longer than 5 seconds
             // Timeout will start when we STOP recording and wait for processing result
             keyboardLog("SwiftLink dictation started", category: "SwiftLink")
@@ -316,11 +378,55 @@ class KeyboardViewModel: ObservableObject {
 
         isSwiftLinkRecording = false
         isSwiftLinkStreaming = false
+        isWaitingForResult = true  // Prevent streaming updates from overwriting processing status
+        stopAudioLevelReading()
         cancelSwiftLinkTimeout()
         darwinManager.postDictationStop()
         swiftLinkProcessingStatus = "processing"
         startSwiftLinkTimeout()  // Start timeout for processing phase
-        keyboardLog("SwiftLink dictation stopped", category: "SwiftLink")
+        keyboardLog("SwiftLink dictation stopped, waiting for result", category: "SwiftLink")
+    }
+
+    // MARK: - Audio Level Reading
+
+    /// Start reading audio levels from App Groups for waveform visualization
+    private func startAudioLevelReading() {
+        stopAudioLevelReading()  // Clear any existing timer
+
+        // Set recording start time for duration calculation
+        recordingStartTime = Date()
+        swiftLinkRecordingDuration = 0
+
+        // Create timer on main run loop for UI updates
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.readAudioLevels()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        audioLevelReadTimer = timer
+    }
+
+    /// Stop reading audio levels
+    private func stopAudioLevelReading() {
+        audioLevelReadTimer?.invalidate()
+        audioLevelReadTimer = nil
+        // Don't reset recordingStartTime here - keep final duration visible
+    }
+
+    /// Read audio levels from App Groups
+    private func readAudioLevels() {
+        // Update recording duration
+        if let startTime = recordingStartTime {
+            swiftLinkRecordingDuration = Date().timeIntervalSince(startTime)
+        }
+
+        // Read audio levels from App Groups
+        guard let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier) else { return }
+        defaults.synchronize()
+
+        if let data = defaults.data(forKey: Constants.Keys.swiftLinkAudioLevels),
+           let levels = try? JSONDecoder().decode([Float].self, from: data) {
+            swiftLinkAudioLevels = levels
+        }
     }
 
     // MARK: - SwiftLink Timeout Handling
@@ -392,6 +498,7 @@ class KeyboardViewModel: ObservableObject {
 
         isSwiftLinkSessionActive = false
         isSwiftLinkRecording = false
+        isWaitingForResult = false
         swiftLinkProcessingStatus = ""
 
         // Clear the stale session flag in App Groups
@@ -833,6 +940,18 @@ class KeyboardViewModel: ObservableObject {
         }
     }
 
+    /// Toggle between transcription and edit mode (called on long press)
+    func toggleEditMode() {
+        guard isPro else {
+            keyboardLog("Edit mode requires Pro subscription", category: "Action")
+            return
+        }
+
+        isEditModeEnabled.toggle()
+        KeyboardHaptics.mediumTap()
+        keyboardLog("Edit mode toggled: \(isEditModeEnabled)", category: "Action")
+    }
+
     func startTranscription() {
         // If no provider configured, open setup instead
         guard isProviderConfigured else {
@@ -843,12 +962,14 @@ class KeyboardViewModel: ObservableObject {
             return
         }
 
-        // Phase 12: Check for edit mode (existing text in field)
-        // Edit mode is Pro-only feature - free users always do normal transcription
-        let isEditMode = hasTextInField && isPro
+        // Edit mode is based on toggle (long press) and Pro status
+        // Also requires text in field for edit to make sense
+        let isEditMode = isEditModeEnabled && isPro && hasTextInField
 
-        if hasTextInField && !isPro {
+        if isEditModeEnabled && !isPro {
             keyboardLog("Edit mode requires Pro - using normal transcription", category: "Action")
+        } else if isEditModeEnabled && !hasTextInField {
+            keyboardLog("Edit mode enabled but no text in field - using normal transcription", category: "Action")
         }
 
         // Check for active SwiftLink session - use inline dictation
@@ -896,6 +1017,17 @@ class KeyboardViewModel: ObservableObject {
         let translate = isTranslationEnabled && isPro
         keyboardLog("Transcription requested via app (translate: \(translate))", category: "Action")
 
+        // Store source app info for auto-return (used when swiftLinkAutoStart is enabled)
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        if let lastAppData = defaults?.data(forKey: "lastUsedSwiftLinkApp"),
+           let lastApp = try? JSONDecoder().decode(KeyboardSwiftLinkApp.self, from: lastAppData) {
+            defaults?.set(lastApp.urlScheme, forKey: Constants.Record.sourceAppURLScheme)
+            defaults?.set(lastApp.name, forKey: Constants.Record.sourceAppName)
+            defaults?.set(lastApp.bundleId, forKey: Constants.Record.sourceAppBundleId)
+            keyboardLog("Stored source app for auto-return: \(lastApp.name)", category: "Action")
+        }
+        defaults?.synchronize()
+
         var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=\(translate)"
         if translate {
             urlString += "&target=\(selectedLanguage.rawValue)"
@@ -937,7 +1069,9 @@ class KeyboardViewModel: ObservableObject {
 
         // Update UI state
         isSwiftLinkRecording = true
+        swiftLinkAudioLevels = []
         swiftLinkProcessingStatus = "recording"
+        startAudioLevelReading()  // Start timer for duration and audio levels
 
         // NOTE: Don't start timeout during recording - user may record for longer than 5 seconds
         // Timeout will start when we STOP recording and wait for processing result
@@ -1057,12 +1191,6 @@ class KeyboardViewModel: ObservableObject {
         // Get last ~100 characters for prediction context
         let context = String(before.suffix(100))
         currentTypingContext = context
-    }
-
-    /// Trigger LLM predictions (called on space press or typing pause)
-    func triggerLLMPredictions() {
-        updateTypingContext()
-        shouldTriggerLLMPredictions = true
     }
 
     // MARK: - Phase 13.12: AI Sentence Prediction
