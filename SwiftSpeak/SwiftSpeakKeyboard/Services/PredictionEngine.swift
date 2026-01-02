@@ -333,10 +333,9 @@ actor PredictionEngine {
             return await localPredictions(for: context, activeContext: activeContext)
         }
 
-        // Check for configured provider
-        guard let apiKey = defaults.string(forKey: Constants.Keys.openAIAPIKey),
-              !apiKey.isEmpty else {
-            keyboardLog("PredictionEngine: No API key configured", category: "Prediction")
+        // Get API key from configured providers (formatting category preferred)
+        guard let apiKey = getAPIKeyFromConfiguredProviders(defaults: defaults) else {
+            // Silently fall back to local predictions - no API key is a valid configuration
             return await localPredictions(for: context, activeContext: activeContext)
         }
 
@@ -496,6 +495,43 @@ actor PredictionEngine {
             actuallyTyped: actuallyTyped,
             previousWord: previousWord
         )
+    }
+
+    // MARK: - API Key Retrieval
+
+    /// Get API key from configured AI providers (prefers formatting category)
+    private func getAPIKeyFromConfiguredProviders(defaults: UserDefaults) -> String? {
+        // Try to get from configured providers first
+        guard let data = defaults.data(forKey: Constants.Keys.configuredAIProviders) else {
+            // Fall back to legacy OpenAI key
+            return defaults.string(forKey: Constants.Keys.openAIAPIKey)
+        }
+
+        struct SimpleAIProviderConfig: Codable {
+            let provider: String
+            let apiKey: String
+            let usageCategories: [String]
+        }
+
+        do {
+            let configs = try JSONDecoder().decode([SimpleAIProviderConfig].self, from: data)
+
+            // Look for formatting provider first
+            if let formattingConfig = configs.first(where: { $0.usageCategories.contains("formatting") }) {
+                return formattingConfig.apiKey
+            }
+
+            // Fall back to any OpenAI provider
+            if let openAIConfig = configs.first(where: { $0.provider.lowercased().contains("openai") }) {
+                return openAIConfig.apiKey
+            }
+
+            // Fall back to first available provider
+            return configs.first?.apiKey
+        } catch {
+            // Fall back to legacy key on decode error
+            return defaults.string(forKey: Constants.Keys.openAIAPIKey)
+        }
     }
 }
 
