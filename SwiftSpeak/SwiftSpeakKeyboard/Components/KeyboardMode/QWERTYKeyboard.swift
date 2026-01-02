@@ -485,7 +485,7 @@ struct QWERTYKeyboard: View {
 
             // CJK (uses UITextChecker-based correction)
             case "zh":
-                finalCorrection = ChineseAutocorrectService.fixChineseWord(wordString)
+                finalCorrection = ChineseAutocorrectService.fixChineseCharacter(wordString)
             case "ja":
                 finalCorrection = JapaneseAutocorrectService.fixJapaneseWord(wordString)
             case "ko":
