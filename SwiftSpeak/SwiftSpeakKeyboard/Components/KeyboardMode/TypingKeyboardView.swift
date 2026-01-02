@@ -29,8 +29,18 @@ struct TypingKeyboardView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // Phase 13.12: AI Sentence Prediction Panel (replaces keyboard)
+            if viewModel.showSentencePredictionPanel {
+                SentencePredictionView(
+                    viewModel: viewModel,
+                    onClose: {
+                        viewModel.closeSentencePredictionPanel()
+                    }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             // Phase 13.10: Show quick settings, emoji panel, clipboard panel, or regular keyboard
-            if viewModel.showQuickSettings {
+            else if viewModel.showQuickSettings {
                 QuickSettingsPopover(
                     settings: $keyboardSettings,
                     viewModel: viewModel,

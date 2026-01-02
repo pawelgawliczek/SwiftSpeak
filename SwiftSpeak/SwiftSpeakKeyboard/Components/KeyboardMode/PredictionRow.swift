@@ -51,6 +51,27 @@ struct PredictionRow: View {
                         .background(Color.white.opacity(0.1))
                 }
             }
+
+            Divider()
+                .background(Color.white.opacity(0.1))
+
+            // AI Sentence Prediction button on the right
+            Button(action: {
+                KeyboardHaptics.lightTap()
+                viewModel.triggerAISentencePrediction()
+            }) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.purple, .blue],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
         }
         .frame(height: 36)
         .background(Color(white: 0.08))

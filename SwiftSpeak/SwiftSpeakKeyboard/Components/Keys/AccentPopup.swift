@@ -70,8 +70,8 @@ struct AccentPopup: View {
                 }
                 .background(
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(white: 0.95))
-                        .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                        .fill(KeyboardTheme.actionKeyBackground)
+                        .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
                 )
                 .position(x: popupX(in: geometry.size.width), y: popupY)
             }
@@ -100,13 +100,13 @@ struct AccentPopup: View {
 
         Text(accent)
             .font(.system(size: 24, weight: .regular))
-            .foregroundStyle(Color.black)
+            .foregroundStyle(KeyboardTheme.keyText)
             .frame(width: bubbleWidth, height: bubbleHeight)
             .background(
                 isSelected ?
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.white)
-                        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                        .fill(KeyboardTheme.accent)
+                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                     : nil
             )
             .scaleEffect(isSelected ? 1.15 : 1.0)

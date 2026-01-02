@@ -51,6 +51,12 @@ class KeyboardViewModel: ObservableObject {
     // Phase 13.11: AI Context Processing
     @Published var isAIProcessing = false
 
+    // Phase 13.12: AI Sentence Prediction
+    @Published var showSentencePredictionPanel = false
+    @Published var sentencePredictions: [String] = []
+    @Published var isLoadingSentencePredictions = false
+    @Published var sentencePredictionError: String?
+
     // Phase 13: Undo Stack (Gboard-style, AI-aware)
     @Published var undoStack: [UndoItem] = []  // Stack of undoable operations
     private let maxUndoItems = 10
@@ -1057,6 +1063,217 @@ class KeyboardViewModel: ObservableObject {
     func triggerLLMPredictions() {
         updateTypingContext()
         shouldTriggerLLMPredictions = true
+    }
+
+    // MARK: - Phase 13.12: AI Sentence Prediction
+
+    /// Trigger AI sentence prediction - shows panel with 4 sentence options
+    func triggerAISentencePrediction() {
+        // Show the panel immediately
+        showSentencePredictionPanel = true
+        isLoadingSentencePredictions = true
+        sentencePredictionError = nil
+        sentencePredictions = []
+
+        // Get current typing context
+        updateTypingContext()
+
+        Task {
+            await performSentencePrediction()
+        }
+    }
+
+    /// Perform the AI call for sentence prediction
+    private func performSentencePrediction() async {
+        // Load memories from App Groups
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        // Get global memory
+        let globalMemory = defaults?.string(forKey: "globalMemory") ?? ""
+
+        // Get context-specific memory if there's an active context
+        var contextMemory = ""
+        var contextName = ""
+        if let context = activeContext {
+            contextName = context.name
+            if let contextMemoriesData = defaults?.data(forKey: "contextMemories"),
+               let contextMemories = try? JSONDecoder().decode([String: String].self, from: contextMemoriesData) {
+                contextMemory = contextMemories[context.id.uuidString] ?? ""
+            }
+        }
+
+        // Build the prompt
+        let typingContext = currentTypingContext
+
+        // Get API key for formatting provider
+        guard let apiKey = getFormattingAPIKey() else {
+            await MainActor.run {
+                isLoadingSentencePredictions = false
+                sentencePredictionError = "No AI provider configured"
+            }
+            return
+        }
+
+        // Prepare the request
+        let prompt = buildSentencePredictionPrompt(
+            typingContext: typingContext,
+            globalMemory: globalMemory,
+            contextMemory: contextMemory,
+            contextName: contextName
+        )
+
+        do {
+            let predictions = try await callAIForSentencePredictions(prompt: prompt, apiKey: apiKey)
+
+            await MainActor.run {
+                sentencePredictions = predictions
+                isLoadingSentencePredictions = false
+            }
+        } catch {
+            await MainActor.run {
+                isLoadingSentencePredictions = false
+                sentencePredictionError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Build the prompt for sentence prediction
+    private func buildSentencePredictionPrompt(
+        typingContext: String,
+        globalMemory: String,
+        contextMemory: String,
+        contextName: String
+    ) -> String {
+        var systemContext = ""
+
+        if !globalMemory.isEmpty {
+            systemContext += "User information:\n\(globalMemory)\n\n"
+        }
+
+        if !contextName.isEmpty && !contextMemory.isEmpty {
+            systemContext += "Context (\(contextName)):\n\(contextMemory)\n\n"
+        }
+
+        let conversationContext = typingContext.isEmpty
+            ? "The user is starting a new message."
+            : "Current text: \"\(typingContext)\""
+
+        return """
+        \(systemContext)\(conversationContext)
+
+        Generate exactly 4 natural sentence completions or responses the user might want to send next. Each should be a complete, standalone sentence that continues naturally from the context.
+
+        Rules:
+        - Make sentences varied in tone and approach
+        - Keep sentences concise (under 20 words each)
+        - Make them contextually appropriate
+        - If starting fresh, provide common greeting/opener options
+
+        Respond with exactly 4 sentences, one per line, no numbering or bullets.
+        """
+    }
+
+    /// Get the API key for formatting provider
+    private func getFormattingAPIKey() -> String? {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        guard let data = defaults?.data(forKey: Constants.Keys.configuredAIProviders) else {
+            return nil
+        }
+
+        struct SimpleAIProviderConfig: Codable {
+            let provider: String
+            let apiKey: String
+            let usageCategories: [String]
+        }
+
+        do {
+            let configs = try JSONDecoder().decode([SimpleAIProviderConfig].self, from: data)
+            // Look for formatting provider first, then fall back to any provider
+            if let config = configs.first(where: { $0.usageCategories.contains("formatting") }) {
+                return config.apiKey
+            }
+            // Fall back to first available provider
+            return configs.first?.apiKey
+        } catch {
+            return nil
+        }
+    }
+
+    /// Call OpenAI API for sentence predictions
+    private func callAIForSentencePredictions(prompt: String, apiKey: String) async throws -> [String] {
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10
+
+        let body: [String: Any] = [
+            "model": "gpt-4o-mini",
+            "messages": [
+                ["role": "system", "content": "You are a helpful assistant that predicts what the user wants to type next. Be concise and natural."],
+                ["role": "user", "content": prompt]
+            ],
+            "max_tokens": 200,
+            "temperature": 0.8
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            throw NSError(domain: "AI", code: -1, userInfo: [NSLocalizedDescriptionKey: "API request failed"])
+        }
+
+        // Parse response
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let firstChoice = choices.first,
+              let message = firstChoice["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            throw NSError(domain: "AI", code: -2, userInfo: [NSLocalizedDescriptionKey: "Failed to parse response"])
+        }
+
+        // Split response into lines and take first 4 non-empty ones
+        let lines = content.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .prefix(4)
+            .map { String($0) }
+
+        if lines.isEmpty {
+            throw NSError(domain: "AI", code: -3, userInfo: [NSLocalizedDescriptionKey: "No predictions generated"])
+        }
+
+        return Array(lines)
+    }
+
+    /// Insert a selected sentence prediction
+    func insertSentencePrediction(_ sentence: String) {
+        // Insert the sentence
+        textDocumentProxy?.insertText(sentence + " ")
+
+        // Update typing context
+        updateTypingContext()
+
+        // Close the panel
+        showSentencePredictionPanel = false
+        sentencePredictions = []
+
+        keyboardLog("Inserted sentence prediction (\(sentence.count) chars)", category: "AI")
+    }
+
+    /// Close the sentence prediction panel
+    func closeSentencePredictionPanel() {
+        showSentencePredictionPanel = false
+        sentencePredictions = []
+        sentencePredictionError = nil
+        isLoadingSentencePredictions = false
     }
 
     // MARK: - Phase 13.11: AI Context Processing
