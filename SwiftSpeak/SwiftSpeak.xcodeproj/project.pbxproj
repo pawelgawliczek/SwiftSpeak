@@ -78,6 +78,7 @@
 				Shared/Models/Context.swift,
 				Shared/Models/Cost.swift,
 				Shared/Models/FormattingMode.swift,
+				Shared/Models/KeyboardAction.swift,
 				Shared/Models/Knowledge.swift,
 				Shared/Models/Language.swift,
 				Shared/Models/LocalProvider.swift,

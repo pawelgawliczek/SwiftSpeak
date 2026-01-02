@@ -11,6 +11,7 @@ struct ContentView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.scenePhase) var scenePhase
     @StateObject private var configManager = RemoteConfigManager.shared
+    @StateObject private var actionHandler = KeyboardActionHandler.shared  // Unified keyboard action handler
     @State private var selectedTab = 0
     @State private var showRecording = false
     @State private var translateOnRecord = false
@@ -20,8 +21,8 @@ struct ContentView: View {
     @State private var editModeOriginalText: String? = nil  // Phase 12: Edit mode
     @State private var showSwiftLinkQuickStart = false  // SwiftLink quick-start sheet
     @State private var swiftLinkPreselectedApp: SwiftLinkApp? = nil  // Pre-selected app from keyboard
-    @State private var showSwiftLinkSetupOverlay = false  // Overlay when setting up SwiftLink for AI
-    @State private var swiftLinkSetupMessage = ""  // Dynamic message for the overlay
+    @State private var showSwiftLinkSetupOverlay = false  // Overlay when setting up SwiftLink for AI (legacy)
+    @State private var swiftLinkSetupMessage = ""  // Dynamic message for the overlay (legacy)
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -123,7 +124,7 @@ struct ContentView: View {
             )
             .environmentObject(settings)
         }
-        // SwiftLink Setup Overlay - shown when AI button pressed without active SwiftLink
+        // SwiftLink Setup Overlay - shown when AI button pressed without active SwiftLink (legacy)
         .overlay {
             if showSwiftLinkSetupOverlay {
                 SwiftLinkSetupOverlay(message: swiftLinkSetupMessage)
@@ -131,6 +132,14 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSwiftLinkSetupOverlay)
+        // Unified Keyboard Action Overlay - new unified system for all keyboard actions
+        .overlay {
+            if actionHandler.showOverlay {
+                KeyboardActionOverlay(handler: actionHandler)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+            }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: actionHandler.showOverlay)
         // Listen for overlay dismiss notification from SwiftLinkSessionManager
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("dismissSwiftLinkOverlay"))) { _ in
             withAnimation {
@@ -145,6 +154,24 @@ struct ContentView: View {
 
         appLog("URL scheme received: \(url.host ?? "unknown")", category: "Navigation")
 
+        // UNIFIED HANDLER: Handle all keyboard actions through single entry point
+        if url.host == Constants.UnifiedURL.host {
+            appLog("Unified action URL received - delegating to KeyboardActionHandler", category: "Navigation")
+
+            // Return to home screen (tab 0) as per user requirement
+            selectedTab = 0
+
+            // Dismiss any open sheets/overlays
+            showRecording = false
+            showSwiftLinkQuickStart = false
+            showSwiftLinkSetupOverlay = false
+
+            // Process the unified action
+            actionHandler.handleURLAction()
+            return
+        }
+
+        // LEGACY HANDLERS: Maintained for backward compatibility during transition
         // Track if we need to show the setup overlay
         let needsSwiftLinkSetup = !SwiftLinkSessionManager.shared.isSessionActive
         let isAIProcess = url.host == "aiprocess"

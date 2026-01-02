@@ -1655,6 +1655,123 @@ class KeyboardViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Unified Keyboard Action Dispatch
+
+    /// Dispatch a unified keyboard action to the main app
+    /// This is the new unified system for all keyboard-to-app transitions
+    func dispatchUnifiedAction(_ action: KeyboardAction) {
+        keyboardLog("Dispatching unified action: \(action.type.rawValue)", category: "UnifiedAction")
+
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Encode and store the action
+        if let actionData = try? JSONEncoder().encode(action) {
+            defaults?.set(actionData, forKey: Constants.KeyboardActionKeys.currentAction)
+            defaults?.set(KeyboardActionStatus.pending.rawValue, forKey: Constants.KeyboardActionKeys.status)
+            defaults?.set(Date().timeIntervalSince1970, forKey: Constants.KeyboardActionKeys.lastUpdate)
+            defaults?.synchronize()
+
+            // Open the unified URL to trigger main app
+            if let url = Constants.UnifiedURL.url {
+                openURL(url)
+            }
+        } else {
+            keyboardLog("Failed to encode action", category: "UnifiedAction", level: .error)
+        }
+    }
+
+    /// Create and dispatch a transcription action
+    func dispatchTranscriptionAction(isEditMode: Bool = false, originalText: String? = nil) {
+        // Get source app info for auto-return
+        let sourceApp = getSourceAppInfo()
+
+        var action: KeyboardAction
+        if isEditMode, let text = originalText {
+            action = KeyboardAction.edit(
+                originalText: text,
+                mode: selectedMode,
+                sourceApp: sourceApp,
+                autoReturn: true
+            )
+        } else {
+            action = KeyboardAction.transcription(
+                mode: selectedMode,
+                translate: isTranslationEnabled && isPro,
+                targetLanguage: isTranslationEnabled ? selectedLanguage : nil,
+                customTemplateId: selectedCustomTemplateId,
+                sourceApp: sourceApp,
+                autoReturn: true
+            )
+        }
+
+        dispatchUnifiedAction(action)
+    }
+
+    /// Create and dispatch an AI process action
+    func dispatchAIProcessAction() {
+        guard let text = existingTextInField, !text.isEmpty else {
+            keyboardLog("No text to process", category: "UnifiedAction", level: .warning)
+            return
+        }
+
+        let sourceApp = getSourceAppInfo()
+
+        let action = KeyboardAction.aiProcess(
+            text: text,
+            contextId: activeContext?.id,
+            contextName: activeContext?.name,
+            powerModeId: nil,
+            powerModeName: nil,
+            translate: isTranslationEnabled,
+            targetLanguage: isTranslationEnabled ? selectedLanguage : nil,
+            sourceApp: sourceApp,
+            autoReturn: true
+        )
+
+        dispatchUnifiedAction(action)
+    }
+
+    /// Create and dispatch a prediction action
+    func dispatchPredictionAction() {
+        updateTypingContext()
+        let sourceApp = getSourceAppInfo()
+
+        let action = KeyboardAction.prediction(
+            typingContext: currentTypingContext,
+            activeContextId: activeContext?.id,
+            activeContextName: activeContext?.name,
+            sourceApp: sourceApp,
+            autoReturn: true
+        )
+
+        dispatchUnifiedAction(action)
+    }
+
+    /// Create and dispatch a SwiftLink enable action
+    func dispatchEnableSwiftLinkAction() {
+        let sourceApp = getSourceAppInfo()
+
+        let action = KeyboardAction.enableSwiftLink(
+            sourceApp: sourceApp,
+            autoReturn: true
+        )
+
+        dispatchUnifiedAction(action)
+    }
+
+    /// Get source app info for auto-return
+    private func getSourceAppInfo() -> (urlScheme: String?, bundleId: String?, name: String?) {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Try to get last used SwiftLink app
+        if let lastAppData = defaults?.data(forKey: "lastUsedSwiftLinkApp"),
+           let lastApp = try? JSONDecoder().decode(KeyboardSwiftLinkApp.self, from: lastAppData) {
+            return (lastApp.urlScheme, lastApp.bundleId, lastApp.name)
+        }
+
+        return (nil, nil, nil)
+    }
+
     private func openURL(_ url: URL) {
         // Method 1: Try to get UIApplication.shared via KVC (works in extensions)
         guard let application = UIApplication.value(forKeyPath: "sharedApplication") as? UIApplication else {

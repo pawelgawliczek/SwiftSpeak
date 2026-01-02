@@ -253,6 +253,44 @@ enum Constants {
         }
     }
 
+    // MARK: - Unified Keyboard Action (Phase 13 Refactor)
+    /// Unified system for all keyboard-to-app actions
+    enum KeyboardActionKeys {
+        /// Current action being processed (JSON-encoded KeyboardAction)
+        static let currentAction = "keyboardCurrentAction"
+        /// Status of the current action (KeyboardActionStatus rawValue)
+        static let status = "keyboardActionStatus"
+        /// Result of the action (KeyboardActionResult JSON)
+        static let result = "keyboardActionResult"
+        /// Error message if action failed
+        static let error = "keyboardActionError"
+        /// Timestamp when the action was last updated
+        static let lastUpdate = "keyboardActionLastUpdate"
+    }
+
+    /// Unified Darwin notifications for keyboard actions
+    enum KeyboardActionNotifications {
+        static let prefix = "swiftspeak.action."
+        /// Keyboard requests an action to be processed
+        static let requestAction = prefix + "request"
+        /// Main app acknowledges action received
+        static let actionAcknowledged = prefix + "acknowledged"
+        /// Action status changed (processing, streaming, etc.)
+        static let statusChanged = prefix + "statusChanged"
+        /// Action completed (success or error)
+        static let actionComplete = prefix + "complete"
+        /// Streaming update available (for live transcription)
+        static let streamingUpdate = prefix + "streaming"
+    }
+
+    /// URL scheme for unified action entry point
+    enum UnifiedURL {
+        /// Single entry point: swiftspeak://action
+        static let host = "action"
+        /// Full URL (action details come from App Groups)
+        static var url: URL? { URL(string: "swiftspeak://action") }
+    }
+
     // MARK: - Phase 11j: Audio Validation
     enum AudioValidation {
         /// Minimum recording duration (seconds) - below this produces garbage
