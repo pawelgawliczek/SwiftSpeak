@@ -27,8 +27,12 @@ actor ContextAwarePredictions {
 
     private let appGroupID = "group.pawelgawliczek.swiftspeak"
 
-    // Context-specific vocabulary
+    // Context-specific vocabulary (English)
     private var contextVocabulary: [TypingContextType: [String: Int]] = [:]
+
+    // Multi-language context vocabulary
+    // Language code -> Context -> Word -> Frequency
+    private var contextVocabularyByLanguage: [String: [TypingContextType: [String: Int]]] = [:]
 
     // Current detected context
     private var currentContext: TypingContextType = .unknown
@@ -43,6 +47,7 @@ actor ContextAwarePredictions {
         guard !isInitialized else { return }
 
         loadContextVocabulary()
+        loadMultiLanguageVocabulary()
         isInitialized = true
         keyboardLog("ContextAwarePredictions initialized", category: "Prediction")
     }
@@ -107,8 +112,18 @@ actor ContextAwarePredictions {
         let ctx = context ?? currentContext
         let lowercased = prefix.lowercased()
 
+        // Get language-specific vocabulary if available
+        var vocab: [String: Int]?
+
+        if let lang = language, let langVocab = contextVocabularyByLanguage[lang], let contextVocab = langVocab[ctx] {
+            vocab = contextVocab
+        } else {
+            // Fallback to English vocabulary
+            vocab = contextVocabulary[ctx]
+        }
+
         // Get context-specific words
-        guard let vocab = contextVocabulary[ctx] else {
+        guard let vocab = vocab else {
             return getDefaultPredictions(prefix: lowercased)
         }
 
@@ -131,8 +146,47 @@ actor ContextAwarePredictions {
     /// Get starter predictions when no text is typed
     /// Returns lowercase - caller handles smart capitalization
     func getStarterPredictions(for context: TypingContextType, language: String? = nil) -> [String] {
-        // For now, return English predictions regardless of language
-        // TODO: Add multi-language starter predictions in future
+        // Check for language-specific starters
+        if let lang = language {
+            switch (lang, context) {
+            // Polish
+            case ("pl", .email):
+                return ["szanowny", "witam", "dzień", "dziękuję", "proszę", "pozdrawiam"]
+            case ("pl", .messaging):
+                return ["cześć", "hej", "co", "jak", "spoko", "ok"]
+            case ("pl", .formal):
+                return ["szanowni", "szanowna", "z", "w", "proszę", "dziękuję"]
+
+            // Spanish
+            case ("es", .email):
+                return ["estimado", "hola", "buenos", "gracias", "por", "favor"]
+            case ("es", .messaging):
+                return ["hola", "qué", "cómo", "hasta", "vale", "ok"]
+            case ("es", .formal):
+                return ["estimados", "distinguido", "por", "favor", "gracias", "atentamente"]
+
+            // French
+            case ("fr", .email):
+                return ["cher", "bonjour", "merci", "veuillez", "cordialement", "bien"]
+            case ("fr", .messaging):
+                return ["salut", "ça", "comment", "à", "ok", "super"]
+            case ("fr", .formal):
+                return ["madame", "monsieur", "veuillez", "je", "nous", "cordialement"]
+
+            // German
+            case ("de", .email):
+                return ["sehr", "hallo", "guten", "danke", "bitte", "mit"]
+            case ("de", .messaging):
+                return ["hallo", "hi", "wie", "bis", "ok", "toll"]
+            case ("de", .formal):
+                return ["sehr", "geehrter", "geehrte", "bitte", "danke", "mit"]
+
+            default:
+                break
+            }
+        }
+
+        // Default English starters
         switch context {
         case .email:
             return ["hi", "hello", "dear", "thank", "please", "i", "we"]
@@ -270,5 +324,129 @@ actor ContextAwarePredictions {
             .filter { $0.hasPrefix(prefix) }
             .prefix(7)
             .map { $0.capitalized }
+    }
+
+    // MARK: - Multi-Language Vocabulary
+
+    private func loadMultiLanguageVocabulary() {
+        // Polish (pl)
+        contextVocabularyByLanguage["pl"] = [
+            .email: [
+                "szanowny": 500, "szanowna": 480, "witam": 450, "dzień": 430,
+                "dobry": 420, "dziękuję": 400, "proszę": 380, "pozdrawiam": 360,
+                "z poważaniem": 350, "poważaniem": 340, "serdecznie": 320,
+                "w załączeniu": 300, "załączeniu": 290, "odpowiedź": 280,
+                "spotkanie": 270, "termin": 260, "sprawa": 250, "projekt": 240,
+                "raport": 230, "dokument": 220, "pilne": 210, "priorytetu": 200,
+                "agenda": 190, "prezentacja": 180, "przegląd": 170,
+                "poniedziałek": 100, "wtorek": 95, "środa": 90, "czwartek": 95,
+                "piątek": 100, "jutro": 150, "dzisiaj": 180, "tydzień": 160,
+            ],
+            .messaging: [
+                "cześć": 500, "hej": 480, "witam": 400, "co": 380,
+                "tam": 370, "jak": 360, "się": 350, "masz": 340,
+                "dzięki": 330, "ok": 320, "okej": 310, "tak": 300,
+                "nie": 290, "jasne": 280, "super": 270, "spoko": 260,
+                "fajnie": 250, "cool": 240, "haha": 230, "lol": 220,
+                "omg": 210, "btw": 200, "zaraz": 190, "później": 180,
+                "nara": 170, "do": 160, "zobaczenia": 150, "pa": 140,
+                "gdzie": 130, "kiedy": 120, "dlaczego": 110, "kocham": 100,
+            ],
+            .formal: [
+                "szanowni": 400, "państwo": 390, "z góry": 380,
+                "góry": 370, "dziękuję": 360, "w załączeniu": 350,
+                "uprzejmie": 340, "proszę": 330, "informuję": 320,
+                "zwracam": 310, "się": 300, "odnośnie": 290,
+                "zgodnie": 280, "niniejszym": 270, "w związku": 260,
+                "z tym": 250, "powyższym": 240, "zatem": 230,
+            ]
+        ]
+
+        // Spanish (es)
+        contextVocabularyByLanguage["es"] = [
+            .email: [
+                "estimado": 500, "estimada": 480, "hola": 450, "buenos": 430,
+                "días": 420, "gracias": 400, "por": 380, "favor": 360,
+                "saludos": 350, "cordialmente": 340, "atentamente": 330,
+                "cordiales": 320, "adjunto": 310, "reunión": 300,
+                "agenda": 290, "informe": 280, "documento": 270,
+                "urgente": 260, "prioridad": 250, "proyecto": 240,
+                "lunes": 100, "martes": 95, "miércoles": 90, "jueves": 95,
+                "viernes": 100, "mañana": 150, "hoy": 180, "semana": 160,
+            ],
+            .messaging: [
+                "hola": 500, "hey": 480, "qué": 450, "tal": 440,
+                "cómo": 430, "estás": 420, "gracias": 410, "ok": 400,
+                "vale": 390, "sí": 380, "no": 370, "claro": 360,
+                "genial": 350, "super": 340, "jaja": 330, "lol": 320,
+                "omg": 310, "hasta": 300, "luego": 290, "pronto": 280,
+                "dónde": 270, "cuándo": 260, "por qué": 250, "amor": 240,
+            ],
+            .formal: [
+                "estimados": 400, "señores": 390, "distinguido": 380,
+                "distinguida": 370, "por": 360, "favor": 350,
+                "agradezco": 340, "cordialmente": 330, "atentamente": 320,
+                "respecto": 310, "referencia": 300, "conformidad": 290,
+                "presente": 280, "adjunto": 270, "mediante": 260,
+            ]
+        ]
+
+        // French (fr)
+        contextVocabularyByLanguage["fr"] = [
+            .email: [
+                "cher": 500, "chère": 480, "bonjour": 450, "madame": 430,
+                "monsieur": 420, "merci": 400, "beaucoup": 380,
+                "veuillez": 360, "cordialement": 350, "bien": 340,
+                "vous": 330, "salutations": 320, "pièce": 310,
+                "jointe": 300, "réunion": 290, "rendez-vous": 280,
+                "rapport": 270, "document": 260, "urgent": 250,
+                "lundi": 100, "mardi": 95, "mercredi": 90, "jeudi": 95,
+                "vendredi": 100, "demain": 150, "aujourd'hui": 180, "semaine": 160,
+            ],
+            .messaging: [
+                "salut": 500, "coucou": 480, "ça": 450, "va": 440,
+                "comment": 430, "vas": 420, "merci": 410, "ok": 400,
+                "d'accord": 390, "oui": 380, "non": 370, "super": 360,
+                "génial": 350, "cool": 340, "mdr": 330, "lol": 320,
+                "omg": 310, "à": 300, "plus": 290, "tard": 280,
+                "où": 270, "quand": 260, "pourquoi": 250, "bisous": 240,
+            ],
+            .formal: [
+                "madame": 400, "monsieur": 390, "messieurs": 380,
+                "veuillez": 370, "agréer": 360, "cordialement": 350,
+                "respectueusement": 340, "concernant": 330, "objet": 320,
+                "conformément": 310, "ci-joint": 300, "par": 290,
+                "présente": 280, "suite": 270, "référence": 260,
+            ]
+        ]
+
+        // German (de)
+        contextVocabularyByLanguage["de"] = [
+            .email: [
+                "sehr": 500, "geehrter": 480, "geehrte": 470, "hallo": 450,
+                "guten": 440, "tag": 430, "danke": 420, "vielen": 410,
+                "dank": 400, "bitte": 390, "mit": 380, "freundlichen": 370,
+                "grüßen": 360, "grüße": 350, "anhang": 340,
+                "besprechung": 330, "termin": 320, "bericht": 310,
+                "dokument": 300, "dringend": 290, "priorität": 280,
+                "montag": 100, "dienstag": 95, "mittwoch": 90, "donnerstag": 95,
+                "freitag": 100, "morgen": 150, "heute": 180, "woche": 160,
+            ],
+            .messaging: [
+                "hallo": 500, "hi": 480, "hey": 470, "wie": 450,
+                "geht's": 440, "gehts": 430, "danke": 420, "ok": 410,
+                "okay": 400, "ja": 390, "nein": 380, "klar": 370,
+                "super": 360, "toll": 350, "cool": 340, "haha": 330,
+                "lol": 320, "omg": 310, "bis": 300, "später": 290,
+                "tschüss": 280, "wo": 270, "wann": 260, "warum": 250,
+            ],
+            .formal: [
+                "sehr": 400, "geehrte": 390, "damen": 380,
+                "herren": 370, "bitte": 360, "danke": 350,
+                "hochachtungsvoll": 340, "mit": 330, "freundlichen": 320,
+                "grüßen": 310, "bezüglich": 300, "betreff": 290,
+                "anlage": 280, "gemäß": 270, "hiermit": 260,
+            ]
+        ]
     }
 }

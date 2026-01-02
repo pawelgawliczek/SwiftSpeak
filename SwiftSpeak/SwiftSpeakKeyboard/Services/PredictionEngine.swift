@@ -23,6 +23,22 @@ actor PredictionEngine {
     // Service initialization flags
     private var servicesInitialized = false
 
+    // Language-specific abbreviations (do not trigger capitalization after them)
+    private static let abbreviationsByLanguage: [String: Set<String>] = [
+        "en": ["mr.", "mrs.", "ms.", "dr.", "prof.", "etc.", "vs.", "inc.", "ltd.",
+               "sr.", "jr.", "e.g.", "i.e.", "fig.", "no.", "vol.", "st.", "ave.",
+               "blvd.", "rd.", "corp."],
+        "pl": ["dr.", "mgr.", "inż.", "prof.", "św.", "ul.", "nr.", "tel.", "godz.",
+               "pł.", "płd.", "płn.", "płw.", "ok.", "cdn.", "np.", "tzn.", "itd.",
+               "itp.", "inż.", "hab.", "dyr."],
+        "es": ["sr.", "sra.", "srta.", "dr.", "dra.", "prof.", "etc.", "núm.", "tel.",
+               "vs.", "fig.", "pág.", "vol.", "atte.", "edo.", "gral.", "lic."],
+        "fr": ["m.", "mme.", "mlle.", "dr.", "prof.", "etc.", "tél.", "n°", "fig.",
+               "vol.", "av.", "boul.", "c.-à-d.", "ex.", "p.", "pp.", "st.", "ste."],
+        "de": ["hr.", "fr.", "dr.", "prof.", "str.", "nr.", "tel.", "z.b.", "etc.",
+               "d.h.", "u.a.", "bzw.", "ggf.", "evtl.", "inkl.", "ca.", "fig.", "bd."]
+    ]
+
     // MARK: - Initialization
 
     init() {
@@ -237,16 +253,16 @@ actor PredictionEngine {
         uniquePredictions.sort { $0.1 > $1.1 }
 
         // Apply smart capitalization based on context
-        let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText)
+        let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText, language: language)
         return uniquePredictions.prefix(3).map { text, _ in
-            applySmartCapitalization(text, shouldCapitalize: shouldCapitalize)
+            applySmartCapitalization(text, shouldCapitalize: shouldCapitalize, language: language)
         }
     }
 
     // MARK: - Smart Capitalization
 
     /// Determine if next word should be capitalized based on context
-    private func shouldCapitalizeNextWord(context: String) -> Bool {
+    private func shouldCapitalizeNextWord(context: String, language: String?) -> Bool {
         // Empty context = start of text
         if context.isEmpty {
             return true
@@ -261,10 +277,11 @@ actor PredictionEngine {
 
         // After sentence-ending punctuation
         if trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") {
-            // Check for common abbreviations that don't end sentences
-            let abbreviations = ["mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.",
-                               "etc.", "vs.", "e.g.", "i.e.", "fig.", "no.", "vol.",
-                               "st.", "ave.", "blvd.", "rd.", "inc.", "corp.", "ltd."]
+            // Get abbreviations for the current language (fallback to English)
+            let languageCode = language ?? "en"
+            let abbreviations = Self.abbreviationsByLanguage[languageCode] ?? Self.abbreviationsByLanguage["en"]!
+
+            // Check if text ends with an abbreviation
             let lowercased = trimmed.lowercased()
             for abbr in abbreviations {
                 if lowercased.hasSuffix(abbr) {
@@ -283,7 +300,18 @@ actor PredictionEngine {
     }
 
     /// Apply capitalization to a word based on context
-    private func applySmartCapitalization(_ word: String, shouldCapitalize: Bool) -> String {
+    private func applySmartCapitalization(_ word: String, shouldCapitalize: Bool, language: String?) -> String {
+        // Get abbreviations for the current language (fallback to English)
+        let languageCode = language ?? "en"
+        let abbreviations = Self.abbreviationsByLanguage[languageCode] ?? Self.abbreviationsByLanguage["en"]!
+
+        // If the word is an abbreviation, preserve its original case
+        let lowercased = word.lowercased()
+        if abbreviations.contains(lowercased) {
+            return lowercased
+        }
+
+        // Apply standard capitalization rules
         if shouldCapitalize {
             return word.capitalized
         }
@@ -294,13 +322,13 @@ actor PredictionEngine {
     func localPredictions(for context: PredictionContext) -> [String] {
         // For backward compatibility, return simple predictions
         let searchTerm = context.currentWord.lowercased()
-        let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText)
+        let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText, language: nil)
 
         if searchTerm.isEmpty {
             return frequentWords
                 .sorted { $0.value > $1.value }
                 .prefix(3)
-                .map { applySmartCapitalization($0.key, shouldCapitalize: shouldCapitalize) }
+                .map { applySmartCapitalization($0.key, shouldCapitalize: shouldCapitalize, language: nil) }
         }
 
         var predictions: [(String, Int)] = []
@@ -320,7 +348,7 @@ actor PredictionEngine {
         return predictions
             .sorted { $0.1 > $1.1 }
             .prefix(3)
-            .map { applySmartCapitalization($0.0, shouldCapitalize: shouldCapitalize) }
+            .map { applySmartCapitalization($0.0, shouldCapitalize: shouldCapitalize, language: nil) }
     }
 
     // MARK: - Get Predictions
