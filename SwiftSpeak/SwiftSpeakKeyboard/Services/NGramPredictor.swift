@@ -89,12 +89,18 @@ actor NGramPredictor {
     func initialize() async {
         guard !isInitialized else { return }
 
+        keyboardLog("NGramPredictor: Starting init", category: "Prediction")
+
         // LAZY LOADING: Only load English by default
         // Other languages are loaded on-demand when predict() or predictCompletion() is called
+        keyboardLog("NGramPredictor: Loading English n-grams...", category: "Prediction")
         loadBuiltInNGrams(for: "en")
+        keyboardLog("NGramPredictor: English n-grams loaded", category: "Prediction")
 
         // Load persisted learned n-grams and merge with built-in
+        keyboardLog("NGramPredictor: Loading learned n-grams...", category: "Prediction")
         loadLearnedNGrams()
+        keyboardLog("NGramPredictor: Learned n-grams loaded", category: "Prediction")
 
         isInitialized = true
 
@@ -421,11 +427,14 @@ actor NGramPredictor {
     // MARK: - Built-in N-Grams
 
     private func loadBuiltInNGrams(for language: String) {
+        keyboardLog("loadBuiltInNGrams: Starting for \(language)", category: "Prediction")
         var data = NGramData()
 
         switch language {
         case "en":
+            keyboardLog("loadBuiltInNGrams: Calling loadEnglishNGrams", category: "Prediction")
             loadEnglishNGrams(into: &data)
+            keyboardLog("loadBuiltInNGrams: loadEnglishNGrams returned", category: "Prediction")
         case "pl":
             loadPolishNGrams(into: &data)
         case "es":
@@ -459,7 +468,9 @@ actor NGramPredictor {
     }
 
     private func loadEnglishNGrams(into data: inout NGramData) {
+        keyboardLog("loadEnglishNGrams: ENTERED", category: "Prediction")
         // Common English bigrams (word pairs)
+        keyboardLog("loadEnglishNGrams: Creating commonBigrams array...", category: "Prediction")
         let commonBigrams: [(String, String, Int)] = [
             // Pronouns + verbs
             ("i", "am", 500), ("i", "have", 400), ("i", "will", 350), ("i", "would", 300),
@@ -523,11 +534,13 @@ actor NGramPredictor {
             ("if", "you", 220), ("as", "soon", 150),
         ]
 
+        keyboardLog("loadEnglishNGrams: commonBigrams created, processing \(commonBigrams.count) entries", category: "Prediction")
         for (word1, word2, count) in commonBigrams {
             data.bigrams[word1, default: [:]][word2, default: 0] += count
             data.unigrams[word1, default: 0] += count
             data.unigrams[word2, default: 0] += count
         }
+        keyboardLog("loadEnglishNGrams: bigrams processed", category: "Prediction")
 
         // Common English trigrams
         let commonTrigrams: [(String, String, String, Int)] = [

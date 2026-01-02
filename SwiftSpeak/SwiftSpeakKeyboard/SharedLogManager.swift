@@ -50,6 +50,10 @@ actor SharedLogManager {
     /// Singleton instance
     static let shared = SharedLogManager()
 
+    /// Flag to skip logging during keyboard initialization
+    /// Set to true after keyboard fully appears to prevent fire-and-forget Task crashes
+    static var isInitialized = false
+
     /// Maximum number of log entries to keep
     private let maxEntries = 500
 
@@ -260,19 +264,55 @@ func appLog(_ message: String, category: String, level: LogEntry.LogLevel = .inf
     }
 }
 
+/// TEMPORARY: Disable all keyboard logging to diagnose if logging is causing crashes
+/// Set to false to enable logging for diagnosis
+private let disableKeyboardLogging = false
+
+/// Serial queue for async logging
+private let keyboardLogQueue = DispatchQueue(label: "swiftspeak.keyboard.log", qos: .utility)
+
 /// Log from the keyboard extension
+/// TEMPORARILY DISABLED for crash diagnosis
 func keyboardLog(_ message: String, category: String, level: LogEntry.LogLevel = .info) {
-    Task {
-        await SharedLogManager.shared.setSource(.keyboard)
-        switch level {
-        case .debug:
-            await SharedLogManager.shared.debug(message, category: category)
-        case .info:
-            await SharedLogManager.shared.info(message, category: category)
-        case .warning:
-            await SharedLogManager.shared.warning(message, category: category)
-        case .error:
-            await SharedLogManager.shared.error(message, category: category)
+    // DIAGNOSTIC: Skip all logging to test if keyboard loads without it
+    guard !disableKeyboardLogging else { return }
+
+    // Use async to avoid blocking
+    keyboardLogQueue.async {
+        // Write directly to log file without actor isolation
+        let sanitizedMessage = LogSanitizer.sanitize(message)
+
+        let entry = LogEntry(
+            timestamp: Date(),
+            source: .keyboard,
+            category: category,
+            level: level,
+            message: sanitizedMessage
+        )
+
+        // Format as JSONL and append to file
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Constants.appGroupIdentifier
+        ) else { return }
+
+        let logFileURL = containerURL.appendingPathComponent("swiftspeak_logs.jsonl")
+
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(entry)
+            var lineData = data
+            lineData.append(contentsOf: "\n".utf8)
+
+            if FileManager.default.fileExists(atPath: logFileURL.path) {
+                let handle = try FileHandle(forWritingTo: logFileURL)
+                try handle.seekToEnd()
+                try handle.write(contentsOf: lineData)
+                try handle.close()
+            } else {
+                try lineData.write(to: logFileURL)
+            }
+        } catch {
+            // Silently fail - can't log errors from logging
         }
     }
 }

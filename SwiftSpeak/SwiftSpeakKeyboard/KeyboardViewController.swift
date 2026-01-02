@@ -63,6 +63,8 @@ class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
 
+        // Enable logging now that keyboard is fully initialized
+        SharedLogManager.isInitialized = true
         keyboardLog("Keyboard appeared", category: "Lifecycle")
 
         // Update Full Access status each time keyboard appears

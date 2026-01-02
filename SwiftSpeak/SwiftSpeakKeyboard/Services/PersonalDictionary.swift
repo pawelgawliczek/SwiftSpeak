@@ -34,12 +34,18 @@ actor PersonalDictionary {
     func initialize() async {
         guard !isInitialized else { return }
 
+        keyboardLog("PersonalDictionary: Starting init", category: "Prediction")
+
         // Load cached dictionary
+        keyboardLog("PersonalDictionary: Loading cache...", category: "Prediction")
         loadCache()
+        keyboardLog("PersonalDictionary: Cache loaded (lastBuildDate: \(lastBuildDate?.description ?? "nil"))", category: "Prediction")
 
         // Rebuild if cache is stale (older than 1 hour)
         if lastBuildDate == nil || Date().timeIntervalSince(lastBuildDate!) > 3600 {
+            keyboardLog("PersonalDictionary: Cache stale, rebuilding from history...", category: "Prediction")
             await buildFromHistory()
+            keyboardLog("PersonalDictionary: Rebuild complete", category: "Prediction")
         }
 
         isInitialized = true

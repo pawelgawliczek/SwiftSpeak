@@ -19,7 +19,10 @@ struct PredictionRow: View {
     @State private var autocorrectUndoSuggestion: AutocorrectUndoSuggestion? = nil
 
     // Shared prediction engine instance
-    private static let predictionEngine = PredictionEngine()
+    private static let predictionEngine: PredictionEngine = {
+        keyboardLog("PredictionRow: Creating static PredictionEngine", category: "Prediction")
+        return PredictionEngine()
+    }()
 
     // Debounce task for predictions
     @State private var predictionTask: Task<Void, Never>?

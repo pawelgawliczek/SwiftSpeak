@@ -20,8 +20,8 @@ actor PredictionEngine {
     private var pendingPredictionTask: Task<[String], Never>?
     private var lastPredictionContext: String = ""
 
-    // Service initialization flags
-    private var servicesInitialized = false
+    // Service initialization - use Task to ensure single execution
+    private var initializationTask: Task<Void, Never>?
 
     // Language-specific abbreviations (do not trigger capitalization after them)
     private static let abbreviationsByLanguage: [String: Set<String>] = [
@@ -42,30 +42,38 @@ actor PredictionEngine {
     // MARK: - Initialization
 
     init() {
-        Task {
-            await initializeServices()
-            await loadVocabulary()
-        }
+        keyboardLog("PredictionEngine: init() called", category: "Prediction")
+        // Don't spawn a Task here - initialization will happen on first use via ensureInitialized()
+        keyboardLog("PredictionEngine: init() returning (lazy init)", category: "Prediction")
     }
 
-    /// Initialize all prediction services
-    private func initializeServices() async {
-        guard !servicesInitialized else { return }
+    /// Ensure initialization happens exactly once, regardless of how many callers request it
+    private func ensureInitialized() async {
+        // If already initialized or in progress, wait for it
+        if let task = initializationTask {
+            await task.value
+            return
+        }
 
-        // Initialize N-gram predictor
-        await NGramPredictor.shared.initialize()
+        // Start initialization
+        initializationTask = Task {
+            await doInitializeServices()
+            await loadVocabulary()
+        }
 
-        // Initialize personal dictionary
-        await PersonalDictionary.shared.initialize()
+        await initializationTask?.value
+    }
 
-        // Initialize context-aware predictions
-        await ContextAwarePredictions.shared.initialize()
-
-        // Initialize prediction feedback
-        await PredictionFeedback.shared.initialize()
-
-        servicesInitialized = true
-        keyboardLog("PredictionEngine: All services initialized", category: "Prediction")
+    /// Initialize prediction services
+    /// NOTE: We intentionally do NOT eagerly initialize actor singletons here.
+    /// Accessing actors too early during keyboard startup causes crashes.
+    /// Actors self-initialize lazily when their methods are first called,
+    /// which happens after the keyboard view appears - this works reliably.
+    private func doInitializeServices() async {
+        keyboardLog("PredictionEngine: Service initialization (lazy mode)", category: "Prediction")
+        // Actors (NGramPredictor, PersonalDictionary, ContextAwarePredictions, PredictionFeedback)
+        // will self-initialize when first accessed during prediction requests.
+        // This avoids crashes caused by early actor access during keyboard startup.
     }
 
     // MARK: - Load Vocabulary
@@ -162,9 +170,7 @@ actor PredictionEngine {
     /// Get predictions based on local vocabulary, N-grams, and context
     func localPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [String] {
         // Ensure services are initialized
-        if !servicesInitialized {
-            await initializeServices()
-        }
+        await ensureInitialized()
 
         var predictions: [(text: String, score: Double)] = []
 
@@ -391,9 +397,7 @@ actor PredictionEngine {
     /// Uses local predictions only - no external API calls
     func getPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [String] {
         // Ensure services are initialized before making predictions
-        if !servicesInitialized {
-            await initializeServices()
-        }
+        await ensureInitialized()
 
         // Cancel any pending prediction task if context changed significantly
         if context.fullText != lastPredictionContext {
