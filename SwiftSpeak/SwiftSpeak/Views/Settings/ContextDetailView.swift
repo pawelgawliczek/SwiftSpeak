@@ -2,7 +2,7 @@
 //  ContextDetailView.swift
 //  SwiftSpeak
 //
-//  Detail view for a Context showing definition, history, and edit option
+//  Detail view for a Context showing definition, formatting, and history
 //
 
 import SwiftUI
@@ -30,27 +30,27 @@ struct ContextDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Header with icon
                 headerSection
-
-                // Action buttons
                 actionButtons
-
-                // Definition section
                 definitionSection
 
-                // Tone & Style section
-                if !context.toneDescription.isEmpty {
-                    toneSection
+                // Examples section
+                if !context.examples.isEmpty {
+                    examplesSection
                 }
 
-                // Languages section
-                if !context.languageHints.isEmpty {
-                    languagesSection
+                // Formatting section
+                if !context.selectedInstructions.isEmpty {
+                    formattingSection
+                }
+
+                // Domain jargon section
+                if context.domainJargon != .none {
+                    domainJargonSection
                 }
 
                 // Custom Instructions section
-                if !context.customInstructions.isEmpty {
+                if let instructions = context.customInstructions, !instructions.isEmpty {
                     instructionsSection
                 }
 
@@ -58,7 +58,7 @@ struct ContextDetailView: View {
                 historySection
 
                 // Memory section (if enabled)
-                if currentContext.memoryEnabled {
+                if currentContext.useContextMemory {
                     memorySection
                 }
 
@@ -102,8 +102,14 @@ struct ContextDetailView: View {
                     .fill(context.color.color.opacity(0.15))
                     .frame(width: 80, height: 80)
 
-                Text(context.icon)
-                    .font(.system(size: 40))
+                if context.icon.contains(".") {
+                    Image(systemName: context.icon)
+                        .font(.system(size: 40))
+                        .foregroundStyle(context.color.gradient)
+                } else {
+                    Text(context.icon)
+                        .font(.system(size: 40))
+                }
             }
 
             if !context.description.isEmpty {
@@ -137,7 +143,6 @@ struct ContextDetailView: View {
 
     private var actionButtons: some View {
         HStack(spacing: 12) {
-            // Set Active / Deactivate button
             Button(action: onSetActive) {
                 HStack(spacing: 8) {
                     Image(systemName: isActive ? "xmark.circle" : "checkmark.circle")
@@ -152,7 +157,6 @@ struct ContextDetailView: View {
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
             }
 
-            // Edit button
             Button(action: onEdit) {
                 HStack(spacing: 8) {
                     Image(systemName: "pencil")
@@ -187,37 +191,44 @@ struct ContextDetailView: View {
         }
     }
 
-    // MARK: - Tone Section
+    // MARK: - Examples Section
 
-    private var toneSection: some View {
+    private var examplesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("TONE & STYLE")
+            Text("EXAMPLES")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text(context.toneDescription)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(Color.primary.opacity(0.05))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+            VStack(spacing: 8) {
+                ForEach(context.examples.indices, id: \.self) { index in
+                    Text(context.examples[index])
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
+            }
         }
     }
 
-    // MARK: - Languages Section
+    // MARK: - Formatting Section
 
-    private var languagesSection: some View {
+    private var formattingSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("EXPECTED LANGUAGES")
+            Text("FORMATTING")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
             FlowLayout(spacing: 8) {
-                ForEach(context.languageHints) { language in
+                ForEach(context.formattingInstructions) { instruction in
                     HStack(spacing: 4) {
-                        Text(language.flag)
-                        Text(language.displayName)
+                        if let icon = instruction.icon {
+                            Image(systemName: icon)
+                                .font(.caption)
+                        }
+                        Text(instruction.displayName)
                             .font(.subheadline)
                     }
                     .padding(.horizontal, 12)
@@ -230,6 +241,27 @@ struct ContextDetailView: View {
         }
     }
 
+    // MARK: - Domain Jargon Section
+
+    private var domainJargonSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("DOMAIN VOCABULARY")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 8) {
+                Image(systemName: context.domainJargon.icon)
+                    .foregroundStyle(context.color.color)
+                Text(context.domainJargon.displayName)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+        }
+    }
+
     // MARK: - Instructions Section
 
     private var instructionsSection: some View {
@@ -238,7 +270,7 @@ struct ContextDetailView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            Text(context.customInstructions)
+            Text(context.customInstructions ?? "")
                 .font(.body)
                 .foregroundStyle(.primary)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -320,10 +352,9 @@ struct ContextDetailView: View {
 
                 Spacer()
 
-                // Edit button (always visible when memory section is shown)
                 Button(action: {
                     HapticManager.lightTap()
-                    editingMemoryContent = currentContext.memory ?? ""
+                    editingMemoryContent = currentContext.contextMemory ?? ""
                     showingMemoryEditor = true
                 }) {
                     HStack(spacing: 4) {
@@ -346,7 +377,7 @@ struct ContextDetailView: View {
                         .foregroundStyle(.purple)
                 }
 
-                if let memory = currentContext.memory, !memory.isEmpty {
+                if let memory = currentContext.contextMemory, !memory.isEmpty {
                     Text(memory)
                         .font(.subheadline)
                         .foregroundStyle(.primary)
@@ -361,7 +392,6 @@ struct ContextDetailView: View {
 
                         Spacer()
 
-                        // Clear button
                         Button(action: {
                             HapticManager.warning()
                             settings.updateContextMemory(id: context.id, memory: "")

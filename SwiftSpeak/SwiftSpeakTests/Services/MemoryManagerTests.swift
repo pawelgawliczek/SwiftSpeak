@@ -447,10 +447,7 @@ struct MemoryManagerUpdateTests {
             icon: "person",
             color: .blue,
             description: "Test",
-            toneDescription: "Casual",
-            formality: .neutral,
-            languageHints: [],
-            memoryEnabled: false, // Disabled
+            useContextMemory: false, // Disabled
             isActive: true
         )
 

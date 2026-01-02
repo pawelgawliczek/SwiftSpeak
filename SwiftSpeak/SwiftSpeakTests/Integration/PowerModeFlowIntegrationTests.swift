@@ -54,24 +54,23 @@ struct PowerModeFlowIntegrationTests {
         )
 
         #expect(!context.name.isEmpty)
-        #expect(!context.customInstructions.isEmpty)
+        #expect(context.customInstructions?.isEmpty == false)
     }
 
     @Test("Context with memory includes memory in prompt")
     func contextWithMemoryIncludesMemory() {
-        var context = ConversationContext(
+        let context = ConversationContext(
             name: "Memory Context",
             icon: "brain",
             color: .purple,
             description: "Context with memory",
             customInstructions: "Remember user preferences",
-            memoryEnabled: true
+            useContextMemory: true,
+            contextMemory: "User prefers formal language"
         )
 
-        context.memory = "User prefers formal language"
-
-        #expect(context.memory?.isEmpty == false)
-        #expect(context.memoryEnabled == true)
+        #expect(context.contextMemory?.isEmpty == false)
+        #expect(context.useContextMemory == true)
     }
 
     // MARK: - Memory System Tests

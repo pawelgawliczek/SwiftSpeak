@@ -215,8 +215,8 @@ final class AppleIntelligenceFormattingService: FormattingProvider, StreamingFor
                 instructions += "\n\nContext: \(contextMemory)"
             }
 
-            if let tone = context.toneDescription {
-                instructions += "\n\nTone: \(tone)"
+            if let customInstructions = context.customInstructions, !customInstructions.isEmpty {
+                instructions += "\n\nAdditional instructions: \(customInstructions)"
             }
         }
 

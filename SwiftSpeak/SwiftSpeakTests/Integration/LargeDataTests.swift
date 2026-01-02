@@ -183,7 +183,7 @@ struct LargeContextTests {
             customInstructions: longInstructions
         )
 
-        #expect(context.customInstructions.count == longInstructions.count)
+        #expect(context.customInstructions?.count == longInstructions.count)
     }
 
     @Test("Context with long memory")
@@ -193,13 +193,24 @@ struct LargeContextTests {
             icon: "brain",
             color: .orange,
             description: "Test",
-            memoryEnabled: true
+            useContextMemory: true,
+            contextMemory: nil
         )
 
         let longMemory = String(repeating: "Remember this: ", count: 500)
-        context.memory = longMemory
+        context = ConversationContext(
+            id: context.id,
+            name: context.name,
+            icon: context.icon,
+            color: context.color,
+            description: context.description,
+            useContextMemory: true,
+            contextMemory: longMemory,
+            createdAt: context.createdAt,
+            updatedAt: Date()
+        )
 
-        #expect(context.memory?.count == longMemory.count)
+        #expect(context.contextMemory?.count == longMemory.count)
     }
 }
 

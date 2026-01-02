@@ -412,12 +412,9 @@ final class SwiftLinkSessionManager: ObservableObject {
             .map { $0.replacementWord }
         )
 
-        // Add context-specific language hints (just the words, not descriptions)
+        // Add context name as potential vocabulary
         if let context = settings.activeContext {
-            // Add language names if multiple languages expected
-            if context.languageHints.count > 1 {
-                vocabWords.append(contentsOf: context.languageHints.map { $0.displayName })
-            }
+            vocabWords.append(context.name)
         }
 
         // Limit to 30 words and deduplicate
@@ -443,9 +440,11 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         // Get active context for style guidance
         if let context = settings.activeContext {
-            // Add context-specific formatting hints
-            if !context.toneDescription.isEmpty {
-                instructions.append("Use \(context.toneDescription.lowercased()) formatting style.")
+            // Add context-specific formatting hints based on selected instructions
+            if context.selectedInstructions.contains("formal") {
+                instructions.append("Use formal, professional formatting with complete sentences.")
+            } else if context.selectedInstructions.contains("casual") {
+                instructions.append("Use casual, conversational formatting.")
             }
 
             // Professional context = more formal punctuation
@@ -1684,7 +1683,7 @@ final class SwiftLinkSessionManager: ObservableObject {
         if let contextId = activeContextId,
            let uuid = UUID(uuidString: contextId),
            let context = settings.contexts.first(where: { $0.id == uuid }) {
-            contextMemory = context.memory ?? ""
+            contextMemory = context.contextMemory ?? ""
         }
 
         // Build the prompt
@@ -2157,12 +2156,8 @@ final class SwiftLinkSessionManager: ObservableObject {
     private func processTextWithContext(_ text: String, context: ConversationContext) async throws -> String {
         let settings = SharedSettings.shared
 
-        // Build prompt based on context and grammar fix setting
-        var systemPrompt = context.customInstructions
-
-        if context.aiAutocorrectEnabled {
-            systemPrompt += "\n\nIMPORTANT: Fix any grammar and punctuation errors in the text, but preserve the original words and meaning. Do not add or remove content, only correct grammatical mistakes."
-        }
+        // Build prompt using PromptContext for consistent formatting
+        let promptContext = PromptContext.from(settings: settings, context: context)
 
         // Use the formatting provider to process
         let provider = settings.selectedPowerModeProvider
@@ -2175,15 +2170,14 @@ final class SwiftLinkSessionManager: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        // Create a custom prompt that includes context instructions
+        // Use PromptContext's formatting prompt builder (includes examples, chips, guardrails)
+        let formattingPrompt = promptContext.buildFormattingPrompt() ?? ""
+
+        // Create the full prompt
         let fullPrompt = """
-        Context: \(context.name) - \(context.description)
-        Tone: \(context.toneDescription)
-        Formality: \(context.formality.displayName)
+        \(formattingPrompt)
 
-        \(systemPrompt)
-
-        Process the following text according to the context above. Return only the processed text without any explanation:
+        Process the following text according to the instructions above. Return only the processed text without any explanation:
 
         \(text)
         """

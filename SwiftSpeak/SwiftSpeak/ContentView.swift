@@ -592,13 +592,6 @@ struct ContentView: View {
     }
 
     private func processTextWithContext(_ text: String, context: ConversationContext) async throws -> String {
-        // Build prompt based on context and grammar fix setting
-        var systemPrompt = context.customInstructions
-
-        if context.aiAutocorrectEnabled {
-            systemPrompt += "\n\nIMPORTANT: Fix any grammar and punctuation errors in the text, but preserve the original words and meaning. Do not add or remove content, only correct grammatical mistakes."
-        }
-
         // Use the formatting provider to process
         let provider = settings.selectedPowerModeProvider
         guard settings.getAIProviderConfig(for: provider) != nil else {
@@ -610,21 +603,12 @@ struct ContentView: View {
             throw TranscriptionError.providerNotConfigured
         }
 
-        // Create a custom prompt that includes context instructions
-        let fullPrompt = """
-        Context: \(context.name) - \(context.description)
-        Tone: \(context.toneDescription)
-        Formality: \(context.formality.displayName)
+        // Build prompt using PromptContext for consistent formatting
+        let promptContext = PromptContext.from(settings: settings, context: context)
+        let systemPrompt = promptContext.buildFormattingPrompt()
 
-        \(systemPrompt)
-
-        Process the following text according to the context above. Return only the processed text without any explanation:
-
-        \(text)
-        """
-
-        // Use the formatting service with custom mode
-        return try await formattingService.format(text: text, mode: FormattingMode.raw, customPrompt: fullPrompt)
+        // Use the formatting service with custom mode and system prompt
+        return try await formattingService.format(text: text, mode: FormattingMode.raw, customPrompt: systemPrompt)
     }
 
     private func processTextWithPowerMode(_ text: String, powerMode: PowerMode) async throws -> String {
@@ -1058,7 +1042,7 @@ struct ContextPickerSheet: View {
                                     description: context.description,
                                     color: context.color.color,
                                     isSelected: settings.activeContextId == context.id,
-                                    memoryEnabled: context.memoryEnabled,
+                                    memoryEnabled: context.useContextMemory,
                                     onTap: {
                                         HapticManager.selection()
                                         settings.setActiveContext(context)

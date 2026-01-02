@@ -9,42 +9,172 @@
 
 import Foundation
 
-// MARK: - Context Formality (Phase 4)
+// MARK: - Enter Key Behavior
 
-/// Explicit formality setting for translation providers
-/// When set to .auto, formality is inferred from tone description
-enum ContextFormality: String, Codable, CaseIterable, Identifiable {
-    case auto = "auto"          // Infer from tone description
-    case formal = "formal"      // Professional, respectful, business tone
-    case informal = "informal"  // Casual, friendly, conversational
-    case neutral = "neutral"    // No preference (provider default)
+/// What happens when Enter key is pressed in keyboard
+enum EnterKeyBehavior: String, Codable, CaseIterable, Identifiable {
+    case defaultNewLine = "newLine"       // Normal enter = new line
+    case formatThenInsert = "format"      // Enter = format with context, then insert (don't send)
+    case justSend = "send"                // Enter = just send (no formatting)
+    case formatAndSend = "formatSend"     // Enter = format with context, insert, then send
 
     var id: String { rawValue }
 
     var displayName: String {
         switch self {
-        case .auto: return "Auto"
-        case .formal: return "Formal"
-        case .informal: return "Informal"
-        case .neutral: return "Neutral"
+        case .defaultNewLine: return "New line"
+        case .formatThenInsert: return "Format + insert"
+        case .justSend: return "Send"
+        case .formatAndSend: return "Format + send"
         }
     }
 
     var description: String {
         switch self {
-        case .auto: return "Automatically inferred from your tone description"
-        case .formal: return "Professional and respectful language"
-        case .informal: return "Casual and friendly language"
-        case .neutral: return "Standard language, no preference"
+        case .defaultNewLine: return "Enter creates a new line (default keyboard behavior)"
+        case .formatThenInsert: return "Format text with this context, then insert it"
+        case .justSend: return "Send the message immediately"
+        case .formatAndSend: return "Format text with this context, insert, then send"
         }
     }
 
     var icon: String {
         switch self {
-        case .auto: return "sparkles"
-        case .formal: return "briefcase.fill"
-        case .informal: return "face.smiling.fill"
-        case .neutral: return "equal.circle.fill"
+        case .defaultNewLine: return "return"
+        case .formatThenInsert: return "text.badge.checkmark"
+        case .justSend: return "paperplane"
+        case .formatAndSend: return "paperplane.fill"
+        }
+    }
+}
+
+// MARK: - Formatting Instruction
+
+/// A toggleable formatting instruction (chip)
+/// Grouped by how invasive they are to the original text
+struct FormattingInstruction: Codable, Identifiable, Hashable {
+    let id: String
+    let displayName: String
+    let promptText: String
+    let group: InstructionGroup
+    let icon: String?
+
+    enum InstructionGroup: String, Codable, CaseIterable {
+        case lightTouch = "light"    // Preserves words: punctuation, capitals, spelling
+        case grammar = "grammar"      // May adjust phrasing
+        case style = "style"          // Will rephrase as needed
+        case emoji = "emoji"          // Emoji usage level
+    }
+
+    /// All available formatting instructions
+    static let all: [FormattingInstruction] = [
+        // Light touch - preserves your words
+        FormattingInstruction(
+            id: "punctuation",
+            displayName: "Punctuation",
+            promptText: "Fix punctuation (periods, commas, apostrophes).",
+            group: .lightTouch,
+            icon: "textformat"
+        ),
+        FormattingInstruction(
+            id: "capitals",
+            displayName: "Capitals",
+            promptText: "Fix capitalization (sentence starts, proper nouns).",
+            group: .lightTouch,
+            icon: "textformat.size"
+        ),
+        FormattingInstruction(
+            id: "spelling",
+            displayName: "Spelling",
+            promptText: "Fix spelling mistakes.",
+            group: .lightTouch,
+            icon: "character.cursor.ibeam"
+        ),
+
+        // Grammar - may adjust phrasing
+        FormattingInstruction(
+            id: "grammar",
+            displayName: "Grammar",
+            promptText: "Fix grammar errors. You may slightly rephrase awkward constructions.",
+            group: .grammar,
+            icon: "text.badge.checkmark"
+        ),
+
+        // Style - will rephrase as needed
+        FormattingInstruction(
+            id: "casual",
+            displayName: "Casual",
+            promptText: "Use a casual, friendly tone. Rephrase to sound conversational.",
+            group: .style,
+            icon: "face.smiling"
+        ),
+        FormattingInstruction(
+            id: "formal",
+            displayName: "Formal",
+            promptText: "Use a formal, professional tone. Rephrase to sound business-appropriate.",
+            group: .style,
+            icon: "briefcase"
+        ),
+        FormattingInstruction(
+            id: "concise",
+            displayName: "Concise",
+            promptText: "Make it concise. Remove filler words and unnecessary phrases.",
+            group: .style,
+            icon: "arrow.down.right.and.arrow.up.left"
+        ),
+        FormattingInstruction(
+            id: "bullets",
+            displayName: "Bullets",
+            promptText: "Format as bullet points where appropriate.",
+            group: .style,
+            icon: "list.bullet"
+        ),
+
+        // Emoji levels (mutually exclusive)
+        FormattingInstruction(
+            id: "emoji_never",
+            displayName: "Never",
+            promptText: "Do NOT add any emoji.",
+            group: .emoji,
+            icon: "xmark.circle"
+        ),
+        FormattingInstruction(
+            id: "emoji_few",
+            displayName: "Few",
+            promptText: "Add emoji sparingly, only where they enhance the message.",
+            group: .emoji,
+            icon: "face.smiling"
+        ),
+        FormattingInstruction(
+            id: "emoji_lots",
+            displayName: "Lots",
+            promptText: "Add emoji generously throughout the message.",
+            group: .emoji,
+            icon: "sparkles"
+        )
+    ]
+
+    /// Get instructions by group
+    static func instructions(for group: InstructionGroup) -> [FormattingInstruction] {
+        all.filter { $0.group == group }
+    }
+
+    /// Get instruction by ID
+    static func instruction(withId id: String) -> FormattingInstruction? {
+        all.first { $0.id == id }
+    }
+
+    /// Group display info
+    static func groupInfo(_ group: InstructionGroup) -> (title: String, subtitle: String, icon: String) {
+        switch group {
+        case .lightTouch:
+            return ("Light touch", "Preserves your words", "📝")
+        case .grammar:
+            return ("Grammar", "May adjust phrasing", "✏️")
+        case .style:
+            return ("Style", "Will rephrase as needed", "🎨")
+        case .emoji:
+            return ("Emoji", "Emoji usage level", "😊")
         }
     }
 }
@@ -123,31 +253,43 @@ enum DomainJargon: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Conversation Context (Phase 4)
+// MARK: - Conversation Context
 
-/// A named context that customizes tone, language, and behavior
+/// A named context that customizes formatting, memory, and keyboard behavior
 struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
+    // MARK: - Identity
     let id: UUID
-    var name: String                    // "Fatma", "Work", "Family"
-    var icon: String                    // Emoji or SF Symbol
+    var name: String                        // "Work", "Personal", "Family"
+    var icon: String                        // Emoji or SF Symbol
     var color: PowerModeColorPreset
-    var description: String             // Short description for list view
-    var toneDescription: String         // Detailed tone guidance for AI
-    var formality: ContextFormality     // Explicit formality for translation (esp. DeepL)
-    var domainJargon: DomainJargon      // Domain-specific vocabulary for transcription hints
-    var languageHints: [Language]       // Expected languages in this context
-    var customInstructions: String      // Injected into all prompts
-    var memoryEnabled: Bool             // Context-level memory toggle
-    var memory: String?                 // Stored memory for this context
+    var description: String                 // Short description for list view
+
+    // MARK: - Transcription
+    var domainJargon: DomainJargon          // Domain vocabulary hints for Whisper
+
+    // MARK: - Formatting
+    var examples: [String]                  // Few-shot examples (HIGHEST priority)
+    var selectedInstructions: Set<String>   // IDs of selected formatting chips
+    var customInstructions: String?         // Free-form additional instructions
+
+    // MARK: - Memory
+    var useGlobalMemory: Bool               // Include global memory in prompts
+    var useContextMemory: Bool              // Include context-specific memory
+    var contextMemory: String?              // The stored memory content
     var lastMemoryUpdate: Date?
-    var isActive: Bool                  // Currently selected context
-    var appAssignment: AppAssignment    // Apps/categories that auto-enable this context
-    var isPreset: Bool                  // Preset contexts available to all users (free tier)
-    var aiAutocorrectEnabled: Bool      // Phase 13.11: AI autocorrection when processing text
-    var enterSendsMessage: Bool         // Phase 13.11: Enter key sends/submits after inserting
-    var enterRunsContext: Bool          // Phase 13.11: Enter key runs context AI processing before inserting
+
+    // MARK: - Keyboard Behavior
+    var autoSendAfterInsert: Bool           // Auto-tap send after voice input
+    var enterKeyBehavior: EnterKeyBehavior  // What Enter key does
+
+    // MARK: - System
+    var isActive: Bool                      // Currently selected context
+    var appAssignment: AppAssignment        // Apps that auto-enable this context
+    var isPreset: Bool                      // Preset contexts (free tier)
     let createdAt: Date
     var updatedAt: Date
+
+    // MARK: - Initialization
 
     init(
         id: UUID = UUID(),
@@ -155,20 +297,19 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         icon: String,
         color: PowerModeColorPreset,
         description: String,
-        toneDescription: String = "",
-        formality: ContextFormality = .auto,
         domainJargon: DomainJargon = .none,
-        languageHints: [Language] = [],
-        customInstructions: String = "",
-        memoryEnabled: Bool = false,
-        memory: String? = nil,
+        examples: [String] = [],
+        selectedInstructions: Set<String> = [],
+        customInstructions: String? = nil,
+        useGlobalMemory: Bool = true,
+        useContextMemory: Bool = false,
+        contextMemory: String? = nil,
         lastMemoryUpdate: Date? = nil,
+        autoSendAfterInsert: Bool = false,
+        enterKeyBehavior: EnterKeyBehavior = .defaultNewLine,
         isActive: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
         isPreset: Bool = false,
-        aiAutocorrectEnabled: Bool = false,
-        enterSendsMessage: Bool = true,
-        enterRunsContext: Bool = false,
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -177,29 +318,43 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.icon = icon
         self.color = color
         self.description = description
-        self.toneDescription = toneDescription
-        self.formality = formality
         self.domainJargon = domainJargon
-        self.languageHints = languageHints
+        self.examples = examples
+        self.selectedInstructions = selectedInstructions
         self.customInstructions = customInstructions
-        self.memoryEnabled = memoryEnabled
-        self.memory = memory
+        self.useGlobalMemory = useGlobalMemory
+        self.useContextMemory = useContextMemory
+        self.contextMemory = contextMemory
         self.lastMemoryUpdate = lastMemoryUpdate
+        self.autoSendAfterInsert = autoSendAfterInsert
+        self.enterKeyBehavior = enterKeyBehavior
         self.isActive = isActive
         self.appAssignment = appAssignment
         self.isPreset = isPreset
-        self.aiAutocorrectEnabled = aiAutocorrectEnabled
-        self.enterSendsMessage = enterSendsMessage
-        self.enterRunsContext = enterRunsContext
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
+
+    // MARK: - Computed Properties
+
+    /// Whether any formatting is enabled (examples, instructions, or custom)
+    var hasFormatting: Bool {
+        !examples.isEmpty || !selectedInstructions.isEmpty ||
+        (customInstructions?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+    }
+
+    /// Get the selected FormattingInstruction objects
+    var formattingInstructions: [FormattingInstruction] {
+        selectedInstructions.compactMap { FormattingInstruction.instruction(withId: $0) }
+    }
+
+    // MARK: - Static Properties
 
     static var empty: ConversationContext {
         ConversationContext(
             name: "",
             icon: "person.circle",
-            color: PowerModeColorPreset.blue,
+            color: .blue,
             description: ""
         )
     }
@@ -212,82 +367,75 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
                 name: "Work",
                 icon: "💼",
-                color: PowerModeColorPreset.blue,
+                color: .blue,
                 description: "Professional business communication",
-                toneDescription: "Professional formatting with proper punctuation.",
-                formality: ContextFormality.formal,
-                domainJargon: .business,  // Business terminology hints for transcription
-                customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use proper punctuation, capitalize appropriately. Do NOT rephrase, summarize, or change the content.",
-                isPreset: true,
-                aiAutocorrectEnabled: true  // Fixes grammar and punctuation
+                domainJargon: .business,
+                examples: [
+                    "Hi John,\n\nThanks for the update. I'll review it by Friday.\n\nBest regards",
+                    "Hi Sarah,\n\nCould we reschedule to 3pm? Let me know.\n\nBest regards"
+                ],
+                selectedInstructions: ["punctuation", "capitals", "grammar", "formal", "emoji_never"],
+                useGlobalMemory: true,
+                isPreset: true
             ),
             ConversationContext(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
                 name: "Personal",
                 icon: "😊",
-                color: PowerModeColorPreset.green,
+                color: .green,
                 description: "Casual, friendly conversations",
-                toneDescription: "Casual and friendly formatting.",
-                formality: ContextFormality.informal,
-                customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use relaxed punctuation, add emoticons like 😊 🙂 👍 at the end of sentences. Do NOT rephrase, summarize, or change the content.",
-                isPreset: true,
-                aiAutocorrectEnabled: true  // Fixes grammar
+                examples: [
+                    "Hey! How's it going? 😊",
+                    "Thanks for letting me know! See you soon 👍"
+                ],
+                selectedInstructions: ["punctuation", "grammar", "casual", "emoji_few"],
+                useGlobalMemory: true,
+                isPreset: true
             ),
             ConversationContext(
                 id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
                 name: "Creative",
                 icon: "✨",
-                color: PowerModeColorPreset.purple,
+                color: .purple,
                 description: "Creative writing and brainstorming",
-                toneDescription: "Expressive formatting.",
-                formality: ContextFormality.auto,
-                customInstructions: "IMPORTANT: Preserve the exact wording and meaning. Only adjust formatting: use expressive punctuation (em dashes, ellipses). Do NOT rephrase, summarize, or change the content.",
-                isPreset: true,
-                aiAutocorrectEnabled: false  // No grammar changes - preserve creative intent
+                selectedInstructions: ["punctuation", "spelling"],
+                customInstructions: "Preserve creative expression. Use expressive punctuation like em dashes and ellipses where appropriate.",
+                useGlobalMemory: true,
+                isPreset: true
             )
         ]
     }
 
-    /// Sample contexts for previews and mock-ups
+    /// Sample contexts for previews and testing
     static var samples: [ConversationContext] {
         [
             ConversationContext(
-                name: "Fatma",
+                name: "Wife",
                 icon: "💕",
-                color: PowerModeColorPreset.pink,
-                description: "Casual, loving conversation with my wife",
-                toneDescription: "Casual and loving. We often joke around and use pet names. She speaks Polish primarily but we mix in English words sometimes. Keep translations warm and natural.",
-                formality: ContextFormality.informal,  // Explicitly informal for DeepL
-                languageHints: [Language.polish, Language.english],
-                customInstructions: "When translating to Polish, use informal \"ty\" form. Add endearments where appropriate.",
-                memoryEnabled: true,
-                memory: "Fatma mentioned she has a meeting on Tuesday afternoon. We're planning dinner for Friday. She prefers Italian food lately.",
+                color: .pink,
+                description: "Casual, loving messages",
+                examples: [
+                    "Hey love! 💕 Just thinking about you",
+                    "Miss you! Can't wait to see you tonight 😘"
+                ],
+                selectedInstructions: ["punctuation", "casual", "emoji_lots"],
+                useGlobalMemory: true,
+                useContextMemory: true,
+                contextMemory: "Planning dinner for Friday. She prefers Italian food.",
                 lastMemoryUpdate: Date().addingTimeInterval(-3600),
                 isActive: true
             ),
             ConversationContext(
-                name: "Work",
-                icon: "💼",
-                color: PowerModeColorPreset.blue,
-                description: "Professional, formal business communication",
-                toneDescription: "Professional and formal. Use proper business language and avoid casual expressions.",
-                formality: ContextFormality.formal,  // Explicitly formal for DeepL
-                domainJargon: .business,  // Business terminology hints for transcription
-                languageHints: [Language.english],
-                customInstructions: "Maintain professional tone. Use formal salutations and sign-offs in emails.",
-                memoryEnabled: true,
-                memory: "Last email was to client about project delay.",
+                name: "Tech Lead",
+                icon: "👨‍💻",
+                color: .blue,
+                description: "Technical discussions",
+                domainJargon: .technical,
+                selectedInstructions: ["punctuation", "capitals", "grammar", "formal", "concise", "emoji_never"],
+                useGlobalMemory: true,
+                useContextMemory: true,
+                contextMemory: "Working on the API refactor project.",
                 lastMemoryUpdate: Date().addingTimeInterval(-86400)
-            ),
-            ConversationContext(
-                name: "Family",
-                icon: "👨‍👩‍👧",
-                color: PowerModeColorPreset.green,
-                description: "Warm, friendly family conversations",
-                toneDescription: "Warm and friendly. Family talks are casual but respectful.",
-                formality: ContextFormality.auto,  // Auto-infer from tone description
-                languageHints: [Language.polish],
-                customInstructions: "Use familiar Polish expressions common in family settings."
             )
         ]
     }

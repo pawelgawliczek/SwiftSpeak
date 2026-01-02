@@ -331,10 +331,12 @@ struct ContextErrorRecoveryTests {
         settings.contexts = originalContexts
     }
 
-    @Test("Context formality options are available")
-    func contextFormalityOptionsAreAvailable() {
-        let formalities: [ContextFormality] = [.auto, .formal, .informal]
-        #expect(formalities.count == 3)
+    @Test("Context formatting instruction options are available")
+    func contextFormattingInstructionsAreAvailable() {
+        let instructions = FormattingInstruction.all
+        #expect(!instructions.isEmpty)
+        #expect(instructions.contains { $0.id == "formal" })
+        #expect(instructions.contains { $0.id == "casual" })
     }
 }
 

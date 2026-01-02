@@ -2,8 +2,8 @@
 //  ContextEditorSheet.swift
 //  SwiftSpeak
 //
-//  Phase 4: Create or edit a Conversation Context
-//  Configure name, icon, tone, language hints, and memory settings
+//  Create or edit a Conversation Context
+//  Configure formatting chips, examples, memory, and keyboard behavior
 //
 
 import SwiftUI
@@ -17,43 +17,41 @@ struct ContextEditorSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var settings: SharedSettings
 
-    // Form state
+    // MARK: - Identity State
     @State private var name: String = ""
     @State private var icon: String = "person.circle"
     @State private var color: PowerModeColorPreset = .blue
     @State private var description: String = ""
-    @State private var toneDescription: String = ""
-    @State private var formality: ContextFormality = .auto
-    @State private var selectedLanguages: Set<Language> = []
-    @State private var customInstructions: String = ""
-    @State private var memoryEnabled: Bool = false
-    @State private var memory: String = ""
-    @State private var appAssignment: AppAssignment = AppAssignment()
-    @State private var aiAutocorrectEnabled: Bool = false
-    @State private var enterSendsMessage: Bool = true
-    @State private var enterRunsContext: Bool = false
 
-    // UI state
+    // MARK: - Transcription State
+    @State private var domainJargon: DomainJargon = .none
+
+    // MARK: - Formatting State
+    @State private var examples: [String] = []
+    @State private var selectedInstructions: Set<String> = []
+    @State private var customInstructions: String = ""
+
+    // MARK: - Memory State
+    @State private var useGlobalMemory: Bool = true
+    @State private var useContextMemory: Bool = false
+    @State private var contextMemory: String = ""
+
+    // MARK: - Keyboard Behavior State
+    @State private var autoSendAfterInsert: Bool = false
+    @State private var enterKeyBehavior: EnterKeyBehavior = .defaultNewLine
+
+    // MARK: - System State
+    @State private var appAssignment: AppAssignment = AppAssignment()
+
+    // MARK: - UI State
     @State private var showingIconPicker = false
     @State private var showingMemoryEditor = false
     @State private var showingDeleteConfirmation = false
+    @State private var showingAddExample = false
+    @State private var newExampleText: String = ""
 
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty
-    }
-
-    /// Languages supported by the current transcription provider (at least "limited" level)
-    private var supportedLanguages: [Language] {
-        ProviderLanguageDatabase.languages(
-            supportedBy: settings.selectedTranscriptionProvider,
-            for: .transcription,
-            minimumLevel: .limited
-        ).sorted { $0.displayName < $1.displayName }
-    }
-
-    /// Whether DeepL is the selected translation provider
-    private var isDeepLSelected: Bool {
-        settings.selectedTranslationProvider == .deepL
     }
 
     init(context: ConversationContext, isNew: Bool, onSave: @escaping (ConversationContext) -> Void, onDelete: @escaping () -> Void) {
@@ -62,62 +60,50 @@ struct ContextEditorSheet: View {
         self.onSave = onSave
         self.onDelete = onDelete
 
-        // Initialize state
+        // Initialize state from context
         _name = State(initialValue: context.name)
         _icon = State(initialValue: context.icon)
         _color = State(initialValue: context.color)
         _description = State(initialValue: context.description)
-        _toneDescription = State(initialValue: context.toneDescription)
-        _formality = State(initialValue: context.formality)
-        _selectedLanguages = State(initialValue: Set(context.languageHints))
-        _customInstructions = State(initialValue: context.customInstructions)
-        _memoryEnabled = State(initialValue: context.memoryEnabled)
-        _memory = State(initialValue: context.memory ?? "")
+        _domainJargon = State(initialValue: context.domainJargon)
+        _examples = State(initialValue: context.examples)
+        _selectedInstructions = State(initialValue: context.selectedInstructions)
+        _customInstructions = State(initialValue: context.customInstructions ?? "")
+        _useGlobalMemory = State(initialValue: context.useGlobalMemory)
+        _useContextMemory = State(initialValue: context.useContextMemory)
+        _contextMemory = State(initialValue: context.contextMemory ?? "")
+        _autoSendAfterInsert = State(initialValue: context.autoSendAfterInsert)
+        _enterKeyBehavior = State(initialValue: context.enterKeyBehavior)
         _appAssignment = State(initialValue: context.appAssignment)
-        _aiAutocorrectEnabled = State(initialValue: context.aiAutocorrectEnabled)
-        _enterSendsMessage = State(initialValue: context.enterSendsMessage)
-        _enterRunsContext = State(initialValue: context.enterRunsContext)
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Icon and color section
                     iconAndColorSection
-
-                    // Name field
                     nameSection
-
-                    // Short description
                     descriptionSection
 
-                    // Tone & Style
-                    toneSection
+                    sectionHeader("TRANSCRIPTION")
+                    domainJargonSection
 
-                    // Formality (explicit for DeepL)
-                    formalitySection
+                    sectionHeader("EXAMPLES")
+                    examplesSection
 
-                    // Expected languages
-                    languagesSection
+                    sectionHeader("FORMATTING")
+                    formattingSection
 
-                    // Custom instructions
-                    instructionsSection
-
-                    // AI Autocorrect section
-                    aiAutocorrectSection
-
-                    // Enter key behavior section
-                    enterKeySection
-
-                    // Memory section
+                    sectionHeader("MEMORY")
                     memorySection
 
-                    // App assignment section
+                    sectionHeader("KEYBOARD BEHAVIOR")
+                    keyboardBehaviorSection
+
+                    sectionHeader("APP ASSIGNMENT")
                     appAssignmentSection
 
-                    // Delete button (if editing)
-                    if !isNew {
+                    if !isNew && !context.isPreset {
                         deleteSection
                     }
                 }
@@ -145,16 +131,31 @@ struct ContextEditorSheet: View {
                 )
                 .presentationDetents([.large])
             }
+            .sheet(isPresented: $showingAddExample) {
+                addExampleSheet
+            }
             .confirmationDialog("Delete Context", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
                     onDelete()
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("This will permanently delete the context and its memory. This action cannot be undone.")
+                Text("This will permanently delete the context and its memory.")
             }
         }
         .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Section Header
+
+    private func sectionHeader(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .padding(.top, 8)
     }
 
     // MARK: - Icon and Color Section
@@ -171,7 +172,6 @@ struct ContextEditorSheet: View {
                             .fill(color.color.opacity(0.15))
                             .frame(width: 80, height: 80)
 
-                        // Show SF Symbol if contains ".", otherwise show emoji
                         if icon.contains(".") {
                             Image(systemName: icon)
                                 .font(.system(size: 40))
@@ -182,13 +182,12 @@ struct ContextEditorSheet: View {
                         }
                     }
 
-                    Text("Tap to change icon & color")
+                    Text("Tap to change icon")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            // Color picker - wrapped in ScrollView for horizontal scrolling on small screens
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 10) {
                     ForEach(PowerModeColorPreset.allCases) { colorPreset in
@@ -239,7 +238,7 @@ struct ContextEditorSheet: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
-            TextField("Brief description for the list", text: $description)
+            TextField("Brief description", text: $description)
                 .font(.body)
                 .padding(12)
                 .background(Color.primary.opacity(0.08))
@@ -247,330 +246,501 @@ struct ContextEditorSheet: View {
         }
     }
 
-    // MARK: - Tone Section
+    // MARK: - Domain Jargon Section
 
-    private var toneSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("TONE & STYLE (DETAILED)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            TextEditor(text: $toneDescription)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 100)
-                .padding(12)
-                .background(Color.primary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            Text("Describe the tone, style, and personality for this context")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    // MARK: - Formality Section
-
-    private var formalitySection: some View {
+    private var domainJargonSection: some View {
         VStack(alignment: .leading, spacing: 12) {
+            Text("Domain vocabulary")
+                .font(.subheadline.weight(.medium))
+
             HStack {
-                Text("FORMALITY")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                Picker("Domain", selection: $domainJargon) {
+                    ForEach(DomainJargon.allCases) { jargon in
+                        HStack {
+                            Image(systemName: jargon.icon)
+                            Text(jargon.displayName)
+                        }
+                        .tag(jargon)
+                    }
+                }
+                .pickerStyle(.menu)
 
                 Spacer()
-
-                // DeepL badge if applicable
-                if isDeepLSelected {
-                    HStack(spacing: 4) {
-                        Image(systemName: "character.book.closed.fill")
-                            .font(.caption2)
-                        Text("DeepL")
-                            .font(.caption2.weight(.medium))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.blue)
-                    .clipShape(Capsule())
-                }
             }
+            .padding(12)
+            .frame(maxWidth: .infinity)
+            .background(Color.primary.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
-            // Formality picker
-            HStack(spacing: 8) {
-                ForEach(ContextFormality.allCases) { formalityOption in
-                    Button(action: {
-                        HapticManager.selection()
-                        formality = formalityOption
-                    }) {
-                        VStack(spacing: 6) {
-                            Image(systemName: formalityOption.icon)
-                                .font(.title3)
-                            Text(formalityOption.displayName)
-                                .font(.caption.weight(.medium))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
-                        .background(formality == formalityOption ? color.color.opacity(0.2) : Color.primary.opacity(0.05))
-                        .foregroundStyle(formality == formalityOption ? color.color : .secondary)
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous)
-                                .strokeBorder(formality == formalityOption ? color.color : Color.clear, lineWidth: 2)
-                        )
+            // Fixed height hint area to prevent layout jumping
+            Group {
+                if domainJargon != .none, let hint = domainJargon.transcriptionHint {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(color.color)
+                            .font(.caption)
+                        Text("Helps recognize: \(hint.replacingOccurrences(of: "\(domainJargon.displayName) terminology: ", with: ""))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // DeepL-specific note
-            if isDeepLSelected {
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundStyle(.blue)
-                        .font(.subheadline)
-
-                    Text("DeepL uses only this formality setting for translation. Your detailed tone description is used by other providers (OpenAI, Claude, Gemini).")
+                } else {
+                    // Empty placeholder with same height
+                    Text(" ")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .opacity(0)
+                }
+            }
+            .frame(minHeight: 16)
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    // MARK: - Examples Section
+
+    private var examplesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Show the AI how you want your messages to look")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ForEach(examples.indices, id: \.self) { index in
+                HStack(alignment: .top) {
+                    Text(examples[index])
+                        .font(.subheadline)
+                        .foregroundStyle(.primary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Button(action: {
+                        HapticManager.lightTap()
+                        examples.remove(at: index)
+                    }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(12)
-                .background(Color.blue.opacity(0.1))
+                .background(Color.primary.opacity(0.05))
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             }
 
-            // Description of selected formality
-            Text(formality.description)
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            Button(action: {
+                HapticManager.selection()
+                newExampleText = ""
+                showingAddExample = true
+            }) {
+                HStack {
+                    Image(systemName: "plus")
+                    Text("Add example")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(color.color)
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .background(color.color.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous)
+                        .strokeBorder(color.color.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [5]))
+                )
+            }
         }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
     }
 
-    // MARK: - Languages Section
+    // MARK: - Add Example Sheet
 
-    private var languagesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("EXPECTED LANGUAGES")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-
-                Spacer()
-
-                // Show which provider is being used
-                Text(settings.selectedTranscriptionProvider.displayName)
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.tertiary)
-            }
-
-            if supportedLanguages.isEmpty {
-                Text("No languages available for selected provider")
+    private var addExampleSheet: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Type an example of how you want your messages formatted")
                     .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-                    .italic()
-            } else {
-                FlowLayout(spacing: 8) {
-                    ForEach(supportedLanguages) { language in
-                        Button(action: {
-                            HapticManager.selection()
-                            if selectedLanguages.contains(language) {
-                                selectedLanguages.remove(language)
-                            } else {
-                                selectedLanguages.insert(language)
-                            }
-                        }) {
-                            HStack(spacing: 4) {
-                                if selectedLanguages.contains(language) {
-                                    Image(systemName: "checkmark")
-                                        .font(.caption.weight(.semibold))
-                                }
-                                Text(language.displayName)
-                                    .font(.subheadline)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(selectedLanguages.contains(language) ? color.color.opacity(0.2) : Color.primary.opacity(0.08))
-                            .foregroundStyle(selectedLanguages.contains(language) ? color.color : .secondary)
-                            .clipShape(Capsule())
-                        }
-                    }
-                }
-            }
-
-            Text("Languages supported by \(settings.selectedTranscriptionProvider.displayName)")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    // MARK: - Instructions Section
-
-    private var instructionsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("CUSTOM INSTRUCTIONS")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            TextEditor(text: $customInstructions)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 80)
-                .padding(12)
-                .background(Color.primary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            Text("These instructions are injected into all AI prompts when this context is active")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-        }
-    }
-
-    // MARK: - AI Autocorrect Section
-
-    private var aiAutocorrectSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("AI GRAMMAR FIX")
-                    .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                TextEditor(text: $newExampleText)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 150)
+                    .padding(12)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
                 Spacer()
-
-                Toggle("", isOn: $aiAutocorrectEnabled)
-                    .labelsHidden()
-                    .tint(color.color)
             }
+            .padding(16)
+            .background(AppTheme.darkBase.ignoresSafeArea())
+            .navigationTitle("Add Example")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingAddExample = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let trimmed = newExampleText.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if !trimmed.isEmpty {
+                            examples.append(trimmed)
+                        }
+                        showingAddExample = false
+                    }
+                    .disabled(newExampleText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
 
-            Text("When enabled, AI will fix grammar and punctuation without changing your words")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+    // MARK: - Formatting Section
+
+    private var formattingSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Light touch group
+            instructionGroup(.lightTouch)
+
+            // Grammar group
+            instructionGroup(.grammar)
+
+            // Style group
+            instructionGroup(.style)
+
+            // Emoji group (mutually exclusive)
+            emojiGroup
+
+            // Custom instructions
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Custom instructions")
+                    .font(.subheadline.weight(.medium))
+
+                TextEditor(text: $customInstructions)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .frame(minHeight: 60)
+                    .padding(12)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
         }
         .padding(16)
         .background(Color.primary.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
     }
 
-    // MARK: - Enter Key Section
+    private func instructionGroup(_ group: FormattingInstruction.InstructionGroup) -> some View {
+        let info = FormattingInstruction.groupInfo(group)
+        let instructions = FormattingInstruction.instructions(for: group)
 
-    private var enterKeySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("ENTER KEY BEHAVIOR")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+        // Use a grid with fixed columns based on group
+        let columns: [GridItem] = {
+            switch group {
+            case .lightTouch:
+                // 3 items: punctuation, capitals, spelling - fit all on one row
+                return [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+            case .grammar:
+                // 1 item - full width
+                return [GridItem(.flexible())]
+            case .style:
+                // 4 items - 2x2 grid
+                return [GridItem(.flexible()), GridItem(.flexible())]
+            case .emoji:
+                // Handled separately
+                return [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())]
+            }
+        }()
 
-            VStack(spacing: 12) {
-                // Run Context toggle
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Run Context on Enter")
-                            .font(.subheadline.weight(.medium))
-                        Text("Apply AI processing when pressing Enter")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(info.icon)
+                Text(info.title)
+                    .font(.subheadline.weight(.medium))
+                Text("(\(info.subtitle))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
-                    Spacer()
-
-                    Toggle("", isOn: $enterRunsContext)
-                        .labelsHidden()
-                        .tint(color.color)
-                }
-
-                Divider()
-
-                // Auto-send toggle
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Auto-Send Message")
-                            .font(.subheadline.weight(.medium))
-                        Text("Submit the message after inserting text")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: $enterSendsMessage)
-                        .labelsHidden()
-                        .tint(color.color)
+            LazyVGrid(columns: columns, spacing: 8) {
+                ForEach(instructions) { instruction in
+                    instructionChip(instruction)
                 }
             }
         }
-        .padding(16)
-        .background(Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    private func instructionChip(_ instruction: FormattingInstruction) -> some View {
+        let isSelected = selectedInstructions.contains(instruction.id)
+
+        return Button(action: {
+            HapticManager.selection()
+            if isSelected {
+                selectedInstructions.remove(instruction.id)
+            } else {
+                selectedInstructions.insert(instruction.id)
+            }
+        }) {
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption2.weight(.semibold))
+                }
+                Text(instruction.displayName)
+                    .font(.footnote)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(isSelected ? color.color.opacity(0.2) : Color.primary.opacity(0.08))
+            .foregroundStyle(isSelected ? color.color : .secondary)
+            .clipShape(Capsule())
+        }
+    }
+
+    private var emojiGroup: some View {
+        let info = FormattingInstruction.groupInfo(.emoji)
+        let emojiInstructions = FormattingInstruction.instructions(for: .emoji)
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(info.icon)
+                Text(info.title)
+                    .font(.subheadline.weight(.medium))
+            }
+
+            HStack(spacing: 8) {
+                ForEach(emojiInstructions) { instruction in
+                    emojiChip(instruction)
+                }
+            }
+        }
+    }
+
+    private func emojiChip(_ instruction: FormattingInstruction) -> some View {
+        let isSelected = selectedInstructions.contains(instruction.id)
+        let emojiIds = ["emoji_never", "emoji_few", "emoji_lots"]
+
+        return Button(action: {
+            HapticManager.selection()
+            // Remove other emoji options (mutually exclusive)
+            for id in emojiIds {
+                selectedInstructions.remove(id)
+            }
+            selectedInstructions.insert(instruction.id)
+        }) {
+            HStack(spacing: 4) {
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.caption.weight(.semibold))
+                }
+                Text(instruction.displayName)
+                    .font(.subheadline)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isSelected ? color.color.opacity(0.2) : Color.primary.opacity(0.08))
+            .foregroundStyle(isSelected ? color.color : .secondary)
+            .clipShape(Capsule())
+        }
     }
 
     // MARK: - Memory Section
 
     private var memorySection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("CONTEXT MEMORY")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            // Global memory toggle
+            HStack(spacing: 12) {
+                Image(systemName: "globe")
+                    .font(.title2)
+                    .foregroundStyle(useGlobalMemory ? color.color : .secondary)
+                    .frame(width: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Use global memory")
+                        .font(.subheadline.weight(.medium))
+                    Text("AI remembers info across all contexts")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
                 Spacer()
 
-                Toggle("", isOn: $memoryEnabled)
+                Toggle("", isOn: $useGlobalMemory)
                     .labelsHidden()
                     .tint(color.color)
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
-            Text("Remember details from conversations in this context")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+            // Context memory toggle
+            HStack(spacing: 12) {
+                Image(systemName: "brain.head.profile")
+                    .font(.title2)
+                    .foregroundStyle(useContextMemory ? color.color : .secondary)
+                    .frame(width: 40)
 
-            if memoryEnabled {
-                VStack(alignment: .leading, spacing: 8) {
-                    if !memory.isEmpty {
-                        Text(memory)
-                            .font(.subheadline)
-                            .foregroundStyle(.primary)
-                            .lineLimit(3)
-                            .padding(12)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(Color.primary.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                    }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Use context memory")
+                        .font(.subheadline.weight(.medium))
+                    Text("AI remembers info specific to this context")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
 
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            HapticManager.selection()
-                            showingMemoryEditor = true
-                        }) {
-                            Text(memory.isEmpty ? "Add Memory" : "Edit")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(color.color)
-                        }
+                Spacer()
 
-                        if !memory.isEmpty {
-                            Button(action: {
-                                HapticManager.lightTap()
-                                memory = ""
-                            }) {
-                                Text("Clear")
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.red)
+                Toggle("", isOn: $useContextMemory)
+                    .labelsHidden()
+                    .tint(color.color)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Memory preview (when enabled)
+            if useContextMemory {
+                if !contextMemory.isEmpty {
+                    Button(action: {
+                        HapticManager.lightTap()
+                        showingMemoryEditor = true
+                    }) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Image(systemName: "brain")
+                                    .font(.caption)
+                                    .foregroundStyle(color.color)
+                                Text("Current Memory")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text("Edit")
+                                    .font(.caption.weight(.medium))
+                                    .foregroundStyle(color.color)
                             }
+
+                            Text(contextMemory)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
                         }
+                        .padding(12)
+                        .background(color.color.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
                     }
+                    .buttonStyle(.plain)
+                } else {
+                    Button(action: {
+                        HapticManager.selection()
+                        showingMemoryEditor = true
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle")
+                                .font(.title2)
+                                .foregroundStyle(color.color)
+                                .frame(width: 40)
+
+                            Text("Add Memory")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+
+                            Spacer()
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 14)
+                        .background(Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
-        .padding(16)
-        .background(Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    // MARK: - Keyboard Behavior Section
+
+    private var keyboardBehaviorSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Auto-send toggle
+            HStack(spacing: 12) {
+                Image(systemName: "paperplane")
+                    .font(.title2)
+                    .foregroundStyle(autoSendAfterInsert ? color.color : .secondary)
+                    .frame(width: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-send after voice input")
+                        .font(.subheadline.weight(.medium))
+                    Text("Automatically tap send after text is inserted")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $autoSendAfterInsert)
+                    .labelsHidden()
+                    .tint(color.color)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Enter key behavior
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Enter key behavior")
+                    .font(.subheadline.weight(.medium))
+                    .padding(.top, 4)
+
+                ForEach(EnterKeyBehavior.allCases) { behavior in
+                    Button(action: {
+                        HapticManager.selection()
+                        enterKeyBehavior = behavior
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: behavior.icon)
+                                .font(.title3)
+                                .foregroundStyle(enterKeyBehavior == behavior ? color.color : .secondary)
+                                .frame(width: 40)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(behavior.displayName)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.primary)
+                                Text(behavior.description)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Spacer()
+
+                            Image(systemName: enterKeyBehavior == behavior ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(enterKeyBehavior == behavior ? color.color : Color.secondary.opacity(0.5))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(enterKeyBehavior == behavior ? color.color.opacity(0.1) : Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
     }
 
     // MARK: - App Assignment Section
 
     private var appAssignmentSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("APP AUTO-ENABLE")
-                .font(.caption.weight(.semibold))
+            Text("Auto-enable this context in specific apps")
+                .font(.caption)
                 .foregroundStyle(.secondary)
 
             AppAssignmentSection(appAssignment: $appAssignment)
@@ -598,7 +768,7 @@ struct ContextEditorSheet: View {
         }
     }
 
-    // MARK: - Actions
+    // MARK: - Save Action
 
     private func saveAndDismiss() {
         let savedContext = ConversationContext(
@@ -607,18 +777,19 @@ struct ContextEditorSheet: View {
             icon: icon,
             color: color,
             description: description.trimmingCharacters(in: .whitespaces),
-            toneDescription: toneDescription.trimmingCharacters(in: .whitespaces),
-            formality: formality,
-            languageHints: Array(selectedLanguages),
-            customInstructions: customInstructions.trimmingCharacters(in: .whitespaces),
-            memoryEnabled: memoryEnabled,
-            memory: memory.isEmpty ? nil : memory,
+            domainJargon: domainJargon,
+            examples: examples,
+            selectedInstructions: selectedInstructions,
+            customInstructions: customInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : customInstructions.trimmingCharacters(in: .whitespacesAndNewlines),
+            useGlobalMemory: useGlobalMemory,
+            useContextMemory: useContextMemory,
+            contextMemory: contextMemory.isEmpty ? nil : contextMemory,
             lastMemoryUpdate: context.lastMemoryUpdate,
+            autoSendAfterInsert: autoSendAfterInsert,
+            enterKeyBehavior: enterKeyBehavior,
             isActive: context.isActive,
             appAssignment: appAssignment,
-            aiAutocorrectEnabled: aiAutocorrectEnabled,
-            enterSendsMessage: enterSendsMessage,
-            enterRunsContext: enterRunsContext,
+            isPreset: context.isPreset,
             createdAt: context.createdAt,
             updatedAt: Date()
         )
@@ -695,18 +866,5 @@ struct FlowLayout: Layout {
         onDelete: {}
     )
     .environmentObject(SharedSettings.shared)
-    .preferredColorScheme(.dark)
-}
-
-#Preview("With DeepL Selected") {
-    let settings = SharedSettings.shared
-    settings.selectedTranslationProvider = .deepL
-    return ContextEditorSheet(
-        context: ConversationContext.samples[1], // Work context (formal)
-        isNew: false,
-        onSave: { _ in },
-        onDelete: {}
-    )
-    .environmentObject(settings)
     .preferredColorScheme(.dark)
 }

@@ -186,25 +186,24 @@ struct MemorySafetyTests {
 
     @Test("Context memory is isolated")
     func contextMemoryIsIsolated() {
-        var context1 = ConversationContext(
+        let context1 = ConversationContext(
             name: "Context 1",
             icon: "1.circle",
             color: .blue,
-            description: "First context"
+            description: "First context",
+            contextMemory: "Memory for context 1"
         )
-        var context2 = ConversationContext(
+        let context2 = ConversationContext(
             name: "Context 2",
             icon: "2.circle",
             color: .green,
-            description: "Second context"
+            description: "Second context",
+            contextMemory: "Memory for context 2"
         )
 
-        context1.memory = "Memory for context 1"
-        context2.memory = "Memory for context 2"
-
-        #expect(context1.memory == "Memory for context 1")
-        #expect(context2.memory == "Memory for context 2")
-        #expect(context1.memory != context2.memory)
+        #expect(context1.contextMemory == "Memory for context 1")
+        #expect(context2.contextMemory == "Memory for context 2")
+        #expect(context1.contextMemory != context2.contextMemory)
     }
 
     @Test("PowerMode memory is isolated")

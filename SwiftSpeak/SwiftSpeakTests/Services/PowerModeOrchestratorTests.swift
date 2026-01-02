@@ -45,22 +45,19 @@ private func createTestPowerMode(
 /// Creates a sample context for testing
 private func createTestContext(
     name: String = "Test Context",
-    memoryEnabled: Bool = false,
-    memory: String? = nil,
-    tone: String = "Professional",
-    customInstructions: String = ""
+    useContextMemory: Bool = false,
+    contextMemory: String? = nil,
+    customInstructions: String? = nil
 ) -> ConversationContext {
-    var context = ConversationContext(
+    return ConversationContext(
         name: name,
         icon: "💼",
         color: .blue,
         description: "Test context",
-        toneDescription: tone,
-        customInstructions: customInstructions
+        customInstructions: customInstructions,
+        useContextMemory: useContextMemory,
+        contextMemory: contextMemory
     )
-    context.memoryEnabled = memoryEnabled
-    context.memory = memory
-    return context
 }
 
 // MARK: - State Machine Tests
@@ -248,8 +245,7 @@ struct PowerModeOrchestratorContextTests {
     func contextToneInjectedIntoPrompt() async {
         let settings = createTestSettings()
         let context = createTestContext(
-            name: "Formal Context",
-            tone: "Very formal and professional"
+            name: "Formal Context"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
@@ -418,8 +414,8 @@ struct PowerModeOrchestratorContextMemoryTests {
         let settings = createTestSettings()
         let context = createTestContext(
             name: "Work",
-            memoryEnabled: false,
-            memory: "Work-specific context memory"
+            useContextMemory: false,
+            contextMemory: "Work-specific context memory"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
@@ -453,8 +449,8 @@ struct PowerModeOrchestratorContextMemoryTests {
         let settings = createTestSettings()
         let context = createTestContext(
             name: "Personal",
-            memoryEnabled: true,
-            memory: "User likes casual tone"
+            useContextMemory: true,
+            contextMemory: "User likes casual tone"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
@@ -489,8 +485,8 @@ struct PowerModeOrchestratorContextMemoryTests {
         let settings = createTestSettings()
         let context = createTestContext(
             name: "Inactive",
-            memoryEnabled: true,
-            memory: "This should not appear"
+            useContextMemory: true,
+            contextMemory: "This should not appear"
         )
         settings.contexts = [context]
         settings.activeContextId = nil  // No active context
@@ -530,8 +526,7 @@ struct PowerModeOrchestratorPowerModeMemoryTests {
         let settings = createTestSettings()
         settings.globalMemoryEnabled = false
 
-        let powerMode = createTestPowerMode(
-            name: "Email Writer",
+        let powerMode = createTestPowerMode(name: "Email Writer",
             memoryEnabled: false,
             memory: "Previous email context"
         )
@@ -562,8 +557,7 @@ struct PowerModeOrchestratorPowerModeMemoryTests {
         let settings = createTestSettings()
         settings.globalMemoryEnabled = false
 
-        let powerMode = createTestPowerMode(
-            name: "Code Helper",
+        let powerMode = createTestPowerMode(name: "Code Helper",
             memoryEnabled: true,
             memory: "User prefers Swift code"
         )
@@ -604,14 +598,13 @@ struct PowerModeOrchestratorCombinedMemoryTests {
 
         let context = createTestContext(
             name: "TestContext",
-            memoryEnabled: true,
-            memory: "CONTEXT_MEMORY_CONTENT"
+            useContextMemory: true,
+            contextMemory: "CONTEXT_MEMORY_CONTENT"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
 
-        let powerMode = createTestPowerMode(
-            name: "TestMode",
+        let powerMode = createTestPowerMode(name: "TestMode",
             memoryEnabled: true,
             memory: "POWERMODE_MEMORY_CONTENT"
         )
@@ -648,8 +641,8 @@ struct PowerModeOrchestratorCombinedMemoryTests {
 
         let context = createTestContext(
             name: "NoMem",
-            memoryEnabled: false,
-            memory: "SHOULD_NOT_APPEAR_1"
+            useContextMemory: false,
+            contextMemory: "SHOULD_NOT_APPEAR_1"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
@@ -691,8 +684,8 @@ struct PowerModeOrchestratorCombinedMemoryTests {
 
         let context = createTestContext(
             name: "ActiveCtx",
-            memoryEnabled: true,
-            memory: "ONLY_CONTEXT"
+            useContextMemory: true,
+            contextMemory: "ONLY_CONTEXT"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
@@ -732,8 +725,7 @@ struct PowerModeOrchestratorCombinedMemoryTests {
         settings.globalMemoryEnabled = false
         settings.activeContextId = nil  // No context
 
-        let powerMode = createTestPowerMode(
-            name: "Solo",
+        let powerMode = createTestPowerMode(name: "Solo",
             memoryEnabled: true,
             memory: "ONLY_POWERMODE"
         )
@@ -810,14 +802,13 @@ struct PowerModeOrchestratorActiveMemorySourcesTests {
 
         let context = createTestContext(
             name: "Ctx",
-            memoryEnabled: true,
-            memory: "exists"
+            useContextMemory: true,
+            contextMemory: "exists"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
 
-        let powerMode = createTestPowerMode(
-            name: "PM",
+        let powerMode = createTestPowerMode(name: "PM",
             memoryEnabled: true,
             memory: "exists"
         )
@@ -867,7 +858,7 @@ struct PowerModeOrchestratorMemoryUpdateTests {
     @MainActor
     func memoryManagerCalledAfterCompletion() async throws {
         let settings = createTestSettings()
-        let context = createTestContext(name: "Ctx", memoryEnabled: true)
+        let context = createTestContext(name: "Ctx", useContextMemory: true)
         settings.contexts = [context]
         settings.activeContextId = context.id
 
@@ -974,15 +965,13 @@ struct PowerModeOrchestratorFullFlowTests {
 
         let context = createTestContext(
             name: "Work",
-            memoryEnabled: true,
-            memory: "Working on iOS app",
-            tone: "Technical and precise"
+            useContextMemory: true,
+            contextMemory: "Working on iOS app"
         )
         settings.contexts = [context]
         settings.activeContextId = context.id
 
-        let powerMode = createTestPowerMode(
-            name: "Code Review",
+        let powerMode = createTestPowerMode(name: "Code Review",
             instruction: "Review the code",
             memoryEnabled: true,
             memory: "Focus on Swift best practices"

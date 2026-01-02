@@ -98,7 +98,7 @@ final class MemoryManager: ObservableObject {
         }
 
         // 2. Update context memory (if context is active and memory enabled)
-        if let ctx = context, ctx.memoryEnabled {
+        if let ctx = context, ctx.useContextMemory {
             let result = await updateContextMemory(contextId: ctx.id, with: summary)
             results.append(result)
         }
@@ -171,7 +171,7 @@ final class MemoryManager: ObservableObject {
             )
         }
 
-        let previousMemory = context.memory ?? ""
+        let previousMemory = context.contextMemory ?? ""
         let previousLength = previousMemory.count
 
         do {
@@ -187,11 +187,8 @@ final class MemoryManager: ObservableObject {
                 wasCompressed = true
             }
 
-            // Update context
-            context.memory = finalMemory
-            context.lastMemoryUpdate = Date()
-            context.updatedAt = Date()
-            settings.updateContext(context)
+            // Update context memory
+            settings.updateContextMemory(id: context.id, memory: finalMemory)
 
             return MemoryUpdateResult(
                 tier: .context(contextId),
@@ -280,12 +277,7 @@ final class MemoryManager: ObservableObject {
             settings.globalMemory = nil
 
         case .context(let id):
-            if var context = settings.contexts.first(where: { $0.id == id }) {
-                context.memory = nil
-                context.lastMemoryUpdate = nil
-                context.updatedAt = Date()
-                settings.updateContext(context)
-            }
+            settings.updateContextMemory(id: id, memory: "")
 
         case .powerMode(let id):
             if var powerMode = settings.powerModes.first(where: { $0.id == id }) {
@@ -425,7 +417,7 @@ extension MemoryManager {
             return settings.globalMemory
 
         case .context(let id):
-            return settings.contexts.first(where: { $0.id == id })?.memory
+            return settings.contexts.first(where: { $0.id == id })?.contextMemory
 
         case .powerMode(let id):
             return settings.powerModes.first(where: { $0.id == id })?.memory
@@ -439,7 +431,7 @@ extension MemoryManager {
             return settings.globalMemoryEnabled
 
         case .context(let id):
-            return settings.contexts.first(where: { $0.id == id })?.memoryEnabled ?? false
+            return settings.contexts.first(where: { $0.id == id })?.useContextMemory ?? false
 
         case .powerMode(let id):
             return settings.powerModes.first(where: { $0.id == id })?.memoryEnabled ?? false
@@ -454,7 +446,7 @@ extension MemoryManager {
 
         case .context(let id):
             if let ctx = settings.contexts.first(where: { $0.id == id }) {
-                return (ctx.memory?.count ?? 0, ctx.lastMemoryUpdate)
+                return (ctx.contextMemory?.count ?? 0, ctx.lastMemoryUpdate)
             }
             return (0, nil)
 

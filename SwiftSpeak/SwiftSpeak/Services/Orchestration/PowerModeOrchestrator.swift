@@ -461,35 +461,22 @@ final class PowerModeOrchestrator: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        // Build prompt hint including context language hints
-        let promptHint = buildTranscriptionHint()
+        // Build prompt hint from context (domain jargon, vocabulary)
+        let promptContext = PromptContext.from(settings: settings, context: activeContext, powerMode: powerMode)
+        let promptHint = promptContext.buildTranscriptionHint()
 
         return try await provider.transcribe(
             audioURL: audioURL,
-            language: activeContext?.languageHints.first,
+            language: nil,
             promptHint: promptHint
         )
     }
 
     /// Build transcription hint from vocabulary and context
     private func buildTranscriptionHint() -> String? {
-        var hints: [String] = []
-
-        // Add custom vocabulary (both recognized and replacement words)
-        let vocabTerms = settings.vocabulary.flatMap { [$0.recognizedWord, $0.replacementWord] }
-        if !vocabTerms.isEmpty {
-            hints.append(contentsOf: Array(Set(vocabTerms))) // Dedupe
-        }
-
-        // Add context language hints
-        if let context = activeContext {
-            let langNames = context.languageHints.map { $0.displayName }
-            if !langNames.isEmpty {
-                hints.append("Languages: \(langNames.joined(separator: ", "))")
-            }
-        }
-
-        return hints.isEmpty ? nil : hints.joined(separator: ", ")
+        // Use PromptContext for consistent hint building
+        let promptContext = PromptContext.from(settings: settings, context: activeContext, powerMode: powerMode)
+        return promptContext.buildTranscriptionHint()
     }
 
     // MARK: - Generation
@@ -603,12 +590,14 @@ final class PowerModeOrchestrator: ObservableObject {
         if let context = activeContext {
             parts.append("\n## Active Context: \(context.name)")
 
-            if !context.toneDescription.isEmpty {
-                parts.append("Tone: \(context.toneDescription)")
+            // Add formatting style based on selected instructions
+            let styleChips = context.selectedInstructions.intersection(["formal", "casual", "concise"])
+            if !styleChips.isEmpty {
+                parts.append("Style: \(styleChips.joined(separator: ", "))")
             }
 
-            if !context.customInstructions.isEmpty {
-                parts.append("Instructions: \(context.customInstructions)")
+            if let instructions = context.customInstructions, !instructions.isEmpty {
+                parts.append("Instructions: \(instructions)")
             }
         }
 
@@ -672,8 +661,8 @@ final class PowerModeOrchestrator: ObservableObject {
         }
 
         // 2. Context memory (if context active and memory enabled)
-        if let context = activeContext, context.memoryEnabled,
-           let contextMem = context.memory, !contextMem.isEmpty {
+        if let context = activeContext, context.useContextMemory,
+           let contextMem = context.contextMemory, !contextMem.isEmpty {
             memories.append("Context (\(context.name)): \(contextMem)")
         }
 
@@ -790,7 +779,7 @@ extension PowerModeOrchestrator {
         if settings.globalMemoryEnabled && settings.globalMemory != nil {
             sources.append("Global")
         }
-        if let ctx = activeContext, ctx.memoryEnabled && ctx.memory != nil {
+        if let ctx = activeContext, ctx.useContextMemory && ctx.contextMemory != nil {
             sources.append(ctx.name)
         }
         if powerMode.memoryEnabled && powerMode.memory != nil {

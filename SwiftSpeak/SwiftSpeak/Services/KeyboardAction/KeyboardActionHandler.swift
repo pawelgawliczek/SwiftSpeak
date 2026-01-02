@@ -238,13 +238,13 @@ final class KeyboardActionHandler: ObservableObject {
         }
 
         // Build context-aware prompt using customInstructions
-        var fullPrompt = context.customInstructions
+        var fullPrompt = context.customInstructions ?? ""
         if fullPrompt.isEmpty {
             fullPrompt = "You are a helpful assistant."
         }
 
         // Add context memory if available
-        if context.memoryEnabled, let memory = context.memory, !memory.isEmpty {
+        if context.useContextMemory, let memory = context.contextMemory, !memory.isEmpty {
             fullPrompt += "\n\nContext memory:\n\(memory)"
         }
 

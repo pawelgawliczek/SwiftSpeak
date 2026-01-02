@@ -247,9 +247,7 @@ struct TranscriptionOrchestratorConfigTests {
             icon: "person",
             color: .blue,
             description: "Test",
-            toneDescription: "Casual",
-            formality: .neutral,
-            languageHints: [.english],
+            selectedInstructions: ["casual"],
             isActive: true
         )
         orchestrator.activeContext = context

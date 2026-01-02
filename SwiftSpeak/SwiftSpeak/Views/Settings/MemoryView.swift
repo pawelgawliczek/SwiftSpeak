@@ -213,7 +213,7 @@ struct MemoryView: View {
                 Text("\(context.icon) \(context.name)")
                     .font(.headline)
 
-                if context.memoryEnabled, let memory = context.memory, !memory.isEmpty {
+                if context.useContextMemory, let memory = context.contextMemory, !memory.isEmpty {
                     MemoryRowView(
                         icon: context.icon,
                         iconColor: context.color.color,
@@ -222,7 +222,7 @@ struct MemoryView: View {
                         lastUpdated: context.lastMemoryUpdate,
                         onEdit: { editContextMemory(context) }
                     )
-                } else if !context.memoryEnabled {
+                } else if !context.useContextMemory {
                     emptyMemoryCard(message: "Memory is not enabled for this context")
                 } else {
                     emptyMemoryCard(message: "No memory stored for this context yet")
@@ -392,7 +392,7 @@ struct MemoryView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
-            let contextsWithMemory = settings.contexts.filter { $0.memoryEnabled && $0.memory != nil && !($0.memory?.isEmpty ?? true) }
+            let contextsWithMemory = settings.contexts.filter { $0.useContextMemory && $0.contextMemory != nil && !($0.contextMemory?.isEmpty ?? true) }
 
             if contextsWithMemory.isEmpty {
                 emptyMemoryCard(message: "No Contexts have memory stored yet")
@@ -402,7 +402,7 @@ struct MemoryView: View {
                         icon: context.icon,
                         iconColor: context.color.color,
                         title: context.name,
-                        preview: context.memory ?? "",
+                        preview: context.contextMemory ?? "",
                         lastUpdated: context.lastMemoryUpdate,
                         onEdit: { editContextMemory(context) }
                     )
@@ -521,7 +521,7 @@ struct MemoryView: View {
         HapticManager.lightTap()
         editingMemoryType = .context(context.id)
         editingTitle = "\(context.name) - Context Memory"
-        editingMemoryContent = context.memory ?? ""
+        editingMemoryContent = context.contextMemory ?? ""
         showingEditor = true
     }
 

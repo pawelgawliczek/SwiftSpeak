@@ -474,7 +474,7 @@ struct SwipeableContextCard: View {
                         .buttonStyle(.plain)
 
                         // Memory indicator
-                        if context.memoryEnabled {
+                        if context.useContextMemory {
                             HStack(spacing: 4) {
                                 Image(systemName: "brain")
                                     .font(.caption2)
@@ -484,12 +484,12 @@ struct SwipeableContextCard: View {
                             .foregroundStyle(.purple.opacity(0.8))
                         }
 
-                        // Language hints
-                        if !context.languageHints.isEmpty {
+                        // Domain jargon indicator
+                        if context.domainJargon != .none {
                             HStack(spacing: 4) {
-                                Image(systemName: "globe")
+                                Image(systemName: context.domainJargon.icon)
                                     .font(.caption2)
-                                Text("\(context.languageHints.count)")
+                                Text(context.domainJargon.displayName)
                                     .font(.caption)
                             }
                             .foregroundStyle(.blue.opacity(0.8))

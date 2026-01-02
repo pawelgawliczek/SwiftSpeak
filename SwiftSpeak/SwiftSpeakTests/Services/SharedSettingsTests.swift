@@ -546,7 +546,7 @@ struct SharedSettingsTests {
 
         settings.updateContextMemory(id: context.id, memory: "Work context memory")
 
-        #expect(settings.getContext(id: context.id)?.memory == "Work context memory")
+        #expect(settings.getContext(id: context.id)?.contextMemory == "Work context memory")
     }
 
     // MARK: - Webhook Tests

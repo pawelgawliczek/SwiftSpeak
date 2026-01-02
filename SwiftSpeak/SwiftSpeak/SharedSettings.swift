@@ -1168,7 +1168,7 @@ class SharedSettings: ObservableObject {
 
     func updateContextMemory(id: UUID, memory: String) {
         if let index = contexts.firstIndex(where: { $0.id == id }) {
-            contexts[index].memory = memory
+            contexts[index].contextMemory = memory
             contexts[index].lastMemoryUpdate = Date()
             contexts[index].updatedAt = Date()
         }
@@ -1176,7 +1176,7 @@ class SharedSettings: ObservableObject {
 
     func clearContextMemory(id: UUID) {
         if let index = contexts.firstIndex(where: { $0.id == id }) {
-            contexts[index].memory = nil
+            contexts[index].contextMemory = nil
             contexts[index].lastMemoryUpdate = nil
             contexts[index].updatedAt = Date()
         }
