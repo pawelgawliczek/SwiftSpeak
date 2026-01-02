@@ -70,7 +70,12 @@ actor NGramPredictor {
     ///   - previousWords: Array of previous words (last 1-2 words)
     ///   - maxResults: Maximum number of predictions
     /// - Returns: Array of predicted words sorted by probability
-    func predict(previousWords: [String], maxResults: Int = 5) -> [String] {
+    func predict(previousWords: [String], maxResults: Int = 5) async -> [String] {
+        // Ensure initialized before predicting
+        if !isInitialized {
+            await initialize()
+        }
+
         let words = previousWords.map { $0.lowercased() }
 
         var predictions: [String: Double] = [:]
@@ -102,16 +107,21 @@ actor NGramPredictor {
             }
         }
 
-        // Sort by score and return top results
+        // Sort by score and return top results (lowercase - caller handles capitalization)
         let sorted = predictions.sorted { $0.value > $1.value }
-        return sorted.prefix(maxResults).map { $0.key.capitalized }
+        return sorted.prefix(maxResults).map { $0.key }
     }
 
     /// Predict word completion based on prefix
-    func predictCompletion(prefix: String, previousWords: [String], maxResults: Int = 5) -> [String] {
+    func predictCompletion(prefix: String, previousWords: [String], maxResults: Int = 5) async -> [String] {
+        // Ensure initialized before predicting
+        if !isInitialized {
+            await initialize()
+        }
+
         let lowercasedPrefix = prefix.lowercased()
         guard !lowercasedPrefix.isEmpty else {
-            return predict(previousWords: previousWords, maxResults: maxResults)
+            return await predict(previousWords: previousWords, maxResults: maxResults)
         }
 
         var predictions: [String: Double] = [:]
@@ -120,7 +130,7 @@ actor NGramPredictor {
         let matchingUnigrams = unigrams.filter { $0.key.hasPrefix(lowercasedPrefix) }
 
         // Use n-gram context to boost relevant completions
-        let contextPredictions = Set(predict(previousWords: previousWords, maxResults: 20).map { $0.lowercased() })
+        let contextPredictions = Set(await predict(previousWords: previousWords, maxResults: 20).map { $0.lowercased() })
 
         for (word, count) in matchingUnigrams {
             var score = Double(count)
@@ -137,7 +147,7 @@ actor NGramPredictor {
         }
 
         let sorted = predictions.sorted { $0.value > $1.value }
-        return sorted.prefix(maxResults).map { $0.key.capitalized }
+        return sorted.prefix(maxResults).map { $0.key }
     }
 
     // MARK: - Helpers

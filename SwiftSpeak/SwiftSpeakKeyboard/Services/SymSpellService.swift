@@ -154,8 +154,9 @@ actor SymSpellService {
         // 3. Similar length
         guard abs(best.word.count - lowercased.count) <= 1 else { return nil }
 
-        // 4. High frequency (common words are more likely to be the target)
-        guard best.frequency >= 100 else { return nil }
+        // 4. Reasonable frequency (common words are more likely to be the target)
+        // Lowered from 100 to 20 to catch more corrections
+        guard best.frequency >= 20 else { return nil }
 
         return best.word
     }
@@ -270,6 +271,35 @@ actor SymSpellService {
             ("small", 600), ("large", 500), ("next", 700), ("early", 400), ("young", 500),
             ("few", 600), ("old", 800), ("able", 700), ("man", 1200), ("men", 700),
             ("woman", 500), ("women", 400), ("child", 500), ("children", 400),
+
+            // More common verbs (missing words that users might misspell)
+            ("meet", 500), ("meeting", 200), ("met", 400), ("send", 400), ("sent", 350),
+            ("write", 400), ("wrote", 300), ("written", 250), ("read", 600), ("run", 400),
+            ("ran", 300), ("running", 250), ("walk", 300), ("walking", 200), ("talk", 350),
+            ("talking", 250), ("talked", 200), ("speak", 350), ("speaking", 200), ("spoke", 250),
+            ("eat", 300), ("eating", 200), ("ate", 250), ("drink", 250), ("drinking", 150),
+            ("sleep", 250), ("sleeping", 150), ("slept", 200), ("play", 400), ("playing", 300),
+            ("played", 250), ("work", 1040), ("working", 400), ("worked", 350), ("live", 500),
+            ("living", 300), ("lived", 250), ("love", 400), ("loving", 150), ("loved", 300),
+            ("hate", 150), ("help", 400), ("helping", 200), ("helped", 250), ("start", 400),
+            ("starting", 200), ("started", 300), ("finish", 200), ("finished", 200), ("open", 300),
+            ("opening", 150), ("opened", 200), ("close", 300), ("closing", 100), ("closed", 250),
+            ("wait", 300), ("waiting", 200), ("waited", 150), ("show", 400), ("showing", 200),
+            ("showed", 200), ("buy", 300), ("buying", 150), ("bought", 250), ("sell", 200),
+            ("selling", 100), ("sold", 200), ("bring", 300), ("bringing", 150), ("brought", 250),
+            ("hold", 300), ("holding", 150), ("held", 250), ("set", 400), ("setting", 200),
+            ("sit", 300), ("sitting", 200), ("sat", 250), ("stand", 250), ("standing", 150),
+            ("stood", 200), ("hear", 350), ("hearing", 100), ("heard", 300), ("move", 350),
+            ("moving", 200), ("moved", 250), ("turn", 350), ("turning", 150), ("turned", 250),
+            ("learn", 300), ("learning", 200), ("learned", 200), ("teach", 200), ("teaching", 150),
+            ("taught", 150), ("build", 250), ("building", 200), ("built", 200), ("pay", 350),
+            ("paying", 150), ("paid", 300), ("spend", 250), ("spending", 150), ("spent", 250),
+            ("break", 250), ("breaking", 100), ("broke", 200), ("broken", 200), ("lose", 250),
+            ("losing", 150), ("lost", 350), ("win", 250), ("winning", 150), ("won", 300),
+            ("happen", 300), ("happening", 150), ("happened", 250), ("become", 300), ("becoming", 100),
+            ("became", 200), ("remember", 250), ("remembering", 50), ("remembered", 150),
+            ("forget", 200), ("forgetting", 50), ("forgot", 200), ("forgotten", 150),
+            ("understand", 250), ("understanding", 150), ("understood", 200),
 
             // Common nouns
             ("world", 1100), ("life", 1000), ("hand", 800), ("part", 700), ("place", 700),

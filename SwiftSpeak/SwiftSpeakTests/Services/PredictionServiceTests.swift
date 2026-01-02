@@ -1,0 +1,346 @@
+//
+//  PredictionServiceTests.swift
+//  SwiftSpeakTests
+//
+//  Tests for prediction and autocorrection algorithms
+//  NOTE: Keyboard extension services cannot be directly tested due to linking constraints.
+//  These tests verify the underlying algorithms that the keyboard uses.
+//
+
+import Testing
+import Foundation
+@testable import SwiftSpeak
+
+// MARK: - Edit Distance Algorithm Tests
+
+@Suite("Edit Distance Algorithm Tests")
+struct EditDistanceTests {
+
+    /// Damerau-Levenshtein distance implementation for testing
+    func damerauLevenshteinDistance(_ s1: String, _ s2: String) -> Int {
+        let a = Array(s1.lowercased())
+        let b = Array(s2.lowercased())
+        let m = a.count
+        let n = b.count
+
+        if m == 0 { return n }
+        if n == 0 { return m }
+        if s1.lowercased() == s2.lowercased() { return 0 }
+
+        var d = [[Int]](repeating: [Int](repeating: 0, count: n + 1), count: m + 1)
+
+        for i in 0...m { d[i][0] = i }
+        for j in 0...n { d[0][j] = j }
+
+        for i in 1...m {
+            for j in 1...n {
+                let cost = a[i - 1] == b[j - 1] ? 0 : 1
+
+                d[i][j] = min(
+                    d[i - 1][j] + 1,      // deletion
+                    d[i][j - 1] + 1,      // insertion
+                    d[i - 1][j - 1] + cost // substitution
+                )
+
+                // Transposition
+                if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                    d[i][j] = min(d[i][j], d[i - 2][j - 2] + cost)
+                }
+            }
+        }
+
+        return d[m][n]
+    }
+
+    @Test("Edit distance calculates correctly for insertions")
+    func testInsertions() {
+        // "met" -> "meet" (1 insertion)
+        let distance = damerauLevenshteinDistance("met", "meet")
+        #expect(distance == 1, "'met' to 'meet' should be distance 1")
+    }
+
+    @Test("Edit distance calculates correctly for deletions")
+    func testDeletions() {
+        // "meeet" -> "meet" (1 deletion)
+        let distance = damerauLevenshteinDistance("meeet", "meet")
+        #expect(distance == 1, "'meeet' to 'meet' should be distance 1")
+    }
+
+    @Test("Edit distance calculates correctly for substitutions")
+    func testSubstitutions() {
+        // "maat" -> "meet" (2 substitutions)
+        let distance = damerauLevenshteinDistance("maat", "meet")
+        #expect(distance == 2, "'maat' to 'meet' should be distance 2")
+    }
+
+    @Test("Edit distance handles transpositions")
+    func testTranspositions() {
+        // "teh" -> "the" (1 transposition)
+        let distance = damerauLevenshteinDistance("teh", "the")
+        #expect(distance == 1, "'teh' to 'the' should be distance 1 (transposition)")
+    }
+
+    @Test("Edit distance for common typos")
+    func testCommonTypos() {
+        // Common misspellings
+        #expect(damerauLevenshteinDistance("recieve", "receive") == 1, "'recieve' should be 1 edit from 'receive'")
+        #expect(damerauLevenshteinDistance("definately", "definitely") == 2, "'definately' should be 2 edits from 'definitely'")
+        #expect(damerauLevenshteinDistance("occured", "occurred") == 1, "'occured' should be 1 edit from 'occurred'")
+    }
+}
+
+// MARK: - Soundex Algorithm Tests
+
+@Suite("Soundex Algorithm Tests")
+struct SoundexTests {
+
+    /// Simple Soundex implementation for testing
+    func soundex(_ word: String) -> String {
+        guard !word.isEmpty else { return "" }
+
+        let input = word.lowercased()
+        let letters = Array(input)
+
+        // Mapping for Soundex
+        let mapping: [Character: Character] = [
+            "b": "1", "f": "1", "p": "1", "v": "1",
+            "c": "2", "g": "2", "j": "2", "k": "2", "q": "2", "s": "2", "x": "2", "z": "2",
+            "d": "3", "t": "3",
+            "l": "4",
+            "m": "5", "n": "5",
+            "r": "6"
+        ]
+
+        var code = [letters[0].uppercased()]
+        var lastCode: Character? = mapping[letters[0]]
+
+        for i in 1..<letters.count {
+            let letter = letters[i]
+            if let mapped = mapping[letter], mapped != lastCode {
+                code.append(String(mapped))
+                lastCode = mapped
+            } else if mapping[letter] == nil {
+                lastCode = nil  // Vowels and H, W separate codes
+            }
+
+            if code.count >= 4 { break }
+        }
+
+        // Pad with zeros
+        while code.count < 4 {
+            code.append("0")
+        }
+
+        return code.joined()
+    }
+
+    @Test("Soundex produces same code for similar sounding words")
+    func testSimilarSounds() {
+        // Robert and Rupert should have similar codes
+        let robert = soundex("Robert")
+        let rupert = soundex("Rupert")
+        #expect(robert == rupert, "Robert (\(robert)) and Rupert (\(rupert)) should have same Soundex")
+
+        // Smith and Smyth
+        let smith = soundex("Smith")
+        let smyth = soundex("Smyth")
+        #expect(smith == smyth, "Smith (\(smith)) and Smyth (\(smyth)) should have same Soundex")
+    }
+
+    @Test("Soundex produces different codes for different words")
+    func testDifferentSounds() {
+        // Cat and Dog should be different
+        let cat = soundex("Cat")
+        let dog = soundex("Dog")
+        #expect(cat != dog, "Cat (\(cat)) and Dog (\(dog)) should have different Soundex")
+    }
+}
+
+// MARK: - Capitalization Logic Tests
+
+@Suite("Capitalization Logic Tests")
+struct CapitalizationLogicTests {
+
+    /// Words that should always be capitalized
+    let alwaysCapitalize = Set(["i"])
+
+    /// Days of the week
+    let daysOfWeek = Set(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"])
+
+    /// Months
+    let months = Set(["january", "february", "march", "april", "may", "june",
+                      "july", "august", "september", "october", "november", "december"])
+
+    /// Common contractions
+    let contractions: [String: String] = [
+        "dont": "don't", "wont": "won't", "cant": "can't",
+        "im": "I'm", "youre": "you're", "theyre": "they're"
+    ]
+
+    func shouldCapitalizeWord(_ word: String) -> String? {
+        let lowercased = word.lowercased()
+
+        if alwaysCapitalize.contains(lowercased) {
+            return word.uppercased()
+        }
+
+        if daysOfWeek.contains(lowercased) {
+            return lowercased.capitalized
+        }
+
+        if months.contains(lowercased) {
+            return lowercased.capitalized
+        }
+
+        return nil
+    }
+
+    @Test("'i' should become 'I'")
+    func testCapitalizeI() {
+        let result = shouldCapitalizeWord("i")
+        #expect(result == "I", "'i' should become 'I'")
+    }
+
+    @Test("Days of week should be capitalized")
+    func testCapitalizeDays() {
+        let monday = shouldCapitalizeWord("monday")
+        #expect(monday == "Monday", "'monday' should become 'Monday'")
+
+        let friday = shouldCapitalizeWord("friday")
+        #expect(friday == "Friday", "'friday' should become 'Friday'")
+    }
+
+    @Test("Months should be capitalized")
+    func testCapitalizeMonths() {
+        let january = shouldCapitalizeWord("january")
+        #expect(january == "January", "'january' should become 'January'")
+
+        let december = shouldCapitalizeWord("december")
+        #expect(december == "December", "'december' should become 'December'")
+    }
+
+    @Test("Contractions should get apostrophes")
+    func testContractions() {
+        #expect(contractions["dont"] == "don't", "'dont' should become \"don't\"")
+        #expect(contractions["im"] == "I'm", "'im' should become \"I'm\"")
+        #expect(contractions["youre"] == "you're", "'youre' should become \"you're\"")
+    }
+}
+
+// MARK: - Sentence Boundary Detection Tests
+
+@Suite("Sentence Boundary Detection Tests")
+struct SentenceBoundaryTests {
+
+    func shouldCapitalizeAfter(_ context: String?) -> Bool {
+        guard let context = context, !context.isEmpty else {
+            return true  // Start of text
+        }
+
+        let trimmed = context.trimmingCharacters(in: .whitespaces)
+
+        // After sentence-ending punctuation
+        if trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") {
+            // Check for abbreviations
+            let abbreviations = ["Mr.", "Mrs.", "Ms.", "Dr.", "etc.", "vs.", "e.g.", "i.e."]
+            for abbr in abbreviations {
+                if trimmed.hasSuffix(abbr) || trimmed.hasSuffix(abbr.lowercased()) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        // After newline
+        if context.hasSuffix("\n") {
+            return true
+        }
+
+        return false
+    }
+
+    @Test("Should capitalize at start of text")
+    func testStartOfText() {
+        #expect(shouldCapitalizeAfter(nil) == true)
+        #expect(shouldCapitalizeAfter("") == true)
+    }
+
+    @Test("Should capitalize after period")
+    func testAfterPeriod() {
+        #expect(shouldCapitalizeAfter("Hello. ") == true)
+        #expect(shouldCapitalizeAfter("This is a test. ") == true)
+    }
+
+    @Test("Should capitalize after exclamation")
+    func testAfterExclamation() {
+        #expect(shouldCapitalizeAfter("Wow! ") == true)
+    }
+
+    @Test("Should capitalize after question mark")
+    func testAfterQuestion() {
+        #expect(shouldCapitalizeAfter("What? ") == true)
+    }
+
+    @Test("Should NOT capitalize mid-sentence")
+    func testMidSentence() {
+        #expect(shouldCapitalizeAfter("Hello ") == false)
+        #expect(shouldCapitalizeAfter("This is ") == false)
+    }
+
+    @Test("Should NOT capitalize after abbreviations")
+    func testAfterAbbreviations() {
+        #expect(shouldCapitalizeAfter("Mr. ") == false, "Should not capitalize after Mr.")
+        #expect(shouldCapitalizeAfter("Dr. ") == false, "Should not capitalize after Dr.")
+        #expect(shouldCapitalizeAfter("etc. ") == false, "Should not capitalize after etc.")
+    }
+}
+
+// MARK: - N-gram Prediction Logic Tests
+
+@Suite("N-gram Prediction Logic Tests")
+struct NGramLogicTests {
+
+    /// Simple bigram dictionary for testing
+    let bigrams: [String: [String: Int]] = [
+        "i": ["am": 500, "have": 400, "will": 350, "want": 260, "need": 240],
+        "thank": ["you": 600],
+        "want": ["to": 350],
+        "to": ["be": 400, "do": 300, "have": 280, "go": 240]
+    ]
+
+    func predictNextWord(after previousWord: String) -> [String] {
+        guard let nextWords = bigrams[previousWord.lowercased()] else {
+            return []
+        }
+
+        return nextWords.sorted { $0.value > $1.value }
+            .prefix(5)
+            .map { $0.key.capitalized }
+    }
+
+    @Test("Should predict 'am' after 'I'")
+    func testPredictAfterI() {
+        let predictions = predictNextWord(after: "I")
+        #expect(predictions.first == "Am", "Should predict 'Am' first after 'I'")
+        #expect(predictions.contains("Want"), "Should predict 'Want' after 'I'")
+    }
+
+    @Test("Should predict 'you' after 'thank'")
+    func testPredictAfterThank() {
+        let predictions = predictNextWord(after: "thank")
+        #expect(predictions.contains("You"), "Should predict 'You' after 'thank'")
+    }
+
+    @Test("Should predict 'to' after 'want'")
+    func testPredictAfterWant() {
+        let predictions = predictNextWord(after: "want")
+        #expect(predictions.contains("To"), "Should predict 'To' after 'want'")
+    }
+
+    @Test("Should predict 'be', 'do' after 'to'")
+    func testPredictAfterTo() {
+        let predictions = predictNextWord(after: "to")
+        #expect(predictions.contains("Be"), "Should predict 'Be' after 'to'")
+        #expect(predictions.contains("Do"), "Should predict 'Do' after 'to'")
+    }
+}

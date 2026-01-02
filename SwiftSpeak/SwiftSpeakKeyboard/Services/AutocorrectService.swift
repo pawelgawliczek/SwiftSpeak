@@ -96,6 +96,11 @@ actor AutocorrectService {
 
     /// Get spelling suggestions for a word
     func getSuggestions(for word: String, maxResults: Int = 3) async -> [String] {
+        // Ensure initialization is complete
+        if !isInitialized {
+            await initialize()
+        }
+
         let lowercased = word.lowercased()
 
         var allSuggestions: [(word: String, score: Double)] = []
@@ -215,6 +220,11 @@ extension AutocorrectService {
     /// Call this when user types a space or punctuation
     func processWord(_ word: String) async -> (original: String, correction: String?)? {
         guard !word.isEmpty else { return nil }
+
+        // Ensure initialization is complete before processing
+        if !isInitialized {
+            await initialize()
+        }
 
         // Preserve capitalization
         let isCapitalized = word.first?.isUppercase ?? false

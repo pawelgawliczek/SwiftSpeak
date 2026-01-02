@@ -121,33 +121,35 @@ actor ContextAwarePredictions {
             }
         }
 
+        // Return lowercase - caller (PredictionEngine) handles capitalization
         return matches
             .sorted { $0.1 > $1.1 }
             .prefix(10)
-            .map { $0.0.capitalized }
+            .map { $0.0 }
     }
 
     /// Get starter predictions when no text is typed
+    /// Returns lowercase - caller handles smart capitalization
     func getStarterPredictions(for context: TypingContextType) -> [String] {
         switch context {
         case .email:
-            return ["Hi", "Hello", "Dear", "Thank", "Please", "I", "We"]
+            return ["hi", "hello", "dear", "thank", "please", "i", "we"]
         case .messaging:
-            return ["Hey", "Hi", "What's", "How's", "Thanks", "Sure", "Ok"]
+            return ["hey", "hi", "what's", "how's", "thanks", "sure", "ok"]
         case .social:
-            return ["Just", "So", "Finally", "Anyone", "Can't", "Love", "This"]
+            return ["just", "so", "finally", "anyone", "can't", "love", "this"]
         case .code:
             return ["func", "let", "var", "if", "for", "class", "import"]
         case .notes:
-            return ["The", "I", "This", "Today", "Need", "Remember", "Ideas"]
+            return ["the", "i", "this", "today", "need", "remember", "ideas"]
         case .search:
             return ["how", "what", "why", "where", "best", "top", "how to"]
         case .formal:
-            return ["I", "We", "The", "Regarding", "Please", "Thank", "As"]
+            return ["i", "we", "the", "regarding", "please", "thank", "as"]
         case .casual:
-            return ["I", "So", "Just", "Hey", "Yeah", "What", "How"]
+            return ["i", "so", "just", "hey", "yeah", "what", "how"]
         case .unknown:
-            return ["I", "The", "Hi", "Thanks", "Please", "What", "How"]
+            return ["i", "the", "hi", "thanks", "please", "what", "how"]
         }
     }
 

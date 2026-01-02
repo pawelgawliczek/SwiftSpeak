@@ -112,6 +112,11 @@ actor PredictionEngine {
 
     /// Get predictions based on local vocabulary, N-grams, and context
     func localPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
+        // Ensure services are initialized
+        if !servicesInitialized {
+            await initializeServices()
+        }
+
         var predictions: [(text: String, score: Double)] = []
 
         let searchTerm = context.currentWord.lowercased()
@@ -225,39 +230,92 @@ actor PredictionEngine {
         }
 
         uniquePredictions.sort { $0.1 > $1.1 }
-        return uniquePredictions.prefix(3).map { $0.0 }
+
+        // Apply smart capitalization based on context
+        let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText)
+        return uniquePredictions.prefix(3).map { text, _ in
+            applySmartCapitalization(text, shouldCapitalize: shouldCapitalize)
+        }
+    }
+
+    // MARK: - Smart Capitalization
+
+    /// Determine if next word should be capitalized based on context
+    private func shouldCapitalizeNextWord(context: String) -> Bool {
+        // Empty context = start of text
+        if context.isEmpty {
+            return true
+        }
+
+        let trimmed = context.trimmingCharacters(in: .whitespaces)
+
+        // Empty after trimming = start of text
+        if trimmed.isEmpty {
+            return true
+        }
+
+        // After sentence-ending punctuation
+        if trimmed.hasSuffix(".") || trimmed.hasSuffix("!") || trimmed.hasSuffix("?") {
+            // Check for common abbreviations that don't end sentences
+            let abbreviations = ["mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.",
+                               "etc.", "vs.", "e.g.", "i.e.", "fig.", "no.", "vol.",
+                               "st.", "ave.", "blvd.", "rd.", "inc.", "corp.", "ltd."]
+            let lowercased = trimmed.lowercased()
+            for abbr in abbreviations {
+                if lowercased.hasSuffix(abbr) {
+                    return false
+                }
+            }
+            return true
+        }
+
+        // After newline
+        if context.hasSuffix("\n") {
+            return true
+        }
+
+        return false
+    }
+
+    /// Apply capitalization to a word based on context
+    private func applySmartCapitalization(_ word: String, shouldCapitalize: Bool) -> String {
+        if shouldCapitalize {
+            return word.capitalized
+        }
+        return word.lowercased()
     }
 
     /// Legacy sync wrapper
     func localPredictions(for context: PredictionContext) -> [String] {
         // For backward compatibility, return simple predictions
         let searchTerm = context.currentWord.lowercased()
+        let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText)
 
         if searchTerm.isEmpty {
             return frequentWords
                 .sorted { $0.value > $1.value }
                 .prefix(3)
-                .map { $0.key.capitalized }
+                .map { applySmartCapitalization($0.key, shouldCapitalize: shouldCapitalize) }
         }
 
         var predictions: [(String, Int)] = []
 
         for word in vocabulary {
             if word.lowercased().hasPrefix(searchTerm) && word.lowercased() != searchTerm {
-                predictions.append((word, 100))
+                predictions.append((word.lowercased(), 100))
             }
         }
 
         for (word, count) in frequentWords {
             if word.hasPrefix(searchTerm) && word != searchTerm {
-                predictions.append((word.capitalized, count))
+                predictions.append((word.lowercased(), count))
             }
         }
 
         return predictions
             .sorted { $0.1 > $1.1 }
             .prefix(3)
-            .map { $0.0 }
+            .map { applySmartCapitalization($0.0, shouldCapitalize: shouldCapitalize) }
     }
 
     // MARK: - LLM Predictions
@@ -379,6 +437,11 @@ actor PredictionEngine {
 
     /// Get predictions for the current typing context with debouncing
     func getPredictions(for context: PredictionContext, activeContext: String? = nil) async -> [String] {
+        // Ensure services are initialized before making predictions
+        if !servicesInitialized {
+            await initializeServices()
+        }
+
         // Cancel any pending prediction task if context changed significantly
         if context.fullText != lastPredictionContext {
             pendingPredictionTask?.cancel()

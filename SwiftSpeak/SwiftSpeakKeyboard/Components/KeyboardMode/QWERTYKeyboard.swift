@@ -53,11 +53,13 @@ struct QWERTYKeyboard: View {
                     }
             }
         )
+        .onAppear {
+            // Auto-shift on keyboard appear if at start of text or after sentence
+            checkAutoShift()
+        }
         .onChange(of: textDocumentProxy?.documentContextBeforeInput) { _, _ in
-            // Auto-capitalize if needed
-            if shiftState == .lowercase && shouldAutoCapitalize {
-                shiftState = .shift
-            }
+            // Auto-shift when context changes
+            checkAutoShift()
         }
         // Accent popup as true overlay - floats above everything
         .overlay {
@@ -409,6 +411,17 @@ struct QWERTYKeyboard: View {
 
         let wordString = String(lastWord)
 
+        // Special case: handle "i" → "I" before length check
+        if wordString.lowercased() == "i" {
+            // Delete "i" and insert "I"
+            proxy.deleteBackward()
+            proxy.insertText("I")
+            KeyboardHaptics.lightTap()
+            keyboardLog("Autocorrected 'i' to 'I'", category: "Autocorrect")
+            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: proxy.documentContextBeforeInput)
+            return
+        }
+
         // Skip autocorrect if word is too short or contains numbers
         guard wordString.count >= 2,
               !wordString.contains(where: { $0.isNumber }) else {
@@ -507,6 +520,8 @@ struct QWERTYKeyboard: View {
         textDocumentProxy?.deleteBackward()
         // Phase 13.6: Update typing context after deleting
         viewModel?.updateTypingContext()
+        // Auto-shift if we're now at start of sentence
+        checkAutoShift()
     }
 
     /// Delete multiple words (swipe-delete feature like Gboard)
@@ -560,6 +575,8 @@ struct QWERTYKeyboard: View {
         }
 
         viewModel?.updateTypingContext()
+        // Auto-shift if we're now at start of sentence
+        checkAutoShift()
     }
 
     private func handleShiftTap() {
@@ -593,6 +610,26 @@ struct QWERTYKeyboard: View {
             layoutState = .symbols
         } else {
             layoutState = .numbers
+        }
+    }
+
+    // MARK: - Auto-Shift
+
+    /// Check if keyboard should auto-shift based on context
+    private func checkAutoShift() {
+        // Don't override caps lock
+        guard shiftState != .capsLock else { return }
+
+        // Check if we should capitalize
+        if shouldAutoCapitalize {
+            // Only auto-shift if currently lowercase
+            if shiftState == .lowercase {
+                shiftState = .shift
+            }
+        } else {
+            // Turn off shift if we shouldn't capitalize (e.g., mid-sentence)
+            // But only if it was auto-shifted, not manually set
+            // We can't distinguish, so leave it alone for now
         }
     }
 
