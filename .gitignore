@@ -50,3 +50,4 @@ secrets/
 # External Dependencies
 RevenueCat/
 WhisperKit-Package/
+.swiftpm/
