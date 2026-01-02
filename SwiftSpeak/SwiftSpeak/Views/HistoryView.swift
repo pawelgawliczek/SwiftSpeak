@@ -321,8 +321,25 @@ struct HistoryRowView: View {
                 // Header with mode, power mode, context, translation, and time
                 headerBadges
 
+                // Phase 13.12: Prediction entries show typing context and predictions
+                if record.isPrediction, let predContext = record.sentencePredictionContext {
+                    // For predictions: show typing context
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "text.cursor")
+                                .font(.caption2)
+                            Text("Typing Context")
+                                .font(.caption2.weight(.medium))
+                        }
+                        .foregroundStyle(.purple)
+                        Text(predContext.typingContext.isEmpty ? "(empty)" : predContext.typingContext)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .italic()
+                            .lineLimit(2)
+                    }
                 // Phase 12: Edit entries show instructions, regular entries show input
-                if record.isEditOperation, let editContext = record.editContext {
+                } else if record.isEditOperation, let editContext = record.editContext {
                     // For edit operations: show instructions (what user asked)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 4) {
@@ -354,7 +371,11 @@ struct HistoryRowView: View {
                 // Output text (larger, tappable to copy)
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
-                        if record.isEditOperation {
+                        if record.isPrediction {
+                            Text("Predictions")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.purple)
+                        } else if record.isEditOperation {
                             Text("Result")
                                 .font(.caption2.weight(.medium))
                                 .foregroundStyle(.green)
@@ -369,10 +390,33 @@ struct HistoryRowView: View {
                             .foregroundStyle(.tertiary)
                             .opacity(showCopied ? 0 : 1)
                     }
-                    Text(record.text)
-                        .font(.subheadline)
-                        .foregroundStyle(.primary)
-                        .lineLimit(3)
+
+                    // For predictions, show numbered list
+                    if record.isPrediction, let predContext = record.sentencePredictionContext {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(Array(predContext.predictions.prefix(3).enumerated()), id: \.offset) { index, prediction in
+                                HStack(alignment: .top, spacing: 6) {
+                                    Text("\(index + 1).")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.purple)
+                                    Text(prediction)
+                                        .font(.caption)
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            if predContext.predictions.count > 3 {
+                                Text("+\(predContext.predictions.count - 3) more")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    } else {
+                        Text(record.text)
+                            .font(.subheadline)
+                            .foregroundStyle(.primary)
+                            .lineLimit(3)
+                    }
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -458,8 +502,21 @@ struct HistoryRowView: View {
 
     private var headerBadges: some View {
         HStack {
+            // Phase 13.12: Prediction badge (purple, with sparkles icon)
+            if record.isPrediction {
+                HStack(spacing: 4) {
+                    Image(systemName: "sparkles")
+                        .font(.caption2.weight(.semibold))
+                    Text("Prediction")
+                        .font(.caption2.weight(.medium))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.purple)
+                .clipShape(Capsule())
             // Phase 12: Edit badge (green, with pencil icon)
-            if record.isEditOperation {
+            } else if record.isEditOperation {
                 HStack(spacing: 4) {
                     Image(systemName: "pencil")
                         .font(.caption2.weight(.semibold))
@@ -472,7 +529,7 @@ struct HistoryRowView: View {
                 .background(Color.green)
                 .clipShape(Capsule())
             } else {
-                // Mode badge (only show for non-edit entries)
+                // Mode badge (only show for non-edit/prediction entries)
                 HStack(spacing: 4) {
                     Image(systemName: record.mode.icon)
                         .font(.caption2)
@@ -700,8 +757,82 @@ struct HistoryDetailView: View {
 
     private var textContentSection: some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Phase 13.12: Prediction entries have special display
+            if record.isPrediction, let predContext = record.sentencePredictionContext {
+                // Typing context
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "text.cursor")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                        Text("Typing Context")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.purple)
+
+                        Spacer()
+
+                        if let contextName = predContext.activeContextName {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.circle")
+                                    .font(.caption2)
+                                Text(contextName)
+                                    .font(.caption2)
+                            }
+                            .foregroundStyle(.purple)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.purple.opacity(0.15))
+                            .clipShape(Capsule())
+                        }
+                    }
+                    Text(predContext.typingContext.isEmpty ? "(empty field)" : predContext.typingContext)
+                        .font(.subheadline)
+                        .foregroundStyle(predContext.typingContext.isEmpty ? .tertiary : .secondary)
+                        .italic(predContext.typingContext.isEmpty)
+                        .textSelection(.enabled)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.purple.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Predictions list
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                        Text("AI Predictions")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.purple)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(predContext.predictions.enumerated()), id: \.offset) { index, prediction in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text("\(index + 1)")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 20, height: 20)
+                                    .background(Color.purple)
+                                    .clipShape(Circle())
+
+                                Text(prediction)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .textSelection(.enabled)
+                            }
+                        }
+                    }
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.2 : 0.08), radius: 8, y: 2)
+
             // Phase 12: Edit entries have special display
-            if record.isEditOperation, let editContext = record.editContext {
+            } else if record.isEditOperation, let editContext = record.editContext {
                 // Original text that was being edited
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -1094,93 +1225,168 @@ struct HistoryDetailView: View {
 
     private var promptsSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Always show transcription configuration
-            SectionHeader(title: "TRANSCRIPTION CONFIG")
+            // Phase 13.12: Prediction entries show prediction config
+            if record.isPrediction, let predContext = record.sentencePredictionContext {
+                SectionHeader(title: "PREDICTION CONFIG")
 
-            VStack(spacing: 0) {
-                // Transcription provider
-                PromptConfigRow(
-                    icon: "waveform",
-                    iconColor: AppTheme.accent,
-                    label: "Transcription",
-                    value: record.provider.displayName
-                )
-
-                Divider().padding(.leading, 44)
-
-                // Mode
-                PromptConfigRow(
-                    icon: record.mode.icon,
-                    iconColor: AppTheme.accent,
-                    label: "Mode",
-                    value: record.mode.displayName
-                )
-
-                Divider().padding(.leading, 44)
-
-                // Context
-                PromptConfigRow(
-                    icon: record.contextIcon ?? "person.crop.circle.dashed",
-                    iconColor: .purple,
-                    label: "Context",
-                    value: record.contextName ?? "No context"
-                )
-
-                // Power Mode (if used)
-                if let powerModeName = record.powerModeName {
-                    Divider().padding(.leading, 44)
+                VStack(spacing: 0) {
+                    // Provider
                     PromptConfigRow(
-                        icon: "bolt.fill",
-                        iconColor: .orange,
-                        label: "Power Mode",
-                        value: powerModeName
+                        icon: "sparkles",
+                        iconColor: .purple,
+                        label: "Provider",
+                        value: record.provider.displayName
+                    )
+
+                    Divider().padding(.leading, 44)
+
+                    // Context (if any)
+                    PromptConfigRow(
+                        icon: "person.circle",
+                        iconColor: .purple,
+                        label: "Context",
+                        value: predContext.activeContextName ?? "No context"
+                    )
+
+                    Divider().padding(.leading, 44)
+
+                    // Typing context length
+                    PromptConfigRow(
+                        icon: "text.cursor",
+                        iconColor: .purple,
+                        label: "Input Length",
+                        value: "\(predContext.typingContext.count) characters"
+                    )
+
+                    Divider().padding(.leading, 44)
+
+                    // Number of predictions
+                    PromptConfigRow(
+                        icon: "list.number",
+                        iconColor: .purple,
+                        label: "Predictions",
+                        value: "\(predContext.predictions.count) sentences"
                     )
                 }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                // Translation (if used)
-                if record.translated, let lang = record.targetLanguage {
-                    Divider().padding(.leading, 44)
-                    PromptConfigRow(
-                        icon: "globe",
-                        iconColor: .teal,
-                        label: "Translation",
-                        value: "\(lang.flag) \(lang.displayName)"
-                    )
+                // Show the full prompt
+                SectionHeader(title: "PROMPT SENT TO AI")
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                        Text("SENTENCE PREDICTION")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.purple)
+                    }
+
+                    ScrollView {
+                        Text(predContext.prompt)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.primary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 200)
                 }
-            }
-            .padding(16)
-            .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .padding(12)
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            // Show actual prompts if recorded
-            if let metadata = record.processingMetadata {
-                let prompts = metadata.allPrompts
-                if !prompts.isEmpty {
-                    SectionHeader(title: "PROMPTS SENT TO AI")
+            } else {
+                // Regular entries: show transcription configuration
+                SectionHeader(title: "TRANSCRIPTION CONFIG")
 
-                    ForEach(Array(prompts.enumerated()), id: \.offset) { _, item in
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: item.stepType.icon)
-                                    .font(.caption)
-                                    .foregroundStyle(item.stepType.color)
-                                Text(item.stepType.displayName.uppercased())
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(item.stepType.color)
+                VStack(spacing: 0) {
+                    // Transcription provider
+                    PromptConfigRow(
+                        icon: "waveform",
+                        iconColor: AppTheme.accent,
+                        label: "Transcription",
+                        value: record.provider.displayName
+                    )
+
+                    Divider().padding(.leading, 44)
+
+                    // Mode
+                    PromptConfigRow(
+                        icon: record.mode.icon,
+                        iconColor: AppTheme.accent,
+                        label: "Mode",
+                        value: record.mode.displayName
+                    )
+
+                    Divider().padding(.leading, 44)
+
+                    // Context
+                    PromptConfigRow(
+                        icon: record.contextIcon ?? "person.crop.circle.dashed",
+                        iconColor: .purple,
+                        label: "Context",
+                        value: record.contextName ?? "No context"
+                    )
+
+                    // Power Mode (if used)
+                    if let powerModeName = record.powerModeName {
+                        Divider().padding(.leading, 44)
+                        PromptConfigRow(
+                            icon: "bolt.fill",
+                            iconColor: .orange,
+                            label: "Power Mode",
+                            value: powerModeName
+                        )
+                    }
+
+                    // Translation (if used)
+                    if record.translated, let lang = record.targetLanguage {
+                        Divider().padding(.leading, 44)
+                        PromptConfigRow(
+                            icon: "globe",
+                            iconColor: .teal,
+                            label: "Translation",
+                            value: "\(lang.flag) \(lang.displayName)"
+                        )
+                    }
+                }
+                .padding(16)
+                .background(cardBackground)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // Show actual prompts if recorded
+                if let metadata = record.processingMetadata {
+                    let prompts = metadata.allPrompts
+                    if !prompts.isEmpty {
+                        SectionHeader(title: "PROMPTS SENT TO AI")
+
+                        ForEach(Array(prompts.enumerated()), id: \.offset) { _, item in
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Image(systemName: item.stepType.icon)
+                                        .font(.caption)
+                                        .foregroundStyle(item.stepType.color)
+                                    Text(item.stepType.displayName.uppercased())
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(item.stepType.color)
+                                }
+
+                                ScrollView {
+                                    Text(item.prompt)
+                                        .font(.system(.caption, design: .monospaced))
+                                        .foregroundStyle(.primary)
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                .frame(maxHeight: 150)
                             }
-
-                            ScrollView {
-                                Text(item.prompt)
-                                    .font(.system(.caption, design: .monospaced))
-                                    .foregroundStyle(.primary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(maxHeight: 150)
+                            .padding(12)
+                            .background(Color.primary.opacity(0.03))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         }
-                        .padding(12)
-                        .background(Color.primary.opacity(0.03))
-                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     }
                 }
             }

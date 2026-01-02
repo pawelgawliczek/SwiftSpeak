@@ -17,6 +17,7 @@ enum TranscriptionSource: String, Codable {
     case swiftLink = "swiftLink"        // SwiftLink background recording
     case keyboardAI = "keyboardAI"      // Keyboard AI context/power mode processing
     case edit = "edit"                  // Text editing operation
+    case prediction = "prediction"      // AI sentence prediction (Phase 13.12)
 
     var displayName: String {
         switch self {
@@ -24,6 +25,7 @@ enum TranscriptionSource: String, Codable {
         case .swiftLink: return "SwiftLink"
         case .keyboardAI: return "Keyboard AI"
         case .edit: return "Edit"
+        case .prediction: return "Prediction"
         }
     }
 
@@ -33,7 +35,32 @@ enum TranscriptionSource: String, Codable {
         case .swiftLink: return "link"
         case .keyboardAI: return "keyboard"
         case .edit: return "pencil"
+        case .prediction: return "sparkles"
         }
+    }
+}
+
+// MARK: - Sentence Prediction Context (Phase 13.12)
+
+/// Context for AI sentence prediction operations stored in history
+struct SentencePredictionContext: Codable, Equatable {
+    /// The typing context that was used for prediction
+    let typingContext: String
+
+    /// The full prompt sent to the AI
+    let prompt: String
+
+    /// The 4 sentence predictions returned
+    let predictions: [String]
+
+    /// The active context name (if any)
+    let activeContextName: String?
+
+    init(typingContext: String, prompt: String, predictions: [String], activeContextName: String? = nil) {
+        self.typingContext = typingContext
+        self.prompt = prompt
+        self.predictions = predictions
+        self.activeContextName = activeContextName
     }
 }
 
@@ -89,11 +116,17 @@ struct TranscriptionRecord: Identifiable {
     // Edit context (Phase 12 - Edit Text Feature)
     let editContext: EditContext?
 
+    // Sentence prediction context (Phase 13.12 - AI Sentence Prediction)
+    let sentencePredictionContext: SentencePredictionContext?
+
     // Source tracking (Phase 13.11 - Keyboard AI)
     let source: TranscriptionSource
 
     /// Whether this is an edit operation (modifying existing text)
     var isEditOperation: Bool { editContext != nil }
+
+    /// Whether this is a prediction operation
+    var isPrediction: Bool { source == .prediction }
 
     /// Whether this is from keyboard AI processing
     var isKeyboardAI: Bool { source == .keyboardAI }
@@ -132,6 +165,7 @@ struct TranscriptionRecord: Identifiable {
         costBreakdown: CostBreakdown? = nil,
         processingMetadata: ProcessingMetadata? = nil,
         editContext: EditContext? = nil,
+        sentencePredictionContext: SentencePredictionContext? = nil,
         source: TranscriptionSource = .app
     ) {
         self.id = id
@@ -153,6 +187,7 @@ struct TranscriptionRecord: Identifiable {
         self.costBreakdown = costBreakdown
         self.processingMetadata = processingMetadata
         self.editContext = editContext
+        self.sentencePredictionContext = sentencePredictionContext
         self.source = source
     }
 }
@@ -165,8 +200,9 @@ extension TranscriptionRecord: Codable {
         case powerModeId, powerModeName, contextId, contextName, contextIcon
         case estimatedCost, costBreakdown
         case rawTranscribedText, processingMetadata
-        case editContext  // Phase 12
-        case source       // Phase 13.11
+        case editContext               // Phase 12
+        case sentencePredictionContext // Phase 13.12
+        case source                    // Phase 13.11
     }
 
     init(from decoder: Decoder) throws {
@@ -197,6 +233,9 @@ extension TranscriptionRecord: Codable {
         // Handle migration: editContext might not exist (Phase 12)
         editContext = try container.decodeIfPresent(EditContext.self, forKey: .editContext)
 
+        // Handle migration: sentencePredictionContext might not exist (Phase 13.12)
+        sentencePredictionContext = try container.decodeIfPresent(SentencePredictionContext.self, forKey: .sentencePredictionContext)
+
         // Handle migration: source might not exist (Phase 13.11)
         source = try container.decodeIfPresent(TranscriptionSource.self, forKey: .source) ?? .app
     }
@@ -222,6 +261,7 @@ extension TranscriptionRecord: Codable {
         try container.encode(rawTranscribedText, forKey: .rawTranscribedText)
         try container.encodeIfPresent(processingMetadata, forKey: .processingMetadata)
         try container.encodeIfPresent(editContext, forKey: .editContext)
+        try container.encodeIfPresent(sentencePredictionContext, forKey: .sentencePredictionContext)
         try container.encode(source, forKey: .source)
     }
 }

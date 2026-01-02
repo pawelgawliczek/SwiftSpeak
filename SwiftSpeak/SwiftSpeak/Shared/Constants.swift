@@ -168,6 +168,30 @@ enum Constants {
 
         // Streaming transcription updates
         static let streamingUpdate = prefix + "streamingUpdate"
+
+        // Phase 13.12: AI Sentence Prediction
+        static let requestSentencePrediction = prefix + "requestSentencePrediction"
+        static let sentencePredictionReady = prefix + "sentencePredictionReady"
+    }
+
+    // MARK: - AI Sentence Prediction (Phase 13.12)
+    enum SentencePrediction {
+        /// Key for storing typing context for prediction
+        static let context = "sentencePredictionContext"
+        /// Key for storing active context name
+        static let activeContextName = "sentencePredictionActiveContextName"
+        /// Key for storing active context ID
+        static let activeContextId = "sentencePredictionActiveContextId"
+        /// Key for storing prediction results (JSON array of 4 sentences)
+        static let results = "sentencePredictionResults"
+        /// Key for storing error message if prediction fails
+        static let error = "sentencePredictionError"
+        /// Key for tracking if prediction is in progress
+        static let isProcessing = "sentencePredictionIsProcessing"
+        /// Key for storing source app URL scheme for auto-return
+        static let sourceAppURLScheme = "sentencePredictionSourceAppURLScheme"
+        /// Key for requesting auto-return after prediction
+        static let autoReturnRequested = "sentencePredictionAutoReturnRequested"
     }
 
     // MARK: - App Groups Keys for Edit Mode (Phase 12)

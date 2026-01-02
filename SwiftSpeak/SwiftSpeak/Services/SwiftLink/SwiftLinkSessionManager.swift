@@ -1310,6 +1310,381 @@ final class SwiftLinkSessionManager: ObservableObject {
                 self?.handleAIProcessRequest()
             }
         }
+
+        // Phase 13.12: Observe sentence prediction request from keyboard
+        DarwinNotificationManager.shared.startObserving(name: Constants.SwiftLinkNotifications.requestSentencePrediction) { [weak self] in
+            Task { @MainActor in
+                self?.handleSentencePredictionRequest()
+            }
+        }
+    }
+
+    // MARK: - Phase 13.12: Sentence Prediction Handler
+
+    /// Handle sentence prediction request from keyboard
+    /// Called either via Darwin notification (if SwiftLink active) or via URL scheme (if app opened)
+    func handleSentencePredictionRequest() {
+        appLog("Received sentence prediction request from keyboard", category: "SwiftLink")
+
+        // Start background session if not active (same as AI process button)
+        if !isSessionActive {
+            appLog("Starting background session for sentence prediction", category: "SwiftLink")
+            Task {
+                await startBackgroundSession()
+                await processSentencePredictionRequest()
+            }
+        } else {
+            Task {
+                await processSentencePredictionRequest()
+            }
+        }
+    }
+
+    /// Process the sentence prediction request
+    private func processSentencePredictionRequest() async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        // Read context from App Groups
+        let typingContext = defaults?.string(forKey: Constants.SentencePrediction.context) ?? ""
+        let activeContextName = defaults?.string(forKey: Constants.SentencePrediction.activeContextName)
+        let activeContextId = defaults?.string(forKey: Constants.SentencePrediction.activeContextId)
+
+        appLog("Sentence prediction: context='\(typingContext.prefix(30))...', activeContext=\(activeContextName ?? "none")", category: "SwiftLink")
+
+        await performSentencePrediction(
+            typingContext: typingContext,
+            activeContextName: activeContextName,
+            activeContextId: activeContextId
+        )
+    }
+
+    /// Perform AI sentence prediction
+    private func performSentencePrediction(
+        typingContext: String,
+        activeContextName: String?,
+        activeContextId: String?
+    ) async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        let settings = SharedSettings.shared
+
+        // Get global memory
+        let globalMemory = settings.globalMemory ?? ""
+
+        // Get context-specific memory if available
+        var contextMemory = ""
+        if let contextId = activeContextId,
+           let uuid = UUID(uuidString: contextId),
+           let context = settings.contexts.first(where: { $0.id == uuid }) {
+            contextMemory = context.memory ?? ""
+        }
+
+        // Build the prompt
+        let prompt = buildSentencePredictionPrompt(
+            typingContext: typingContext,
+            globalMemory: globalMemory,
+            contextMemory: contextMemory,
+            contextName: activeContextName ?? ""
+        )
+
+        // Get API key from configured providers
+        let provider = settings.selectedPowerModeProvider
+        guard let config = settings.getAIProviderConfig(for: provider) else {
+            appLog("Sentence prediction: No provider configured", category: "SwiftLink", level: .error)
+            defaults?.set("No AI provider configured", forKey: Constants.SentencePrediction.error)
+            defaults?.set(false, forKey: Constants.SentencePrediction.isProcessing)
+            defaults?.synchronize()
+            DarwinNotificationManager.shared.post(name: Constants.SwiftLinkNotifications.sentencePredictionReady)
+            return
+        }
+
+        // Check if auto-return was requested
+        let shouldAutoReturn = defaults?.bool(forKey: Constants.SentencePrediction.autoReturnRequested) ?? false
+        let sourceAppURLScheme = defaults?.string(forKey: Constants.SentencePrediction.sourceAppURLScheme)
+
+        // Clear the auto-return flags
+        defaults?.removeObject(forKey: Constants.SentencePrediction.autoReturnRequested)
+        defaults?.removeObject(forKey: Constants.SentencePrediction.sourceAppURLScheme)
+        defaults?.synchronize()
+
+        do {
+            let startTime = Date()
+            let predictions = try await callAIForSentencePredictions(prompt: prompt, config: config, provider: provider)
+            let duration = Date().timeIntervalSince(startTime)
+
+            // Store results
+            let resultsData = try JSONEncoder().encode(predictions)
+            defaults?.set(resultsData, forKey: Constants.SentencePrediction.results)
+            defaults?.removeObject(forKey: Constants.SentencePrediction.error)
+            defaults?.set(false, forKey: Constants.SentencePrediction.isProcessing)
+            defaults?.synchronize()
+
+            appLog("Sentence prediction: Generated \(predictions.count) predictions", category: "SwiftLink")
+
+            // Calculate cost (estimate tokens: prompt + response)
+            let promptTokens = prompt.count / 4  // Rough estimate: 4 chars per token
+            let responseTokens = predictions.joined(separator: "\n").count / 4
+            let inputCost = Double(promptTokens) * 0.00000015  // GPT-4o-mini input: $0.15/1M
+            let outputCost = Double(responseTokens) * 0.0000006  // GPT-4o-mini output: $0.60/1M
+            let totalCost = inputCost + outputCost
+
+            let costBreakdown = CostBreakdown(
+                transcriptionCost: 0,
+                formattingCost: totalCost,
+                translationCost: nil,
+                inputTokens: promptTokens,
+                outputTokens: responseTokens
+            )
+
+            // Create sentence prediction context for history
+            let predContext = SentencePredictionContext(
+                typingContext: typingContext,
+                prompt: prompt,
+                predictions: predictions,
+                activeContextName: activeContextName
+            )
+
+            // Save to history
+            let record = TranscriptionRecord(
+                rawTranscribedText: typingContext,
+                text: predictions.joined(separator: "\n"),
+                mode: .raw,
+                provider: provider,
+                duration: duration,
+                contextName: activeContextName,
+                estimatedCost: totalCost,
+                costBreakdown: costBreakdown,
+                sentencePredictionContext: predContext,
+                source: .prediction
+            )
+
+            await MainActor.run {
+                SharedSettings.shared.addTranscription(record)
+            }
+
+            appLog("Sentence prediction: Saved to history (cost: $\(String(format: "%.6f", totalCost)))", category: "SwiftLink")
+
+            // Notify keyboard
+            DarwinNotificationManager.shared.post(name: Constants.SwiftLinkNotifications.sentencePredictionReady)
+
+            // Auto-return to source app if requested
+            if shouldAutoReturn {
+                await autoReturnToSourceApp(urlScheme: sourceAppURLScheme)
+            }
+
+        } catch {
+            appLog("Sentence prediction error: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+            defaults?.set(error.localizedDescription, forKey: Constants.SentencePrediction.error)
+            defaults?.set(false, forKey: Constants.SentencePrediction.isProcessing)
+            defaults?.synchronize()
+
+            DarwinNotificationManager.shared.post(name: Constants.SwiftLinkNotifications.sentencePredictionReady)
+
+            // Still try to auto-return even on error
+            if shouldAutoReturn {
+                await autoReturnToSourceApp(urlScheme: sourceAppURLScheme)
+            }
+        }
+    }
+
+    /// Auto-return to the source app after sentence prediction
+    @MainActor
+    private func autoReturnToSourceApp(urlScheme: String?) async {
+        // Small delay to ensure result is stored and notification is sent
+        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+
+        // Post notification for ContentView to dismiss overlay
+        NotificationCenter.default.post(name: Notification.Name("dismissSwiftLinkOverlay"), object: nil)
+
+        // Try source app URL scheme
+        if let scheme = urlScheme, !scheme.isEmpty {
+            var urlString = scheme.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !urlString.contains("://") {
+                urlString = "\(urlString)://"
+            }
+
+            if let url = URL(string: urlString) {
+                appLog("Sentence prediction: Auto-returning to source app via: \(urlString)", category: "SwiftLink")
+                UIApplication.shared.open(url, options: [:]) { success in
+                    if !success {
+                        appLog("Sentence prediction: Failed to open source app", category: "SwiftLink", level: .warning)
+                    }
+                }
+            }
+        } else {
+            appLog("Sentence prediction: No source app URL scheme, staying in app", category: "SwiftLink")
+        }
+    }
+
+    /// Build the prompt for sentence prediction
+    private func buildSentencePredictionPrompt(
+        typingContext: String,
+        globalMemory: String,
+        contextMemory: String,
+        contextName: String
+    ) -> String {
+        var systemContext = ""
+
+        if !globalMemory.isEmpty {
+            systemContext += "User information:\n\(globalMemory)\n\n"
+        }
+
+        if !contextName.isEmpty && !contextMemory.isEmpty {
+            systemContext += "Context (\(contextName)):\n\(contextMemory)\n\n"
+        }
+
+        let conversationContext = typingContext.isEmpty
+            ? "The user is starting a new message."
+            : "Current text: \"\(typingContext)\""
+
+        return """
+        \(systemContext)\(conversationContext)
+
+        Generate exactly 4 natural sentence completions or responses the user might want to send next. Each should be a complete, standalone sentence that continues naturally from the context.
+
+        Rules:
+        - Make sentences varied in tone and approach
+        - Keep sentences concise (under 20 words each)
+        - Make them contextually appropriate
+        - If starting fresh, provide common greeting/opener options
+
+        Respond with exactly 4 sentences, one per line, no numbering or bullets.
+        """
+    }
+
+    /// Call AI API for sentence predictions
+    private func callAIForSentencePredictions(prompt: String, config: AIProviderConfig, provider: AIProvider) async throws -> [String] {
+        // Build URL based on provider
+        let url: URL
+        let headers: [String: String]
+        let body: [String: Any]
+
+        switch provider {
+        case .openAI:
+            url = URL(string: "https://api.openai.com/v1/chat/completions")!
+            headers = [
+                "Authorization": "Bearer \(config.apiKey)",
+                "Content-Type": "application/json"
+            ]
+            body = [
+                "model": "gpt-4o-mini",
+                "messages": [
+                    ["role": "system", "content": "You are a helpful assistant that predicts what the user wants to type next. Be concise and natural."],
+                    ["role": "user", "content": prompt]
+                ],
+                "max_tokens": 200,
+                "temperature": 0.8
+            ]
+
+        case .anthropic:
+            url = URL(string: "https://api.anthropic.com/v1/messages")!
+            headers = [
+                "x-api-key": config.apiKey,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            ]
+            body = [
+                "model": "claude-3-haiku-20240307",
+                "max_tokens": 200,
+                "messages": [
+                    ["role": "user", "content": prompt]
+                ],
+                "system": "You are a helpful assistant that predicts what the user wants to type next. Be concise and natural."
+            ]
+
+        case .google:
+            let model = "gemini-1.5-flash"
+            url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(config.apiKey)")!
+            headers = ["Content-Type": "application/json"]
+            body = [
+                "contents": [
+                    ["parts": [["text": prompt]]]
+                ],
+                "generationConfig": [
+                    "maxOutputTokens": 200,
+                    "temperature": 0.8
+                ]
+            ]
+
+        default:
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 10
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TranscriptionError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            // Try to parse error message
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let error = errorJson["error"] as? [String: Any],
+                   let message = error["message"] as? String {
+                    throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: message)
+                }
+            }
+            throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: nil)
+        }
+
+        // Parse response based on provider
+        let content: String
+        switch provider {
+        case .openAI:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let firstChoice = choices.first,
+                  let message = firstChoice["message"] as? [String: Any],
+                  let text = message["content"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse OpenAI response")
+            }
+            content = text
+
+        case .anthropic:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let contentArray = json["content"] as? [[String: Any]],
+                  let firstContent = contentArray.first,
+                  let text = firstContent["text"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse Anthropic response")
+            }
+            content = text
+
+        case .google:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let candidates = json["candidates"] as? [[String: Any]],
+                  let firstCandidate = candidates.first,
+                  let contentDict = firstCandidate["content"] as? [String: Any],
+                  let parts = contentDict["parts"] as? [[String: Any]],
+                  let firstPart = parts.first,
+                  let text = firstPart["text"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse Google response")
+            }
+            content = text
+
+        default:
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        // Split response into lines and take first 4 non-empty ones
+        let lines = content.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .prefix(4)
+            .map { String($0) }
+
+        if lines.isEmpty {
+            throw TranscriptionError.unexpectedResponse("No predictions generated")
+        }
+
+        return Array(lines)
     }
 
     // MARK: - Phase 13.11: AI Process Request Handler

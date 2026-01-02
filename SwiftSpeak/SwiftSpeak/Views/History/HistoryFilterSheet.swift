@@ -131,7 +131,7 @@ struct HistoryFilterSheet: View {
                         }
                     }
 
-                    ForEach([TranscriptionSource.app, .swiftLink, .keyboardAI, .edit], id: \.rawValue) { source in
+                    ForEach([TranscriptionSource.app, .swiftLink, .keyboardAI, .edit, .prediction], id: \.rawValue) { source in
                         Button(action: {
                             HapticManager.selection()
                             selectedSource = source
@@ -199,6 +199,7 @@ struct HistoryFilterSheet: View {
         case .swiftLink: return .orange
         case .keyboardAI: return AppTheme.powerAccent
         case .edit: return .green
+        case .prediction: return .purple
         }
     }
 }

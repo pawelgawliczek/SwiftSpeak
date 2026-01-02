@@ -131,6 +131,12 @@ struct ContentView: View {
             }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: showSwiftLinkSetupOverlay)
+        // Listen for overlay dismiss notification from SwiftLinkSessionManager
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("dismissSwiftLinkOverlay"))) { _ in
+            withAnimation {
+                showSwiftLinkSetupOverlay = false
+            }
+        }
     }
 
     private func handleURLScheme(_ url: URL) {
@@ -142,28 +148,33 @@ struct ContentView: View {
         // Track if we need to show the setup overlay
         let needsSwiftLinkSetup = !SwiftLinkSessionManager.shared.isSessionActive
         let isAIProcess = url.host == "aiprocess"
+        let isSentencePrediction = url.host == "sentenceprediction"
         let isSwiftLinkRequest = url.host == Constants.URLHosts.swiftlink
 
-        // Show overlay for AI process when SwiftLink needs setup
-        if needsSwiftLinkSetup && isAIProcess {
-            swiftLinkSetupMessage = "Setting up SwiftLink..."
+        // Show overlay for AI process or sentence prediction when SwiftLink needs setup
+        if needsSwiftLinkSetup && (isAIProcess || isSentencePrediction) {
+            swiftLinkSetupMessage = isSentencePrediction ? "Generating predictions..." : "Setting up SwiftLink..."
             withAnimation {
                 showSwiftLinkSetupOverlay = true
             }
         }
 
-        // Auto-start SwiftLink ONLY for aiprocess or swiftlink requests
+        // Auto-start SwiftLink for aiprocess, sentenceprediction, or swiftlink requests
         // Do NOT auto-start for "record" as it conflicts with RecordingView's audio
         // (SwiftLink will be started AFTER recording completes for record flow)
-        if needsSwiftLinkSetup && (isAIProcess || isSwiftLinkRequest) && settings.swiftLinkAutoStart {
+        if needsSwiftLinkSetup && (isAIProcess || isSentencePrediction || isSwiftLinkRequest) && settings.swiftLinkAutoStart {
             appLog("Auto-starting SwiftLink for background processing", category: "SwiftLink")
             Task {
                 await SwiftLinkSessionManager.shared.startBackgroundSession()
                 // Update overlay message after SwiftLink is ready
-                if isAIProcess {
+                if isAIProcess || isSentencePrediction {
                     await MainActor.run {
-                        swiftLinkSetupMessage = "Processing your text..."
+                        swiftLinkSetupMessage = isSentencePrediction ? "Processing predictions..." : "Processing your text..."
                     }
+                }
+                // Process sentence prediction after SwiftLink is ready
+                if isSentencePrediction {
+                    SwiftLinkSessionManager.shared.handleSentencePredictionRequest()
                 }
             }
         }
@@ -264,6 +275,13 @@ struct ContentView: View {
         // Phase 13.11: Handle AI Process request from keyboard
         if url.host == "aiprocess" {
             handleAIProcessRequest()
+            return
+        }
+
+        // Phase 13.12: Handle Sentence Prediction request from keyboard
+        // Processing is handled in the SwiftLink auto-start block above
+        if url.host == "sentenceprediction" {
+            appLog("Sentence prediction URL received - processing in background", category: "Navigation")
             return
         }
 

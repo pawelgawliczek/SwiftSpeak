@@ -57,6 +57,7 @@ struct PredictionRow: View {
 
             // AI Sentence Prediction button on the right
             Button(action: {
+                keyboardLog("AI sparkles button tapped", category: "AI")
                 KeyboardHaptics.lightTap()
                 viewModel.triggerAISentencePrediction()
             }) {
@@ -70,6 +71,7 @@ struct PredictionRow: View {
                         )
                     )
                     .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
         }

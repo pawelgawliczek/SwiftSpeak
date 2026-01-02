@@ -1069,6 +1069,8 @@ class KeyboardViewModel: ObservableObject {
 
     /// Trigger AI sentence prediction - shows panel with 4 sentence options
     func triggerAISentencePrediction() {
+        keyboardLog("AI Sentence Prediction triggered", category: "AI")
+
         // Show the panel immediately
         showSentencePredictionPanel = true
         isLoadingSentencePredictions = true
@@ -1077,64 +1079,123 @@ class KeyboardViewModel: ObservableObject {
 
         // Get current typing context
         updateTypingContext()
+        keyboardLog("Typing context: \(currentTypingContext.prefix(50))...", category: "AI")
 
         Task {
             await performSentencePrediction()
         }
     }
 
-    /// Perform the AI call for sentence prediction
+    /// Request sentence prediction via SwiftLink (main app handles API call)
     private func performSentencePrediction() async {
-        // Load memories from App Groups
+        keyboardLog("Starting sentence prediction via SwiftLink...", category: "AI")
+
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Write context to App Groups for main app to read
+        let typingContext = currentTypingContext
+        defaults?.set(typingContext, forKey: Constants.SentencePrediction.context)
+
+        // Write active context info if available
+        if let context = activeContext {
+            defaults?.set(context.name, forKey: Constants.SentencePrediction.activeContextName)
+            defaults?.set(context.id.uuidString, forKey: Constants.SentencePrediction.activeContextId)
+            keyboardLog("Active context: \(context.name)", category: "AI")
+        } else {
+            defaults?.removeObject(forKey: Constants.SentencePrediction.activeContextName)
+            defaults?.removeObject(forKey: Constants.SentencePrediction.activeContextId)
+        }
+
+        // Clear previous results
+        defaults?.removeObject(forKey: Constants.SentencePrediction.results)
+        defaults?.removeObject(forKey: Constants.SentencePrediction.error)
+        defaults?.set(true, forKey: Constants.SentencePrediction.isProcessing)
         defaults?.synchronize()
 
-        // Get global memory
-        let globalMemory = defaults?.string(forKey: "globalMemory") ?? ""
+        // Check if SwiftLink session is active
+        if isSwiftLinkSessionActive {
+            keyboardLog("SwiftLink active, posting Darwin notification", category: "AI")
+            darwinManager.post(name: Constants.SwiftLinkNotifications.requestSentencePrediction)
+        } else {
+            // Check if auto-start is enabled
+            let autoStartEnabled = defaults?.bool(forKey: Constants.Keys.swiftLinkAutoStart) ?? true
 
-        // Get context-specific memory if there's an active context
-        var contextMemory = ""
-        var contextName = ""
-        if let context = activeContext {
-            contextName = context.name
-            if let contextMemoriesData = defaults?.data(forKey: "contextMemories"),
-               let contextMemories = try? JSONDecoder().decode([String: String].self, from: contextMemoriesData) {
-                contextMemory = contextMemories[context.id.uuidString] ?? ""
+            if autoStartEnabled {
+                keyboardLog("SwiftLink not active, opening main app (auto-start enabled)", category: "AI")
+
+                // Store source app URL scheme for auto-return (use last used SwiftLink app if available)
+                if let lastAppData = defaults?.data(forKey: "lastUsedSwiftLinkApp"),
+                   let lastApp = try? JSONDecoder().decode(KeyboardSwiftLinkApp.self, from: lastAppData),
+                   let urlScheme = lastApp.urlScheme {
+                    defaults?.set(urlScheme, forKey: Constants.SentencePrediction.sourceAppURLScheme)
+                    keyboardLog("Source app URL scheme stored: \(urlScheme)", category: "AI")
+                }
+
+                // Request auto-return after processing
+                defaults?.set(true, forKey: Constants.SentencePrediction.autoReturnRequested)
+                defaults?.synchronize()
+
+                // Open main app via URL scheme - it will auto-start SwiftLink and process prediction
+                await MainActor.run {
+                    if let url = URL(string: "swiftspeak://sentenceprediction") {
+                        openURL(url)
+                    }
+                }
+            } else {
+                keyboardLog("SwiftLink not active and auto-start disabled", category: "AI", level: .error)
+                await MainActor.run {
+                    isLoadingSentencePredictions = false
+                    sentencePredictionError = "SwiftLink not active. Enable auto-start in Settings or start SwiftLink manually."
+                }
+                return
             }
         }
 
-        // Build the prompt
-        let typingContext = currentTypingContext
+        // Start polling for results (main app will write to App Groups)
+        await pollForSentencePredictionResults()
+    }
 
-        // Get API key for formatting provider
-        guard let apiKey = getFormattingAPIKey() else {
-            await MainActor.run {
-                isLoadingSentencePredictions = false
-                sentencePredictionError = "No AI provider configured"
+    /// Poll for sentence prediction results from main app
+    private func pollForSentencePredictionResults() async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        let maxAttempts = 100  // 10 seconds max (100 * 100ms)
+
+        for attempt in 0..<maxAttempts {
+            try? await Task.sleep(for: .milliseconds(100))
+
+            defaults?.synchronize()
+
+            // Check if processing is complete
+            let isProcessing = defaults?.bool(forKey: Constants.SentencePrediction.isProcessing) ?? false
+            if !isProcessing {
+                // Check for error
+                if let error = defaults?.string(forKey: Constants.SentencePrediction.error), !error.isEmpty {
+                    keyboardLog("Sentence prediction error: \(error)", category: "AI", level: .error)
+                    await MainActor.run {
+                        isLoadingSentencePredictions = false
+                        sentencePredictionError = error
+                    }
+                    return
+                }
+
+                // Check for results
+                if let resultsData = defaults?.data(forKey: Constants.SentencePrediction.results),
+                   let results = try? JSONDecoder().decode([String].self, from: resultsData) {
+                    keyboardLog("Received \(results.count) predictions from main app", category: "AI")
+                    await MainActor.run {
+                        sentencePredictions = results
+                        isLoadingSentencePredictions = false
+                    }
+                    return
+                }
             }
-            return
         }
 
-        // Prepare the request
-        let prompt = buildSentencePredictionPrompt(
-            typingContext: typingContext,
-            globalMemory: globalMemory,
-            contextMemory: contextMemory,
-            contextName: contextName
-        )
-
-        do {
-            let predictions = try await callAIForSentencePredictions(prompt: prompt, apiKey: apiKey)
-
-            await MainActor.run {
-                sentencePredictions = predictions
-                isLoadingSentencePredictions = false
-            }
-        } catch {
-            await MainActor.run {
-                isLoadingSentencePredictions = false
-                sentencePredictionError = error.localizedDescription
-            }
+        // Timeout
+        keyboardLog("Sentence prediction timed out", category: "AI", level: .error)
+        await MainActor.run {
+            isLoadingSentencePredictions = false
+            sentencePredictionError = "Request timed out. Make sure SwiftSpeak app is running."
         }
     }
 
@@ -1175,30 +1236,46 @@ class KeyboardViewModel: ObservableObject {
     }
 
     /// Get the API key for formatting provider
+    /// Falls back to legacy openAIAPIKey if configuredAIProviders doesn't have a valid key
     private func getFormattingAPIKey() -> String? {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
 
-        guard let data = defaults?.data(forKey: Constants.Keys.configuredAIProviders) else {
-            return nil
-        }
-
-        struct SimpleAIProviderConfig: Codable {
-            let provider: String
-            let apiKey: String
-            let usageCategories: [String]
-        }
-
-        do {
-            let configs = try JSONDecoder().decode([SimpleAIProviderConfig].self, from: data)
-            // Look for formatting provider first, then fall back to any provider
-            if let config = configs.first(where: { $0.usageCategories.contains("formatting") }) {
-                return config.apiKey
+        // Try to get from configured providers first
+        if let data = defaults?.data(forKey: Constants.Keys.configuredAIProviders) {
+            struct SimpleAIProviderConfig: Codable {
+                let provider: String
+                let apiKey: String
+                let usageCategories: [String]
             }
-            // Fall back to first available provider
-            return configs.first?.apiKey
-        } catch {
-            return nil
+
+            do {
+                let configs = try JSONDecoder().decode([SimpleAIProviderConfig].self, from: data)
+
+                // Look for formatting provider first
+                if let config = configs.first(where: { $0.usageCategories.contains("formatting") }),
+                   !config.apiKey.isEmpty,
+                   config.apiKey != "configured" {  // Skip placeholder values
+                    return config.apiKey
+                }
+
+                // Fall back to any OpenAI provider
+                if let openAIConfig = configs.first(where: { $0.provider.lowercased().contains("openai") }),
+                   !openAIConfig.apiKey.isEmpty,
+                   openAIConfig.apiKey != "configured" {
+                    return openAIConfig.apiKey
+                }
+
+                // Fall back to first available with valid key
+                if let config = configs.first(where: { !$0.apiKey.isEmpty && $0.apiKey != "configured" }) {
+                    return config.apiKey
+                }
+            } catch {
+                // Fall through to legacy key
+            }
         }
+
+        // Fall back to legacy OpenAI key stored directly in UserDefaults
+        return defaults?.string(forKey: Constants.Keys.openAIAPIKey)
     }
 
     /// Call OpenAI API for sentence predictions
@@ -1225,9 +1302,21 @@ class KeyboardViewModel: ObservableObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            throw NSError(domain: "AI", code: -1, userInfo: [NSLocalizedDescriptionKey: "API request failed"])
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "AI", code: -1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        keyboardLog("API response status: \(httpResponse.statusCode)", category: "AI")
+
+        if httpResponse.statusCode != 200 {
+            // Try to parse error message from response
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorJson["error"] as? [String: Any],
+               let message = error["message"] as? String {
+                keyboardLog("API error: \(message)", category: "AI", level: .error)
+                throw NSError(domain: "AI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: message])
+            }
+            throw NSError(domain: "AI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "API request failed with status \(httpResponse.statusCode)"])
         }
 
         // Parse response
