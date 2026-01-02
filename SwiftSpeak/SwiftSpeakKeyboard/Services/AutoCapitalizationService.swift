@@ -183,37 +183,54 @@ enum AutoCapitalizationService {
 
     /// Common contractions
     private static let contractions: [String: String] = [
-        // Don't/Won't/Can't etc.
+        // Don't/Won't/Can't etc. (negative contractions)
         "dont": "don't", "wont": "won't", "cant": "can't",
         "didnt": "didn't", "doesnt": "doesn't", "isnt": "isn't",
         "wasnt": "wasn't", "werent": "weren't", "havent": "haven't",
         "hasnt": "hasn't", "hadnt": "hadn't", "wouldnt": "wouldn't",
         "couldnt": "couldn't", "shouldnt": "shouldn't", "mustnt": "mustn't",
+        "neednt": "needn't", "mightnt": "mightn't", "darent": "daren't",
+        "shant": "shan't", "oughtnt": "oughtn't",
 
-        // I'm/You're/We're etc.
+        // I'm/You're/We're etc. (is/are contractions)
         "im": "I'm", "youre": "you're", "were": "we're", // Note: "were" also valid word
         "theyre": "they're", "hes": "he's", "shes": "she's",
         "its": "it's",  // Note: "its" also valid (possessive)
         "thats": "that's", "whats": "what's", "whos": "who's",
         "wheres": "where's", "heres": "here's", "theres": "there's",
+        "hows": "how's", "whys": "why's", "whens": "when's",
 
-        // I've/You've etc.
+        // I've/You've etc. (have contractions)
         "ive": "I've", "youve": "you've", "weve": "we've", "theyve": "they've",
+        "shouldve": "should've", "wouldve": "would've", "couldve": "could've",
+        "mightve": "might've", "mustve": "must've",
 
-        // I'll/You'll etc.
+        // Informal "of" misspellings → proper contractions
+        "shoulda": "should've", "woulda": "would've", "coulda": "could've",
+        "musta": "must've", "mighta": "might've",
+
+        // I'll/You'll etc. (will contractions)
         "ill": "I'll", "youll": "you'll", "well": "we'll", // Note: "well" also valid word
         "theyll": "they'll", "shell": "she'll", "hell": "he'll", // Note: conflicts
-        "itll": "it'll", "thatll": "that'll",
+        "itll": "it'll", "thatll": "that'll", "wholl": "who'll",
+        "therell": "there'll", "whatll": "what'll",
 
-        // I'd/You'd etc.
+        // I'd/You'd etc. (would/had contractions)
         "id": "I'd", // Note: "id" also valid (identification)
         "youd": "you'd", "wed": "we'd", // Note: "wed" also valid word
         "theyd": "they'd", "hed": "he'd", "shed": "she'd",
+        "itd": "it'd", "thatd": "that'd", "whod": "who'd",
 
         // Other common contractions
         "lets": "let's", "aint": "ain't", "yall": "y'all",
-        "gonna": "gonna", "wanna": "wanna", "gotta": "gotta", // Keep informal
+        "gonna": "gonna", "wanna": "wanna", "gotta": "gotta",
+        "oughta": "oughta", "hafta": "hafta",
         "oclock": "o'clock", "cause": "'cause",
+
+        // Very informal (common in casual typing)
+        "gimme": "gimme", "lemme": "lemme",
+        "kinda": "kinda", "sorta": "sorta",
+        "dunno": "dunno",
     ]
 
     /// Words that should NOT be auto-contracted (they have other valid meanings)

@@ -256,12 +256,10 @@ struct QWERTYKeyboard: View {
             }
             .frame(width: 42)
 
-            // Space bar (Phase 13.5: with cursor control, Phase 13.6: triggers LLM predictions)
+            // Space bar (Phase 13.5: with cursor control)
             SpaceBar(
                 action: {
                     insertText(" ")
-                    // Phase 13.6: Trigger LLM predictions on space
-                    viewModel?.triggerLLMPredictions()
                 },
                 textDocumentProxy: textDocumentProxy
             )
@@ -396,6 +394,13 @@ struct QWERTYKeyboard: View {
         return (defaults?.object(forKey: "keyboardSmartPunctuation") as? Bool) ?? true
     }
 
+    /// Current autocorrect language (syncs with spoken language setting)
+    private var autocorrectLanguage: String {
+        let settings = KeyboardSettings.load()
+        // Always sync with spoken language
+        return settings.spokenLanguage
+    }
+
     /// Perform autocorrection on the last typed word, then insert the triggering character
     private func performAutocorrectThenInsert(_ text: String, proxy: UITextDocumentProxy, contextBefore: String?) {
         guard let beforeText = contextBefore else {
@@ -413,8 +418,8 @@ struct QWERTYKeyboard: View {
 
         let wordString = String(lastWord)
 
-        // Special case: handle "i" → "I" before length check
-        if wordString.lowercased() == "i" {
+        // Special case: handle "i" → "I" before length check (English only)
+        if autocorrectLanguage == "en" && wordString.lowercased() == "i" {
             // Delete "i" and insert "I"
             proxy.deleteBackward()
             proxy.insertText("I")
@@ -431,51 +436,73 @@ struct QWERTYKeyboard: View {
             return
         }
 
-        // Check for correction, then insert the triggering character
-        Task {
-            var finalCorrection: String? = nil
+        // SYNCHRONOUS corrections (fast, no async needed)
+        var finalCorrection: String? = nil
+        let currentLang = autocorrectLanguage
 
-            // 1. Check for contraction fix (dont -> don't)
+        // 1. Check for contraction fix (English: dont -> don't)
+        if currentLang == "en" {
             if let contraction = AutoCapitalizationService.fixContraction(wordString) {
                 if !AutoCapitalizationService.ambiguousWords.contains(wordString.lowercased()) {
                     finalCorrection = contraction
                 }
             }
+        }
 
-            // 2. Check for proper noun capitalization (monday -> Monday)
-            if finalCorrection == nil {
-                if let properNoun = AutoCapitalizationService.shouldAutoCapitalizeWord(wordString, contextBefore: beforeText) {
-                    finalCorrection = properNoun
-                }
-            }
-
-            // 3. Check for spelling correction
-            if finalCorrection == nil {
-                let result = await AutocorrectService.shared.processWord(wordString)
-                if let (_, correction) = result, let corrected = correction {
-                    finalCorrection = corrected
-                }
-            }
-
-            await MainActor.run {
-                // Apply correction if found
-                if let corrected = finalCorrection, corrected != wordString {
-                    // Delete the original word
-                    for _ in 0..<wordString.count {
-                        proxy.deleteBackward()
-                    }
-                    // Insert the correction
-                    proxy.insertText(corrected)
-                    KeyboardHaptics.lightTap()
-                    keyboardLog("Autocorrected '\(wordString)' to '\(corrected)'", category: "Autocorrect")
-                }
-
-                // Now insert the triggering character (space, period, etc.)
-                // Re-read context after potential correction
-                let newContextBefore = proxy.documentContextBeforeInput
-                self.insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: newContextBefore)
+        // 3. Check for proper noun capitalization (monday -> Monday) - English only
+        if finalCorrection == nil && currentLang == "en" {
+            if let properNoun = AutoCapitalizationService.shouldAutoCapitalizeWord(wordString, contextBefore: beforeText) {
+                finalCorrection = properNoun
             }
         }
+
+        // 4. Language-specific diacritic corrections (runs for non-English languages)
+        if finalCorrection == nil {
+            switch currentLang {
+            case "pl":
+                finalCorrection = PolishAutocorrectService.fixPolishWord(wordString)
+            case "es":
+                finalCorrection = SpanishAutocorrectService.fixSpanishWord(wordString)
+            case "fr":
+                finalCorrection = FrenchAutocorrectService.fixFrenchWord(wordString)
+            case "ru":
+                finalCorrection = RussianAutocorrectService.fixRussianWord(wordString)
+            case "ar":
+                finalCorrection = ArabicAutocorrectService.fixArabicWord(wordString)
+            default:
+                break
+            }
+        }
+
+        // If we have a synchronous correction, apply it and insert punctuation
+        if let corrected = finalCorrection, corrected != wordString {
+            // Delete the original word
+            for _ in 0..<wordString.count {
+                proxy.deleteBackward()
+            }
+            // Insert the correction
+            proxy.insertText(corrected)
+            KeyboardHaptics.lightTap()
+            keyboardLog("Autocorrected '\(wordString)' to '\(corrected)'", category: "Autocorrect")
+
+            // Record for undo feature
+            Task {
+                let position = (beforeText.count - wordString.count)
+                await AutocorrectHistoryService.shared.recordCorrection(
+                    original: wordString,
+                    corrected: corrected,
+                    atPosition: position
+                )
+            }
+
+            // Insert the triggering character
+            let newContextBefore = proxy.documentContextBeforeInput
+            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: newContextBefore)
+            return
+        }
+
+        // No additional corrections needed - iOS native autocorrect handles the rest
+        insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
     }
 
     /// Insert text with smart punctuation applied

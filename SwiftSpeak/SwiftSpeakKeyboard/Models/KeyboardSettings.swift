@@ -29,6 +29,12 @@ struct KeyboardSettings {
     /// Remember last mode (voice vs typing)
     var rememberLastMode: Bool = true
 
+    /// Autocorrect language (en, pl, etc.)
+    var autocorrectLanguage: String = "en"
+
+    /// Autocorrect language mode: "sync" (match transcription), "auto" (detect), "manual" (use autocorrectLanguage)
+    var autocorrectLanguageMode: String = "sync"
+
     // MARK: - Voice Settings (mirror from main app)
 
     /// Spoken language for transcription
@@ -80,6 +86,8 @@ struct KeyboardSettings {
         settings.swipeTyping = (defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) as? Bool) ?? true
         settings.smartPunctuation = (defaults?.object(forKey: "keyboardSmartPunctuation") as? Bool) ?? true
         settings.rememberLastMode = (defaults?.object(forKey: "keyboardRememberLastMode") as? Bool) ?? true
+        settings.autocorrectLanguage = defaults?.string(forKey: "keyboardAutocorrectLanguage") ?? "en"
+        settings.autocorrectLanguageMode = defaults?.string(forKey: "keyboardAutocorrectLanguageMode") ?? "sync"
 
         // Voice settings (from main app)
         if let langRaw = defaults?.string(forKey: Constants.Keys.selectedDictationLanguage) {
@@ -121,6 +129,8 @@ struct KeyboardSettings {
         defaults?.set(swipeTyping, forKey: Constants.Keys.swipeTypingEnabled)
         defaults?.set(smartPunctuation, forKey: "keyboardSmartPunctuation")
         defaults?.set(rememberLastMode, forKey: "keyboardRememberLastMode")
+        defaults?.set(autocorrectLanguage, forKey: "keyboardAutocorrectLanguage")
+        defaults?.set(autocorrectLanguageMode, forKey: "keyboardAutocorrectLanguageMode")
 
         // Voice settings (update main app settings too)
         defaults?.set(spokenLanguage, forKey: Constants.Keys.selectedDictationLanguage)
@@ -165,6 +175,31 @@ struct KeyboardSettings {
         if let config = configs.first(where: { $0.usageCategories.contains("translation") }) {
             translationProvider = config.provider.capitalized
         }
+    }
+
+    // MARK: - Spelling Language
+
+    /// Get the effective spelling language code based on mode
+    /// Returns language code like "en", "pl", "es", etc.
+    var effectiveSpellingLanguageCode: String {
+        switch autocorrectLanguageMode {
+        case "sync":
+            // Sync with transcription/spoken language
+            return spokenLanguage
+        case "manual":
+            // Use explicitly selected language
+            return autocorrectLanguage
+        case "auto":
+            // Auto-detect - return current setting, actual detection happens at runtime
+            return autocorrectLanguage
+        default:
+            return "en"
+        }
+    }
+
+    /// Whether auto-detect mode is enabled
+    var isAutoDetectEnabled: Bool {
+        return autocorrectLanguageMode == "auto" || spokenLanguage == "auto"
     }
 
     private mutating func loadActiveContext(from defaults: UserDefaults?) {

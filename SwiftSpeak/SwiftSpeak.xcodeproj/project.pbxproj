@@ -59,6 +59,15 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		837C18232F07C08A00B09F64 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Shared/Constants.swift,
+				Shared/LogSanitizer.swift,
+				Shared/SharedLogManager.swift,
+			);
+			target = 83ED7A102EFECCE900880604 /* SwiftSpeakTests */;
+		};
 		83ED792F2EFE4D8F00880604 /* Exceptions for "SwiftSpeakKeyboard" folder in "SwiftSpeakKeyboard" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -112,6 +121,7 @@
 			exceptions = (
 				83ED79802F03000000880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeak" target */,
 				83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */,
+				837C18232F07C08A00B09F64 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */,
 			);
 			path = SwiftSpeak;
 			sourceTree = "<group>";
