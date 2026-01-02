@@ -5,6 +5,7 @@
 //  Real-time streaming transcription using OpenAI Realtime API
 //
 
+import AVFoundation
 import Foundation
 import Combine
 
@@ -56,19 +57,45 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     private var currentInstructions: String?  // System instructions for formatting
     private var sessionConfigured = false
 
-    /// Timer for periodic audio commits to get real-time transcription
-    private var commitTimer: Timer?
-    /// Interval between commits (seconds) - shorter = more responsive, but more API calls
-    private let commitInterval: TimeInterval = 0.8  // Slightly faster commits for better responsiveness
-    /// Track if we have audio to commit
-    private var hasUncommittedAudio = false
 
     /// OpenAI Realtime uses 24kHz PCM16
     static let requiredSampleRate = 24000
 
-    /// Use semantic VAD for better transcription quality (vs server_vad)
-    /// Semantic VAD chunks audio based on semantic meaning rather than just silence
+    /// Use semantic VAD for intelligent speech segmentation
+    /// Semantic VAD chunks based on meaning, not just silence - with high eagerness for responsiveness
     private let useSemanticVAD = true
+
+    // MARK: - Audio Route Detection
+
+    /// Detect if a headset microphone is connected (wired or Bluetooth)
+    /// Returns true for headset/AirPods, false for built-in mic
+    private var isHeadsetMicConnected: Bool {
+        let audioSession = AVAudioSession.sharedInstance()
+        let currentRoute = audioSession.currentRoute
+
+        for input in currentRoute.inputs {
+            let portType = input.portType
+            // Headset types: wired headset, Bluetooth HFP (calls), Bluetooth A2DP with mic
+            if portType == .headsetMic ||           // Wired headset with mic
+               portType == .bluetoothHFP ||         // Bluetooth Hands-Free Profile (AirPods, headsets)
+               portType == .bluetoothA2DP ||        // Bluetooth Advanced Audio (some have mics)
+               portType == .bluetoothLE ||          // Bluetooth Low Energy audio
+               portType == .carAudio {              // CarPlay (close mic)
+                appLog("Headset mic detected: \(portType.rawValue)", category: "OpenAIStreaming")
+                return true
+            }
+        }
+
+        appLog("Using built-in mic (no headset detected)", category: "OpenAIStreaming")
+        return false
+    }
+
+    /// Get the appropriate noise reduction type based on microphone distance
+    /// - near_field: For close mics (headsets, AirPods) - more aggressive noise reduction
+    /// - far_field: For distant mics (built-in device mic) - preserves more audio
+    private var noiseReductionType: String {
+        isHeadsetMicConnected ? "near_field" : "far_field"
+    }
 
     // MARK: - Initialization
 
@@ -127,7 +154,6 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         fullTranscript = ""
         isFinishing = false
         sessionConfigured = false
-        hasUncommittedAudio = false
 
         // Create URL request with auth headers
         var request = URLRequest(url: url)
@@ -205,34 +231,38 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         }
 
         // Build turn detection configuration
-        // Semantic VAD is better for transcription as it chunks based on semantic meaning
-        // Server VAD uses simple silence detection which can clip words
-        // Note: For transcription-only sessions (intent=transcription), only basic VAD params are supported
-        // create_response and interrupt_response are NOT supported (conversation mode only)
+        // Semantic VAD chunks based on semantic meaning - handles segmentation intelligently
+        // Let OpenAI decide optimal eagerness with "auto"
         let turnDetection: [String: Any]
         if useSemanticVAD {
             turnDetection = [
                 "type": "semantic_vad",
-                "eagerness": "medium"       // Balance between speed and accuracy (low/medium/high/auto)
+                "eagerness": "auto"         // Let OpenAI optimize segmentation timing
             ]
-            appLog("Using semantic_vad with eagerness: medium", category: "OpenAIStreaming")
+            appLog("Using semantic_vad with eagerness: auto", category: "OpenAIStreaming")
         } else {
             turnDetection = [
                 "type": "server_vad",
                 "threshold": 0.5,           // Speech detection sensitivity (0.0-1.0)
-                "prefix_padding_ms": 300,   // Increased from 200 to capture speech start better
-                "silence_duration_ms": 500  // Increased from 300 to avoid clipping (default is 500)
+                "prefix_padding_ms": 300,   // Audio to keep before speech starts
+                "silence_duration_ms": 300  // Short for responsiveness
             ]
-            appLog("Using server_vad with threshold: 0.5, prefix: 300ms, silence: 500ms", category: "OpenAIStreaming")
+            appLog("Using server_vad with threshold: 0.5, prefix: 300ms, silence: 300ms", category: "OpenAIStreaming")
         }
 
         // Build session configuration message
         // OpenAI Realtime API requires config wrapped in a "session" object
-        // Note: noise_reduction is NOT supported for transcription sessions (only for conversation mode)
+        // Noise reduction: near_field for headset/AirPods, far_field for built-in mic
+        let noiseType = noiseReductionType
+        appLog("Using noise reduction: \(noiseType)", category: "OpenAIStreaming")
+
         let sessionConfig: [String: Any] = [
             "input_audio_format": "pcm16",
             "input_audio_transcription": transcriptionConfig,
-            "turn_detection": turnDetection
+            "turn_detection": turnDetection,
+            "input_audio_noise_reduction": [
+                "type": noiseType
+            ]
         ]
 
         let config: [String: Any] = [
@@ -258,68 +288,19 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
                 appLog("Session configured successfully", category: "OpenAIStreaming")
                 self?.sessionConfigured = true
                 self?.connectionState = .connected
-                self?.startCommitTimer()
             }
         }
     }
 
-    // MARK: - Periodic Commit Timer
-
-    /// Start timer for periodic audio buffer commits
-    /// This enables real-time transcription by committing audio chunks every few seconds
-    private func startCommitTimer() {
-        stopCommitTimer()
-        appLog("Starting commit timer (interval: \(commitInterval)s)", category: "OpenAIStreaming")
-
-        DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
-            self.commitTimer = Timer.scheduledTimer(withTimeInterval: self.commitInterval, repeats: true) { [weak self] _ in
-                self?.commitAudioBufferIfNeeded()
-            }
-        }
-    }
-
-    /// Stop the commit timer
-    private func stopCommitTimer() {
-        commitTimer?.invalidate()
-        commitTimer = nil
-    }
-
-    /// Commit audio buffer if we have uncommitted audio
-    private func commitAudioBufferIfNeeded() {
-        guard connectionState == .connected, sessionConfigured, !isFinishing, hasUncommittedAudio else {
-            return
-        }
-
-        appLog("Periodic commit - committing audio buffer", category: "OpenAIStreaming")
-        hasUncommittedAudio = false
-
-        let commitMessage: [String: Any] = [
-            "type": "input_audio_buffer.commit"
-        ]
-
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: commitMessage),
-              let jsonString = String(data: jsonData, encoding: .utf8)
-        else { return }
-
-        let message = URLSessionWebSocketTask.Message.string(jsonString)
-        webSocket?.send(message) { [weak self] error in
-            if let error {
-                appLog("Periodic commit failed: \(error.localizedDescription)", category: "OpenAIStreaming", level: .warning)
-            }
-        }
-    }
+    // MARK: - Audio Streaming
 
     func sendAudio(_ audioData: Data) {
         guard connectionState == .connected, sessionConfigured, !isFinishing else {
-            // Only log occasionally to avoid spam
             return
         }
 
-        // Mark that we have audio waiting to be committed
-        hasUncommittedAudio = true
-
         // OpenAI expects base64-encoded audio in a JSON message
+        // Semantic VAD handles chunking automatically - no manual commits needed
         let base64Audio = audioData.base64EncodedString()
         let message: [String: Any] = [
             "type": "input_audio_buffer.append",
@@ -342,9 +323,6 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         guard connectionState == .connected, !isFinishing else { return }
         isFinishing = true
 
-        // Stop the periodic commit timer
-        stopCommitTimer()
-
         // Commit any remaining audio buffer to trigger final processing
         appLog("Finishing audio - final commit", category: "OpenAIStreaming")
         let commitMessage: [String: Any] = [
@@ -364,7 +342,6 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
     }
 
     func disconnect() {
-        stopCommitTimer()
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         urlSession?.invalidateAndCancel()
@@ -372,7 +349,6 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
         connectionState = .disconnected
         isFinishing = false
         sessionConfigured = false
-        hasUncommittedAudio = false
     }
 
     // MARK: - Message Handling

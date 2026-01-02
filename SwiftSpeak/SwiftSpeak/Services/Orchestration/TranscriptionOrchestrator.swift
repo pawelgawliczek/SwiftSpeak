@@ -815,7 +815,8 @@ final class TranscriptionOrchestrator: ObservableObject {
         }
 
         // Calculate the text length for cost estimation
-        let textLength = (formattedText.isEmpty ? transcribedText : formattedText).count
+        let resultText = formattedText.isEmpty ? transcribedText : formattedText
+        let textLength = resultText.count
 
         return costCalculator.calculateCostBreakdown(
             transcriptionProvider: transcriptionProvider,
@@ -825,7 +826,8 @@ final class TranscriptionOrchestrator: ObservableObject {
             translationProvider: translationProvider,
             translationModel: translationModel,
             durationSeconds: recordingDuration,
-            textLength: textLength
+            textLength: textLength,
+            text: resultText
         )
     }
 

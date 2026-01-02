@@ -282,6 +282,24 @@ struct RecordingView: View {
                     settings.lastTranscription = text
                     appLog("Copied to clipboard and saved lastTranscription", category: "Streaming")
 
+                    // Calculate cost for streaming transcription
+                    let costCalculator = CostCalculator()
+                    let transcriptionProvider = settings.selectedTranscriptionProvider
+                    let transcriptionConfig = settings.selectedTranscriptionProviderConfig
+                    let transcriptionModel = transcriptionConfig?.transcriptionModel ?? transcriptionProvider.defaultSTTModel ?? "streaming"
+
+                    let costBreakdown = costCalculator.calculateCostBreakdown(
+                        transcriptionProvider: transcriptionProvider,
+                        transcriptionModel: transcriptionModel,
+                        formattingProvider: settings.selectedMode != .raw ? settings.selectedTranslationProvider : nil,
+                        formattingModel: settings.selectedMode != .raw ? settings.selectedTranslationProvider.defaultLLMModel : nil,
+                        translationProvider: settings.isTranslationEnabled ? settings.selectedTranslationProvider : nil,
+                        translationModel: settings.isTranslationEnabled ? settings.selectedTranslationProvider.defaultLLMModel : nil,
+                        durationSeconds: 0,  // Streaming doesn't track duration the same way
+                        textLength: text.count,
+                        text: text
+                    )
+
                     // Save to history
                     let record = TranscriptionRecord(
                         id: UUID(),
@@ -298,8 +316,8 @@ struct RecordingView: View {
                         contextId: settings.activeContext?.id,
                         contextName: settings.activeContext?.name,
                         contextIcon: settings.activeContext?.icon,
-                        estimatedCost: nil,
-                        costBreakdown: nil,
+                        estimatedCost: costBreakdown.total,
+                        costBreakdown: costBreakdown,
                         processingMetadata: nil
                     )
                     settings.addTranscription(record)

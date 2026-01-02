@@ -725,6 +725,25 @@ final class SwiftLinkSessionManager: ObservableObject {
                 .filter { $0.isEnabled }
                 .map { $0.replacementWord }
 
+            // Calculate cost for streaming transcription
+            let costCalculator = CostCalculator()
+            let transcriptionProvider = settings.selectedTranscriptionProvider
+            let transcriptionConfig = settings.selectedTranscriptionProviderConfig
+            let transcriptionModel = transcriptionConfig?.transcriptionModel ?? transcriptionProvider.defaultSTTModel ?? "streaming"
+            let wordCount = processedText.split(separator: " ").count
+
+            let costBreakdown = costCalculator.calculateCostBreakdown(
+                transcriptionProvider: transcriptionProvider,
+                transcriptionModel: transcriptionModel,
+                formattingProvider: mode != .raw ? settings.selectedTranslationProvider : nil,
+                formattingModel: mode != .raw ? settings.selectedTranslationProvider.defaultLLMModel : nil,
+                translationProvider: settings.isTranslationEnabled ? settings.selectedTranslationProvider : nil,
+                translationModel: settings.isTranslationEnabled ? settings.selectedTranslationProvider.defaultLLMModel : nil,
+                durationSeconds: currentDictationDuration,
+                textLength: processedText.count,
+                text: processedText
+            )
+
             // Create history record with full metadata
             let record = TranscriptionRecord(
                 rawTranscribedText: transcript,
@@ -740,19 +759,19 @@ final class SwiftLinkSessionManager: ObservableObject {
                 contextId: activeContext?.id,
                 contextName: activeContext?.name,
                 contextIcon: activeContext?.icon,
-                estimatedCost: nil,  // TODO: Calculate streaming cost
-                costBreakdown: nil,
+                estimatedCost: costBreakdown.total,
+                costBreakdown: costBreakdown,
                 processingMetadata: ProcessingMetadata(
                     steps: [
                         ProcessingStepInfo(
                             stepType: .transcription,
                             provider: settings.selectedTranscriptionProvider,
-                            modelName: "streaming",
+                            modelName: transcriptionModel,
                             startTime: dictationStartTime ?? Date(),
                             endTime: Date(),
                             inputTokens: nil,
                             outputTokens: nil,
-                            cost: 0,
+                            cost: costBreakdown.transcriptionCost,
                             prompt: vocabularyPrompt
                         )
                     ],
@@ -763,7 +782,8 @@ final class SwiftLinkSessionManager: ObservableObject {
                     ragDocumentsQueried: nil,
                     webhooksExecuted: nil
                 ),
-                editContext: nil
+                editContext: nil,
+                source: .swiftLink
             )
 
             settings.addTranscription(record)
@@ -1179,6 +1199,7 @@ final class SwiftLinkSessionManager: ObservableObject {
         // Calculate cost (rough estimate)
         let inputTokens = (originalText.count + instructions.count) / 4
         let outputTokens = result.count / 4
+        let wordCount = result.split(separator: " ").count
         let formattingCost = CostCalculator().llmCost(
             provider: settings.selectedTranslationProvider,
             model: settings.selectedTranslationProvider.defaultLLMModel ?? "unknown",
@@ -1207,11 +1228,14 @@ final class SwiftLinkSessionManager: ObservableObject {
                 translationCost: nil,
                 powerModeCost: nil,
                 ragCost: nil,
+                predictionCost: nil,
                 inputTokens: inputTokens,
-                outputTokens: outputTokens
+                outputTokens: outputTokens,
+                wordCount: wordCount
             ),
             processingMetadata: nil,
-            editContext: editContext
+            editContext: editContext,
+            source: .edit
         )
 
         settings.addTranscription(record)
@@ -1421,20 +1445,21 @@ final class SwiftLinkSessionManager: ObservableObject {
 
             appLog("Sentence prediction: Generated \(predictions.count) predictions", category: "SwiftLink")
 
-            // Calculate cost (estimate tokens: prompt + response)
+            // Calculate cost using CostCalculator for accurate pricing
             let promptTokens = prompt.count / 4  // Rough estimate: 4 chars per token
             let responseTokens = predictions.joined(separator: "\n").count / 4
-            let inputCost = Double(promptTokens) * 0.00000015  // GPT-4o-mini input: $0.15/1M
-            let outputCost = Double(responseTokens) * 0.0000006  // GPT-4o-mini output: $0.60/1M
-            let totalCost = inputCost + outputCost
 
-            let costBreakdown = CostBreakdown(
-                transcriptionCost: 0,
-                formattingCost: totalCost,
-                translationCost: nil,
-                inputTokens: promptTokens,
-                outputTokens: responseTokens
-            )
+            let costCalculator = await MainActor.run { CostCalculator() }
+            let costBreakdown = await MainActor.run {
+                costCalculator.calculatePredictionCostBreakdown(
+                    provider: provider,
+                    model: config.translationModel ?? provider.defaultLLMModel ?? "gpt-4o-mini",
+                    inputTokens: promptTokens,
+                    outputTokens: responseTokens,
+                    predictions: predictions
+                )
+            }
+            let totalCost = costBreakdown.total
 
             // Create sentence prediction context for history
             let predContext = SentencePredictionContext(

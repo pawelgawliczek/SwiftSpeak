@@ -154,8 +154,8 @@ struct CostAnalyticsView: View {
                 Spacer()
 
                 StatItem(
-                    title: "Avg Duration",
-                    value: formatDuration(averageDuration)
+                    title: "Total Words",
+                    value: formatWordCount(totalWordCount)
                 )
 
                 Spacer()
@@ -245,7 +245,7 @@ struct CostAnalyticsView: View {
                 Text("Provider Usage")
                     .font(.headline)
                 Spacer()
-                Text("Count")
+                Text("Count · Words")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -258,10 +258,17 @@ struct CostAnalyticsView: View {
                 .foregroundStyle(item.color.gradient)
                 .cornerRadius(6)
                 .annotation(position: .trailing, alignment: .leading) {
-                    Text("\(item.count)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .padding(.leading, 4)
+                    HStack(spacing: 4) {
+                        Text("\(item.count)")
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        Text("·")
+                            .foregroundStyle(.tertiary)
+                        Text(formatWordCount(item.wordCount))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 4)
                 }
             }
             .frame(height: CGFloat(providerUsageData.count) * 44)
@@ -380,7 +387,10 @@ struct CostAnalyticsView: View {
             Text("Category Summary")
                 .font(.headline)
 
-            HStack(spacing: 16) {
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 12) {
                 CategoryCard(
                     title: "Transcription",
                     cost: transcriptionCost,
@@ -400,6 +410,13 @@ struct CostAnalyticsView: View {
                     cost: translationCost,
                     icon: "globe",
                     color: .green
+                )
+
+                CategoryCard(
+                    title: "Prediction",
+                    cost: predictionCost,
+                    icon: "sparkles",
+                    color: .pink
                 )
             }
         }
@@ -464,6 +481,8 @@ struct CostAnalyticsView: View {
             return powerModeCost
         case .translation:
             return translationCost
+        case .prediction:
+            return predictionCost
         }
     }
 
@@ -493,6 +512,14 @@ struct CostAnalyticsView: View {
         filteredRecords.compactMap { $0.costBreakdown?.translationCost }.reduce(0, +)
     }
 
+    private var predictionCost: Double {
+        filteredRecords.compactMap { $0.costBreakdown?.predictionCost }.reduce(0, +)
+    }
+
+    private var totalWordCount: Int {
+        filteredRecords.compactMap { $0.costBreakdown?.wordCount }.reduce(0, +)
+    }
+
     // MARK: - Chart Data
 
     private var dailyCostData: [DailyCostItem] {
@@ -511,6 +538,8 @@ struct CostAnalyticsView: View {
                 cost = record.costBreakdown?.formattingCost ?? 0
             case .translation:
                 cost = record.costBreakdown?.translationCost ?? 0
+            case .prediction:
+                cost = record.costBreakdown?.predictionCost ?? 0
             }
             dailyCosts[day, default: 0] += cost
         }
@@ -549,9 +578,13 @@ struct CostAnalyticsView: View {
 
     private var providerUsageData: [ProviderUsageItem] {
         var counts: [AIProvider: Int] = [:]
+        var wordCounts: [AIProvider: Int] = [:]
 
         for record in filteredRecords {
             counts[record.provider, default: 0] += 1
+            // Calculate word count from text if not stored in breakdown
+            let words = record.costBreakdown?.wordCount ?? record.text.split(separator: " ").count
+            wordCounts[record.provider, default: 0] += words
         }
 
         let colors: [Color] = [.blue, .purple, .green, .orange, .pink, .cyan, .indigo, .mint]
@@ -560,6 +593,7 @@ struct CostAnalyticsView: View {
             ProviderUsageItem(
                 provider: item.key,
                 count: item.value,
+                wordCount: wordCounts[item.key] ?? 0,
                 color: colors[index % colors.count]
             )
         }.sorted { $0.count > $1.count }
@@ -579,6 +613,8 @@ struct CostAnalyticsView: View {
                 cost = record.costBreakdown?.formattingCost ?? 0
             case .translation:
                 cost = record.costBreakdown?.translationCost ?? 0
+            case .prediction:
+                cost = record.costBreakdown?.predictionCost ?? 0
             }
             if cost > 0 {
                 costs[record.provider, default: 0] += cost
@@ -603,7 +639,8 @@ struct CostAnalyticsView: View {
         [
             CategoryCostItem(category: "Transcription", cost: transcriptionCost, color: .blue),
             CategoryCostItem(category: "Power Mode", cost: powerModeCost, color: .orange),
-            CategoryCostItem(category: "Translation", cost: translationCost, color: .purple)
+            CategoryCostItem(category: "Translation", cost: translationCost, color: .purple),
+            CategoryCostItem(category: "Prediction", cost: predictionCost, color: .pink)
         ].filter { $0.cost > 0 }
     }
 
@@ -642,6 +679,16 @@ struct CostAnalyticsView: View {
             let hours = Int(seconds / 3600)
             let minutes = Int((seconds.truncatingRemainder(dividingBy: 3600)) / 60)
             return "\(hours)h \(minutes)m"
+        }
+    }
+
+    private func formatWordCount(_ count: Int) -> String {
+        if count < 1000 {
+            return "\(count)w"
+        } else if count < 1_000_000 {
+            return String(format: "%.1fK", Double(count) / 1000)
+        } else {
+            return String(format: "%.1fM", Double(count) / 1_000_000)
         }
     }
 }
@@ -687,6 +734,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
     case transcription
     case powerMode
     case translation
+    case prediction
 
     var id: String { rawValue }
 
@@ -696,6 +744,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
         case .transcription: return "Transcription"
         case .powerMode: return "Power Mode"
         case .translation: return "Translation"
+        case .prediction: return "Prediction"
         }
     }
 
@@ -705,6 +754,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
         case .transcription: return "waveform"
         case .powerMode: return "bolt.fill"
         case .translation: return "globe"
+        case .prediction: return "sparkles"
         }
     }
 
@@ -714,6 +764,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
         case .transcription: return .blue
         case .powerMode: return .orange
         case .translation: return .purple
+        case .prediction: return .pink
         }
     }
 }
@@ -730,6 +781,7 @@ struct ProviderUsageItem: Identifiable {
     let id = UUID()
     let provider: AIProvider
     let count: Int
+    let wordCount: Int
     let color: Color
 }
 

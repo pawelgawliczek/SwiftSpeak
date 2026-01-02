@@ -126,8 +126,13 @@ struct CostCalculator {
     ///   - translationModel: Model used for translation
     ///   - durationSeconds: Audio recording duration
     ///   - textLength: Character count of resulting text
+    ///   - text: The actual text (used for word count calculation)
     ///   - inputTokens: Estimated input tokens for LLM (default: estimate from text)
     ///   - outputTokens: Estimated output tokens for LLM (default: estimate from text)
+    ///   - predictionProvider: Provider used for AI prediction (nil if not a prediction)
+    ///   - predictionModel: Model used for prediction
+    ///   - predictionInputTokens: Input tokens for prediction
+    ///   - predictionOutputTokens: Output tokens for prediction
     /// - Returns: Complete cost breakdown
     func calculateCostBreakdown(
         transcriptionProvider: AIProvider,
@@ -138,8 +143,13 @@ struct CostCalculator {
         translationModel: String?,
         durationSeconds: TimeInterval,
         textLength: Int,
+        text: String? = nil,
         inputTokens: Int? = nil,
-        outputTokens: Int? = nil
+        outputTokens: Int? = nil,
+        predictionProvider: AIProvider? = nil,
+        predictionModel: String? = nil,
+        predictionInputTokens: Int? = nil,
+        predictionOutputTokens: Int? = nil
     ) -> CostBreakdown {
 
         // 1. Calculate transcription cost
@@ -185,12 +195,69 @@ struct CostCalculator {
             }
         }
 
+        // 4. Calculate prediction cost (if applied)
+        var predictionCost: Double?
+        if let provider = predictionProvider, let model = predictionModel {
+            let predInput = predictionInputTokens ?? 100
+            let predOutput = predictionOutputTokens ?? 200
+            predictionCost = llmCost(
+                provider: provider,
+                model: model,
+                inputTokens: predInput,
+                outputTokens: predOutput
+            )
+        }
+
+        // 5. Calculate word count from text
+        let wordCount: Int?
+        if let text = text, !text.isEmpty {
+            wordCount = text.split(separator: " ").count
+        } else {
+            // Estimate from character count (~5 chars per word average)
+            wordCount = textLength > 0 ? max(1, textLength / 5) : nil
+        }
+
         return CostBreakdown(
             transcriptionCost: transcriptionCost,
             formattingCost: formattingCost,
             translationCost: translationCost,
+            powerModeCost: nil,
+            ragCost: nil,
+            predictionCost: predictionCost,
             inputTokens: estimatedInputTokens,
-            outputTokens: estimatedOutputTokens
+            outputTokens: estimatedOutputTokens,
+            wordCount: wordCount
+        )
+    }
+
+    /// Calculate cost breakdown specifically for AI sentence prediction
+    func calculatePredictionCostBreakdown(
+        provider: AIProvider,
+        model: String,
+        inputTokens: Int,
+        outputTokens: Int,
+        predictions: [String]
+    ) -> CostBreakdown {
+        let predictionCost = llmCost(
+            provider: provider,
+            model: model,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
+
+        // Word count from all predictions combined
+        let wordCount = predictions.reduce(0) { $0 + $1.split(separator: " ").count }
+
+        return CostBreakdown(
+            transcriptionCost: 0,
+            formattingCost: 0,
+            translationCost: nil,
+            powerModeCost: nil,
+            ragCost: nil,
+            predictionCost: predictionCost,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            wordCount: wordCount
         )
     }
 

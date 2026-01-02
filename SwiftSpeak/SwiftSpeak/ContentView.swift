@@ -2371,35 +2371,72 @@ struct QuickStatsCard: View {
         PowerMode.presets.reduce(0) { $0 + $1.usageCount }
     }
 
+    private var totalWordCount: Int {
+        settings.transcriptionHistory.reduce(0) { total, record in
+            // Use stored word count if available, otherwise calculate from text
+            if let wordCount = record.costBreakdown?.wordCount {
+                return total + wordCount
+            } else {
+                return total + record.text.split(separator: " ").count
+            }
+        }
+    }
+
+    private var formattedWordCount: String {
+        if totalWordCount < 1000 {
+            return "\(totalWordCount)"
+        } else if totalWordCount < 1_000_000 {
+            return String(format: "%.1fK", Double(totalWordCount) / 1000)
+        } else {
+            return String(format: "%.1fM", Double(totalWordCount) / 1_000_000)
+        }
+    }
+
     var body: some View {
-        HStack(spacing: 16) {
+        HStack(spacing: 0) {
             ThemedStatItem(
                 icon: "waveform",
                 value: "\(settings.transcriptionHistory.count)",
                 label: "Transcriptions"
             )
+            .frame(maxWidth: .infinity)
 
-            Divider()
-                .frame(height: 40)
+            statDivider
 
             ThemedStatItem(
                 icon: "bolt.fill",
                 value: "\(totalPowerModeUsage)",
                 label: "Power Modes"
             )
+            .frame(maxWidth: .infinity)
 
-            Divider()
-                .frame(height: 40)
+            statDivider
 
             ThemedStatItem(
                 icon: "clock",
                 value: formattedDuration,
                 label: "Time"
             )
+            .frame(maxWidth: .infinity)
+
+            statDivider
+
+            ThemedStatItem(
+                icon: "text.word.spacing",
+                value: formattedWordCount,
+                label: "Words"
+            )
+            .frame(maxWidth: .infinity)
         }
         .padding(.vertical, 16)
-        .padding(.horizontal, 20)
+        .padding(.horizontal, 12)
         .glassBackground(cornerRadius: AppTheme.cornerRadiusLarge, includeShadow: false)
+    }
+
+    private var statDivider: some View {
+        Rectangle()
+            .fill(Color.secondary.opacity(0.3))
+            .frame(width: 1, height: 40)
     }
 
     private var formattedDuration: String {

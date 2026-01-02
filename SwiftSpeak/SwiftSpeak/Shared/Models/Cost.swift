@@ -18,14 +18,18 @@ struct CostBreakdown: Codable, Equatable {
     let translationCost: Double?
     let powerModeCost: Double?  // Phase 11 - Separate Power Mode LLM cost
     let ragCost: Double?        // Phase 11 - RAG embedding query cost
+    let predictionCost: Double? // Phase 13.12 - AI sentence prediction cost
 
     // Token counts (if available from LLM responses)
     let inputTokens: Int?
     let outputTokens: Int?
 
+    // Word count for analytics
+    let wordCount: Int?
+
     /// Total cost of the operation
     var total: Double {
-        transcriptionCost + formattingCost + (translationCost ?? 0) + (powerModeCost ?? 0) + (ragCost ?? 0)
+        transcriptionCost + formattingCost + (translationCost ?? 0) + (powerModeCost ?? 0) + (ragCost ?? 0) + (predictionCost ?? 0)
     }
 
     /// Check if this breakdown has any costs
@@ -41,8 +45,10 @@ struct CostBreakdown: Codable, Equatable {
             translationCost: nil,
             powerModeCost: nil,
             ragCost: nil,
+            predictionCost: nil,
             inputTokens: nil,
-            outputTokens: nil
+            outputTokens: nil,
+            wordCount: nil
         )
     }
 
@@ -59,8 +65,10 @@ struct CostBreakdown: Codable, Equatable {
         self.translationCost = translationCost
         self.powerModeCost = nil
         self.ragCost = nil
+        self.predictionCost = nil
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
+        self.wordCount = nil
     }
 
     // Full initializer with all fields
@@ -70,16 +78,20 @@ struct CostBreakdown: Codable, Equatable {
         translationCost: Double?,
         powerModeCost: Double?,
         ragCost: Double?,
+        predictionCost: Double? = nil,
         inputTokens: Int?,
-        outputTokens: Int?
+        outputTokens: Int?,
+        wordCount: Int? = nil
     ) {
         self.transcriptionCost = transcriptionCost
         self.formattingCost = formattingCost
         self.translationCost = translationCost
         self.powerModeCost = powerModeCost
         self.ragCost = ragCost
+        self.predictionCost = predictionCost
         self.inputTokens = inputTokens
         self.outputTokens = outputTokens
+        self.wordCount = wordCount
     }
 }
 
