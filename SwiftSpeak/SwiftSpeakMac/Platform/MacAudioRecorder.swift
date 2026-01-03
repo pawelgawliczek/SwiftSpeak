@@ -8,19 +8,18 @@
 
 import AVFoundation
 import Combine
-import SwiftSpeakCore
 
 /// macOS audio recorder using AVAudioEngine
 /// Outputs 16kHz mono AAC optimized for Whisper API
 @MainActor
-public final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject {
+final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject {
 
     // MARK: - Published Properties
 
-    @Published private(set) public var isRecording = false
-    @Published private(set) public var currentLevel: Float = 0.0
-    @Published private(set) public var duration: TimeInterval = 0
-    @Published private(set) public var error: TranscriptionError?
+    @Published private(set) var isRecording = false
+    @Published private(set) var currentLevel: Float = 0.0
+    @Published private(set) var duration: TimeInterval = 0
+    @Published private(set) var error: TranscriptionError?
 
     // MARK: - Private Properties
 
@@ -30,14 +29,14 @@ public final class MacAudioRecorder: NSObject, AudioRecorderProtocol, Observable
     private var durationTimer: Timer?
     private var startTime: Date?
 
-    public var recordingFileSize: Int? {
+    var recordingFileSize: Int? {
         guard let url = recordingURL else { return nil }
         return try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int
     }
 
     // MARK: - Public Methods
 
-    public func startRecording() async throws {
+    func startRecording() async throws {
         // Check microphone permission
         guard await checkMicrophonePermission() else {
             throw TranscriptionError.microphonePermissionDenied
@@ -92,7 +91,7 @@ public final class MacAudioRecorder: NSObject, AudioRecorderProtocol, Observable
     }
 
     @discardableResult
-    public func stopRecording() throws -> URL {
+    func stopRecording() throws -> URL {
         stopDurationTimer()
 
         // Stop audio engine
@@ -126,7 +125,7 @@ public final class MacAudioRecorder: NSObject, AudioRecorderProtocol, Observable
         return url
     }
 
-    public func cancelRecording() {
+    func cancelRecording() {
         stopDurationTimer()
 
         audioEngine?.inputNode.removeTap(onBus: 0)
@@ -144,7 +143,7 @@ public final class MacAudioRecorder: NSObject, AudioRecorderProtocol, Observable
         duration = 0
     }
 
-    public func deleteRecording() {
+    func deleteRecording() {
         if let url = recordingURL {
             try? FileManager.default.removeItem(at: url)
             recordingURL = nil

@@ -7,12 +7,12 @@
 
 import Carbon
 import AppKit
-import SwiftSpeakCore
+import Combine
 
 @MainActor
-public final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
+final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
 
-    @Published private(set) public var registeredHotkeys: [HotkeyAction: HotkeyCombination] = [:]
+    @Published private(set) var registeredHotkeys: [HotkeyAction: HotkeyCombination] = [:]
 
     private var eventHandler: ((HotkeyAction) -> Void)?
     private var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
@@ -22,7 +22,7 @@ public final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
 
     // MARK: - Initialization
 
-    public init() {
+    init() {
         installEventHandler()
     }
 
@@ -39,7 +39,7 @@ public final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
 
     // MARK: - Public Methods
 
-    public func registerHotkey(_ combination: HotkeyCombination, for action: HotkeyAction) throws {
+    func registerHotkey(_ combination: HotkeyCombination, for action: HotkeyAction) throws {
         // Unregister existing hotkey for this action
         unregisterHotkey(for: action)
 
@@ -72,7 +72,7 @@ public final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
         registeredHotkeys[action] = combination
     }
 
-    public func unregisterHotkey(for action: HotkeyAction) {
+    func unregisterHotkey(for action: HotkeyAction) {
         guard registeredHotkeys[action] != nil else { return }
 
         for (id, registeredAction) in hotkeyActions where registeredAction == action {
@@ -86,13 +86,13 @@ public final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
         registeredHotkeys.removeValue(forKey: action)
     }
 
-    public func setHandler(_ handler: @escaping (HotkeyAction) -> Void) {
+    func setHandler(_ handler: @escaping (HotkeyAction) -> Void) {
         self.eventHandler = handler
     }
 
     // MARK: - Default Hotkeys
 
-    public func registerDefaultHotkeys() throws {
+    func registerDefaultHotkeys() throws {
         // Default: Cmd+Shift+D for toggle recording
         let defaultCombination = HotkeyCombination(
             keyCode: 0x02, // 'd' key
@@ -179,12 +179,21 @@ public final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
 
 extension HotkeyCombination {
     /// Create from NSEvent
-    public static func from(event: NSEvent) -> HotkeyCombination {
+    static func from(event: NSEvent) -> HotkeyCombination {
         HotkeyCombination(
             keyCode: event.keyCode,
             modifiers: event.modifierFlags.rawValue,
-            displayString: event.modifierFlags.description + (event.charactersIgnoringModifiers?.uppercased() ?? "")
+            displayString: modifierString(from: event.modifierFlags) + (event.charactersIgnoringModifiers?.uppercased() ?? "")
         )
+    }
+
+    private static func modifierString(from flags: NSEvent.ModifierFlags) -> String {
+        var result = ""
+        if flags.contains(.control) { result += "⌃" }
+        if flags.contains(.option) { result += "⌥" }
+        if flags.contains(.shift) { result += "⇧" }
+        if flags.contains(.command) { result += "⌘" }
+        return result
     }
 }
 

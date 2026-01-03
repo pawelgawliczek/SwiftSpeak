@@ -2,7 +2,6 @@
 
 import AppKit
 import ApplicationServices
-import SwiftSpeakCore
 
 // MARK: - Errors
 
@@ -119,7 +118,9 @@ final class MacTextInsertionService: TextInsertionProtocol {
             return nil
         }
 
-        return focusedElement as? AXUIElement
+        // AXUIElement is a CFTypeRef, cast from AnyObject
+        guard let element = focusedElement else { return nil }
+        return (element as! AXUIElement)
     }
 
     private func insertViaAccessibility(_ text: String, replaceSelection: Bool) throws {

@@ -6,7 +6,8 @@
 //
 
 import SwiftUI
-import SwiftSpeakCore
+
+// MARK: - Recording Overlay View
 
 struct RecordingOverlayView: View {
     @ObservedObject var audioRecorder: MacAudioRecorder

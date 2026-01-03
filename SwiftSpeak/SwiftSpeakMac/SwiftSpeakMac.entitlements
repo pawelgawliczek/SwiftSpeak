@@ -2,46 +2,31 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox (required for Mac App Store) -->
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-
-    <!-- Microphone access for recording -->
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
-
-    <!-- Network access for API calls -->
-    <key>com.apple.security.network.client</key>
-    <true/>
-
-    <!-- File access for user documents (RAG/Power Mode) -->
-    <key>com.apple.security.files.user-selected.read-write</key>
-    <true/>
-
-    <!-- Downloads folder access -->
-    <key>com.apple.security.files.downloads.read-write</key>
-    <true/>
-
-    <!-- iCloud Key-Value Store for settings sync -->
-    <key>com.apple.developer.ubiquity-kvstore-identifier</key>
-    <string>$(TeamIdentifierPrefix)pawelgawliczek.SwiftSpeak</string>
-
-    <!-- iCloud Container for CloudKit sync -->
-    <key>com.apple.developer.icloud-container-identifiers</key>
-    <array>
-        <string>iCloud.pawelgawliczek.SwiftSpeak</string>
-    </array>
-
-    <!-- CloudKit services -->
-    <key>com.apple.developer.icloud-services</key>
-    <array>
-        <string>CloudKit</string>
-    </array>
-
-    <!-- Keychain access groups for shared credentials -->
-    <key>keychain-access-groups</key>
-    <array>
-        <string>$(AppIdentifierPrefix)pawelgawliczek.SwiftSpeak</string>
-    </array>
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.pawelgawliczek.SwiftSpeak</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<key>com.apple.security.files.downloads.read-write</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)pawelgawliczek.SwiftSpeak</string>
+	</array>
 </dict>
 </plist>

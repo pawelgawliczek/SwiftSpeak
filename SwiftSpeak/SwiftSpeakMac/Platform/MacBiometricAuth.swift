@@ -5,6 +5,7 @@
 //  Touch ID authentication for macOS (same as iOS)
 //
 
+import Combine
 import LocalAuthentication
 
 @MainActor

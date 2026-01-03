@@ -8,19 +8,19 @@
 import AppKit
 import SwiftUI
 import Combine
-import SwiftSpeakCore
+import UserNotifications
 
 @MainActor
-public final class MenuBarController: ObservableObject {
+final class MenuBarController: ObservableObject {
 
     // MARK: - Published State
 
-    @Published public var isRecording = false
-    @Published public var isOverlayVisible = false
-    @Published public var isProcessing = false
-    @Published public var currentMode: FormattingMode = .raw
-    @Published public var lastResult: String?
-    @Published public var lastError: String?
+    @Published var isRecording = false
+    @Published var isOverlayVisible = false
+    @Published var isProcessing = false
+    @Published var currentMode: FormattingMode = .raw
+    @Published var lastResult: String?
+    @Published var lastError: String?
 
     // MARK: - Private Properties
 
@@ -34,13 +34,13 @@ public final class MenuBarController: ObservableObject {
 
     private let audioRecorder: MacAudioRecorder
     private let textInsertion: MacTextInsertionService
-    private let settings: SharedSettings
+    private let settings: MacSettings
     private let hotkeyManager: MacHotkeyManager
 
-    public init(audioRecorder: MacAudioRecorder,
-                textInsertion: MacTextInsertionService,
-                settings: SharedSettings,
-                hotkeyManager: MacHotkeyManager) {
+    init(audioRecorder: MacAudioRecorder,
+         textInsertion: MacTextInsertionService,
+         settings: MacSettings,
+         hotkeyManager: MacHotkeyManager) {
         self.audioRecorder = audioRecorder
         self.textInsertion = textInsertion
         self.settings = settings
@@ -169,6 +169,11 @@ public final class MenuBarController: ObservableObject {
             switch action {
             case .toggleRecording:
                 self?.toggleRecording()
+            case .cancelRecording:
+                self?.cancelRecording()
+            case .quickPaste:
+                // Quick paste from clipboard
+                break
             }
         }
     }
@@ -301,7 +306,7 @@ public final class MenuBarController: ObservableObject {
     private func transcribe(audioURL: URL) async throws -> String {
         // Use ProviderFactory to create the appropriate transcription provider
         let providerFactory = ProviderFactory(settings: settings)
-        let provider = settings.transcriptionProvider
+        let provider = settings.selectedTranscriptionProvider
 
         guard let transcriptionService = providerFactory.createTranscriptionProvider(for: provider) else {
             throw TranscriptionError.apiKeyMissing
@@ -313,7 +318,7 @@ public final class MenuBarController: ObservableObject {
     private func format(text: String, mode: FormattingMode) async throws -> String {
         // Use ProviderFactory to create the appropriate formatting provider
         let providerFactory = ProviderFactory(settings: settings)
-        let provider = settings.formattingProvider
+        let provider = settings.selectedFormattingProvider
 
         guard let formattingService = providerFactory.createFormattingProvider(for: provider) else {
             // Return unformatted if no provider configured
@@ -325,14 +330,12 @@ public final class MenuBarController: ObservableObject {
 
     private func saveToHistory(transcription: String, formatted: String) {
         let record = TranscriptionRecord(
-            id: UUID(),
-            timestamp: Date(),
             rawTranscription: transcription,
             formattedText: formatted,
             formattingMode: currentMode,
             duration: audioRecorder.duration,
-            transcriptionProvider: settings.transcriptionProvider,
-            formattingProvider: currentMode != .raw ? settings.formattingProvider : nil
+            transcriptionProvider: settings.selectedTranscriptionProvider,
+            formattingProvider: currentMode != .raw ? settings.selectedFormattingProvider : nil
         )
         settings.addToHistory(record)
     }
@@ -412,7 +415,7 @@ public final class MenuBarController: ObservableObject {
 // MARK: - Placeholder Settings View
 
 struct MacSettingsView: View {
-    @ObservedObject var settings: SharedSettings
+    @ObservedObject var settings: MacSettings
 
     var body: some View {
         TabView {
@@ -437,12 +440,12 @@ struct MacSettingsView: View {
 }
 
 struct ProvidersSettingsTab: View {
-    @ObservedObject var settings: SharedSettings
+    @ObservedObject var settings: MacSettings
 
     var body: some View {
         Form {
             Section("Transcription Provider") {
-                Picker("Provider", selection: $settings.transcriptionProvider) {
+                Picker("Provider", selection: $settings.selectedTranscriptionProvider) {
                     ForEach(AIProvider.transcriptionProviders, id: \.self) { provider in
                         Text(provider.displayName).tag(provider)
                     }
@@ -450,18 +453,23 @@ struct ProvidersSettingsTab: View {
             }
 
             Section("Formatting Provider") {
-                Picker("Provider", selection: $settings.formattingProvider) {
+                Picker("Provider", selection: $settings.selectedFormattingProvider) {
                     ForEach(AIProvider.formattingProviders, id: \.self) { provider in
                         Text(provider.displayName).tag(provider)
                     }
                 }
+            }
+
+            Section("API Keys") {
+                SecureField("OpenAI API Key", text: $settings.openAIApiKey)
+                SecureField("Anthropic API Key", text: $settings.anthropicApiKey)
             }
         }
     }
 }
 
 struct GeneralSettingsTab: View {
-    @ObservedObject var settings: SharedSettings
+    @ObservedObject var settings: MacSettings
 
     var body: some View {
         Form {

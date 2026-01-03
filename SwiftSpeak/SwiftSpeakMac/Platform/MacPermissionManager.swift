@@ -7,7 +7,30 @@
 
 import AVFoundation
 import AppKit
-import SwiftSpeakCore
+import Combine
+
+// MARK: - Permission Types
+
+public enum PermissionType: String, CaseIterable, Sendable {
+    case microphone
+    case accessibility
+}
+
+public enum PermissionStatus: String, Sendable {
+    case authorized
+    case denied
+    case notDetermined
+    case restricted
+}
+
+@MainActor
+public protocol PermissionManagerProtocol: ObservableObject {
+    func checkPermission(_ type: PermissionType) -> PermissionStatus
+    func requestPermission(_ type: PermissionType) async -> Bool
+    func openSystemPreferences(for type: PermissionType)
+}
+
+// MARK: - macOS Permission Manager
 
 @MainActor
 public final class MacPermissionManager: PermissionManagerProtocol, ObservableObject {
