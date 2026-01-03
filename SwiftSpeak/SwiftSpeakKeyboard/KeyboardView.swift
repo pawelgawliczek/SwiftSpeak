@@ -556,6 +556,14 @@ struct SwiftLinkStreamingOverlay: View {
                     .padding(.vertical, 12)
 
                     Spacer()
+
+                    // Live preview disclaimer (only during active recording with transcript)
+                    if isRecording && !transcript.isEmpty {
+                        Text("Live preview • Final text will be more accurate")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.4))
+                            .padding(.bottom, 8)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
