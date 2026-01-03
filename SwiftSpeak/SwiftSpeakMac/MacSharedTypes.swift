@@ -48,6 +48,22 @@ enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
         case .powerMode: return "bolt.fill"
         }
     }
+
+    var description: String {
+        switch self {
+        case .transcription: return "Convert speech to text"
+        case .translation: return "Translate text between languages"
+        case .powerMode: return "AI-powered formatting and processing"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .transcription: return .blue
+        case .translation: return .purple
+        case .powerMode: return .orange
+        }
+    }
 }
 
 // MARK: - AI Provider
@@ -179,6 +195,67 @@ enum AIProvider: String, Codable, CaseIterable, Identifiable, Hashable {
         case .assemblyAI: return URL(string: "https://www.assemblyai.com/app/account")
         case .deepL: return URL(string: "https://www.deepl.com/account/summary")
         case .azure: return URL(string: "https://portal.azure.com")
+        }
+    }
+
+    var availableSTTModels: [String] {
+        switch self {
+        case .openAI: return ["gpt-4o-transcribe", "gpt-4o-mini-transcribe", "whisper-1"]
+        case .deepgram: return ["nova-2", "nova", "enhanced", "base"]
+        case .assemblyAI: return ["default", "best", "nano"]
+        case .elevenLabs: return ["scribe_v1"]
+        case .google: return ["long", "short", "telephony", "medical_dictation", "medical_conversation"]
+        case .local: return []
+        case .anthropic, .deepL, .azure: return []
+        }
+    }
+
+    var availableLLMModels: [String] {
+        switch self {
+        case .openAI: return ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-4", "gpt-3.5-turbo", "o1", "o1-mini"]
+        case .anthropic: return ["claude-3-5-sonnet-latest", "claude-3-5-haiku-latest", "claude-3-opus-latest"]
+        case .google: return ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"]
+        case .local: return []
+        case .deepL: return ["default"]
+        case .azure: return ["default"]
+        case .elevenLabs, .deepgram, .assemblyAI: return []
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .openAI: return "OpenAI's GPT models and Whisper transcription"
+        case .anthropic: return "Anthropic's Claude models for intelligent formatting"
+        case .google: return "Google Cloud Speech-to-Text and Gemini"
+        case .elevenLabs: return "High-quality speech transcription"
+        case .deepgram: return "Fast, accurate speech recognition"
+        case .local: return "Run AI models locally on your Mac"
+        case .assemblyAI: return "Advanced speech recognition with speaker detection"
+        case .deepL: return "Premium neural machine translation"
+        case .azure: return "Microsoft Azure Translator service"
+        }
+    }
+
+    var setupInstructions: String {
+        switch self {
+        case .openAI:
+            return "1. Visit platform.openai.com\n2. Sign in or create an account\n3. Go to API Keys section\n4. Create a new API key\n5. Copy and paste it here"
+        case .anthropic:
+            return "1. Visit console.anthropic.com\n2. Sign in or create an account\n3. Go to Settings → API Keys\n4. Create a new key\n5. Copy and paste it here"
+        case .google:
+            return "1. Go to Google Cloud Console\n2. Create or select a project\n3. Enable the API you need\n4. Create credentials (API key)\n5. Copy and paste it here"
+        case .elevenLabs:
+            return "1. Visit elevenlabs.io\n2. Sign in or create an account\n3. Go to Profile → API Keys\n4. Copy your API key"
+        case .deepgram:
+            return "1. Visit console.deepgram.com\n2. Create an account\n3. Go to API Keys\n4. Create a new key"
+        case .assemblyAI:
+            return "1. Visit assemblyai.com\n2. Create an account\n3. Go to your dashboard\n4. Copy your API key"
+        case .deepL:
+            return "1. Visit deepl.com/account\n2. Sign up for API access\n3. Find your API key in account settings"
+        case .azure:
+            return "1. Go to Azure Portal\n2. Create a Translator resource\n3. Copy the key from Keys and Endpoint"
+        case .local:
+            return "Configure your local AI server URL"
         }
     }
 
@@ -472,24 +549,42 @@ enum Language: String, Codable, CaseIterable, Identifiable {
 struct AIProviderConfig: Codable, Identifiable, Equatable {
     let provider: AIProvider
     var apiKey: String
-    var selectedSTTModel: String?
-    var selectedLLMModel: String?
     var usageCategories: Set<ProviderUsageCategory>
+
+    // Model selection per capability
+    var transcriptionModel: String?
+    var translationModel: String?
+    var powerModeModel: String?
+
+    // Legacy fields for backward compatibility
+    var selectedSTTModel: String? {
+        get { transcriptionModel }
+        set { transcriptionModel = newValue }
+    }
+    var selectedLLMModel: String? {
+        get { powerModeModel ?? translationModel }
+        set {
+            if provider.supportsPowerMode { powerModeModel = newValue }
+            if provider.supportsTranslation { translationModel = newValue }
+        }
+    }
 
     var id: String { provider.rawValue }
 
     init(
         provider: AIProvider,
         apiKey: String = "",
-        selectedSTTModel: String? = nil,
-        selectedLLMModel: String? = nil,
-        usageCategories: Set<ProviderUsageCategory> = []
+        usageCategories: Set<ProviderUsageCategory> = [],
+        transcriptionModel: String? = nil,
+        translationModel: String? = nil,
+        powerModeModel: String? = nil
     ) {
         self.provider = provider
         self.apiKey = apiKey
-        self.selectedSTTModel = selectedSTTModel ?? provider.defaultSTTModel
-        self.selectedLLMModel = selectedLLMModel ?? provider.defaultLLMModel
         self.usageCategories = usageCategories.isEmpty ? provider.supportedCategories : usageCategories
+        self.transcriptionModel = transcriptionModel ?? provider.defaultSTTModel
+        self.translationModel = translationModel ?? provider.defaultLLMModel
+        self.powerModeModel = powerModeModel ?? provider.defaultLLMModel
     }
 
     var isConfigured: Bool {

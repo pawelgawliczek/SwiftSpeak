@@ -389,7 +389,7 @@ final class MenuBarController: ObservableObject {
     private func createFloatingWindow() {
         let window = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: 400, height: 280),
-            styleMask: [.nonactivatingPanel, .titled, .closable, .fullSizeContentView],
+            styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
         )
@@ -400,8 +400,6 @@ final class MenuBarController: ObservableObject {
         window.hasShadow = true
         window.isMovableByWindowBackground = true
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
         window.animationBehavior = .none  // Disable animations to prevent crashes
 
         // Create wrapper view that observes the view model
@@ -1356,53 +1354,405 @@ struct EditProviderSheet: View {
     @ObservedObject var settings: MacSettings
     let config: AIProviderConfig
     @Environment(\.dismiss) private var dismiss
+
+    // Form state
     @State private var apiKey: String = ""
+    @State private var usageCategories: Set<ProviderUsageCategory> = []
+    @State private var transcriptionModel: String = ""
+    @State private var translationModel: String = ""
+    @State private var powerModeModel: String = ""
+
+    // Validation state
+    @State private var isValidating = false
+    @State private var isValidated = false
+    @State private var validationError: String?
+    @State private var refreshedSTTModels: [String]?
+    @State private var refreshedLLMModels: [String]?
+
+    @State private var showDeleteConfirm = false
 
     var body: some View {
-        VStack(spacing: 20) {
-            HStack {
-                Image(systemName: config.provider.icon)
-                    .font(.title)
-                Text(config.provider.displayName)
-                    .font(.title2)
-                    .fontWeight(.bold)
+        VStack(spacing: 0) {
+            // Header
+            HStack(spacing: 12) {
+                MacProviderIcon(config.provider, size: .large, style: .filled)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(config.provider.displayName)
+                        .font(.title2.weight(.semibold))
+                    Text(config.provider.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(20)
+
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // API Key Section
+                    if config.provider.requiresAPIKey {
+                        apiKeySection
+                    }
+
+                    // Capabilities Section (only show after validation)
+                    if isValidated || !config.provider.requiresAPIKey {
+                        capabilitiesSection
+                    }
+                }
+                .padding(20)
             }
 
-            if config.provider.requiresAPIKey {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("API Key")
-                        .font(.headline)
-                    SecureField("API Key", text: $apiKey)
-                        .textFieldStyle(.roundedBorder)
-                    if let helpURL = config.provider.apiKeyHelpURL {
-                        Link("Get API Key", destination: helpURL)
-                            .font(.caption)
+            Divider()
+
+            // Footer
+            HStack {
+                Button("Remove", role: .destructive) {
+                    showDeleteConfirm = true
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.escape)
+
+                Button("Save") {
+                    saveProvider()
+                }
+                .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSave)
+            }
+            .padding(20)
+        }
+        .frame(width: 500, height: 600)
+        .onAppear { loadConfig() }
+        .alert("Remove Provider?", isPresented: $showDeleteConfirm) {
+            Button("Cancel", role: .cancel) {}
+            Button("Remove", role: .destructive) {
+                settings.removeAIProvider(config.provider)
+                dismiss()
+            }
+        } message: {
+            Text("This will remove \(config.provider.displayName) from your configured providers.")
+        }
+    }
+
+    // MARK: - API Key Section
+
+    private var apiKeySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("API Key")
+                .font(.headline)
+
+            HStack {
+                SecureField("Enter your API key", text: $apiKey)
+                    .textFieldStyle(.roundedBorder)
+
+                if isValidated {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                }
+            }
+
+            // Setup instructions
+            VStack(alignment: .leading, spacing: 8) {
+                Text("How to get your API key:")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                Text(config.provider.setupInstructions)
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                if let helpURL = config.provider.apiKeyHelpURL {
+                    Link(destination: helpURL) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.up.right.square")
+                            Text("Open \(config.provider.shortName) Dashboard")
+                        }
+                        .font(.caption.weight(.medium))
                     }
                 }
             }
+            .padding(12)
+            .background(Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
-            HStack {
-                Button("Remove Provider", role: .destructive) {
-                    settings.removeAIProvider(config.provider)
-                    dismiss()
+            // Validate button
+            Button(action: validateAPIKey) {
+                HStack {
+                    if isValidating {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    } else {
+                        Image(systemName: isValidated ? "checkmark.shield.fill" : "checkmark.shield")
+                            .foregroundStyle(isValidated ? .green : .primary)
+                    }
+                    Text(isValidated ? "API Key Validated" : "Validate API Key")
+                        .foregroundStyle(isValidated ? .green : .primary)
                 }
-                Spacer()
-                Button("Cancel") { dismiss() }
-                    .keyboardShortcut(.escape)
-                Button("Save") {
-                    var updatedConfig = config
-                    updatedConfig.apiKey = apiKey
-                    settings.updateAIProvider(updatedConfig)
-                    dismiss()
+            }
+            .buttonStyle(.bordered)
+            .disabled(isValidating || apiKey.isEmpty)
+
+            // Validation error
+            if let error = validationError {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(24)
-        .frame(width: 400)
-        .onAppear {
-            apiKey = config.apiKey
+    }
+
+    // MARK: - Capabilities Section
+
+    private var capabilitiesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Capabilities & Models")
+                .font(.headline)
+
+            Text("Enable the capabilities you want to use and select the model for each.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            ForEach(ProviderUsageCategory.allCases) { category in
+                if config.provider.supportedCategories.contains(category) {
+                    categoryRow(for: category)
+                }
+            }
         }
+    }
+
+    private func categoryRow(for category: ProviderUsageCategory) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Toggle row
+            Button(action: {
+                if usageCategories.contains(category) {
+                    usageCategories.remove(category)
+                } else {
+                    usageCategories.insert(category)
+                }
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: category.icon)
+                        .font(.body)
+                        .foregroundStyle(category.color)
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(category.displayName)
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Text(category.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Image(systemName: usageCategories.contains(category) ? "checkmark.circle.fill" : "circle")
+                        .font(.title3)
+                        .foregroundStyle(usageCategories.contains(category) ? category.color : Color.secondary.opacity(0.3))
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            // Model picker (if enabled)
+            if usageCategories.contains(category) {
+                Picker("Model", selection: modelBinding(for: category)) {
+                    ForEach(availableModels(for: category), id: \.self) { model in
+                        Text(model).tag(model)
+                    }
+                }
+                .pickerStyle(.menu)
+                .padding(.leading, 36)
+            }
+        }
+        .padding(12)
+        .background(usageCategories.contains(category) ? category.color.opacity(0.05) : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(usageCategories.contains(category) ? category.color.opacity(0.2) : Color.clear, lineWidth: 1)
+        )
+    }
+
+    // MARK: - Helpers
+
+    private var canSave: Bool {
+        if config.provider.requiresAPIKey && apiKey.isEmpty {
+            return false
+        }
+        return !usageCategories.isEmpty
+    }
+
+    private func modelBinding(for category: ProviderUsageCategory) -> Binding<String> {
+        switch category {
+        case .transcription: return $transcriptionModel
+        case .translation: return $translationModel
+        case .powerMode: return $powerModeModel
+        }
+    }
+
+    private func availableModels(for category: ProviderUsageCategory) -> [String] {
+        switch category {
+        case .transcription:
+            return refreshedSTTModels ?? config.provider.availableSTTModels
+        case .translation, .powerMode:
+            return refreshedLLMModels ?? config.provider.availableLLMModels
+        }
+    }
+
+    private func loadConfig() {
+        apiKey = config.apiKey
+        usageCategories = config.usageCategories
+        transcriptionModel = config.transcriptionModel ?? config.provider.defaultSTTModel ?? ""
+        translationModel = config.translationModel ?? config.provider.defaultLLMModel ?? ""
+        powerModeModel = config.powerModeModel ?? config.provider.defaultLLMModel ?? ""
+
+        // If already has API key, mark as validated
+        if !apiKey.isEmpty {
+            isValidated = true
+        }
+    }
+
+    private func saveProvider() {
+        var updatedConfig = config
+        updatedConfig.apiKey = apiKey
+        updatedConfig.usageCategories = usageCategories
+        updatedConfig.transcriptionModel = usageCategories.contains(.transcription) ? transcriptionModel : nil
+        updatedConfig.translationModel = usageCategories.contains(.translation) ? translationModel : nil
+        updatedConfig.powerModeModel = usageCategories.contains(.powerMode) ? powerModeModel : nil
+        settings.updateAIProvider(updatedConfig)
+        dismiss()
+    }
+
+    private func validateAPIKey() {
+        isValidating = true
+        validationError = nil
+
+        Task {
+            do {
+                let (sttModels, llmModels) = try await fetchModelsFromAPI()
+
+                await MainActor.run {
+                    refreshedSTTModels = sttModels.isEmpty ? nil : sttModels
+                    refreshedLLMModels = llmModels.isEmpty ? nil : llmModels
+                    isValidated = true
+                    isValidating = false
+
+                    // Auto-select first model if none selected
+                    if transcriptionModel.isEmpty, let first = (refreshedSTTModels ?? config.provider.availableSTTModels).first {
+                        transcriptionModel = first
+                    }
+                    if translationModel.isEmpty, let first = (refreshedLLMModels ?? config.provider.availableLLMModels).first {
+                        translationModel = first
+                    }
+                    if powerModeModel.isEmpty, let first = (refreshedLLMModels ?? config.provider.availableLLMModels).first {
+                        powerModeModel = first
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    validationError = error.localizedDescription
+                    isValidating = false
+                }
+            }
+        }
+    }
+
+    private func fetchModelsFromAPI() async throws -> (sttModels: [String], llmModels: [String]) {
+        switch config.provider {
+        case .openAI:
+            return try await fetchOpenAIModels()
+        case .anthropic:
+            // Anthropic doesn't have a models endpoint
+            return ([], config.provider.availableLLMModels)
+        case .google:
+            return try await fetchGoogleModels()
+        default:
+            // For other providers, just validate the key works
+            return (config.provider.availableSTTModels, config.provider.availableLLMModels)
+        }
+    }
+
+    private func fetchOpenAIModels() async throws -> (sttModels: [String], llmModels: [String]) {
+        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "OpenAI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw NSError(domain: "OpenAI", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+            }
+            throw NSError(domain: "OpenAI", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "API error: \(httpResponse.statusCode)"])
+        }
+
+        struct ModelsResponse: Codable {
+            struct Model: Codable { let id: String }
+            let data: [Model]
+        }
+
+        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        let allModels = modelsResponse.data.map { $0.id }
+
+        // Filter STT models
+        var sttModels = allModels.filter { $0.contains("whisper") || $0.contains("transcribe") }.sorted()
+        // Add expected streaming models if not returned by API
+        for model in ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"] {
+            if !sttModels.contains(model) {
+                sttModels.insert(model, at: 0)
+            }
+        }
+
+        // Filter LLM models
+        let llmModels = allModels.filter {
+            ($0.hasPrefix("gpt-") || $0.hasPrefix("o1") || $0.hasPrefix("o3") || $0.hasPrefix("chatgpt-")) &&
+            !$0.contains("transcribe")
+        }.sorted().reversed().map { String($0) }
+
+        return (sttModels, Array(llmModels))
+    }
+
+    private func fetchGoogleModels() async throws -> (sttModels: [String], llmModels: [String]) {
+        let request = URLRequest(url: URL(string: "https://generativelanguage.googleapis.com/v1/models?key=\(apiKey)")!)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "Google", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 400 || httpResponse.statusCode == 401 {
+                throw NSError(domain: "Google", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+            }
+            throw NSError(domain: "Google", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "API error: \(httpResponse.statusCode)"])
+        }
+
+        struct ModelsResponse: Codable {
+            struct Model: Codable { let name: String }
+            let models: [Model]
+        }
+
+        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        let allModels = modelsResponse.models.map { $0.name.replacingOccurrences(of: "models/", with: "") }
+        let llmModels = allModels.filter { $0.contains("gemini") }
+
+        return ([], llmModels)
     }
 }
 

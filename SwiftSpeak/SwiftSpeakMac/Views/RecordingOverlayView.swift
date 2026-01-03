@@ -15,9 +15,16 @@ import Combine
 class OverlayViewModel: ObservableObject {
     @Published var isTranslationEnabled: Bool = false
     @Published var targetLanguage: Language = .english
-    @Published var isProcessing: Bool = false
+    @Published var isProcessing: Bool = false {
+        didSet {
+            if isProcessing {
+                processingStartTime = Date()
+            }
+        }
+    }
     @Published var liveTranscript: String = ""
     @Published var showToggleCircles: Bool = false
+    @Published var processingStartTime: Date = Date()
 }
 
 // MARK: - Overlay Wrapper View
@@ -51,8 +58,96 @@ struct RecordingOverlayView: View {
 
     @State private var logoScale: CGFloat = 1.0
     @State private var logoGlow: Double = 0.3
+    @State private var processingElapsed: TimeInterval = 0
+
+    private let processingTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
     var body: some View {
+        VStack(spacing: 16) {
+            if viewModel.isProcessing {
+                // Processing state - compact view
+                processingView
+            } else {
+                // Recording state - full view
+                recordingView
+            }
+        }
+        .padding(20)
+        .background(overlayBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.35), radius: 20, x: 0, y: 8)
+        .onAppear {
+            startLogoAnimation()
+        }
+        .onReceive(processingTimer) { _ in
+            if viewModel.isProcessing {
+                processingElapsed = Date().timeIntervalSince(viewModel.processingStartTime)
+            }
+        }
+        .onChange(of: viewModel.isProcessing) { isProcessing in
+            if isProcessing {
+                processingElapsed = 0
+            }
+        }
+        .animation(.easeInOut(duration: 0.2), value: viewModel.showToggleCircles)
+        .animation(.easeInOut(duration: 0.3), value: viewModel.isProcessing)
+    }
+
+    // MARK: - Processing View
+
+    private var processingView: some View {
+        HStack(spacing: 20) {
+            // Brain icon with orange glow
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [Color.orange.opacity(0.4), Color.clear],
+                            center: .center,
+                            startRadius: 10,
+                            endRadius: 40
+                        )
+                    )
+                    .frame(width: 70, height: 70)
+
+                Circle()
+                    .fill(Color.orange.opacity(0.15))
+                    .frame(width: 50, height: 50)
+
+                Circle()
+                    .strokeBorder(Color.orange.opacity(0.5), lineWidth: 2)
+                    .frame(width: 50, height: 50)
+
+                Image(systemName: "brain.head.profile")
+                    .font(.system(size: 22, weight: .medium))
+                    .foregroundStyle(.orange)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                // Processing label with time
+                HStack(spacing: 8) {
+                    Text("PROCESSING")
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundStyle(.orange)
+                        .tracking(2)
+
+                    Text("(\(formattedProcessingTime))")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(.orange.opacity(0.7))
+                }
+
+                // Animated loading bars
+                ProcessingAnimationView()
+                    .frame(height: 20)
+            }
+
+            Spacer()
+        }
+    }
+
+    // MARK: - Recording View
+
+    private var recordingView: some View {
         VStack(spacing: 16) {
             // Top row - Toggle circles (shown when holding hotkey)
             if viewModel.showToggleCircles {
@@ -101,14 +196,6 @@ struct RecordingOverlayView: View {
             // Bottom - Keyboard shortcuts
             keyboardHintsRow
         }
-        .padding(20)
-        .background(overlayBackground)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.35), radius: 20, x: 0, y: 8)
-        .onAppear {
-            startLogoAnimation()
-        }
-        .animation(.easeInOut(duration: 0.2), value: viewModel.showToggleCircles)
     }
 
     // MARK: - Toggle Circles Row
@@ -255,6 +342,11 @@ struct RecordingOverlayView: View {
         let minutes = Int(duration) / 60
         let seconds = Int(duration) % 60
         return String(format: "%02d:%02d", minutes, seconds)
+    }
+
+    private var formattedProcessingTime: String {
+        let seconds = Int(processingElapsed)
+        return "\(seconds)s"
     }
 
     // MARK: - Animations
@@ -711,6 +803,48 @@ struct VisualEffectView: NSViewRepresentable {
     }
 }
 
+// MARK: - Processing Animation View
+
+struct ProcessingAnimationView: View {
+    @State private var animationPhase: Double = 0
+
+    private let barCount = 8
+    private let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(0..<barCount, id: \.self) { index in
+                ProcessingBar(index: index, phase: animationPhase)
+            }
+        }
+        .onReceive(timer) { _ in
+            animationPhase += 0.15
+        }
+    }
+}
+
+struct ProcessingBar: View {
+    let index: Int
+    let phase: Double
+
+    var body: some View {
+        let normalizedPhase = (phase + Double(index) * 0.3).truncatingRemainder(dividingBy: 2 * .pi)
+        let heightFactor = (sin(normalizedPhase) + 1) / 2 // 0 to 1
+        let height = 4 + heightFactor * 16 // 4 to 20
+
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [Color.orange, Color.orange.opacity(0.6)],
+                    startPoint: .bottom,
+                    endPoint: .top
+                )
+            )
+            .frame(width: 4, height: height)
+            .animation(.easeInOut(duration: 0.08), value: phase)
+    }
+}
+
 // MARK: - Character Extension
 
 extension Character {
@@ -750,5 +884,20 @@ extension Character {
         onCancel: {}
     )
     .frame(width: 380, height: 180)
+    .background(Color.gray.opacity(0.3))
+}
+
+#Preview("Processing") {
+    let viewModel = OverlayViewModel()
+    viewModel.isProcessing = true
+
+    return RecordingOverlayView(
+        audioRecorder: MacAudioRecorder(),
+        settings: MacSettings.shared,
+        viewModel: viewModel,
+        onStop: {},
+        onCancel: {}
+    )
+    .frame(width: 380, height: 120)
     .background(Color.gray.opacity(0.3))
 }
