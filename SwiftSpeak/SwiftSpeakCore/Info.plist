@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>SwiftSpeak URL Scheme</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>swiftspeak</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>SwiftSpeak uses Face ID to protect your settings and transcription history.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>whatsapp-smb</string>
+		<string>instagram</string>
+		<string>fb-messenger</string>
+		<string>sms</string>
+		<string>mailto</string>
+		<string>twitter</string>
+		<string>discord</string>
+		<string>skype</string>
+		<string>slack</string>
+		<string>msteams</string>
+		<string>telegram</string>
+		<string>linkedin</string>
+		<string>googlegmail</string>
+		<string>mobilenotes</string>
+		<string>googledocs</string>
+		<string>notion</string>
+		<string>bear</string>
+		<string>craft</string>
+		<string>obsidian</string>
+		<string>signal</string>
+		<string>viber</string>
+		<string>line</string>
+		<string>wechat</string>
+		<string>snapchat</string>
+		<string>tiktok</string>
+		<string>fb</string>
+		<string>youtube</string>
+		<string>spotify</string>
+		<string>twitterrific</string>
+		<string>tweetbot</string>
+		<string>icq</string>
+		<string>googlechrome</string>
+		<string>firefox</string>
+		<string>brave</string>
+		<string>opera</string>
+		<string>safari</string>
+		<string>googledrive</string>
+		<string>dropbox</string>
+		<string>onedrive</string>
+		<string>evernote</string>
+		<string>trello</string>
+		<string>asana</string>
+		<string>todoist</string>
+		<string>things</string>
+		<string>omnifocus</string>
+		<string>fantastical</string>
+		<string>calshow</string>
+		<string>spark</string>
+		<string>airmail</string>
+		<string>outlook</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+</dict>
+</plist>
