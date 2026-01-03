@@ -11,6 +11,7 @@ import SwiftUI
 @main
 struct SwiftSpeakApp: App {
     @StateObject private var settings = SharedSettings.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Initialize Firebase for Remote Config
@@ -48,6 +49,13 @@ struct SwiftSpeakApp: App {
             }
             .preferredColorScheme(.dark)
             .animation(.easeInOut(duration: 0.3), value: settings.hasCompletedOnboarding)
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    // Refresh settings from UserDefaults when app becomes active
+                    // This picks up changes made by the keyboard extension
+                    settings.refreshSharedSettingsFromDefaults()
+                }
+            }
         }
     }
 }

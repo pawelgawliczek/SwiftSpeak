@@ -122,6 +122,16 @@ struct TranscriptionRecord: Identifiable {
     // Source tracking (Phase 13.11 - Keyboard AI)
     let source: TranscriptionSource
 
+    // Memory tracking (Phase 4 enhancement - batch memory updates)
+    // State at transcription time (was memory enabled for this tier?)
+    let globalMemoryEnabled: Bool
+    let contextMemoryEnabled: Bool
+    let powerModeMemoryEnabled: Bool
+    // Processing tracking (has this been incorporated into memory?)
+    var usedForGlobalMemory: Bool
+    var usedForContextMemory: Bool
+    var usedForPowerModeMemory: Bool
+
     /// Whether this is an edit operation (modifying existing text)
     var isEditOperation: Bool { editContext != nil }
 
@@ -166,7 +176,14 @@ struct TranscriptionRecord: Identifiable {
         processingMetadata: ProcessingMetadata? = nil,
         editContext: EditContext? = nil,
         sentencePredictionContext: SentencePredictionContext? = nil,
-        source: TranscriptionSource = .app
+        source: TranscriptionSource = .app,
+        // Memory tracking
+        globalMemoryEnabled: Bool = false,
+        contextMemoryEnabled: Bool = false,
+        powerModeMemoryEnabled: Bool = false,
+        usedForGlobalMemory: Bool = false,
+        usedForContextMemory: Bool = false,
+        usedForPowerModeMemory: Bool = false
     ) {
         self.id = id
         // For migration: if rawTranscribedText is nil, use text as raw
@@ -189,6 +206,13 @@ struct TranscriptionRecord: Identifiable {
         self.editContext = editContext
         self.sentencePredictionContext = sentencePredictionContext
         self.source = source
+        // Memory tracking
+        self.globalMemoryEnabled = globalMemoryEnabled
+        self.contextMemoryEnabled = contextMemoryEnabled
+        self.powerModeMemoryEnabled = powerModeMemoryEnabled
+        self.usedForGlobalMemory = usedForGlobalMemory
+        self.usedForContextMemory = usedForContextMemory
+        self.usedForPowerModeMemory = usedForPowerModeMemory
     }
 }
 
@@ -203,6 +227,9 @@ extension TranscriptionRecord: Codable {
         case editContext               // Phase 12
         case sentencePredictionContext // Phase 13.12
         case source                    // Phase 13.11
+        // Memory tracking (Phase 4 enhancement)
+        case globalMemoryEnabled, contextMemoryEnabled, powerModeMemoryEnabled
+        case usedForGlobalMemory, usedForContextMemory, usedForPowerModeMemory
     }
 
     init(from decoder: Decoder) throws {
@@ -238,6 +265,14 @@ extension TranscriptionRecord: Codable {
 
         // Handle migration: source might not exist (Phase 13.11)
         source = try container.decodeIfPresent(TranscriptionSource.self, forKey: .source) ?? .app
+
+        // Handle migration: memory tracking might not exist (Phase 4 enhancement)
+        globalMemoryEnabled = try container.decodeIfPresent(Bool.self, forKey: .globalMemoryEnabled) ?? false
+        contextMemoryEnabled = try container.decodeIfPresent(Bool.self, forKey: .contextMemoryEnabled) ?? false
+        powerModeMemoryEnabled = try container.decodeIfPresent(Bool.self, forKey: .powerModeMemoryEnabled) ?? false
+        usedForGlobalMemory = try container.decodeIfPresent(Bool.self, forKey: .usedForGlobalMemory) ?? false
+        usedForContextMemory = try container.decodeIfPresent(Bool.self, forKey: .usedForContextMemory) ?? false
+        usedForPowerModeMemory = try container.decodeIfPresent(Bool.self, forKey: .usedForPowerModeMemory) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -263,6 +298,13 @@ extension TranscriptionRecord: Codable {
         try container.encodeIfPresent(editContext, forKey: .editContext)
         try container.encodeIfPresent(sentencePredictionContext, forKey: .sentencePredictionContext)
         try container.encode(source, forKey: .source)
+        // Memory tracking (Phase 4 enhancement)
+        try container.encode(globalMemoryEnabled, forKey: .globalMemoryEnabled)
+        try container.encode(contextMemoryEnabled, forKey: .contextMemoryEnabled)
+        try container.encode(powerModeMemoryEnabled, forKey: .powerModeMemoryEnabled)
+        try container.encode(usedForGlobalMemory, forKey: .usedForGlobalMemory)
+        try container.encode(usedForContextMemory, forKey: .usedForContextMemory)
+        try container.encode(usedForPowerModeMemory, forKey: .usedForPowerModeMemory)
     }
 }
 

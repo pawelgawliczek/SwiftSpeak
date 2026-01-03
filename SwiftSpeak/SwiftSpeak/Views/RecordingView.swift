@@ -180,6 +180,9 @@ struct RecordingView: View {
             orchestrator.reset()
             streamingOrchestrator.reset()
 
+            // Refresh context from UserDefaults in case keyboard changed it
+            settings.refreshActiveContextFromDefaults()
+
             // Capture streaming mode ONCE at start - prevents mode switching mid-session
             let shouldUseStreaming = settings.transcriptionStreamingEnabled && streamingOrchestrator.isStreamingAvailable
             isStreamingSession = shouldUseStreaming
@@ -195,10 +198,17 @@ struct RecordingView: View {
                 orchestrator.translateEnabled = translateAfterRecording
                 orchestrator.targetLanguage = settings.selectedTargetLanguage
                 orchestrator.sourceLanguage = settings.selectedDictationLanguage
-                orchestrator.activeContext = settings.activeContext  // Apply selected context
+
+                // Apply selected context with debug logging
+                let contextFromSettings = settings.activeContext
+                orchestrator.activeContext = contextFromSettings
+                appLog("RecordingView.onAppear: activeContext='\(contextFromSettings?.name ?? "nil")'", category: "Context", level: .debug)
 
                 // Phase 12: Configure edit mode if active
                 orchestrator.editOriginalText = editModeOriginalText
+            } else {
+                // Streaming mode: log context state
+                appLog("RecordingView.onAppear (streaming): activeContext='\(settings.activeContext?.name ?? "nil")'", category: "Context", level: .debug)
             }
 
             // Clear the selected custom template after configuring orchestrator
@@ -301,6 +311,8 @@ struct RecordingView: View {
                     )
 
                     // Save to history
+                    let currentContext = settings.activeContext
+
                     let record = TranscriptionRecord(
                         id: UUID(),
                         rawTranscribedText: streamingOrchestrator.fullTranscript,
@@ -313,9 +325,9 @@ struct RecordingView: View {
                         targetLanguage: settings.isTranslationEnabled ? settings.selectedTargetLanguage : nil,
                         powerModeId: nil,
                         powerModeName: nil,
-                        contextId: settings.activeContext?.id,
-                        contextName: settings.activeContext?.name,
-                        contextIcon: settings.activeContext?.icon,
+                        contextId: currentContext?.id,
+                        contextName: currentContext?.name,
+                        contextIcon: currentContext?.icon,
                         estimatedCost: costBreakdown.total,
                         costBreakdown: costBreakdown,
                         processingMetadata: nil

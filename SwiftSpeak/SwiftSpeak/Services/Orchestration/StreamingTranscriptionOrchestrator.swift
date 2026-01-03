@@ -110,6 +110,10 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
         }
 
         // Build transcription hints from context (domain jargon, vocabulary, etc.)
+        // DEBUG: Log context state at streaming start
+        appLog("StreamingOrch.startStreaming: settings.activeContextId=\(settings.activeContextId?.uuidString.prefix(8) ?? "nil")", category: "Context", level: .debug)
+        appLog("StreamingOrch.startStreaming: settings.activeContext='\(settings.activeContext?.name ?? "nil")'", category: "Context", level: .debug)
+
         let promptContext = PromptContext.from(
             settings: settings,
             context: settings.activeContext,

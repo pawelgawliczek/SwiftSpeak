@@ -54,6 +54,11 @@ enum Constants {
         static let powerModeStreamingEnabled = "powerModeStreamingEnabled"
         static let transcriptionStreamingEnabled = "transcriptionStreamingEnabled"
 
+        // Memory Update Tracking (batch memory updates)
+        static let lastGlobalMemoryUpdate = "lastGlobalMemoryUpdate"
+        static let lastContextMemoryUpdates = "lastContextMemoryUpdates"   // [UUID: Date]
+        static let lastPowerModeMemoryUpdates = "lastPowerModeMemoryUpdates" // [UUID: Date]
+
         // App Library: User app category overrides
         static let userAppCategoryOverrides = "userAppCategoryOverrides"
 

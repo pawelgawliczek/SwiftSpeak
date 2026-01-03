@@ -221,25 +221,17 @@ final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
         // Add vocabulary prompt if provided (words that might appear in audio)
         // This helps the model recognize specific terms, names, etc.
-        // Note: OpenAI Realtime Transcription API only supports 'prompt' for hints,
-        // NOT 'instructions'. If we have instructions, we combine them with the prompt.
-        var combinedPrompt: String = ""
-
+        // IMPORTANT: OpenAI's transcription prompt should ONLY contain vocabulary hints,
+        // NOT formatting instructions. Including instructions causes the model to echo them back.
+        // Instructions are logged but not sent to the API.
         if let prompt = currentTranscriptionPrompt, !prompt.isEmpty {
-            combinedPrompt = prompt
+            transcriptionConfig["prompt"] = prompt
+            appLog("Injecting vocabulary prompt: \(prompt.prefix(100))...", category: "OpenAIStreaming")
         }
 
-        // Append instructions to prompt if provided (API doesn't support separate instructions)
+        // Log instructions but don't include in prompt (causes echoing)
         if let instructions = currentInstructions, !instructions.isEmpty {
-            if !combinedPrompt.isEmpty {
-                combinedPrompt += " "
-            }
-            combinedPrompt += instructions
-        }
-
-        if !combinedPrompt.isEmpty {
-            transcriptionConfig["prompt"] = combinedPrompt
-            appLog("Injecting transcription prompt: \(combinedPrompt.prefix(100))...", category: "OpenAIStreaming")
+            appLog("Instructions (not sent to API, applied post-transcription): \(instructions.prefix(80))...", category: "OpenAIStreaming")
         }
 
         // Build turn detection configuration

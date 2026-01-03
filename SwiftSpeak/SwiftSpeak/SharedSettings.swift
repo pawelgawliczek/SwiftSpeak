@@ -115,8 +115,12 @@ class SharedSettings: ObservableObject {
         didSet {
             if let id = activeContextId {
                 defaults?.set(id.uuidString, forKey: Constants.Keys.activeContextId)
+                // Find context name for logging
+                let contextName = contexts.first(where: { $0.id == id })?.name ?? ConversationContext.presets.first(where: { $0.id == id })?.name ?? "unknown"
+                appLog("activeContextId didSet: changed to '\(contextName)' (id: \(id.uuidString.prefix(8))...)", category: "Context", level: .debug)
             } else {
                 defaults?.removeObject(forKey: Constants.Keys.activeContextId)
+                appLog("activeContextId didSet: cleared to nil", category: "Context", level: .debug)
             }
         }
     }
@@ -150,6 +154,29 @@ class SharedSettings: ObservableObject {
     @Published var globalMemoryEnabled: Bool = true {
         didSet {
             defaults?.set(globalMemoryEnabled, forKey: Constants.Keys.globalMemoryEnabled)
+        }
+    }
+
+    // MARK: - Memory Update Tracking (batch updates)
+
+    /// Last time global memory was updated by the batch process
+    @Published var lastGlobalMemoryUpdate: Date? {
+        didSet {
+            defaults?.set(lastGlobalMemoryUpdate, forKey: Constants.Keys.lastGlobalMemoryUpdate)
+        }
+    }
+
+    /// Last update times for each context's memory [contextId: Date]
+    @Published var lastContextMemoryUpdates: [UUID: Date] = [:] {
+        didSet {
+            saveContextMemoryUpdates()
+        }
+    }
+
+    /// Last update times for each power mode's memory [powerModeId: Date]
+    @Published var lastPowerModeMemoryUpdates: [UUID: Date] = [:] {
+        didSet {
+            savePowerModeMemoryUpdates()
         }
     }
 
@@ -594,11 +621,15 @@ class SharedSettings: ObservableObject {
         }
 
         // Load active context ID (default to Work preset if not set)
-        if let contextIdString = defaults?.string(forKey: Constants.Keys.activeContextId),
+        let savedContextIdString = defaults?.string(forKey: Constants.Keys.activeContextId)
+        appLog("loadFromDefaults: saved activeContextId string = '\(savedContextIdString ?? "nil")'", category: "Context", level: .debug)
+        if let contextIdString = savedContextIdString,
            let contextId = UUID(uuidString: contextIdString) {
+            appLog("loadFromDefaults: parsed UUID = \(contextId.uuidString.prefix(8))...", category: "Context", level: .debug)
             activeContextId = contextId
         } else {
             // Default to Work preset context
+            appLog("loadFromDefaults: no valid saved context, defaulting to Work", category: "Context", level: .debug)
             activeContextId = ConversationContext.presets.first(where: { $0.name == "Work" })?.id
         }
 
@@ -1018,22 +1049,98 @@ class SharedSettings: ObservableObject {
     }
 
     var activeContext: ConversationContext? {
-        guard let id = activeContextId else { return nil }
+        guard let id = activeContextId else {
+            appLog("activeContext: activeContextId is nil, returning nil", category: "Context", level: .debug)
+            return nil
+        }
         // Check user-created contexts first, then presets
-        return contexts.first { $0.id == id } ?? ConversationContext.presets.first { $0.id == id }
+        if let found = contexts.first(where: { $0.id == id }) {
+            appLog("activeContext: found '\(found.name)' (id: \(id.uuidString.prefix(8))...) in contexts array", category: "Context", level: .debug)
+            return found
+        }
+        if let found = ConversationContext.presets.first(where: { $0.id == id }) {
+            appLog("activeContext: found '\(found.name)' in presets (not in contexts array!)", category: "Context", level: .debug)
+            return found
+        }
+        appLog("activeContext: id \(id.uuidString.prefix(8))... not found anywhere, returning nil", category: "Context", level: .error)
+        return nil
     }
 
     func setActiveContext(_ context: ConversationContext?) {
         if let context = context {
+            appLog("setActiveContext: setting to '\(context.name)' (id: \(context.id.uuidString.prefix(8))...)", category: "Context", level: .debug)
             activeContextId = context.id
             // Update isActive flags
             for i in contexts.indices {
                 contexts[i].isActive = (contexts[i].id == context.id)
             }
         } else {
+            appLog("setActiveContext: setting to nil", category: "Context", level: .debug)
             activeContextId = nil
             for i in contexts.indices {
                 contexts[i].isActive = false
+            }
+        }
+    }
+
+    /// Refreshes the activeContextId from UserDefaults.
+    /// Call this before SwiftLink dictation to pick up changes made by the keyboard extension.
+    func refreshActiveContextFromDefaults() {
+        let savedContextIdString = defaults?.string(forKey: Constants.Keys.activeContextId)
+        let previousId = activeContextId
+
+        if let contextIdString = savedContextIdString,
+           let contextId = UUID(uuidString: contextIdString) {
+            if contextId != previousId {
+                activeContextId = contextId
+                appLog("refreshActiveContextFromDefaults: context changed from \(previousId?.uuidString.prefix(8) ?? "nil") to \(contextId.uuidString.prefix(8))", category: "Context", level: .debug)
+            }
+        } else if previousId != nil {
+            activeContextId = nil
+            appLog("refreshActiveContextFromDefaults: context cleared (was \(previousId?.uuidString.prefix(8) ?? "nil"))", category: "Context", level: .debug)
+        }
+    }
+
+    /// Refreshes all shared settings from UserDefaults.
+    /// Call this when the app becomes active (foregrounded) to pick up changes made by keyboard.
+    func refreshSharedSettingsFromDefaults() {
+        appLog("Refreshing shared settings from UserDefaults...", category: "Settings", level: .debug)
+
+        // Refresh context
+        refreshActiveContextFromDefaults()
+
+        // Refresh formatting mode
+        if let modeRaw = defaults?.string(forKey: Constants.Keys.selectedMode),
+           let mode = FormattingMode(rawValue: modeRaw) {
+            if selectedMode != mode {
+                appLog("Refreshed selectedMode: \(mode.rawValue)", category: "Settings")
+                selectedMode = mode
+            }
+        }
+
+        // Refresh translation settings
+        if let translationEnabled = defaults?.object(forKey: Constants.Keys.isTranslationEnabled) as? Bool {
+            if isTranslationEnabled != translationEnabled {
+                appLog("Refreshed isTranslationEnabled: \(translationEnabled)", category: "Settings")
+                isTranslationEnabled = translationEnabled
+            }
+        }
+
+        // Refresh target language
+        if let langRaw = defaults?.string(forKey: Constants.Keys.selectedTargetLanguage),
+           let lang = Language(rawValue: langRaw) {
+            if selectedTargetLanguage != lang {
+                appLog("Refreshed selectedTargetLanguage: \(lang.rawValue)", category: "Settings")
+                selectedTargetLanguage = lang
+            }
+        }
+
+        // Refresh dictation language
+        if let langRaw = defaults?.string(forKey: Constants.Keys.selectedDictationLanguage),
+           let lang = Language(rawValue: langRaw) {
+            if selectedDictationLanguage != lang {
+                appLog("Refreshed selectedDictationLanguage: \(lang.rawValue)", category: "Settings")
+                selectedDictationLanguage = lang
             }
         }
     }

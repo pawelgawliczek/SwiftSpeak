@@ -2507,10 +2507,14 @@ class KeyboardViewModel: ObservableObject {
         activeContext = context
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
         if let context = context {
+            keyboardLog("Keyboard selectContext: '\(context.name)'", category: "Context", level: .debug)
             defaults?.set(context.id.uuidString, forKey: Constants.Keys.activeContextId)
         } else {
+            keyboardLog("Keyboard selectContext: clearing context (nil)", category: "Context", level: .debug)
             defaults?.removeObject(forKey: Constants.Keys.activeContextId)
         }
+        // Force synchronize to ensure main app can read the change
+        defaults?.synchronize()
     }
 
     private func loadCustomTemplates(from defaults: UserDefaults?) {

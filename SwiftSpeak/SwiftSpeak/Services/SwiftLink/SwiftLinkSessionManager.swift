@@ -353,6 +353,10 @@ final class SwiftLinkSessionManager: ObservableObject {
 
                 // Connect to streaming service with vocabulary and instructions
                 let settings = SharedSettings.shared
+                // Refresh context from UserDefaults in case keyboard changed it
+                settings.refreshActiveContextFromDefaults()
+                // DEBUG: Log context state at dictation start
+                appLog("SwiftLink dictation: activeContextId=\(settings.activeContextId?.uuidString.prefix(8) ?? "nil"), activeContext='\(settings.activeContext?.name ?? "nil")'", category: "Context", level: .debug)
                 let vocabularyPrompt = self.buildVocabularyPrompt(settings: settings)
                 let instructions = self.buildTranscriptionInstructions(settings: settings)
 
@@ -412,10 +416,10 @@ final class SwiftLinkSessionManager: ObservableObject {
             .map { $0.replacementWord }
         )
 
-        // Add context name as potential vocabulary
-        if let context = settings.activeContext {
-            vocabWords.append(context.name)
-        }
+        // NOTE: Do NOT add context.name to vocabulary - it causes the streaming
+        // transcription to echo back "Personal", "Work", etc. in the live view.
+        // Context-specific vocabulary (like domain jargon) should be added to
+        // the context's vocabulary entries instead.
 
         // Limit to 30 words and deduplicate
         let uniqueWords = Array(Set(vocabWords)).prefix(30)
@@ -523,6 +527,7 @@ final class SwiftLinkSessionManager: ObservableObject {
         appLog("Setting up streaming provider subscriptions", category: "SwiftLink")
 
         // Subscribe to partial transcripts - accumulate them for real-time display
+        // Use throttle to reduce UI update frequency (150ms) while staying responsive
         provider.partialTranscriptPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] partial in
@@ -530,8 +535,16 @@ final class SwiftLinkSessionManager: ObservableObject {
                 // Accumulate partial transcript for live display
                 // provider.fullTranscript only contains finalized segments, not current partials
                 self.accumulatedPartialTranscript += partial
+            }
+            .store(in: &streamingCancellables)
+
+        // Throttled UI updates - only update display every 150ms to reduce flickering
+        provider.partialTranscriptPublisher
+            .throttle(for: .milliseconds(150), scheduler: DispatchQueue.main, latest: true)
+            .sink { [weak self] _ in
+                guard let self else { return }
                 let displayTranscript = provider.fullTranscript + self.accumulatedPartialTranscript
-                appLog("PARTIAL: '\(partial)' -> display: \(displayTranscript.count) chars", category: "SwiftLink", level: .debug)
+                appLog("PARTIAL update: display: \(displayTranscript.count) chars", category: "SwiftLink", level: .debug)
                 if !displayTranscript.isEmpty {
                     self.updateStreamingTranscript(displayTranscript)
                 }
