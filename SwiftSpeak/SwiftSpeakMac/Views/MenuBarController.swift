@@ -58,11 +58,19 @@ final class MenuBarController: ObservableObject {
     }
 
     private func createStatusItem() {
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "waveform.circle",
-                                   accessibilityDescription: "SwiftSpeak")
+            // Use custom SwiftSpeakLogo icon
+            if let icon = NSImage(named: "SwiftSpeakLogo") {
+                icon.size = NSSize(width: 18, height: 18)
+                icon.isTemplate = true  // Adapts to menu bar appearance
+                button.image = icon
+            } else {
+                // Fallback to SF Symbol
+                button.image = NSImage(systemSymbolName: "waveform.circle",
+                                       accessibilityDescription: "SwiftSpeak")
+            }
             button.action = #selector(statusItemClicked)
             button.target = self
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
@@ -383,12 +391,21 @@ final class MenuBarController: ObservableObject {
     }
 
     private func updateStatusIcon(isRecording: Bool) {
-        let iconName = isRecording ? "waveform.circle.fill" : "waveform.circle"
-        statusItem?.button?.image = NSImage(
-            systemSymbolName: iconName,
-            accessibilityDescription: "SwiftSpeak"
-        )
-        statusItem?.button?.contentTintColor = isRecording ? .systemRed : nil
+        if let button = statusItem?.button {
+            // Use custom SwiftSpeakLogo icon
+            if let icon = NSImage(named: "SwiftSpeakLogo") {
+                icon.size = NSSize(width: 18, height: 18)
+                icon.isTemplate = !isRecording  // Disable template when recording for color
+                button.image = icon
+                button.contentTintColor = isRecording ? .systemRed : nil
+            } else {
+                // Fallback to SF Symbol
+                let iconName = isRecording ? "waveform.circle.fill" : "waveform.circle"
+                button.image = NSImage(systemSymbolName: iconName,
+                                       accessibilityDescription: "SwiftSpeak")
+                button.contentTintColor = isRecording ? .systemRed : nil
+            }
+        }
 
         // Update menu item title
         if let recordItem = menu?.items.first {
