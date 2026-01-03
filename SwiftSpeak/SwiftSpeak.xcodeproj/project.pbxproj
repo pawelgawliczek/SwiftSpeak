@@ -84,6 +84,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		833363D52F09223200ACDE90 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakMac" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+			);
+			target = 833362562F090F3400ACDE90 /* SwiftSpeakMac */;
+		};
 		837C18232F07C08A00B09F64 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -162,6 +169,7 @@
 				83ED79802F03000000880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeak" target */,
 				83ED797A2EFEBDEB00880604 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakKeyboard" target */,
 				837C18232F07C08A00B09F64 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */,
+				833363D52F09223200ACDE90 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakMac" target */,
 			);
 			path = SwiftSpeak;
 			sourceTree = "<group>";
