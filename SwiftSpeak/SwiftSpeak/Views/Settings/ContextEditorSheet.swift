@@ -646,7 +646,7 @@ struct ContextEditorSheet: View {
                         Spacer()
                         Text("\(contextMemory.count)/\(memoryLimit)")
                             .font(.caption2)
-                            .foregroundStyle(contextMemory.count > memoryLimit ? .red : .tertiary)
+                            .foregroundStyle(contextMemory.count > memoryLimit ? Color.red : Color.secondary)
                             .monospacedDigit()
                     }
 

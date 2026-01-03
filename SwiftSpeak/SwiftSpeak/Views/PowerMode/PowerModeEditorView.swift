@@ -332,7 +332,7 @@ struct PowerModeEditorView: View {
                         Spacer()
                         Text("\(memoryContent.count)/\(memoryLimit)")
                             .font(.caption2)
-                            .foregroundStyle(memoryContent.count > memoryLimit ? .red : .tertiary)
+                            .foregroundStyle(memoryContent.count > memoryLimit ? Color.red : Color.secondary)
                             .monospacedDigit()
                     }
 
