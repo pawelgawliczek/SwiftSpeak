@@ -276,6 +276,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     var useGlobalMemory: Bool               // Include global memory in prompts
     var useContextMemory: Bool              // Include context-specific memory
     var contextMemory: String?              // The stored memory content
+    var memoryLimit: Int                    // Character limit for context memory (500-2000)
     var lastMemoryUpdate: Date?
 
     // MARK: - Keyboard Behavior
@@ -304,6 +305,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         useGlobalMemory: Bool = true,
         useContextMemory: Bool = false,
         contextMemory: String? = nil,
+        memoryLimit: Int = 2000,
         lastMemoryUpdate: Date? = nil,
         autoSendAfterInsert: Bool = false,
         enterKeyBehavior: EnterKeyBehavior = .defaultNewLine,
@@ -325,6 +327,7 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.useGlobalMemory = useGlobalMemory
         self.useContextMemory = useContextMemory
         self.contextMemory = contextMemory
+        self.memoryLimit = memoryLimit
         self.lastMemoryUpdate = lastMemoryUpdate
         self.autoSendAfterInsert = autoSendAfterInsert
         self.enterKeyBehavior = enterKeyBehavior
@@ -404,6 +407,79 @@ struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
                 isPreset: true
             )
         ]
+    }
+
+    // MARK: - Codable (Backward Compatible)
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, icon, color, description
+        case domainJargon, examples, selectedInstructions, customInstructions
+        case useGlobalMemory, useContextMemory, contextMemory, memoryLimit, lastMemoryUpdate
+        case autoSendAfterInsert, enterKeyBehavior
+        case isActive, appAssignment, isPreset, createdAt, updatedAt
+        // Legacy
+        case systemPrompt  // Migrate to customInstructions
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        icon = try container.decode(String.self, forKey: .icon)
+        color = try container.decode(PowerModeColorPreset.self, forKey: .color)
+        description = try container.decode(String.self, forKey: .description)
+        domainJargon = try container.decodeIfPresent(DomainJargon.self, forKey: .domainJargon) ?? .none
+        examples = try container.decodeIfPresent([String].self, forKey: .examples) ?? []
+        selectedInstructions = try container.decodeIfPresent(Set<String>.self, forKey: .selectedInstructions) ?? []
+
+        // Migrate systemPrompt to customInstructions if present
+        if let systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) {
+            customInstructions = try container.decodeIfPresent(String.self, forKey: .customInstructions) ?? systemPrompt
+        } else {
+            customInstructions = try container.decodeIfPresent(String.self, forKey: .customInstructions)
+        }
+
+        useGlobalMemory = try container.decodeIfPresent(Bool.self, forKey: .useGlobalMemory) ?? true
+        useContextMemory = try container.decodeIfPresent(Bool.self, forKey: .useContextMemory) ?? false
+        contextMemory = try container.decodeIfPresent(String.self, forKey: .contextMemory)
+        // Default memoryLimit for existing contexts without the field
+        memoryLimit = try container.decodeIfPresent(Int.self, forKey: .memoryLimit) ?? 2000
+        lastMemoryUpdate = try container.decodeIfPresent(Date.self, forKey: .lastMemoryUpdate)
+
+        autoSendAfterInsert = try container.decodeIfPresent(Bool.self, forKey: .autoSendAfterInsert) ?? false
+        enterKeyBehavior = try container.decodeIfPresent(EnterKeyBehavior.self, forKey: .enterKeyBehavior) ?? .defaultNewLine
+        isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
+        appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
+        isPreset = try container.decodeIfPresent(Bool.self, forKey: .isPreset) ?? false
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(icon, forKey: .icon)
+        try container.encode(color, forKey: .color)
+        try container.encode(description, forKey: .description)
+        try container.encode(domainJargon, forKey: .domainJargon)
+        try container.encode(examples, forKey: .examples)
+        try container.encode(selectedInstructions, forKey: .selectedInstructions)
+        try container.encodeIfPresent(customInstructions, forKey: .customInstructions)
+        try container.encode(useGlobalMemory, forKey: .useGlobalMemory)
+        try container.encode(useContextMemory, forKey: .useContextMemory)
+        try container.encodeIfPresent(contextMemory, forKey: .contextMemory)
+        try container.encode(memoryLimit, forKey: .memoryLimit)
+        try container.encodeIfPresent(lastMemoryUpdate, forKey: .lastMemoryUpdate)
+        try container.encode(autoSendAfterInsert, forKey: .autoSendAfterInsert)
+        try container.encode(enterKeyBehavior, forKey: .enterKeyBehavior)
+        try container.encode(isActive, forKey: .isActive)
+        try container.encode(appAssignment, forKey: .appAssignment)
+        try container.encode(isPreset, forKey: .isPreset)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
     }
 
     /// Sample contexts for previews and testing

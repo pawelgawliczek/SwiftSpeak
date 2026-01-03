@@ -74,8 +74,7 @@ struct PowerModeOrchestratorStateTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         #expect(orchestrator.state == .idle)
@@ -93,8 +92,7 @@ struct PowerModeOrchestratorStateTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         await orchestrator.startRecording()
@@ -113,8 +111,7 @@ struct PowerModeOrchestratorStateTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: audioRecorder,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         await orchestrator.startRecording()
@@ -133,8 +130,7 @@ struct PowerModeOrchestratorStateTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         await orchestrator.startRecording()
@@ -162,8 +158,7 @@ struct PowerModeOrchestratorErrorTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: audioRecorder,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         await orchestrator.startRecording()
@@ -183,8 +178,7 @@ struct PowerModeOrchestratorErrorTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: audioRecorder,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -211,8 +205,7 @@ struct PowerModeOrchestratorContextTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         #expect(!orchestrator.hasActiveContext)
@@ -232,8 +225,7 @@ struct PowerModeOrchestratorContextTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         #expect(orchestrator.hasActiveContext)
@@ -261,8 +253,7 @@ struct PowerModeOrchestratorContextTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -296,8 +287,7 @@ struct PowerModeOrchestratorContextTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -331,8 +321,7 @@ struct PowerModeOrchestratorGlobalMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -361,8 +350,7 @@ struct PowerModeOrchestratorGlobalMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -391,8 +379,7 @@ struct PowerModeOrchestratorGlobalMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -432,8 +419,7 @@ struct PowerModeOrchestratorContextMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -467,8 +453,7 @@ struct PowerModeOrchestratorContextMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -503,8 +488,7 @@ struct PowerModeOrchestratorContextMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -540,8 +524,7 @@ struct PowerModeOrchestratorPowerModeMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -571,8 +554,7 @@ struct PowerModeOrchestratorPowerModeMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -619,8 +601,7 @@ struct PowerModeOrchestratorCombinedMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -662,8 +643,7 @@ struct PowerModeOrchestratorCombinedMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -705,8 +685,7 @@ struct PowerModeOrchestratorCombinedMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -740,8 +719,7 @@ struct PowerModeOrchestratorCombinedMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -775,8 +753,7 @@ struct PowerModeOrchestratorCombinedMemoryTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -817,8 +794,7 @@ struct PowerModeOrchestratorActiveMemorySourcesTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         let sources = orchestrator.activeMemorySources
@@ -841,22 +817,23 @@ struct PowerModeOrchestratorActiveMemorySourcesTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: MockMemoryManager()
+            providerFactory: MockProviderFactory.instant
         )
 
         #expect(orchestrator.activeMemorySources.isEmpty)
     }
 }
 
-// MARK: - Memory Update Tests
+// MARK: - Completion Tests
+// Note: Memory updates are now batch-based via MemoryUpdateScheduler
+// and triggered on app start/foreground, not per-transcription.
 
-@Suite("PowerModeOrchestrator - Memory Update")
-struct PowerModeOrchestratorMemoryUpdateTests {
+@Suite("PowerModeOrchestrator - Completion")
+struct PowerModeOrchestratorCompletionTests {
 
-    @Test("Memory manager called after completion")
+    @Test("Orchestrator completes successfully with memory enabled")
     @MainActor
-    func memoryManagerCalledAfterCompletion() async throws {
+    func completesWithMemoryEnabled() async {
         let settings = createTestSettings()
         let context = createTestContext(name: "Ctx", useContextMemory: true)
         settings.contexts = [context]
@@ -865,24 +842,18 @@ struct PowerModeOrchestratorMemoryUpdateTests {
         let powerMode = createTestPowerMode(memoryEnabled: true)
         settings.powerModes = [powerMode]
 
-        let memoryManager = MockMemoryManager()
-
         let orchestrator = PowerModeOrchestrator(
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: MockProviderFactory.instant,
-            memoryManager: memoryManager
+            providerFactory: MockProviderFactory.instant
         )
 
         await orchestrator.startRecording()
         await orchestrator.stopRecording()
 
-        // Give time for async memory update
-        try await Task.sleep(nanoseconds: 100_000_000)
-
-        #expect(memoryManager.updateMemoryCallCount >= 1)
-        #expect(memoryManager.lastPowerMode?.id == powerMode.id)
+        // Verify the orchestrator completed without errors
+        #expect(orchestrator.isComplete || orchestrator.hasError == false)
     }
 }
 
@@ -909,8 +880,7 @@ struct PowerModeOrchestratorPromptTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -938,8 +908,7 @@ struct PowerModeOrchestratorPromptTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         await orchestrator.startRecording()
@@ -993,8 +962,7 @@ struct PowerModeOrchestratorFullFlowTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         // Execute flow
@@ -1035,8 +1003,7 @@ struct PowerModeOrchestratorFullFlowTests {
             powerMode: powerMode,
             settings: settings,
             audioRecorder: MockAudioRecorder.instant,
-            providerFactory: providerFactory,
-            memoryManager: MockMemoryManager()
+            providerFactory: providerFactory
         )
 
         // First run

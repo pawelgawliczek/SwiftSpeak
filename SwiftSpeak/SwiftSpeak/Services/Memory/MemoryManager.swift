@@ -3,7 +3,8 @@
 //  SwiftSpeak
 //
 //  Phase 4b: Three-tier memory system management.
-//  Handles memory updates, compression, and LLM-based summarization.
+//  Provides memory access and clearing utilities.
+//  NOTE: Memory updates are now handled by MemoryUpdateScheduler (batch updates).
 //
 
 import Combine
@@ -16,256 +17,29 @@ enum MemoryTierTarget {
     case powerMode(UUID)
 }
 
-/// Result of a memory update operation
-struct MemoryUpdateResult {
-    let tier: MemoryTierTarget
-    let previousLength: Int
-    let newLength: Int
-    let wasCompressed: Bool
-    let success: Bool
-    let error: Error?
-}
-
 /// Manages the three-tier memory system
-/// - Global memory: Always active, updated after every conversation
-/// - Context memory: Per-context, updated when context is active
-/// - Power Mode memory: Per-workflow, updated after Power Mode executions
+/// - Global memory: User-wide memory, updated via batch process
+/// - Context memory: Per-context, updated via batch process
+/// - Power Mode memory: Per-workflow, updated via batch process
+///
+/// NOTE: Memory updates are no longer done per-transcription.
+/// Use MemoryUpdateScheduler for batch updates on app start/foreground.
 @MainActor
 final class MemoryManager: ObservableObject {
 
     // MARK: - Configuration
 
-    /// Maximum memory length before compression is triggered
-    static let compressionThreshold = 2000
-
-    /// Target length after compression
-    static let compressionTarget = 1500
-
-    /// Maximum memory entries to keep before summarization
-    static let maxRecentEntries = 10
+    /// Maximum memory length (2000 characters per tier)
+    static let maxMemoryLength = 2000
 
     // MARK: - Dependencies
 
     private let settings: SharedSettings
-    private let providerFactory: ProviderFactory
-
-    // MARK: - State
-
-    /// Whether a memory operation is in progress
-    @Published private(set) var isUpdating = false
-
-    /// Last error if any
-    @Published private(set) var lastError: Error?
 
     // MARK: - Initialization
 
-    init(settings: SharedSettings? = nil, providerFactory: ProviderFactory? = nil) {
-        let resolvedSettings = settings ?? SharedSettings.shared
-        self.settings = resolvedSettings
-        self.providerFactory = providerFactory ?? ProviderFactory(settings: resolvedSettings)
-    }
-
-    // MARK: - Memory Update
-
-    /// Update memory after a conversation completes
-    /// - Parameters:
-    ///   - transcription: The transcribed/formatted text from the conversation
-    ///   - context: Active conversation context (if any)
-    ///   - powerMode: Active power mode (if in Power Mode)
-    /// - Returns: Results for each tier that was updated
-    func updateMemory(
-        from transcription: String,
-        context: ConversationContext?,
-        powerMode: PowerMode?
-    ) async -> [MemoryUpdateResult] {
-        guard !transcription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return []
-        }
-
-        isUpdating = true
-        lastError = nil
-        defer { isUpdating = false }
-
-        var results: [MemoryUpdateResult] = []
-
-        // Generate summary of the conversation
-        let summary = await generateSummary(from: transcription)
-
-        // 1. Always update global memory (if enabled)
-        if settings.globalMemoryEnabled {
-            let result = await updateGlobalMemory(with: summary)
-            results.append(result)
-        }
-
-        // 2. Update context memory (if context is active and memory enabled)
-        if let ctx = context, ctx.useContextMemory {
-            let result = await updateContextMemory(contextId: ctx.id, with: summary)
-            results.append(result)
-        }
-
-        // 3. Update power mode memory (if in power mode and memory enabled)
-        if let pm = powerMode, pm.memoryEnabled {
-            let result = await updatePowerModeMemory(powerModeId: pm.id, with: summary)
-            results.append(result)
-        }
-
-        return results
-    }
-
-    // MARK: - Global Memory
-
-    /// Update global memory with new summary
-    private func updateGlobalMemory(with summary: String) async -> MemoryUpdateResult {
-        let previousMemory = settings.globalMemory ?? ""
-        let previousLength = previousMemory.count
-
-        do {
-            // Combine existing memory with new summary
-            let combined = combineMemory(existing: previousMemory, new: summary)
-
-            // Check if compression is needed
-            var finalMemory = combined
-            var wasCompressed = false
-
-            if combined.count > Self.compressionThreshold {
-                finalMemory = try await compressMemory(combined)
-                wasCompressed = true
-            }
-
-            // Save updated memory
-            settings.globalMemory = finalMemory
-
-            return MemoryUpdateResult(
-                tier: .global,
-                previousLength: previousLength,
-                newLength: finalMemory.count,
-                wasCompressed: wasCompressed,
-                success: true,
-                error: nil
-            )
-        } catch {
-            lastError = error
-            return MemoryUpdateResult(
-                tier: .global,
-                previousLength: previousLength,
-                newLength: previousLength,
-                wasCompressed: false,
-                success: false,
-                error: error
-            )
-        }
-    }
-
-    // MARK: - Context Memory
-
-    /// Update context-specific memory
-    private func updateContextMemory(contextId: UUID, with summary: String) async -> MemoryUpdateResult {
-        guard var context = settings.contexts.first(where: { $0.id == contextId }) else {
-            return MemoryUpdateResult(
-                tier: .context(contextId),
-                previousLength: 0,
-                newLength: 0,
-                wasCompressed: false,
-                success: false,
-                error: MemoryError.contextNotFound
-            )
-        }
-
-        let previousMemory = context.contextMemory ?? ""
-        let previousLength = previousMemory.count
-
-        do {
-            // Combine existing memory with new summary
-            let combined = combineMemory(existing: previousMemory, new: summary)
-
-            // Check if compression is needed
-            var finalMemory = combined
-            var wasCompressed = false
-
-            if combined.count > Self.compressionThreshold {
-                finalMemory = try await compressMemory(combined)
-                wasCompressed = true
-            }
-
-            // Update context memory
-            settings.updateContextMemory(id: context.id, memory: finalMemory)
-
-            return MemoryUpdateResult(
-                tier: .context(contextId),
-                previousLength: previousLength,
-                newLength: finalMemory.count,
-                wasCompressed: wasCompressed,
-                success: true,
-                error: nil
-            )
-        } catch {
-            lastError = error
-            return MemoryUpdateResult(
-                tier: .context(contextId),
-                previousLength: previousLength,
-                newLength: previousLength,
-                wasCompressed: false,
-                success: false,
-                error: error
-            )
-        }
-    }
-
-    // MARK: - Power Mode Memory
-
-    /// Update power mode workflow memory
-    private func updatePowerModeMemory(powerModeId: UUID, with summary: String) async -> MemoryUpdateResult {
-        guard var powerMode = settings.powerModes.first(where: { $0.id == powerModeId }) else {
-            return MemoryUpdateResult(
-                tier: .powerMode(powerModeId),
-                previousLength: 0,
-                newLength: 0,
-                wasCompressed: false,
-                success: false,
-                error: MemoryError.powerModeNotFound
-            )
-        }
-
-        let previousMemory = powerMode.memory ?? ""
-        let previousLength = previousMemory.count
-
-        do {
-            // Combine existing memory with new summary
-            let combined = combineMemory(existing: previousMemory, new: summary)
-
-            // Check if compression is needed
-            var finalMemory = combined
-            var wasCompressed = false
-
-            if combined.count > Self.compressionThreshold {
-                finalMemory = try await compressMemory(combined)
-                wasCompressed = true
-            }
-
-            // Update power mode
-            powerMode.memory = finalMemory
-            powerMode.lastMemoryUpdate = Date()
-            settings.updatePowerMode(powerMode)
-
-            return MemoryUpdateResult(
-                tier: .powerMode(powerModeId),
-                previousLength: previousLength,
-                newLength: finalMemory.count,
-                wasCompressed: wasCompressed,
-                success: true,
-                error: nil
-            )
-        } catch {
-            lastError = error
-            return MemoryUpdateResult(
-                tier: .powerMode(powerModeId),
-                previousLength: previousLength,
-                newLength: previousLength,
-                wasCompressed: false,
-                success: false,
-                error: error
-            )
-        }
+    init(settings: SharedSettings? = nil) {
+        self.settings = settings ?? SharedSettings.shared
     }
 
     // MARK: - Clear Memory
@@ -275,9 +49,11 @@ final class MemoryManager: ObservableObject {
         switch tier {
         case .global:
             settings.globalMemory = nil
+            settings.lastGlobalMemoryUpdate = nil
 
         case .context(let id):
             settings.updateContextMemory(id: id, memory: "")
+            settings.lastContextMemoryUpdates.removeValue(forKey: id)
 
         case .powerMode(let id):
             if var powerMode = settings.powerModes.first(where: { $0.id == id }) {
@@ -285,131 +61,34 @@ final class MemoryManager: ObservableObject {
                 powerMode.lastMemoryUpdate = nil
                 settings.updatePowerMode(powerMode)
             }
+            settings.lastPowerModeMemoryUpdates.removeValue(forKey: id)
         }
     }
 
-    // MARK: - Memory Helpers
+    /// Clear all memory across all tiers
+    func clearAllMemory() {
+        // Clear global
+        settings.globalMemory = nil
+        settings.lastGlobalMemoryUpdate = nil
 
-    /// Combine existing memory with new summary
-    private func combineMemory(existing: String, new: String) -> String {
-        let trimmedExisting = existing.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedNew = new.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if trimmedExisting.isEmpty {
-            return trimmedNew
+        // Clear all contexts
+        for context in settings.contexts {
+            settings.updateContextMemory(id: context.id, memory: "")
         }
+        settings.lastContextMemoryUpdates = [:]
 
-        if trimmedNew.isEmpty {
-            return trimmedExisting
+        // Clear all power modes
+        for powerMode in settings.powerModes {
+            var pm = powerMode
+            pm.memory = nil
+            pm.lastMemoryUpdate = nil
+            settings.updatePowerMode(pm)
         }
-
-        // Add timestamp for the new entry
-        let timestamp = Self.formatDate(Date())
-        return "\(trimmedExisting)\n\n[\(timestamp)] \(trimmedNew)"
+        settings.lastPowerModeMemoryUpdates = [:]
     }
 
-    /// Format date for memory entries
-    private static func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
+    // MARK: - Memory Access
 
-    // MARK: - LLM Operations
-
-    /// Generate a concise summary from transcription text
-    private func generateSummary(from text: String) async -> String {
-        // If text is already short, use it directly
-        if text.count < 200 {
-            return text
-        }
-
-        // Try to use LLM for summarization
-        guard let provider = providerFactory.createSelectedFormattingProvider() else {
-            // Fallback: truncate to first 200 chars
-            return String(text.prefix(200)) + "..."
-        }
-
-        let prompt = """
-        Summarize the following conversation in 1-2 concise sentences for future context.
-        Focus on key facts, decisions, or action items mentioned.
-        Keep the summary under 150 characters.
-        Output only the summary, nothing else.
-        """
-
-        do {
-            let summary = try await provider.format(
-                text: text,
-                mode: .raw,
-                customPrompt: prompt,
-                context: nil
-            )
-            return summary.trimmingCharacters(in: .whitespacesAndNewlines)
-        } catch {
-            // Fallback: truncate
-            return String(text.prefix(200)) + "..."
-        }
-    }
-
-    /// Compress memory when it exceeds the threshold
-    private func compressMemory(_ memory: String) async throws -> String {
-        guard let provider = providerFactory.createSelectedFormattingProvider() else {
-            throw MemoryError.noProviderAvailable
-        }
-
-        let prompt = """
-        Compress the following memory log to under \(Self.compressionTarget) characters.
-        Preserve the most important and recent information.
-        Merge redundant entries and remove outdated details.
-        Maintain chronological context where relevant.
-        Output only the compressed memory, nothing else.
-        """
-
-        let compressed = try await provider.format(
-            text: memory,
-            mode: .raw,
-            customPrompt: prompt,
-            context: nil
-        )
-
-        let result = compressed.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        // Verify compression worked
-        if result.count > Self.compressionThreshold {
-            // Hard truncate if LLM didn't compress enough
-            return String(result.prefix(Self.compressionTarget))
-        }
-
-        return result
-    }
-}
-
-// MARK: - Memory Errors
-
-enum MemoryError: LocalizedError {
-    case contextNotFound
-    case powerModeNotFound
-    case noProviderAvailable
-    case compressionFailed
-
-    var errorDescription: String? {
-        switch self {
-        case .contextNotFound:
-            return "Context not found"
-        case .powerModeNotFound:
-            return "Power Mode not found"
-        case .noProviderAvailable:
-            return "No AI provider available for memory operations"
-        case .compressionFailed:
-            return "Failed to compress memory"
-        }
-    }
-}
-
-// MARK: - Convenience Extensions
-
-extension MemoryManager {
     /// Get the current memory for a tier
     func getMemory(for tier: MemoryTierTarget) -> String? {
         switch tier {
@@ -442,19 +121,101 @@ extension MemoryManager {
     func getMemoryStats(for tier: MemoryTierTarget) -> (length: Int, lastUpdate: Date?) {
         switch tier {
         case .global:
-            return (settings.globalMemory?.count ?? 0, nil)
+            return (settings.globalMemory?.count ?? 0, settings.lastGlobalMemoryUpdate)
 
         case .context(let id):
             if let ctx = settings.contexts.first(where: { $0.id == id }) {
-                return (ctx.contextMemory?.count ?? 0, ctx.lastMemoryUpdate)
+                let lastUpdate = settings.lastContextMemoryUpdates[id]
+                return (ctx.contextMemory?.count ?? 0, lastUpdate)
             }
             return (0, nil)
 
         case .powerMode(let id):
             if let pm = settings.powerModes.first(where: { $0.id == id }) {
-                return (pm.memory?.count ?? 0, pm.lastMemoryUpdate)
+                let lastUpdate = settings.lastPowerModeMemoryUpdates[id]
+                return (pm.memory?.count ?? 0, lastUpdate)
             }
             return (0, nil)
+        }
+    }
+
+    /// Get combined memory for prompt injection
+    /// Returns global + context + power mode memory combined
+    func getCombinedMemory(
+        context: ConversationContext?,
+        powerMode: PowerMode?
+    ) -> String? {
+        var memoryParts: [String] = []
+
+        // Add global memory if enabled
+        if settings.globalMemoryEnabled, let global = settings.globalMemory, !global.isEmpty {
+            memoryParts.append("=== Global Memory ===\n\(global)")
+        }
+
+        // Add context memory if available
+        if let ctx = context, ctx.useContextMemory,
+           let contextMemory = ctx.contextMemory, !contextMemory.isEmpty {
+            memoryParts.append("=== Context: \(ctx.name) ===\n\(contextMemory)")
+        }
+
+        // Add power mode memory if available
+        if let pm = powerMode, pm.memoryEnabled,
+           let pmMemory = pm.memory, !pmMemory.isEmpty {
+            memoryParts.append("=== Power Mode: \(pm.name) ===\n\(pmMemory)")
+        }
+
+        return memoryParts.isEmpty ? nil : memoryParts.joined(separator: "\n\n")
+    }
+
+    /// Check if any memory tier needs updating
+    /// Used to show badge/indicator in UI
+    func hasUnprocessedRecords() -> Bool {
+        // Check global
+        if settings.globalMemoryEnabled {
+            let unprocessed = settings.getUnprocessedRecordsForMemory(tier: .global)
+            if !unprocessed.isEmpty { return true }
+        }
+
+        // Check contexts
+        for context in settings.contexts where context.useContextMemory {
+            let unprocessed = settings.getUnprocessedRecordsForMemory(
+                tier: .context,
+                contextId: context.id
+            )
+            if !unprocessed.isEmpty { return true }
+        }
+
+        // Check power modes
+        for powerMode in settings.powerModes where powerMode.memoryEnabled {
+            let unprocessed = settings.getUnprocessedRecordsForMemory(
+                tier: .powerMode,
+                powerModeId: powerMode.id
+            )
+            if !unprocessed.isEmpty { return true }
+        }
+
+        return false
+    }
+}
+
+// MARK: - Memory Errors
+
+enum MemoryError: LocalizedError {
+    case contextNotFound
+    case powerModeNotFound
+    case noProviderAvailable
+    case generationFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .contextNotFound:
+            return "Context not found"
+        case .powerModeNotFound:
+            return "Power Mode not found"
+        case .noProviderAvailable:
+            return "No AI provider available for memory operations"
+        case .generationFailed:
+            return "Failed to generate memory"
         }
     }
 }

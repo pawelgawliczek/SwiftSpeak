@@ -76,6 +76,7 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // Phase 4: Memory support
     var memoryEnabled: Bool
     var memory: String?
+    var memoryLimit: Int                    // Character limit (500-2000)
     var lastMemoryUpdate: Date?
 
     // Phase 4: Knowledge base document IDs (RAG)
@@ -116,6 +117,7 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         usageCount: Int = 0,
         memoryEnabled: Bool = false,
         memory: String? = nil,
+        memoryLimit: Int = 2000,
         lastMemoryUpdate: Date? = nil,
         knowledgeDocumentIds: [UUID] = [],
         ragConfiguration: RAGConfiguration = .default,
@@ -139,6 +141,7 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.usageCount = usageCount
         self.memoryEnabled = memoryEnabled
         self.memory = memory
+        self.memoryLimit = memoryLimit
         self.lastMemoryUpdate = lastMemoryUpdate
         self.knowledgeDocumentIds = knowledgeDocumentIds
         self.ragConfiguration = ragConfiguration
@@ -199,6 +202,87 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
             outputFormat: "Start with the core idea summary, then list expansions, variations, and actionable next steps."
         )
     ]
+
+    // MARK: - Codable (Backward Compatible)
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, icon, iconColor, iconBackgroundColor
+        case instruction, outputFormat
+        case createdAt, updatedAt, usageCount
+        case memoryEnabled, memory, memoryLimit, lastMemoryUpdate
+        case knowledgeDocumentIds, ragConfiguration
+        case isArchived, appAssignment, enabledWebhookIds
+        case providerOverride, aiAutocorrectEnabled
+        case enterSendsMessage, enterRunsContext
+        // Legacy
+        case systemPrompt  // Migrate to instruction
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        icon = try container.decodeIfPresent(String.self, forKey: .icon) ?? "bolt.fill"
+        iconColor = try container.decodeIfPresent(PowerModeColorPreset.self, forKey: .iconColor) ?? .orange
+        iconBackgroundColor = try container.decodeIfPresent(PowerModeColorPreset.self, forKey: .iconBackgroundColor) ?? .orange
+
+        // Migrate systemPrompt to instruction if present
+        if let systemPrompt = try container.decodeIfPresent(String.self, forKey: .systemPrompt) {
+            instruction = try container.decodeIfPresent(String.self, forKey: .instruction) ?? systemPrompt
+        } else {
+            instruction = try container.decodeIfPresent(String.self, forKey: .instruction) ?? ""
+        }
+
+        outputFormat = try container.decodeIfPresent(String.self, forKey: .outputFormat) ?? ""
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        usageCount = try container.decodeIfPresent(Int.self, forKey: .usageCount) ?? 0
+
+        memoryEnabled = try container.decodeIfPresent(Bool.self, forKey: .memoryEnabled) ?? false
+        memory = try container.decodeIfPresent(String.self, forKey: .memory)
+        // Default memoryLimit for existing power modes without the field
+        memoryLimit = try container.decodeIfPresent(Int.self, forKey: .memoryLimit) ?? 2000
+        lastMemoryUpdate = try container.decodeIfPresent(Date.self, forKey: .lastMemoryUpdate)
+
+        knowledgeDocumentIds = try container.decodeIfPresent([UUID].self, forKey: .knowledgeDocumentIds) ?? []
+        ragConfiguration = try container.decodeIfPresent(RAGConfiguration.self, forKey: .ragConfiguration) ?? .default
+        isArchived = try container.decodeIfPresent(Bool.self, forKey: .isArchived) ?? false
+        appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
+        enabledWebhookIds = try container.decodeIfPresent([UUID].self, forKey: .enabledWebhookIds) ?? []
+        providerOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .providerOverride)
+        aiAutocorrectEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiAutocorrectEnabled) ?? false
+        enterSendsMessage = try container.decodeIfPresent(Bool.self, forKey: .enterSendsMessage) ?? true
+        enterRunsContext = try container.decodeIfPresent(Bool.self, forKey: .enterRunsContext) ?? false
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encode(icon, forKey: .icon)
+        try container.encode(iconColor, forKey: .iconColor)
+        try container.encode(iconBackgroundColor, forKey: .iconBackgroundColor)
+        try container.encode(instruction, forKey: .instruction)
+        try container.encode(outputFormat, forKey: .outputFormat)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(updatedAt, forKey: .updatedAt)
+        try container.encode(usageCount, forKey: .usageCount)
+        try container.encode(memoryEnabled, forKey: .memoryEnabled)
+        try container.encodeIfPresent(memory, forKey: .memory)
+        try container.encode(memoryLimit, forKey: .memoryLimit)
+        try container.encodeIfPresent(lastMemoryUpdate, forKey: .lastMemoryUpdate)
+        try container.encode(knowledgeDocumentIds, forKey: .knowledgeDocumentIds)
+        try container.encode(ragConfiguration, forKey: .ragConfiguration)
+        try container.encode(isArchived, forKey: .isArchived)
+        try container.encode(appAssignment, forKey: .appAssignment)
+        try container.encode(enabledWebhookIds, forKey: .enabledWebhookIds)
+        try container.encodeIfPresent(providerOverride, forKey: .providerOverride)
+        try container.encode(aiAutocorrectEnabled, forKey: .aiAutocorrectEnabled)
+        try container.encode(enterSendsMessage, forKey: .enterSendsMessage)
+        try container.encode(enterRunsContext, forKey: .enterRunsContext)
+    }
 }
 
 // MARK: - Power Mode Question Option

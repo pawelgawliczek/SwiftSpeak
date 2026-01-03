@@ -55,7 +55,7 @@ Translation, auto-return, custom templates, waveform audio connection.
 
 ### Phase 4: Power Mode Backend - COMPLETE ✅
 - [x] Phase 4a: Conversation Contexts (ConversationContext model, ContextsView, ContextEditorSheet)
-- [x] Phase 4b: Three-Tier Memory System (MemoryManager, global/context/powerMode memory)
+- [x] Phase 4b: Three-Tier Memory System (batch updates via MemoryUpdateScheduler, 12h-24h intervals)
 - [x] Phase 4c: PowerModeOrchestrator (central coordinator, context/memory injection, wired to UI)
 - [x] Phase 4d: LLM Streaming (SSEParser, streaming for OpenAI/Anthropic/Gemini, progressive UI)
 - [x] Phase 4e: RAG System (DocumentParser, TextChunker, EmbeddingService, VectorStore, RAGOrchestrator)
@@ -230,8 +230,9 @@ SwiftSpeak/
 │   │   │   ├── AudioSessionManager.swift
 │   │   │   └── AudioRecorder.swift
 │   │   ├── Memory/
-│   │   │   ├── MemoryManager.swift              # Phase 4b - Memory update/compression
-│   │   │   └── MemoryUpdateCoordinator.swift    # Phase 11c - Actor-based serialization
+│   │   │   ├── MemoryManager.swift              # Phase 4b - Memory utility functions
+│   │   │   ├── MemoryUpdateScheduler.swift      # Batch memory updates (12h-24h intervals)
+│   │   │   └── MemoryUpdateCoordinator.swift    # LEGACY - Replaced by MemoryUpdateScheduler
 │   │   ├── Security/                            # Phase 6 + 11 - Security services
 │   │   │   ├── KeychainManager.swift            # Secure API key storage
 │   │   │   ├── BiometricAuthManager.swift       # Face ID/Touch ID with session
@@ -363,7 +364,8 @@ SwiftSpeak/
 │   │   ├── TokenCounterTests.swift             # Phase 11 - Token counting tests
 │   │   ├── ProviderHealthTrackerTests.swift    # Phase 11 - Circuit breaker tests
 │   │   ├── WebhookCircuitBreakerTests.swift    # Phase 11 - Webhook timeout tests
-│   │   ├── MemoryUpdateCoordinatorTests.swift  # Phase 11 - Serialization tests
+│   │   ├── MemoryUpdateCoordinatorTests.swift  # Phase 11 - Serialization tests (legacy)
+│   │   ├── MemoryUpdateSchedulerTests.swift    # Batch memory update tests
 │   │   ├── LocalTranslationManagerTests.swift  # Phase 10 - iOS 18+ translation tests
 │   │   └── (other service tests)
 │   └── Integration/                            # Phase 11 - Integration tests
@@ -417,6 +419,65 @@ The orchestrator:
 5. Saves to history
 6. Copies to clipboard
 7. Updates `lastTranscription` for keyboard access
+
+## Three-Tier Memory System
+
+SwiftSpeak uses a three-tier memory system to provide personalized, context-aware dictation. Memory is updated via batch processing (NOT per-transcription) to reduce API costs.
+
+### Memory Tiers
+
+| Tier | Scope | Purpose |
+|------|-------|---------|
+| Global | All conversations | User's general communication style, vocabulary, frequent contacts |
+| Context | Per ConversationContext | Context-specific patterns (e.g., "Work" vs "Personal" communication) |
+| Power Mode | Per Power Mode | Workflow-specific knowledge (e.g., "Research Assistant" remembers research topics) |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `MemoryUpdateScheduler.swift` | Batch memory updates on app start (12h-24h intervals) |
+| `MemoryManager.swift` | Utility functions: getCombinedMemory, clearMemory, isMemoryEnabled |
+| `SharedSettings.swift` | Memory tracking: lastGlobalMemoryUpdate, lastContextMemoryUpdates, globalMemoryLimit |
+| `TranscriptionRecord` | Memory flags: globalMemoryEnabled, usedForGlobalMemory, etc. |
+
+### Update Schedule
+
+- **Minimum interval:** 12 hours (max twice per day)
+- **Maximum interval:** 24 hours (must update at least daily if there are new records)
+- **Trigger:** On app start and when app returns to foreground
+
+### Message Tracking
+
+Each `TranscriptionRecord` tracks which memory tiers were enabled at transcription time:
+```swift
+// State at transcription time
+let globalMemoryEnabled: Bool
+let contextMemoryEnabled: Bool
+let powerModeMemoryEnabled: Bool
+
+// Processing tracking
+var usedForGlobalMemory: Bool
+var usedForContextMemory: Bool
+var usedForPowerModeMemory: Bool
+```
+
+When memory updates run, only records where `{tier}MemoryEnabled == true && usedFor{Tier}Memory == false` are processed.
+
+### Memory Limits
+
+Each tier has a configurable character limit (500-2000 characters, default 2000):
+- `SharedSettings.globalMemoryLimit` - Global memory limit
+- `ConversationContext.memoryLimit` - Per-context limit
+- `PowerMode.memoryLimit` - Per-power-mode limit
+
+### Multilingual Support
+
+Memory prompts explicitly preserve:
+- Text in original language and script (Chinese 中文, Japanese 日本語, Arabic العربية, Korean 한국어)
+- Proper nouns, names, and technical terms in their original form
+- Language-specific punctuation and formatting
+- Note which languages the user commonly uses
 
 ## Audio Recording Configuration
 
@@ -813,3 +874,4 @@ The exact wording of prompts significantly impacts output quality and user exper
 **Current Legacy Files:**
 - `RecordingBar.swift` - Replaced by SwiftLinkStreamingOverlay in KeyboardView.swift (2025-01)
 - `StreamingTranscriptRow.swift` - Replaced by SwiftLinkStreamingOverlay in KeyboardView.swift (2025-01)
+- `MemoryUpdateCoordinator.swift` - Replaced by MemoryUpdateScheduler.swift (2025-01). Memory updates now use batch processing instead of per-transcription updates.

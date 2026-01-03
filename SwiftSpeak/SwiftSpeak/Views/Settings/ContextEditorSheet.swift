@@ -35,6 +35,7 @@ struct ContextEditorSheet: View {
     @State private var useGlobalMemory: Bool = true
     @State private var useContextMemory: Bool = false
     @State private var contextMemory: String = ""
+    @State private var memoryLimit: Int = 2000
 
     // MARK: - Keyboard Behavior State
     @State private var autoSendAfterInsert: Bool = false
@@ -45,7 +46,6 @@ struct ContextEditorSheet: View {
 
     // MARK: - UI State
     @State private var showingIconPicker = false
-    @State private var showingMemoryEditor = false
     @State private var showingDeleteConfirmation = false
     @State private var showingAddExample = false
     @State private var newExampleText: String = ""
@@ -72,6 +72,7 @@ struct ContextEditorSheet: View {
         _useGlobalMemory = State(initialValue: context.useGlobalMemory)
         _useContextMemory = State(initialValue: context.useContextMemory)
         _contextMemory = State(initialValue: context.contextMemory ?? "")
+        _memoryLimit = State(initialValue: context.memoryLimit)
         _autoSendAfterInsert = State(initialValue: context.autoSendAfterInsert)
         _enterKeyBehavior = State(initialValue: context.enterKeyBehavior)
         _appAssignment = State(initialValue: context.appAssignment)
@@ -599,66 +600,72 @@ struct ContextEditorSheet: View {
             .background(Color.primary.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
-            // Memory preview (when enabled)
+            // Memory limit slider (when context memory enabled)
             if useContextMemory {
-                if !contextMemory.isEmpty {
-                    Button(action: {
-                        HapticManager.lightTap()
-                        showingMemoryEditor = true
-                    }) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack {
-                                Image(systemName: "brain")
-                                    .font(.caption)
-                                    .foregroundStyle(color.color)
-                                Text("Current Memory")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Text("Edit")
-                                    .font(.caption.weight(.medium))
-                                    .foregroundStyle(color.color)
-                            }
-
-                            Text(contextMemory)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(3)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(12)
-                        .background(color.color.opacity(0.1))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Memory Size Limit")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Text("\(memoryLimit) chars")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Button(action: {
-                        HapticManager.selection()
-                        showingMemoryEditor = true
-                    }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: "plus.circle")
-                                .font(.title2)
-                                .foregroundStyle(color.color)
-                                .frame(width: 40)
 
-                            Text("Add Memory")
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
+                    Slider(
+                        value: Binding(
+                            get: { Double(memoryLimit) },
+                            set: { memoryLimit = Int($0) }
+                        ),
+                        in: 500...2000,
+                        step: 100
+                    )
+                    .tint(color.color)
 
-                            Spacer()
-
-                            Image(systemName: "chevron.right")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 14)
-                        .background(Color.primary.opacity(0.05))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
+                    Text("Smaller limits save API costs, larger limits preserve more context")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
+
+            // Memory content editor (when enabled)
+            if useContextMemory {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "brain")
+                            .font(.caption)
+                            .foregroundStyle(color.color)
+                        Text("Memory Content")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(contextMemory.count)/\(memoryLimit)")
+                            .font(.caption2)
+                            .foregroundStyle(contextMemory.count > memoryLimit ? .red : .tertiary)
+                            .monospacedDigit()
+                    }
+
+                    TextEditor(text: $contextMemory)
+                        .font(.subheadline)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 80)
+                        .padding(10)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                    Text("AI will reference this memory when formatting text in this context")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(color.color.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             }
         }
     }
@@ -784,6 +791,7 @@ struct ContextEditorSheet: View {
             useGlobalMemory: useGlobalMemory,
             useContextMemory: useContextMemory,
             contextMemory: contextMemory.isEmpty ? nil : contextMemory,
+            memoryLimit: memoryLimit,
             lastMemoryUpdate: context.lastMemoryUpdate,
             autoSendAfterInsert: autoSendAfterInsert,
             enterKeyBehavior: enterKeyBehavior,

@@ -2,13 +2,26 @@
 //  MemoryUpdateCoordinatorTests.swift
 //  SwiftSpeakTests
 //
-//  Phase 11c: Tests for memory update serialization
+//  LEGACY: This file is deprecated and kept for reference only
+//  Replaced by: MemoryUpdateSchedulerTests.swift on 2025-01
+//  Reason: Memory updates now use batch processing instead of per-transcription updates.
+//          The new system collects messages and processes them on app start (12h-24h intervals)
+//          using MemoryUpdateScheduler. Tests for the new system are in MemoryUpdateSchedulerTests.swift.
+//  DO NOT USE - Will be removed in future cleanup
+//
+//  Original purpose: Phase 11c - Tests for memory update serialization
 //
 
 import Testing
 import Foundation
 @testable import SwiftSpeak
 
+// MARK: - LEGACY TESTS COMMENTED OUT
+// The tests below have been commented out because the MemoryUpdateCoordinator
+// class they test has been replaced by MemoryUpdateScheduler during the
+// memory system redesign. See MemoryUpdateSchedulerTests.swift for current tests.
+
+/*
 @Suite("MemoryUpdateCoordinator Tests")
 struct MemoryUpdateCoordinatorTests {
 
@@ -316,3 +329,4 @@ struct MemoryUpdateCoordinatorTests {
         }
     }
 }
+*/

@@ -51,6 +51,7 @@ enum Constants {
         // Phase 4a: Global Memory (3-Tier System)
         static let globalMemory = "globalMemory"
         static let globalMemoryEnabled = "globalMemoryEnabled"
+        static let globalMemoryLimit = "globalMemoryLimit"  // Character limit (500-2000)
         static let powerModeStreamingEnabled = "powerModeStreamingEnabled"
         static let transcriptionStreamingEnabled = "transcriptionStreamingEnabled"
 

@@ -2,12 +2,26 @@
 //  MemoryUpdateCoordinator.swift
 //  SwiftSpeak
 //
-//  Phase 11c: Serialize memory updates to prevent race conditions
+//  LEGACY: This file is deprecated and kept for reference only
+//  Replaced by: MemoryUpdateScheduler.swift on 2025-01
+//  Reason: Memory updates now use batch processing instead of per-transcription updates.
+//          The new system collects messages and processes them on app start (12h-24h intervals)
+//          using MemoryUpdateScheduler for better performance and reduced API costs.
+//  DO NOT USE - Will be removed in future cleanup
+//
+//  Original purpose: Phase 11c - Serialize memory updates to prevent race conditions
 //  Wraps MemoryManager with actor-based serialization
 //
 
 import Foundation
 
+// MARK: - LEGACY CODE COMMENTED OUT
+// The implementation below has been commented out because it references
+// types and methods (MemoryUpdateResult, updateMemory) that were removed
+// during the memory system redesign. The new batch-based memory update
+// system is in MemoryUpdateScheduler.swift.
+
+/*
 /// Coordinates memory updates to prevent race conditions from rapid transcriptions
 /// Uses Swift actor to ensure serial execution of memory operations
 actor MemoryUpdateCoordinator {
@@ -230,3 +244,4 @@ protocol MemoryUpdateCoordinatorProtocol: Sendable {
 extension MemoryUpdateCoordinator: MemoryUpdateCoordinatorProtocol {
     // Actor methods already conform
 }
+*/

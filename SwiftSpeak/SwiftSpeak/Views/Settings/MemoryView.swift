@@ -308,6 +308,38 @@ struct MemoryView: View {
                     HapticManager.selection()
                 }
 
+                // Memory limit slider (only show when enabled)
+                if settings.globalMemoryEnabled {
+                    Divider()
+                        .padding(.vertical, 4)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Memory Size Limit")
+                                .font(.subheadline.weight(.medium))
+                            Spacer()
+                            Text("\(settings.globalMemoryLimit) chars")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+
+                        Slider(
+                            value: Binding(
+                                get: { Double(settings.globalMemoryLimit) },
+                                set: { settings.globalMemoryLimit = Int($0) }
+                            ),
+                            in: 500...2000,
+                            step: 100
+                        )
+                        .tint(AppTheme.accent)
+
+                        Text("Smaller limits save API costs, larger limits preserve more context")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
                 // Only show memory content when enabled
                 if settings.globalMemoryEnabled {
                     if let memory = settings.historyMemory, !memory.summary.isEmpty {

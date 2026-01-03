@@ -26,6 +26,7 @@ struct PowerModeEditorView: View {
     // Phase 4: Memory
     @State private var memoryEnabled: Bool = false
     @State private var memoryContent: String = ""
+    @State private var memoryLimit: Int = 2000
 
     // App assignment
     @State private var appAssignment: AppAssignment = AppAssignment()
@@ -49,7 +50,6 @@ struct PowerModeEditorView: View {
     // UI state
     @State private var showingIconPicker = false
     @State private var showingKnowledgeBase = false
-    @State private var showingMemoryEditor = false
 
     private var isValid: Bool {
         !name.trimmingCharacters(in: .whitespaces).isEmpty &&
@@ -92,6 +92,7 @@ struct PowerModeEditorView: View {
             _outputFormat = State(initialValue: mode.outputFormat)
             _memoryEnabled = State(initialValue: mode.memoryEnabled)
             _memoryContent = State(initialValue: mode.memory ?? "")
+            _memoryLimit = State(initialValue: mode.memoryLimit)
             _appAssignment = State(initialValue: mode.appAssignment)
             _knowledgeDocumentIds = State(initialValue: mode.knowledgeDocumentIds)
             _enabledWebhookIds = State(initialValue: mode.enabledWebhookIds)
@@ -164,19 +165,6 @@ struct PowerModeEditorView: View {
                 KnowledgeBaseView(
                     powerMode: currentPowerModeForKnowledgeBase,
                     documentIds: $knowledgeDocumentIds
-                )
-            }
-            .sheet(isPresented: $showingMemoryEditor) {
-                MemoryEditorSheet(
-                    title: "\(name) - Workflow Memory",
-                    content: $memoryContent,
-                    lastUpdated: powerMode?.lastMemoryUpdate,
-                    onSave: {
-                        // Memory content is already bound
-                    },
-                    onClear: {
-                        memoryContent = ""
-                    }
                 )
             }
         }
@@ -298,31 +286,70 @@ struct PowerModeEditorView: View {
             .background(Color.primary.opacity(0.05))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
 
-            // Memory preview (when enabled and has content)
-            if memoryEnabled, !memoryContent.isEmpty {
-                Button(action: {
-                    HapticManager.lightTap()
-                    showingMemoryEditor = true
-                }) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "brain")
-                                .font(.caption)
-                                .foregroundStyle(.purple)
-                            Text("Current Memory")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Text("Edit")
-                                .font(.caption.weight(.medium))
-                                .foregroundStyle(AppTheme.powerAccent)
-                        }
-
-                        Text(memoryContent)
+            // Memory limit slider (when memory enabled)
+            if memoryEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Memory Size Limit")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Text("\(memoryLimit) chars")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                            .lineLimit(3)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .monospacedDigit()
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: { Double(memoryLimit) },
+                            set: { memoryLimit = Int($0) }
+                        ),
+                        in: 500...2000,
+                        step: 100
+                    )
+                    .tint(AppTheme.powerAccent)
+
+                    Text("Smaller limits save API costs, larger limits preserve more context")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
+
+            // Memory content editor (when enabled)
+            if memoryEnabled {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Image(systemName: "brain")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                        Text("Memory Content")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text("\(memoryContent.count)/\(memoryLimit)")
+                            .font(.caption2)
+                            .foregroundStyle(memoryContent.count > memoryLimit ? .red : .tertiary)
+                            .monospacedDigit()
+                    }
+
+                    TextEditor(text: $memoryContent)
+                        .font(.subheadline)
+                        .scrollContentBackground(.hidden)
+                        .frame(minHeight: 80)
+                        .padding(10)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                    HStack {
+                        Text("AI will reference this memory when using this Power Mode")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+
+                        Spacer()
 
                         if let lastUpdate = powerMode?.lastMemoryUpdate {
                             Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
@@ -330,11 +357,10 @@ struct PowerModeEditorView: View {
                                 .foregroundStyle(.tertiary)
                         }
                     }
-                    .padding(12)
-                    .background(Color.purple.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
                 }
-                .buttonStyle(.plain)
+                .padding(12)
+                .background(Color.purple.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
             }
 
             // History link (if editing existing mode)
@@ -848,6 +874,7 @@ struct PowerModeEditorView: View {
             usageCount: powerMode?.usageCount ?? 0,
             memoryEnabled: memoryEnabled,
             memory: memoryContent.isEmpty ? nil : memoryContent,
+            memoryLimit: memoryLimit,
             lastMemoryUpdate: newMemoryUpdate,
             knowledgeDocumentIds: knowledgeDocumentIds,
             isArchived: powerMode?.isArchived ?? false,

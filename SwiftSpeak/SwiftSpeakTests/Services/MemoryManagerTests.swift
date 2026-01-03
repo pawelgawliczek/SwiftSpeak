@@ -3,6 +3,7 @@
 //  SwiftSpeakTests
 //
 //  Comprehensive tests for MemoryManager three-tier memory system
+//  Updated: Memory updates now handled by MemoryUpdateScheduler
 //
 
 import Foundation
@@ -15,28 +16,27 @@ import Testing
 @MainActor
 struct MemoryManagerInitTests {
 
-    @Test("Initial state is not updating")
+    @Test("Manager initializes without settings using shared")
     @MainActor
-    func initialStateNotUpdating() {
+    func initializesWithSharedSettings() {
         let manager = MemoryManager()
 
-        #expect(manager.isUpdating == false)
-        #expect(manager.lastError == nil)
+        // Should not crash - using shared settings
+        #expect(manager != nil)
     }
 
-    @Test("Compression threshold is 2000")
-    func compressionThresholdIs2000() {
-        #expect(MemoryManager.compressionThreshold == 2000)
+    @Test("Manager initializes with custom settings")
+    @MainActor
+    func initializesWithCustomSettings() {
+        let settings = SharedSettings.shared
+        let manager = MemoryManager(settings: settings)
+
+        #expect(manager != nil)
     }
 
-    @Test("Compression target is 1500")
-    func compressionTargetIs1500() {
-        #expect(MemoryManager.compressionTarget == 1500)
-    }
-
-    @Test("Max recent entries is 10")
-    func maxRecentEntriesIs10() {
-        #expect(MemoryManager.maxRecentEntries == 10)
+    @Test("Max memory length is 2000")
+    func maxMemoryLengthIs2000() {
+        #expect(MemoryManager.maxMemoryLength == 2000)
     }
 }
 
@@ -50,7 +50,7 @@ struct MemoryTierTargetTests {
     func globalTierTarget() {
         let tier = MemoryTierTarget.global
         if case .global = tier {
-            #expect(true)
+            #expect(Bool(true))
         } else {
             #expect(Bool(false), "Expected global tier")
         }
@@ -79,61 +79,6 @@ struct MemoryTierTargetTests {
     }
 }
 
-// MARK: - Memory Update Result Tests
-
-@Suite("MemoryManager - MemoryUpdateResult")
-@MainActor
-struct MemoryUpdateResultTests {
-
-    @Test("Successful result properties")
-    func successfulResultProperties() {
-        let result = MemoryUpdateResult(
-            tier: .global,
-            previousLength: 100,
-            newLength: 150,
-            wasCompressed: false,
-            success: true,
-            error: nil
-        )
-
-        #expect(result.previousLength == 100)
-        #expect(result.newLength == 150)
-        #expect(result.wasCompressed == false)
-        #expect(result.success == true)
-        #expect(result.error == nil)
-    }
-
-    @Test("Failed result with error")
-    func failedResultWithError() {
-        let result = MemoryUpdateResult(
-            tier: .global,
-            previousLength: 100,
-            newLength: 100,
-            wasCompressed: false,
-            success: false,
-            error: MemoryError.noProviderAvailable
-        )
-
-        #expect(result.success == false)
-        #expect(result.error != nil)
-    }
-
-    @Test("Compressed result")
-    func compressedResult() {
-        let result = MemoryUpdateResult(
-            tier: .global,
-            previousLength: 2500,
-            newLength: 1400,
-            wasCompressed: true,
-            success: true,
-            error: nil
-        )
-
-        #expect(result.wasCompressed == true)
-        #expect(result.newLength < result.previousLength)
-    }
-}
-
 // MARK: - Memory Error Tests
 
 @Suite("MemoryManager - MemoryError")
@@ -158,10 +103,10 @@ struct MemoryErrorTests {
         #expect(error.errorDescription == "No AI provider available for memory operations")
     }
 
-    @Test("Compression failed error description")
-    func compressionFailedError() {
-        let error = MemoryError.compressionFailed
-        #expect(error.errorDescription == "Failed to compress memory")
+    @Test("Generation failed error description")
+    func generationFailedError() {
+        let error = MemoryError.generationFailed
+        #expect(error.errorDescription == "Failed to generate memory")
     }
 }
 
@@ -275,7 +220,9 @@ struct MemoryManagerStatsTests {
     func globalMemoryStatsEmpty() {
         let settings = SharedSettings.shared
         let originalMemory = settings.globalMemory
+        let originalUpdate = settings.lastGlobalMemoryUpdate
         settings.globalMemory = nil
+        settings.lastGlobalMemoryUpdate = nil
 
         let manager = MemoryManager(settings: settings)
         let stats = manager.getMemoryStats(for: .global)
@@ -285,6 +232,7 @@ struct MemoryManagerStatsTests {
 
         // Restore
         settings.globalMemory = originalMemory
+        settings.lastGlobalMemoryUpdate = originalUpdate
     }
 
     @Test("Global memory stats with content")
@@ -292,16 +240,20 @@ struct MemoryManagerStatsTests {
     func globalMemoryStatsWithContent() {
         let settings = SharedSettings.shared
         let originalMemory = settings.globalMemory
+        let originalUpdate = settings.lastGlobalMemoryUpdate
+        let testDate = Date()
         settings.globalMemory = "Test content here"
+        settings.lastGlobalMemoryUpdate = testDate
 
         let manager = MemoryManager(settings: settings)
         let stats = manager.getMemoryStats(for: .global)
 
         #expect(stats.length == 17) // "Test content here".count
-        #expect(stats.lastUpdate == nil) // Global doesn't track lastUpdate
+        #expect(stats.lastUpdate == testDate)
 
         // Restore
         settings.globalMemory = originalMemory
+        settings.lastGlobalMemoryUpdate = originalUpdate
     }
 
     @Test("Context memory stats for nonexistent context")
@@ -336,15 +288,19 @@ struct MemoryManagerClearTests {
     func clearGlobalMemory() {
         let settings = SharedSettings.shared
         let originalMemory = settings.globalMemory
+        let originalUpdate = settings.lastGlobalMemoryUpdate
         settings.globalMemory = "Some memory content"
+        settings.lastGlobalMemoryUpdate = Date()
 
         let manager = MemoryManager(settings: settings)
         manager.clearMemory(tier: .global)
 
         #expect(settings.globalMemory == nil)
+        #expect(settings.lastGlobalMemoryUpdate == nil)
 
         // Restore
         settings.globalMemory = originalMemory
+        settings.lastGlobalMemoryUpdate = originalUpdate
     }
 
     @Test("Clear nonexistent context memory is safe")
@@ -354,7 +310,7 @@ struct MemoryManagerClearTests {
 
         // Should not throw or crash
         manager.clearMemory(tier: .context(UUID()))
-        #expect(true) // If we get here, it didn't crash
+        #expect(Bool(true)) // If we get here, it didn't crash
     }
 
     @Test("Clear nonexistent power mode memory is safe")
@@ -364,175 +320,250 @@ struct MemoryManagerClearTests {
 
         // Should not throw or crash
         manager.clearMemory(tier: .powerMode(UUID()))
-        #expect(true) // If we get here, it didn't crash
+        #expect(Bool(true)) // If we get here, it didn't crash
     }
 }
 
-// MARK: - Update Memory Tests
+// MARK: - Combined Memory Tests
 
-@Suite("MemoryManager - Update Memory")
+@Suite("MemoryManager - Combined Memory")
 @MainActor
-struct MemoryManagerUpdateTests {
+struct MemoryManagerCombinedTests {
 
-    @Test("Empty transcription returns no results")
+    @Test("Combined memory returns nil when all empty")
     @MainActor
-    func emptyTranscriptionNoResults() async {
-        let manager = MemoryManager()
-
-        let results = await manager.updateMemory(from: "", context: nil, powerMode: nil)
-
-        #expect(results.isEmpty)
-    }
-
-    @Test("Whitespace-only transcription returns no results")
-    @MainActor
-    func whitespaceOnlyNoResults() async {
-        let manager = MemoryManager()
-
-        let results = await manager.updateMemory(from: "   \n\t  ", context: nil, powerMode: nil)
-
-        #expect(results.isEmpty)
-    }
-
-    @Test("Update sets isUpdating during operation")
-    @MainActor
-    func updateSetsIsUpdating() async {
+    func combinedMemoryEmptyReturnsNil() {
         let settings = SharedSettings.shared
+        let originalMemory = settings.globalMemory
         let originalEnabled = settings.globalMemoryEnabled
+        settings.globalMemory = nil
         settings.globalMemoryEnabled = true
 
         let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: nil, powerMode: nil)
 
-        // Start update (will complete quickly without provider)
-        let _ = await manager.updateMemory(from: "Test", context: nil, powerMode: nil)
-
-        // After completion, isUpdating should be false
-        #expect(manager.isUpdating == false)
+        #expect(combined == nil)
 
         // Restore
+        settings.globalMemory = originalMemory
         settings.globalMemoryEnabled = originalEnabled
     }
 
-    @Test("Update with global memory disabled skips global tier")
+    @Test("Combined memory includes global when enabled")
     @MainActor
-    func updateSkipsDisabledGlobalMemory() async {
+    func combinedMemoryIncludesGlobal() {
         let settings = SharedSettings.shared
+        let originalMemory = settings.globalMemory
         let originalEnabled = settings.globalMemoryEnabled
+        settings.globalMemory = "Global memory content"
+        settings.globalMemoryEnabled = true
+
+        let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: nil, powerMode: nil)
+
+        #expect(combined != nil)
+        #expect(combined!.contains("Global Memory"))
+        #expect(combined!.contains("Global memory content"))
+
+        // Restore
+        settings.globalMemory = originalMemory
+        settings.globalMemoryEnabled = originalEnabled
+    }
+
+    @Test("Combined memory excludes global when disabled")
+    @MainActor
+    func combinedMemoryExcludesGlobalWhenDisabled() {
+        let settings = SharedSettings.shared
+        let originalMemory = settings.globalMemory
+        let originalEnabled = settings.globalMemoryEnabled
+        settings.globalMemory = "Global memory content"
         settings.globalMemoryEnabled = false
 
         let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: nil, powerMode: nil)
 
-        let results = await manager.updateMemory(
-            from: "Test transcription",
-            context: nil,
-            powerMode: nil
-        )
-
-        // With global disabled and no context/powerMode, should be empty
-        #expect(results.isEmpty)
+        #expect(combined == nil)
 
         // Restore
+        settings.globalMemory = originalMemory
         settings.globalMemoryEnabled = originalEnabled
     }
 
-    @Test("Update with context memory disabled skips context tier")
+    @Test("Combined memory includes context when enabled")
     @MainActor
-    func updateSkipsDisabledContextMemory() async {
+    func combinedMemoryIncludesContext() {
         let settings = SharedSettings.shared
         let originalEnabled = settings.globalMemoryEnabled
         settings.globalMemoryEnabled = false
 
         let context = ConversationContext(
-            name: "Test",
+            name: "Test Context",
             icon: "person",
             color: .blue,
             description: "Test",
-            useContextMemory: false, // Disabled
+            useContextMemory: true,
+            contextMemory: "Context specific memory",
             isActive: true
         )
 
         let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: context, powerMode: nil)
 
-        let results = await manager.updateMemory(
-            from: "Test transcription",
-            context: context,
-            powerMode: nil
-        )
-
-        // Context memory disabled, so no context tier update
-        let hasContextTier = results.contains { result in
-            if case .context = result.tier { return true }
-            return false
-        }
-        #expect(hasContextTier == false)
+        #expect(combined != nil)
+        #expect(combined!.contains("Context: Test Context"))
+        #expect(combined!.contains("Context specific memory"))
 
         // Restore
         settings.globalMemoryEnabled = originalEnabled
     }
 
-    @Test("Update with power mode memory disabled skips power mode tier")
+    @Test("Combined memory excludes context when disabled")
     @MainActor
-    func updateSkipsDisabledPowerModeMemory() async {
+    func combinedMemoryExcludesContextWhenDisabled() {
+        let settings = SharedSettings.shared
+        let originalEnabled = settings.globalMemoryEnabled
+        settings.globalMemoryEnabled = false
+
+        let context = ConversationContext(
+            name: "Test Context",
+            icon: "person",
+            color: .blue,
+            description: "Test",
+            useContextMemory: false, // Disabled
+            contextMemory: "Context specific memory",
+            isActive: true
+        )
+
+        let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: context, powerMode: nil)
+
+        #expect(combined == nil)
+
+        // Restore
+        settings.globalMemoryEnabled = originalEnabled
+    }
+
+    @Test("Combined memory includes power mode when enabled")
+    @MainActor
+    func combinedMemoryIncludesPowerMode() {
         let settings = SharedSettings.shared
         let originalEnabled = settings.globalMemoryEnabled
         settings.globalMemoryEnabled = false
 
         let powerMode = PowerMode(
-            name: "Test",
+            name: "Test Power",
             icon: "bolt",
             iconColor: .purple,
             iconBackgroundColor: .purple,
             instruction: "Test",
-            memoryEnabled: false // Disabled
+            memoryEnabled: true,
+            memory: "Power mode memory"
         )
 
         let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: nil, powerMode: powerMode)
 
-        let results = await manager.updateMemory(
-            from: "Test transcription",
-            context: nil,
-            powerMode: powerMode
+        #expect(combined != nil)
+        #expect(combined!.contains("Power Mode: Test Power"))
+        #expect(combined!.contains("Power mode memory"))
+
+        // Restore
+        settings.globalMemoryEnabled = originalEnabled
+    }
+
+    @Test("Combined memory combines all tiers")
+    @MainActor
+    func combinedMemoryAllTiers() {
+        let settings = SharedSettings.shared
+        let originalMemory = settings.globalMemory
+        let originalEnabled = settings.globalMemoryEnabled
+        settings.globalMemory = "Global memory"
+        settings.globalMemoryEnabled = true
+
+        let context = ConversationContext(
+            name: "Work",
+            icon: "briefcase",
+            color: .blue,
+            description: "Work context",
+            useContextMemory: true,
+            contextMemory: "Context memory",
+            isActive: true
         )
 
-        // Power mode memory disabled, so no power mode tier update
-        let hasPowerModeTier = results.contains { result in
-            if case .powerMode = result.tier { return true }
-            return false
-        }
-        #expect(hasPowerModeTier == false)
+        let powerMode = PowerMode(
+            name: "Assistant",
+            icon: "sparkles",
+            iconColor: .orange,
+            iconBackgroundColor: .orange,
+            instruction: "Help",
+            memoryEnabled: true,
+            memory: "Power memory"
+        )
+
+        let manager = MemoryManager(settings: settings)
+        let combined = manager.getCombinedMemory(context: context, powerMode: powerMode)
+
+        #expect(combined != nil)
+        #expect(combined!.contains("Global Memory"))
+        #expect(combined!.contains("Global memory"))
+        #expect(combined!.contains("Context: Work"))
+        #expect(combined!.contains("Context memory"))
+        #expect(combined!.contains("Power Mode: Assistant"))
+        #expect(combined!.contains("Power memory"))
+
+        // Restore
+        settings.globalMemory = originalMemory
+        settings.globalMemoryEnabled = originalEnabled
+    }
+}
+
+// MARK: - Unprocessed Records Tests
+
+@Suite("MemoryManager - Unprocessed Records")
+@MainActor
+struct MemoryManagerUnprocessedTests {
+
+    @Test("Has unprocessed records returns false when all processed")
+    @MainActor
+    func hasUnprocessedRecordsFalseWhenEmpty() {
+        let settings = SharedSettings.shared
+        let originalEnabled = settings.globalMemoryEnabled
+        settings.globalMemoryEnabled = false // Disable to avoid checking
+
+        let manager = MemoryManager(settings: settings)
+        let hasUnprocessed = manager.hasUnprocessedRecords()
+
+        // With nothing enabled, should be false
+        #expect(hasUnprocessed == false)
 
         // Restore
         settings.globalMemoryEnabled = originalEnabled
     }
 }
 
-// MARK: - Memory Combining Logic Tests
+// MARK: - Clear All Memory Tests
 
-@Suite("MemoryManager - Memory Combining")
+@Suite("MemoryManager - Clear All Memory")
 @MainActor
-struct MemoryManagerCombiningTests {
+struct MemoryManagerClearAllTests {
 
-    @Test("Short text used directly for summary")
+    @Test("Clear all memory clears global")
     @MainActor
-    func shortTextUsedDirectly() async {
+    func clearAllClearsGlobal() {
         let settings = SharedSettings.shared
-        let originalEnabled = settings.globalMemoryEnabled
         let originalMemory = settings.globalMemory
-        settings.globalMemoryEnabled = true
-        settings.globalMemory = nil
+        let originalUpdate = settings.lastGlobalMemoryUpdate
+        settings.globalMemory = "Test memory"
+        settings.lastGlobalMemoryUpdate = Date()
 
         let manager = MemoryManager(settings: settings)
+        manager.clearAllMemory()
 
-        // Short text (< 200 chars) should be used directly
-        let shortText = "This is a short test."
-        let _ = await manager.updateMemory(from: shortText, context: nil, powerMode: nil)
-
-        // Memory should contain the short text (may have timestamp added)
-        let memory = settings.globalMemory ?? ""
-        #expect(memory.contains("short test"))
+        #expect(settings.globalMemory == nil)
+        #expect(settings.lastGlobalMemoryUpdate == nil)
 
         // Restore
-        settings.globalMemoryEnabled = originalEnabled
         settings.globalMemory = originalMemory
+        settings.lastGlobalMemoryUpdate = originalUpdate
     }
 }

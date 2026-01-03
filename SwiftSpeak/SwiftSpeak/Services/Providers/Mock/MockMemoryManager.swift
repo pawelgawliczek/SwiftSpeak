@@ -2,110 +2,122 @@
 //  MockMemoryManager.swift
 //  SwiftSpeak
 //
-//  Mock memory manager for testing PowerModeOrchestrator
+//  Mock memory manager for testing
+//  Updated: Memory updates now handled by MemoryUpdateScheduler
 //
 
 import Foundation
 
 /// Mock memory manager for unit testing
-/// Tracks memory update calls without actual LLM operations
+/// Provides controllable responses for memory operations
 @MainActor
 final class MockMemoryManager: MemoryManagerProtocol {
 
     // MARK: - Configuration
 
-    /// Whether memory updates should succeed
-    var shouldSucceed: Bool = true
+    /// Whether memory should be reported as enabled
+    var globalMemoryEnabled: Bool = true
+    var contextMemoryEnabled: Bool = true
+    var powerModeMemoryEnabled: Bool = true
 
-    /// Simulated delay for memory operations
-    var delay: TimeInterval = 0
+    /// Mock memory content per tier
+    var globalMemory: String?
+    var contextMemories: [UUID: String] = [:]
+    var powerModeMemories: [UUID: String] = [:]
 
     // MARK: - Call Tracking
 
-    /// Number of times updateMemory was called
-    private(set) var updateMemoryCallCount = 0
+    /// Number of times getCombinedMemory was called
+    private(set) var getCombinedMemoryCallCount = 0
 
-    /// Last transcription passed to updateMemory
-    private(set) var lastTranscription: String?
+    /// Number of times clearMemory was called
+    private(set) var clearMemoryCallCount = 0
 
-    /// Last context passed to updateMemory
-    private(set) var lastContext: ConversationContext?
+    /// Last tier passed to clearMemory
+    private(set) var lastClearedTier: MemoryTierTarget?
 
-    /// Last power mode passed to updateMemory
-    private(set) var lastPowerMode: PowerMode?
+    // MARK: - MemoryManagerProtocol
 
-    // MARK: - Results
-
-    /// Custom results to return
-    var customResults: [MemoryUpdateResult]?
-
-    // MARK: - Methods
-
-    func updateMemory(
-        from transcription: String,
+    func getCombinedMemory(
         context: ConversationContext?,
         powerMode: PowerMode?
-    ) async -> [MemoryUpdateResult] {
-        updateMemoryCallCount += 1
-        lastTranscription = transcription
-        lastContext = context
-        lastPowerMode = powerMode
+    ) -> String? {
+        getCombinedMemoryCallCount += 1
 
-        if delay > 0 {
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+        var parts: [String] = []
+
+        if globalMemoryEnabled, let global = globalMemory, !global.isEmpty {
+            parts.append(global)
         }
 
-        if let results = customResults {
-            return results
+        if let ctx = context, contextMemoryEnabled, let ctxMemory = contextMemories[ctx.id], !ctxMemory.isEmpty {
+            parts.append(ctxMemory)
         }
 
-        // Generate default successful results based on what was passed
-        var results: [MemoryUpdateResult] = []
-
-        // Simulate global memory update
-        results.append(MemoryUpdateResult(
-            tier: .global,
-            previousLength: 0,
-            newLength: transcription.count,
-            wasCompressed: false,
-            success: shouldSucceed,
-            error: nil
-        ))
-
-        if let ctx = context {
-            results.append(MemoryUpdateResult(
-                tier: .context(ctx.id),
-                previousLength: 0,
-                newLength: transcription.count,
-                wasCompressed: false,
-                success: shouldSucceed,
-                error: nil
-            ))
+        if let pm = powerMode, powerModeMemoryEnabled, let pmMemory = powerModeMemories[pm.id], !pmMemory.isEmpty {
+            parts.append(pmMemory)
         }
 
-        if let pm = powerMode {
-            results.append(MemoryUpdateResult(
-                tier: .powerMode(pm.id),
-                previousLength: 0,
-                newLength: transcription.count,
-                wasCompressed: false,
-                success: shouldSucceed,
-                error: nil
-            ))
-        }
+        return parts.isEmpty ? nil : parts.joined(separator: "\n\n")
+    }
 
-        return results
+    func clearMemory(tier: MemoryTierTarget) {
+        clearMemoryCallCount += 1
+        lastClearedTier = tier
+
+        switch tier {
+        case .global:
+            globalMemory = nil
+        case .context(let id):
+            contextMemories[id] = nil
+        case .powerMode(let id):
+            powerModeMemories[id] = nil
+        }
+    }
+
+    func getMemory(for tier: MemoryTierTarget) -> String? {
+        switch tier {
+        case .global:
+            return globalMemory
+        case .context(let id):
+            return contextMemories[id]
+        case .powerMode(let id):
+            return powerModeMemories[id]
+        }
+    }
+
+    func isMemoryEnabled(for tier: MemoryTierTarget) -> Bool {
+        switch tier {
+        case .global:
+            return globalMemoryEnabled
+        case .context:
+            return contextMemoryEnabled
+        case .powerMode:
+            return powerModeMemoryEnabled
+        }
     }
 
     // MARK: - Test Helpers
 
     func reset() {
-        updateMemoryCallCount = 0
-        lastTranscription = nil
-        lastContext = nil
-        lastPowerMode = nil
-        shouldSucceed = true
-        delay = 0
-        customResults = nil
+        getCombinedMemoryCallCount = 0
+        clearMemoryCallCount = 0
+        lastClearedTier = nil
+        globalMemoryEnabled = true
+        contextMemoryEnabled = true
+        powerModeMemoryEnabled = true
+        globalMemory = nil
+        contextMemories = [:]
+        powerModeMemories = [:]
+    }
+
+    /// Set memory for a specific context
+    func setContextMemory(_ memory: String, for contextId: UUID) {
+        contextMemories[contextId] = memory
+    }
+
+    /// Set memory for a specific power mode
+    func setPowerModeMemory(_ memory: String, for powerModeId: UUID) {
+        powerModeMemories[powerModeId] = memory
     }
 }

@@ -73,7 +73,7 @@ final class TranscriptionOrchestrator: ObservableObject {
     private let settings: SharedSettings
     private let audioRecorder: AudioRecorder
     private let providerFactory: ProviderFactory
-    private let memoryManager: MemoryManager
+    // NOTE: memoryManager removed - memory updates now handled by MemoryUpdateScheduler
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - Processing Metadata Tracking (Phase 11)
@@ -101,14 +101,12 @@ final class TranscriptionOrchestrator: ObservableObject {
     init(
         settings: SharedSettings? = nil,
         audioRecorder: AudioRecorder? = nil,
-        providerFactory: ProviderFactory? = nil,
-        memoryManager: MemoryManager? = nil
+        providerFactory: ProviderFactory? = nil
     ) {
         let resolvedSettings = settings ?? SharedSettings.shared
         self.settings = resolvedSettings
         self.audioRecorder = audioRecorder ?? AudioRecorder()
         self.providerFactory = providerFactory ?? ProviderFactory(settings: resolvedSettings)
-        self.memoryManager = memoryManager ?? MemoryManager(settings: resolvedSettings)
 
         setupBindings()
     }
@@ -232,10 +230,8 @@ final class TranscriptionOrchestrator: ObservableObject {
                 saveToHistory()
             }
 
-            // Update memory (async, non-blocking)
-            Task {
-                await updateMemory()
-            }
+            // NOTE: Memory updates are now handled by MemoryUpdateScheduler on app start/foreground
+            // The memory flags are set on TranscriptionRecord for batch processing
 
             // Update lastTranscription for keyboard
             settings.lastTranscription = formattedText
@@ -623,7 +619,14 @@ final class TranscriptionOrchestrator: ObservableObject {
             estimatedCost: costBreakdown?.total,
             costBreakdown: costBreakdown,
             processingMetadata: processingMetadata,
-            editContext: editContext
+            editContext: editContext,
+            // Memory tracking - capture state at transcription time
+            globalMemoryEnabled: settings.globalMemoryEnabled,
+            contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+            powerModeMemoryEnabled: false,  // Edit mode doesn't use power mode
+            usedForGlobalMemory: false,
+            usedForContextMemory: false,
+            usedForPowerModeMemory: false
         )
 
         settings.addTranscription(record)
@@ -693,7 +696,14 @@ final class TranscriptionOrchestrator: ObservableObject {
             contextIcon: activeContext?.icon,
             estimatedCost: costBreakdown?.total,
             costBreakdown: costBreakdown,
-            processingMetadata: processingMetadata
+            processingMetadata: processingMetadata,
+            // Memory tracking - capture state at transcription time
+            globalMemoryEnabled: settings.globalMemoryEnabled,
+            contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+            powerModeMemoryEnabled: activePowerMode?.memoryEnabled ?? false,
+            usedForGlobalMemory: false,
+            usedForContextMemory: false,
+            usedForPowerModeMemory: false
         )
 
         settings.addTranscription(record)
@@ -839,19 +849,7 @@ final class TranscriptionOrchestrator: ObservableObject {
         #endif
     }
 
-    // MARK: - Memory Update
-
-    /// Update memory after transcription completes (async, non-blocking)
-    private func updateMemory() async {
-        let textToRemember = formattedText.isEmpty ? transcribedText : formattedText
-
-        // Update memory for all applicable tiers
-        _ = await memoryManager.updateMemory(
-            from: textToRemember,
-            context: activeContext,
-            powerMode: activePowerMode
-        )
-    }
+    // NOTE: Memory updates removed - now handled by MemoryUpdateScheduler on app start/foreground
 
     // MARK: - Audio Validation (Phase 11j)
 

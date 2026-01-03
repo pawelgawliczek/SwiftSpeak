@@ -55,7 +55,7 @@ final class PowerModeOrchestrator: ObservableObject {
     private let settings: SharedSettings
     private let audioRecorder: any AudioRecorderProtocol
     private let providerFactory: any ProviderFactoryProtocol
-    private let memoryManager: any MemoryManagerProtocol
+    // NOTE: memoryManager removed - memory updates now handled by MemoryUpdateScheduler
     private let ragOrchestrator: RAGOrchestrator
     private let webhookExecutor: WebhookExecutor
     private var cancellables = Set<AnyCancellable>()
@@ -92,7 +92,6 @@ final class PowerModeOrchestrator: ObservableObject {
             settings: resolvedSettings,
             audioRecorder: AudioRecorder(),
             providerFactory: ProviderFactory(settings: resolvedSettings),
-            memoryManager: MemoryManager(settings: resolvedSettings),
             ragOrchestrator: RAGOrchestrator(),
             webhookExecutor: WebhookExecutor(settings: resolvedSettings),
             setupBindings: true
@@ -105,7 +104,6 @@ final class PowerModeOrchestrator: ObservableObject {
         settings: SharedSettings,
         audioRecorder: any AudioRecorderProtocol,
         providerFactory: any ProviderFactoryProtocol,
-        memoryManager: any MemoryManagerProtocol,
         ragOrchestrator: RAGOrchestrator? = nil,
         webhookExecutor: WebhookExecutor? = nil,
         setupBindings: Bool = false
@@ -115,7 +113,6 @@ final class PowerModeOrchestrator: ObservableObject {
         self.settings = settings
         self.audioRecorder = audioRecorder
         self.providerFactory = providerFactory
-        self.memoryManager = memoryManager
         self.ragOrchestrator = ragOrchestrator ?? RAGOrchestrator()
         self.webhookExecutor = webhookExecutor ?? WebhookExecutor(settings: settings)
 
@@ -263,10 +260,7 @@ final class PowerModeOrchestrator: ObservableObject {
             // Copy to clipboard
             UIPasteboard.general.string = output
 
-            // Update memory (async, non-blocking)
-            Task {
-                await updateMemory(input: processedInput, output: output)
-            }
+            // NOTE: Memory updates removed - now handled by MemoryUpdateScheduler on app start/foreground
 
             // Execute output webhooks (Phase 4f - non-blocking)
             if !powerMode.enabledWebhookIds.isEmpty {
@@ -329,9 +323,7 @@ final class PowerModeOrchestrator: ObservableObject {
             settings.incrementPowerModeUsage(id: powerMode.id)
             UIPasteboard.general.string = output
 
-            Task {
-                await updateMemory(input: transcribedText, output: output)
-            }
+            // NOTE: Memory updates removed - now handled by MemoryUpdateScheduler on app start/foreground
 
             state = .complete(session)
         } catch {
@@ -683,18 +675,7 @@ final class PowerModeOrchestrator: ObservableObject {
         )
     }
 
-    // MARK: - Memory Update
-
-    /// Update memory after execution completes
-    private func updateMemory(input: String, output: String) async {
-        let textToRemember = "User: \(input)\nAssistant: \(String(output.prefix(500)))"
-
-        _ = await memoryManager.updateMemory(
-            from: textToRemember,
-            context: activeContext,
-            powerMode: powerMode
-        )
-    }
+    // NOTE: Memory updates removed - now handled by MemoryUpdateScheduler on app start/foreground
 
     // MARK: - Error Handling
 

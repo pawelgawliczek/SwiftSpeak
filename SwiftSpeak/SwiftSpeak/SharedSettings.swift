@@ -157,6 +157,18 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Maximum character limit for global memory (500-2000, default 2000)
+    @Published var globalMemoryLimit: Int = 2000 {
+        didSet {
+            // Clamp to valid range
+            let clamped = min(max(globalMemoryLimit, 500), 2000)
+            if clamped != globalMemoryLimit {
+                globalMemoryLimit = clamped
+            }
+            defaults?.set(globalMemoryLimit, forKey: Constants.Keys.globalMemoryLimit)
+        }
+    }
+
     // MARK: - Memory Update Tracking (batch updates)
 
     /// Last time global memory was updated by the batch process
@@ -583,6 +595,14 @@ class SharedSettings: ObservableObject {
         if defaults?.object(forKey: Constants.Keys.globalMemoryEnabled) != nil {
             globalMemoryEnabled = defaults?.bool(forKey: Constants.Keys.globalMemoryEnabled) ?? true
         }
+        if defaults?.object(forKey: Constants.Keys.globalMemoryLimit) != nil {
+            globalMemoryLimit = defaults?.integer(forKey: Constants.Keys.globalMemoryLimit) ?? 2000
+        }
+
+        // Load memory update timestamps
+        lastGlobalMemoryUpdate = defaults?.object(forKey: Constants.Keys.lastGlobalMemoryUpdate) as? Date
+        loadContextMemoryUpdates()
+        loadPowerModeMemoryUpdates()
 
         // Load streaming settings
         if defaults?.object(forKey: Constants.Keys.powerModeStreamingEnabled) != nil {
@@ -1800,4 +1820,112 @@ class SharedSettings: ObservableObject {
             defaults?.set(data, forKey: Constants.Keys.swiftLinkLastUsedApp)
         }
     }
+
+    // MARK: - Memory Update Tracking (batch updates)
+
+    private func loadContextMemoryUpdates() {
+        guard let data = defaults?.data(forKey: Constants.Keys.lastContextMemoryUpdates),
+              let dict = try? JSONDecoder().decode([String: Date].self, from: data) else {
+            return
+        }
+        // Convert String keys back to UUIDs
+        lastContextMemoryUpdates = dict.reduce(into: [:]) { result, pair in
+            if let uuid = UUID(uuidString: pair.key) {
+                result[uuid] = pair.value
+            }
+        }
+    }
+
+    private func saveContextMemoryUpdates() {
+        // Convert UUID keys to Strings for JSON encoding
+        let stringDict = lastContextMemoryUpdates.reduce(into: [String: Date]()) { result, pair in
+            result[pair.key.uuidString] = pair.value
+        }
+        if let data = try? JSONEncoder().encode(stringDict) {
+            defaults?.set(data, forKey: Constants.Keys.lastContextMemoryUpdates)
+        }
+    }
+
+    private func loadPowerModeMemoryUpdates() {
+        guard let data = defaults?.data(forKey: Constants.Keys.lastPowerModeMemoryUpdates),
+              let dict = try? JSONDecoder().decode([String: Date].self, from: data) else {
+            return
+        }
+        // Convert String keys back to UUIDs
+        lastPowerModeMemoryUpdates = dict.reduce(into: [:]) { result, pair in
+            if let uuid = UUID(uuidString: pair.key) {
+                result[uuid] = pair.value
+            }
+        }
+    }
+
+    private func savePowerModeMemoryUpdates() {
+        // Convert UUID keys to Strings for JSON encoding
+        let stringDict = lastPowerModeMemoryUpdates.reduce(into: [String: Date]()) { result, pair in
+            result[pair.key.uuidString] = pair.value
+        }
+        if let data = try? JSONEncoder().encode(stringDict) {
+            defaults?.set(data, forKey: Constants.Keys.lastPowerModeMemoryUpdates)
+        }
+    }
+
+    /// Record that global memory was updated
+    func recordGlobalMemoryUpdate() {
+        lastGlobalMemoryUpdate = Date()
+    }
+
+    /// Record that a context's memory was updated
+    func recordContextMemoryUpdate(contextId: UUID) {
+        lastContextMemoryUpdates[contextId] = Date()
+    }
+
+    /// Record that a power mode's memory was updated
+    func recordPowerModeMemoryUpdate(powerModeId: UUID) {
+        lastPowerModeMemoryUpdates[powerModeId] = Date()
+    }
+
+    /// Mark transcription records as used for a specific memory tier
+    /// This updates the history records to prevent re-processing
+    func markRecordsAsUsedForMemory(recordIds: [UUID], tier: MemoryTier) {
+        for i in transcriptionHistory.indices {
+            if recordIds.contains(transcriptionHistory[i].id) {
+                switch tier {
+                case .global:
+                    transcriptionHistory[i].usedForGlobalMemory = true
+                case .context:
+                    transcriptionHistory[i].usedForContextMemory = true
+                case .powerMode:
+                    transcriptionHistory[i].usedForPowerModeMemory = true
+                }
+            }
+        }
+        saveTranscriptionHistory()
+    }
+
+    /// Get transcription records that need to be processed for a memory tier
+    func getUnprocessedRecordsForMemory(tier: MemoryTier, contextId: UUID? = nil, powerModeId: UUID? = nil) -> [TranscriptionRecord] {
+        transcriptionHistory.filter { record in
+            switch tier {
+            case .global:
+                return record.globalMemoryEnabled && !record.usedForGlobalMemory
+            case .context:
+                guard let targetContextId = contextId else { return false }
+                return record.contextId == targetContextId &&
+                       record.contextMemoryEnabled &&
+                       !record.usedForContextMemory
+            case .powerMode:
+                guard let targetPowerModeId = powerModeId else { return false }
+                return record.powerModeId == targetPowerModeId &&
+                       record.powerModeMemoryEnabled &&
+                       !record.usedForPowerModeMemory
+            }
+        }
+    }
+}
+
+/// Memory tier for update tracking
+enum MemoryTier {
+    case global
+    case context
+    case powerMode
 }
