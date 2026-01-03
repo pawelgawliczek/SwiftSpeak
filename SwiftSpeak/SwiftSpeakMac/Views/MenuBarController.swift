@@ -63,7 +63,7 @@ final class MenuBarController: ObservableObject {
         if let button = statusItem?.button {
             // Use custom SwiftSpeakLogo icon
             if let icon = NSImage(named: "SwiftSpeakLogo") {
-                icon.size = NSSize(width: 18, height: 18)
+                icon.size = NSSize(width: 22, height: 22)
                 icon.isTemplate = true  // Adapts to menu bar appearance
                 button.image = icon
             } else {
@@ -222,10 +222,11 @@ final class MenuBarController: ObservableObject {
         // Activate app and show settings
         NSApp.activate(ignoringOtherApps: true)
 
-        if settingsWindow == nil {
-            let settingsView = MacSettingsView(settings: settings)
-            let hostingView = NSHostingView(rootView: settingsView)
+        // Always recreate the window to ensure fresh state
+        let settingsView = MacSettingsView(settings: MacSettings.shared)
+        let hostingView = NSHostingView(rootView: settingsView)
 
+        if settingsWindow == nil {
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
@@ -233,11 +234,11 @@ final class MenuBarController: ObservableObject {
                 defer: false
             )
             window.title = "SwiftSpeak Settings"
-            window.contentView = hostingView
             window.center()
             settingsWindow = window
         }
 
+        settingsWindow?.contentView = hostingView
         settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
@@ -394,7 +395,7 @@ final class MenuBarController: ObservableObject {
         if let button = statusItem?.button {
             // Use custom SwiftSpeakLogo icon
             if let icon = NSImage(named: "SwiftSpeakLogo") {
-                icon.size = NSSize(width: 18, height: 18)
+                icon.size = NSSize(width: 22, height: 22)
                 icon.isTemplate = !isRecording  // Disable template when recording for color
                 button.image = icon
                 button.contentTintColor = isRecording ? .systemRed : nil
