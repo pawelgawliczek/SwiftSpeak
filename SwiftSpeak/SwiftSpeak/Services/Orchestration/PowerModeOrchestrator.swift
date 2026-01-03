@@ -248,7 +248,14 @@ final class PowerModeOrchestrator: ObservableObject {
                 processingDuration: processingDuration,
                 versionNumber: session.results.count + 1,
                 usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
-                ragDocumentIds: powerMode.knowledgeDocumentIds
+                ragDocumentIds: powerMode.knowledgeDocumentIds,
+                // Memory tracking - capture state for batch memory updates
+                globalMemoryEnabled: settings.globalMemoryEnabled,
+                contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+                powerModeMemoryEnabled: powerMode.memoryEnabled,
+                usedForGlobalMemory: false,
+                usedForContextMemory: false,
+                usedForPowerModeMemory: false
             )
 
             // Add to session
@@ -316,7 +323,14 @@ final class PowerModeOrchestrator: ObservableObject {
                 processingDuration: processingDuration,
                 versionNumber: session.results.count + 1,
                 usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
-                ragDocumentIds: powerMode.knowledgeDocumentIds
+                ragDocumentIds: powerMode.knowledgeDocumentIds,
+                // Memory tracking - capture state for batch memory updates
+                globalMemoryEnabled: settings.globalMemoryEnabled,
+                contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+                powerModeMemoryEnabled: powerMode.memoryEnabled,
+                usedForGlobalMemory: false,
+                usedForContextMemory: false,
+                usedForPowerModeMemory: false
             )
 
             session.addResult(result)
@@ -349,7 +363,14 @@ final class PowerModeOrchestrator: ObservableObject {
                 processingDuration: processingDuration,
                 versionNumber: session.results.count + 1,
                 usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
-                ragDocumentIds: powerMode.knowledgeDocumentIds
+                ragDocumentIds: powerMode.knowledgeDocumentIds,
+                // Memory tracking - capture state for batch memory updates
+                globalMemoryEnabled: settings.globalMemoryEnabled,
+                contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+                powerModeMemoryEnabled: powerMode.memoryEnabled,
+                usedForGlobalMemory: false,
+                usedForContextMemory: false,
+                usedForPowerModeMemory: false
             )
 
             session.addResult(result)
@@ -387,7 +408,14 @@ final class PowerModeOrchestrator: ObservableObject {
                 processingDuration: processingDuration,
                 versionNumber: session.results.count + 1,
                 usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
-                ragDocumentIds: powerMode.knowledgeDocumentIds
+                ragDocumentIds: powerMode.knowledgeDocumentIds,
+                // Memory tracking - capture state for batch memory updates
+                globalMemoryEnabled: settings.globalMemoryEnabled,
+                contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+                powerModeMemoryEnabled: powerMode.memoryEnabled,
+                usedForGlobalMemory: false,
+                usedForContextMemory: false,
+                usedForPowerModeMemory: false
             )
 
             session.addResult(result)
@@ -437,7 +465,14 @@ final class PowerModeOrchestrator: ObservableObject {
             processingDuration: currentResult.processingDuration,
             versionNumber: currentResult.versionNumber,
             usedRAG: currentResult.usedRAG,
-            ragDocumentIds: currentResult.ragDocumentIds
+            ragDocumentIds: currentResult.ragDocumentIds,
+            // Preserve memory tracking from original result
+            globalMemoryEnabled: currentResult.globalMemoryEnabled,
+            contextMemoryEnabled: currentResult.contextMemoryEnabled,
+            powerModeMemoryEnabled: currentResult.powerModeMemoryEnabled,
+            usedForGlobalMemory: currentResult.usedForGlobalMemory,
+            usedForContextMemory: currentResult.usedForContextMemory,
+            usedForPowerModeMemory: currentResult.usedForPowerModeMemory
         )
 
         session.results[session.currentVersionIndex] = updatedResult

@@ -367,6 +367,14 @@ struct PowerModeResult: Codable, Identifiable, Equatable {
     var usedRAG: Bool
     var ragDocumentIds: [UUID]
 
+    // Memory tracking - capture state for batch memory updates
+    var globalMemoryEnabled: Bool
+    var contextMemoryEnabled: Bool
+    var powerModeMemoryEnabled: Bool
+    var usedForGlobalMemory: Bool
+    var usedForContextMemory: Bool
+    var usedForPowerModeMemory: Bool
+
     init(
         id: UUID = UUID(),
         powerModeId: UUID,
@@ -377,7 +385,13 @@ struct PowerModeResult: Codable, Identifiable, Equatable {
         processingDuration: TimeInterval = 0,
         versionNumber: Int = 1,
         usedRAG: Bool = false,
-        ragDocumentIds: [UUID] = []
+        ragDocumentIds: [UUID] = [],
+        globalMemoryEnabled: Bool = false,
+        contextMemoryEnabled: Bool = false,
+        powerModeMemoryEnabled: Bool = false,
+        usedForGlobalMemory: Bool = false,
+        usedForContextMemory: Bool = false,
+        usedForPowerModeMemory: Bool = false
     ) {
         self.id = id
         self.powerModeId = powerModeId
@@ -389,6 +403,12 @@ struct PowerModeResult: Codable, Identifiable, Equatable {
         self.versionNumber = versionNumber
         self.usedRAG = usedRAG
         self.ragDocumentIds = ragDocumentIds
+        self.globalMemoryEnabled = globalMemoryEnabled
+        self.contextMemoryEnabled = contextMemoryEnabled
+        self.powerModeMemoryEnabled = powerModeMemoryEnabled
+        self.usedForGlobalMemory = usedForGlobalMemory
+        self.usedForContextMemory = usedForContextMemory
+        self.usedForPowerModeMemory = usedForPowerModeMemory
     }
 
     /// Sample result for UI mockups
