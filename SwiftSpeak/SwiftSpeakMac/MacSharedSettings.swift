@@ -8,6 +8,7 @@
 
 import Foundation
 import Combine
+import SwiftSpeakCore
 
 @MainActor
 class MacSettings: ObservableObject {
@@ -17,8 +18,9 @@ class MacSettings: ObservableObject {
     private let iCloud = NSUbiquitousKeyValueStore.default
     private var iCloudObserver: NSObjectProtocol?
     private var isSyncing = false
+    private var isInitializing = true  // Prevent syncing during init
 
-    // iCloud sync keys
+    // iCloud sync keys - MUST match iOS SharedSettings.swift
     private enum iCloudKeys {
         static let configuredAIProviders = "icloud_configuredAIProviders"
         static let contexts = "icloud_contexts"
@@ -34,6 +36,8 @@ class MacSettings: ObservableObject {
         static let selectedMode = "icloud_selectedMode"
         static let selectedTargetLanguage = "icloud_selectedTargetLanguage"
         static let isTranslationEnabled = "icloud_isTranslationEnabled"
+        static let transcriptionHistory = "icloud_transcriptionHistory"
+        static let historyMemory = "icloud_historyMemory"
         static let lastSyncTimestamp = "icloud_lastSyncTimestamp"
     }
 
@@ -184,6 +188,7 @@ class MacSettings: ObservableObject {
     @Published var historyMemory: HistoryMemory? {
         didSet {
             saveHistoryMemory()
+            syncToiCloud()
         }
     }
 
@@ -196,12 +201,15 @@ class MacSettings: ObservableObject {
     }
 
     // MARK: - History
+    // TODO: Add CoreDataManager to SwiftSpeakMac target for CloudKit sync
+    // Follow SHARED_FILES_GUIDE.md to add:
+    //   - SwiftSpeak/Services/Persistence/PersistenceController.swift
+    //   - SwiftSpeak/Services/Persistence/CoreDataManager.swift
+    //   - SwiftSpeak/Services/Persistence/CoreDataEntityExtensions.swift
+    //   - SwiftSpeak.xcdatamodeld
+    // Once added, history will sync via CloudKit (unlimited records)
 
-    @Published var transcriptionHistory: [TranscriptionRecord] = [] {
-        didSet {
-            saveHistory()
-        }
-    }
+    @Published var transcriptionHistory: [TranscriptionRecord] = []
 
     // MARK: - Initialization
 
@@ -209,6 +217,10 @@ class MacSettings: ObservableObject {
         self.defaults = UserDefaults.standard
         loadSettings()
         setupiCloudSync()
+
+        // Mark initialization complete - now syncToiCloud() will work
+        isInitializing = false
+        print("[iCloud] Initialization complete, sync now enabled")
     }
 
     deinit {
@@ -220,6 +232,19 @@ class MacSettings: ObservableObject {
     // MARK: - iCloud Sync Setup
 
     private func setupiCloudSync() {
+        print("[iCloud] Setting up iCloud KVS sync...")
+
+        // Check if iCloud is available
+        let testKey = "icloud_test_\(Date().timeIntervalSince1970)"
+        iCloud.set("test", forKey: testKey)
+        let syncResult = iCloud.synchronize()
+        print("[iCloud] KVS sync test: synchronize() returned \(syncResult)")
+        iCloud.removeObject(forKey: testKey)
+
+        // Log current iCloud state
+        let allKeys = iCloud.dictionaryRepresentation.keys
+        print("[iCloud] KVS current keys: \(Array(allKeys).joined(separator: ", "))")
+
         // Listen for iCloud changes from other devices
         iCloudObserver = NotificationCenter.default.addObserver(
             forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
@@ -227,12 +252,29 @@ class MacSettings: ObservableObject {
             queue: .main
         ) { [weak self] notification in
             guard let self = self else { return }
+
+            print("[iCloud] Received external change notification!")
+
             guard let userInfo = notification.userInfo,
                   let reasonNumber = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? NSNumber else {
+                print("[iCloud] No reason in notification userInfo")
                 return
             }
 
             let reason = reasonNumber.intValue
+            let reasonName: String
+            switch reason {
+            case NSUbiquitousKeyValueStoreServerChange: reasonName = "ServerChange"
+            case NSUbiquitousKeyValueStoreInitialSyncChange: reasonName = "InitialSyncChange"
+            case NSUbiquitousKeyValueStoreAccountChange: reasonName = "AccountChange"
+            case NSUbiquitousKeyValueStoreQuotaViolationChange: reasonName = "QuotaViolation"
+            default: reasonName = "Unknown(\(reason))"
+            }
+            print("[iCloud] Change reason: \(reasonName)")
+
+            if let changedKeys = userInfo[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] {
+                print("[iCloud] Changed keys: \(changedKeys.joined(separator: ", "))")
+            }
 
             switch reason {
             case NSUbiquitousKeyValueStoreServerChange,
@@ -245,27 +287,43 @@ class MacSettings: ObservableObject {
                     self?.isSyncing = false
                 }
             case NSUbiquitousKeyValueStoreQuotaViolationChange:
-                print("⚠️ iCloud storage quota exceeded")
+                print("[iCloud] ⚠️ iCloud storage quota exceeded")
             default:
                 break
             }
         }
 
         // Synchronize to get latest changes
-        iCloud.synchronize()
+        let initialSync = iCloud.synchronize()
+        print("[iCloud] Sync initialized, initial synchronize() returned \(initialSync)")
+
+        // Try to load any existing data
+        loadFromiCloud()
     }
 
     private func loadFromiCloud() {
+        print("[iCloud] loadFromiCloud: Starting to load from iCloud KVS...")
+
         // Load providers
-        if let data = iCloud.data(forKey: iCloudKeys.configuredAIProviders),
-           let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
-            configuredAIProviders = providers
+        if let data = iCloud.data(forKey: iCloudKeys.configuredAIProviders) {
+            print("[iCloud] loadFromiCloud: Found providers data (\(data.count) bytes)")
+            if let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
+                configuredAIProviders = providers
+                print("[iCloud] loadFromiCloud: Loaded \(providers.count) providers: \(providers.map { $0.provider.displayName }.joined(separator: ", "))")
+            } else {
+                print("[iCloud] loadFromiCloud: Failed to decode providers data")
+            }
+        } else {
+            print("[iCloud] loadFromiCloud: No providers data in iCloud KVS")
         }
 
         // Load contexts
         if let data = iCloud.data(forKey: iCloudKeys.contexts),
            let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
             contexts = loadedContexts
+            print("[iCloud] loadFromiCloud: Loaded \(loadedContexts.count) contexts")
+        } else {
+            print("[iCloud] loadFromiCloud: No contexts data in iCloud KVS")
         }
 
         // Load power modes
@@ -323,14 +381,37 @@ class MacSettings: ObservableObject {
         if limit > 0 {
             globalMemoryLimit = Int(limit)
         }
+
+        // Transcription history is synced via Core Data + CloudKit (unlimited records)
+        // No longer using iCloud KVS for history due to size limits
+
+        // Load history memory
+        if let data = iCloud.data(forKey: iCloudKeys.historyMemory),
+           let memory = try? JSONDecoder().decode(HistoryMemory.self, from: data) {
+            // Use iCloud version if newer or local is nil
+            if historyMemory == nil || memory.lastUpdated > (historyMemory?.lastUpdated ?? .distantPast) {
+                historyMemory = memory
+                print("[iCloud] loadFromiCloud: Loaded history memory from iCloud")
+            }
+        }
     }
 
     private func syncToiCloud() {
-        guard !isSyncing else { return }
+        guard !isInitializing else {
+            // Don't sync during initialization - we're still loading
+            return
+        }
+        guard !isSyncing else {
+            print("[iCloud] syncToiCloud: Skipped (already syncing)")
+            return
+        }
+
+        print("[iCloud] syncToiCloud: Starting sync to iCloud KVS...")
 
         // Sync providers
         if let data = try? JSONEncoder().encode(configuredAIProviders) {
             iCloud.set(data, forKey: iCloudKeys.configuredAIProviders)
+            print("[iCloud] syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)")
         }
 
         // Sync contexts
@@ -370,11 +451,22 @@ class MacSettings: ObservableObject {
         iCloud.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
         iCloud.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
 
+        // Transcription history is synced via Core Data + CloudKit (unlimited records)
+        // No longer using iCloud KVS for history due to size limits
+
+        // Sync history memory
+        if let memory = historyMemory, let data = try? JSONEncoder().encode(memory) {
+            iCloud.set(data, forKey: iCloudKeys.historyMemory)
+        } else {
+            iCloud.removeObject(forKey: iCloudKeys.historyMemory)
+        }
+
         // Set sync timestamp
         iCloud.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
         // Trigger synchronization
-        iCloud.synchronize()
+        let syncResult = iCloud.synchronize()
+        print("[iCloud] syncToiCloud: synchronize() returned \(syncResult)")
     }
 
     /// Force sync settings to iCloud (call after making changes)
@@ -545,6 +637,15 @@ class MacSettings: ObservableObject {
             return true
         }
         return !config.apiKey.isEmpty
+    }
+
+    /// Get API key for a provider (used by ProviderFactory)
+    func apiKey(for provider: AIProvider) -> String? {
+        guard let config = getAIProviderConfig(for: provider),
+              !config.apiKey.isEmpty else {
+            return nil
+        }
+        return config.apiKey
     }
 
     // MARK: - Context Management
@@ -814,10 +915,9 @@ class MacSettings: ObservableObject {
     // MARK: - History
 
     func addToHistory(_ record: TranscriptionRecord) {
+        // TODO: Use CoreDataManager once added to target for CloudKit sync
         transcriptionHistory.insert(record, at: 0)
-        if transcriptionHistory.count > 100 {
-            transcriptionHistory = Array(transcriptionHistory.prefix(100))
-        }
+        saveHistory()
     }
 
     private func saveHistory() {
@@ -834,7 +934,9 @@ class MacSettings: ObservableObject {
     }
 
     func clearHistory() {
+        // TODO: Use CoreDataManager once added to target for CloudKit sync
         transcriptionHistory = []
+        defaults?.removeObject(forKey: "transcriptionHistory")
     }
 
     // MARK: - Reset

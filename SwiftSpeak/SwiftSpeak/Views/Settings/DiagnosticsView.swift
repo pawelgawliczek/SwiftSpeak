@@ -19,6 +19,9 @@ struct DiagnosticsView: View {
     @State private var logFileSize: Int64 = 0
     @State private var isCopying = false
     @State private var showCopiedToast = false
+    @State private var isSavingToiCloud = false
+    @State private var showSavedToiCloudToast = false
+    @State private var iCloudError: String?
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -118,10 +121,37 @@ struct DiagnosticsView: View {
                     }
                     .disabled(isExporting)
                     .listRowBackground(rowBackground)
+
+                    Button(action: saveToiCloud) {
+                        HStack {
+                            if isSavingToiCloud {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                                Text("Saving to iCloud...")
+                            } else if showSavedToiCloudToast {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text("Saved to iCloud!")
+                                    .foregroundStyle(.green)
+                            } else {
+                                Image(systemName: "icloud.and.arrow.up")
+                                Text("Save to iCloud Drive")
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(isSavingToiCloud)
+                    .listRowBackground(rowBackground)
                 } header: {
                     Text("Export")
                 } footer: {
-                    Text("Logs contain only metadata. No dictation content, API keys, or personal information is recorded.")
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Logs contain only metadata. No dictation content, API keys, or personal information is recorded.")
+                        if let error = iCloudError {
+                            Text(error)
+                                .foregroundStyle(.red)
+                        }
+                    }
                 }
 
                 // Manage Section
@@ -278,6 +308,101 @@ struct DiagnosticsView: View {
             } else {
                 await MainActor.run {
                     self.isExporting = false
+                }
+            }
+        }
+    }
+
+    private func saveToiCloud() {
+        isSavingToiCloud = true
+        iCloudError = nil
+        HapticManager.lightTap()
+
+        Task {
+            do {
+                // Check if iCloud is available
+                guard let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil) else {
+                    throw NSError(domain: "DiagnosticsView", code: 1, userInfo: [
+                        NSLocalizedDescriptionKey: "iCloud Drive is not available. Please sign in to iCloud in Settings."
+                    ])
+                }
+
+                // Create logs directory in iCloud Drive
+                let logsFolder = iCloudURL.appendingPathComponent("Documents/Logs", isDirectory: true)
+                try FileManager.default.createDirectory(at: logsFolder, withIntermediateDirectories: true)
+
+                // Generate log content
+                let entries = await SharedLogManager.shared.readEntries()
+
+                // Filter by time range
+                let cutoff: Date
+                switch selectedTimeRange {
+                case .currentSession:
+                    cutoff = Date().addingTimeInterval(-1800)
+                case .last1Hour:
+                    cutoff = Date().addingTimeInterval(-3600)
+                case .last24Hours:
+                    cutoff = Date().addingTimeInterval(-86400)
+                case .allTime:
+                    cutoff = Date.distantPast
+                }
+
+                let filteredEntries = entries.filter { entry in
+                    guard entry.timestamp >= cutoff else { return false }
+
+                    switch selectedLevel {
+                    case .all:
+                        return true
+                    case .infoAndAbove:
+                        return entry.level != .debug
+                    case .warningsAndErrors:
+                        return entry.level == .warning || entry.level == .error
+                    case .errorsOnly:
+                        return entry.level == .error
+                    }
+                }
+
+                // Format entries as text
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+
+                var logText = "SwiftSpeak Logs - \(dateFormatter.string(from: Date()))\n"
+                logText += "Time Range: \(selectedTimeRange)\n"
+                logText += "Level: \(selectedLevel)\n"
+                logText += "Entries: \(filteredEntries.count)\n"
+                logText += String(repeating: "-", count: 50) + "\n\n"
+
+                for entry in filteredEntries {
+                    let timestamp = dateFormatter.string(from: entry.timestamp)
+                    let level = entry.level.rawValue.uppercased().padding(toLength: 7, withPad: " ", startingAt: 0)
+                    let source = entry.source.rawValue.padding(toLength: 8, withPad: " ", startingAt: 0)
+                    logText += "[\(timestamp)] [\(level)] [\(source)] [\(entry.category)] \(entry.message)\n"
+                }
+
+                // Create filename with timestamp
+                let fileFormatter = DateFormatter()
+                fileFormatter.dateFormat = "yyyy-MM-dd_HHmmss"
+                let filename = "SwiftSpeak_Logs_\(fileFormatter.string(from: Date())).txt"
+                let fileURL = logsFolder.appendingPathComponent(filename)
+
+                // Write to iCloud
+                try logText.write(to: fileURL, atomically: true, encoding: .utf8)
+
+                await MainActor.run {
+                    self.isSavingToiCloud = false
+                    self.showSavedToiCloudToast = true
+                    HapticManager.success()
+
+                    // Hide toast after 3 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        self.showSavedToiCloudToast = false
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isSavingToiCloud = false
+                    self.iCloudError = error.localizedDescription
+                    HapticManager.error()
                 }
             }
         }

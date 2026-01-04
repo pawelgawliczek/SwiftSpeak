@@ -19,6 +19,34 @@ class SharedSettings: ObservableObject {
     /// Keychain manager for secure API key storage
     private let keychainManager: SecureStorageProtocol
 
+    // MARK: - iCloud Sync
+
+    private let iCloud = NSUbiquitousKeyValueStore.default
+    private var iCloudObserver: NSObjectProtocol?
+    private var isSyncing = false
+    private var isInitializing = true  // Prevent syncing during init
+
+    /// iCloud sync keys - MUST match MacSharedSettings.swift for cross-platform sync
+    private enum iCloudKeys {
+        static let configuredAIProviders = "icloud_configuredAIProviders"
+        static let contexts = "icloud_contexts"
+        static let powerModes = "icloud_powerModes"
+        static let vocabulary = "icloud_vocabulary"
+        static let customTemplates = "icloud_customTemplates"
+        static let globalMemory = "icloud_globalMemory"
+        static let globalMemoryEnabled = "icloud_globalMemoryEnabled"
+        static let globalMemoryLimit = "icloud_globalMemoryLimit"
+        static let selectedTranscriptionProvider = "icloud_selectedTranscriptionProvider"
+        static let selectedTranslationProvider = "icloud_selectedTranslationProvider"
+        static let selectedPowerModeProvider = "icloud_selectedPowerModeProvider"
+        static let selectedMode = "icloud_selectedMode"
+        static let selectedTargetLanguage = "icloud_selectedTargetLanguage"
+        static let isTranslationEnabled = "icloud_isTranslationEnabled"
+        static let transcriptionHistory = "icloud_transcriptionHistory"
+        static let historyMemory = "icloud_historyMemory"
+        static let lastSyncTimestamp = "icloud_lastSyncTimestamp"
+    }
+
     // MARK: - Published Properties
 
     @Published var hasCompletedOnboarding: Bool = false {
@@ -38,30 +66,35 @@ class SharedSettings: ObservableObject {
     @Published var selectedTranscriptionProvider: AIProvider = .openAI {
         didSet {
             defaults?.set(selectedTranscriptionProvider.rawValue, forKey: Constants.Keys.selectedTranscriptionProvider)
+            syncToiCloud()
         }
     }
 
     @Published var selectedTranslationProvider: AIProvider = .openAI {
         didSet {
             defaults?.set(selectedTranslationProvider.rawValue, forKey: Constants.Keys.selectedTranslationProvider)
+            syncToiCloud()
         }
     }
 
     @Published var selectedPowerModeProvider: AIProvider = .openAI {
         didSet {
             defaults?.set(selectedPowerModeProvider.rawValue, forKey: Constants.Keys.selectedPowerModeProvider)
+            syncToiCloud()
         }
     }
 
     @Published var selectedMode: FormattingMode = .raw {
         didSet {
             defaults?.set(selectedMode.rawValue, forKey: Constants.Keys.selectedMode)
+            syncToiCloud()
         }
     }
 
     @Published var selectedTargetLanguage: Language = .spanish {
         didSet {
             defaults?.set(selectedTargetLanguage.rawValue, forKey: Constants.Keys.selectedTargetLanguage)
+            syncToiCloud()
         }
     }
 
@@ -79,6 +112,7 @@ class SharedSettings: ObservableObject {
     @Published var isTranslationEnabled: Bool = false {
         didSet {
             defaults?.set(isTranslationEnabled, forKey: Constants.Keys.isTranslationEnabled)
+            syncToiCloud()
         }
     }
 
@@ -138,6 +172,7 @@ class SharedSettings: ObservableObject {
     @Published var historyMemory: HistoryMemory? {
         didSet {
             saveHistoryMemory()
+            syncToiCloud()
         }
     }
 
@@ -147,6 +182,7 @@ class SharedSettings: ObservableObject {
     @Published var globalMemory: String? {
         didSet {
             defaults?.set(globalMemory, forKey: Constants.Keys.globalMemory)
+            syncToiCloud()
         }
     }
 
@@ -154,6 +190,7 @@ class SharedSettings: ObservableObject {
     @Published var globalMemoryEnabled: Bool = true {
         didSet {
             defaults?.set(globalMemoryEnabled, forKey: Constants.Keys.globalMemoryEnabled)
+            syncToiCloud()
         }
     }
 
@@ -166,6 +203,7 @@ class SharedSettings: ObservableObject {
                 globalMemoryLimit = clamped
             }
             defaults?.set(globalMemoryLimit, forKey: Constants.Keys.globalMemoryLimit)
+            syncToiCloud()
         }
     }
 
@@ -442,27 +480,37 @@ class SharedSettings: ObservableObject {
         set { defaults?.set(newValue, forKey: Constants.Keys.lastTranscription) }
     }
 
-    // Cached transcription history - loaded once, saved on change
-    // Previously was computed property that decoded JSON every access, causing performance issues
-    @Published var transcriptionHistory: [TranscriptionRecord] = [] {
-        didSet {
-            saveTranscriptionHistory()
+    // Transcription history is now stored in Core Data with CloudKit sync (unlimited records)
+    // This computed property delegates to CoreDataManager for reading
+    // Note: For backwards compatibility, we also maintain a small cache in UserDefaults
+    // for the keyboard extension which can't easily access Core Data
+    var transcriptionHistory: [TranscriptionRecord] {
+        get {
+            // Use Core Data as source of truth (syncs via CloudKit)
+            return CoreDataManager.shared.transcriptionHistory
+        }
+        set {
+            // This setter is mainly for compatibility - prefer addTranscription()
+            // We don't sync full history to iCloud KVS (too large)
         }
     }
 
+    /// Published wrapper for UI binding (Core Data updates this automatically)
+    @Published private var _transcriptionHistoryUpdateTrigger = Date()
+
     private func saveTranscriptionHistory() {
-        if let data = try? JSONEncoder().encode(transcriptionHistory) {
+        // No longer saving to UserDefaults - Core Data handles persistence
+        // Keep a small cache for keyboard extension (last 20 records only)
+        let recentRecords = Array(transcriptionHistory.prefix(20))
+        if let data = try? JSONEncoder().encode(recentRecords) {
             defaults?.set(data, forKey: Constants.Keys.transcriptionHistory)
         }
     }
 
     private func loadTranscriptionHistory() {
-        guard let data = defaults?.data(forKey: Constants.Keys.transcriptionHistory),
-              let records = try? JSONDecoder().decode([TranscriptionRecord].self, from: data) else {
-            transcriptionHistory = []
-            return
-        }
-        transcriptionHistory = records
+        // Core Data loads automatically via CoreDataManager
+        // Just trigger a UI update
+        _transcriptionHistoryUpdateTrigger = Date()
     }
 
     var vocabulary: [VocabularyEntry] {
@@ -477,6 +525,7 @@ class SharedSettings: ObservableObject {
             if let data = try? JSONEncoder().encode(newValue) {
                 defaults?.set(data, forKey: Constants.Keys.vocabulary)
             }
+            syncToiCloud()
         }
     }
 
@@ -491,6 +540,10 @@ class SharedSettings: ObservableObject {
         self.keychainManager = KeychainManager.shared
         defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
         loadFromDefaults()
+        setupiCloudSync()
+
+        // Mark initialization complete - now syncToiCloud() will work
+        isInitializing = false
 
         // Phase 6: Perform data retention cleanup on launch
         performDataRetentionCleanup()
@@ -501,6 +554,270 @@ class SharedSettings: ObservableObject {
         self.keychainManager = keychainManager
         self.defaults = defaults
         loadFromDefaults()
+        // Don't setup iCloud sync in tests
+    }
+
+    deinit {
+        if let observer = iCloudObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+
+    // MARK: - iCloud Sync Setup
+
+    private func setupiCloudSync() {
+        appLog("Setting up iCloud KVS sync...", category: "iCloud")
+
+        // Check if iCloud is available
+        let testKey = "icloud_test_\(Date().timeIntervalSince1970)"
+        iCloud.set("test", forKey: testKey)
+        let syncResult = iCloud.synchronize()
+        appLog("iCloud KVS sync test: synchronize() returned \(syncResult)", category: "iCloud")
+        iCloud.removeObject(forKey: testKey)
+
+        // Log current iCloud state
+        let allKeys = iCloud.dictionaryRepresentation.keys
+        appLog("iCloud KVS current keys: \(Array(allKeys).joined(separator: ", "))", category: "iCloud")
+
+        // Listen for iCloud changes from other devices (e.g., macOS)
+        iCloudObserver = NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: iCloud,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self = self else { return }
+
+            appLog("iCloud KVS: Received external change notification!", category: "iCloud")
+
+            guard let userInfo = notification.userInfo,
+                  let reasonNumber = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? NSNumber else {
+                appLog("iCloud KVS: No reason in notification userInfo", category: "iCloud", level: .error)
+                return
+            }
+
+            let reason = reasonNumber.intValue
+            let reasonName: String
+            switch reason {
+            case NSUbiquitousKeyValueStoreServerChange: reasonName = "ServerChange"
+            case NSUbiquitousKeyValueStoreInitialSyncChange: reasonName = "InitialSyncChange"
+            case NSUbiquitousKeyValueStoreAccountChange: reasonName = "AccountChange"
+            case NSUbiquitousKeyValueStoreQuotaViolationChange: reasonName = "QuotaViolation"
+            default: reasonName = "Unknown(\(reason))"
+            }
+            appLog("iCloud KVS change reason: \(reasonName)", category: "iCloud")
+
+            if let changedKeys = userInfo[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] {
+                appLog("iCloud KVS changed keys: \(changedKeys.joined(separator: ", "))", category: "iCloud")
+            }
+
+            switch reason {
+            case NSUbiquitousKeyValueStoreServerChange,
+                 NSUbiquitousKeyValueStoreInitialSyncChange,
+                 NSUbiquitousKeyValueStoreAccountChange:
+                // Data changed from another device - reload settings on main actor
+                Task { @MainActor [weak self] in
+                    self?.isSyncing = true
+                    self?.loadFromiCloud()
+                    self?.isSyncing = false
+                }
+            case NSUbiquitousKeyValueStoreQuotaViolationChange:
+                appLog("iCloud storage quota exceeded", category: "iCloud", level: .error)
+            default:
+                break
+            }
+        }
+
+        // Synchronize to get latest changes
+        let initialSync = iCloud.synchronize()
+        appLog("iCloud sync initialized, initial synchronize() returned \(initialSync)", category: "iCloud")
+
+        // Try to load any existing data
+        loadFromiCloud()
+    }
+
+    private func loadFromiCloud() {
+        appLog("loadFromiCloud: Starting to load from iCloud KVS...", category: "iCloud")
+
+        // Load providers WITH API keys from iCloud (cross-platform sync)
+        if let data = iCloud.data(forKey: iCloudKeys.configuredAIProviders) {
+            appLog("loadFromiCloud: Found providers data (\(data.count) bytes)", category: "iCloud")
+            if let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
+                // Save API keys to local Keychain for offline access
+                for config in providers where !config.apiKey.isEmpty {
+                    let keychainKey = KeychainKeys.key(for: config.provider)
+                    try? keychainManager.save(key: keychainKey, value: config.apiKey)
+                }
+                configuredAIProviders = providers
+                appLog("loadFromiCloud: Loaded \(providers.count) providers: \(providers.map { $0.provider.displayName }.joined(separator: ", "))", category: "iCloud")
+            } else {
+                appLog("loadFromiCloud: Failed to decode providers data", category: "iCloud", level: .error)
+            }
+        } else {
+            appLog("loadFromiCloud: No providers data in iCloud KVS", category: "iCloud")
+        }
+
+        // Load contexts
+        if let data = iCloud.data(forKey: iCloudKeys.contexts),
+           let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
+            contexts = loadedContexts
+            appLog("loadFromiCloud: Loaded \(loadedContexts.count) contexts", category: "iCloud")
+        } else {
+            appLog("loadFromiCloud: No contexts data in iCloud KVS", category: "iCloud")
+        }
+
+        // Load power modes
+        if let data = iCloud.data(forKey: iCloudKeys.powerModes),
+           let loadedModes = try? JSONDecoder().decode([PowerMode].self, from: data) {
+            powerModes = loadedModes
+        }
+
+        // Load vocabulary
+        if let data = iCloud.data(forKey: iCloudKeys.vocabulary),
+           let entries = try? JSONDecoder().decode([VocabularyEntry].self, from: data) {
+            vocabulary = entries
+        }
+
+        // Load custom templates
+        if let data = iCloud.data(forKey: iCloudKeys.customTemplates),
+           let templates = try? JSONDecoder().decode([CustomTemplate].self, from: data) {
+            customTemplates = templates
+        }
+
+        // Load primitive values
+        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedTranscriptionProvider),
+           let provider = AIProvider(rawValue: providerRaw) {
+            selectedTranscriptionProvider = provider
+        }
+
+        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedTranslationProvider),
+           let provider = AIProvider(rawValue: providerRaw) {
+            selectedTranslationProvider = provider
+        }
+
+        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedPowerModeProvider),
+           let provider = AIProvider(rawValue: providerRaw) {
+            selectedPowerModeProvider = provider
+        }
+
+        if let modeRaw = iCloud.string(forKey: iCloudKeys.selectedMode),
+           let mode = FormattingMode(rawValue: modeRaw) {
+            selectedMode = mode
+        }
+
+        if let langRaw = iCloud.string(forKey: iCloudKeys.selectedTargetLanguage),
+           let lang = Language(rawValue: langRaw) {
+            selectedTargetLanguage = lang
+        }
+
+        isTranslationEnabled = iCloud.bool(forKey: iCloudKeys.isTranslationEnabled)
+
+        // Load global memory settings
+        if let memory = iCloud.string(forKey: iCloudKeys.globalMemory) {
+            globalMemory = memory
+        }
+        globalMemoryEnabled = iCloud.bool(forKey: iCloudKeys.globalMemoryEnabled)
+        let limit = iCloud.longLong(forKey: iCloudKeys.globalMemoryLimit)
+        if limit > 0 {
+            globalMemoryLimit = Int(limit)
+        }
+
+        // Transcription history is now synced via Core Data + CloudKit (unlimited records)
+        // No longer using iCloud KVS for history due to size limits
+
+        // Load history memory
+        if let data = iCloud.data(forKey: iCloudKeys.historyMemory),
+           let memory = try? JSONDecoder().decode(HistoryMemory.self, from: data) {
+            // Use iCloud version if newer or local is nil
+            if historyMemory == nil || memory.lastUpdated > (historyMemory?.lastUpdated ?? .distantPast) {
+                historyMemory = memory
+                appLog("loadFromiCloud: Loaded history memory from iCloud", category: "iCloud")
+            }
+        }
+    }
+
+    private func syncToiCloud() {
+        guard !isInitializing else {
+            // Don't sync during initialization - we're still loading
+            return
+        }
+        guard !isSyncing else {
+            appLog("syncToiCloud: Skipped (already syncing)", category: "iCloud")
+            return
+        }
+
+        appLog("syncToiCloud: Starting sync to iCloud KVS...", category: "iCloud")
+
+        // Sync providers WITH API keys for cross-platform sync (iOS <-> macOS)
+        // API keys are also stored in local Keychain for offline access
+        if let data = try? JSONEncoder().encode(configuredAIProviders) {
+            iCloud.set(data, forKey: iCloudKeys.configuredAIProviders)
+            appLog("syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)", category: "iCloud")
+        }
+
+        // Sync contexts
+        if let data = try? JSONEncoder().encode(contexts) {
+            iCloud.set(data, forKey: iCloudKeys.contexts)
+        }
+
+        // Sync power modes
+        if let data = try? JSONEncoder().encode(powerModes) {
+            iCloud.set(data, forKey: iCloudKeys.powerModes)
+        }
+
+        // Sync vocabulary
+        if let data = try? JSONEncoder().encode(vocabulary) {
+            iCloud.set(data, forKey: iCloudKeys.vocabulary)
+        }
+
+        // Sync custom templates
+        if let data = try? JSONEncoder().encode(customTemplates) {
+            iCloud.set(data, forKey: iCloudKeys.customTemplates)
+        }
+
+        // Sync primitive values
+        iCloud.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
+        iCloud.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
+        iCloud.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
+        iCloud.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
+        iCloud.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
+        iCloud.set(isTranslationEnabled, forKey: iCloudKeys.isTranslationEnabled)
+
+        // Sync global memory settings
+        if let memory = globalMemory {
+            iCloud.set(memory, forKey: iCloudKeys.globalMemory)
+        } else {
+            iCloud.removeObject(forKey: iCloudKeys.globalMemory)
+        }
+        iCloud.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
+        iCloud.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
+
+        // Transcription history is synced via Core Data + CloudKit (unlimited records)
+        // No longer using iCloud KVS for history due to size limits
+
+        // Sync history memory
+        if let memory = historyMemory, let data = try? JSONEncoder().encode(memory) {
+            iCloud.set(data, forKey: iCloudKeys.historyMemory)
+        } else {
+            iCloud.removeObject(forKey: iCloudKeys.historyMemory)
+        }
+
+        // Set sync timestamp
+        iCloud.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
+
+        // Trigger synchronization
+        let syncResult = iCloud.synchronize()
+        appLog("syncToiCloud: synchronize() returned \(syncResult)", category: "iCloud")
+    }
+
+    /// Force sync settings to iCloud (call after making changes)
+    func forceSyncToiCloud() {
+        syncToiCloud()
+    }
+
+    /// Get last sync timestamp
+    var lastSyncTime: Date? {
+        let timestamp = iCloud.double(forKey: iCloudKeys.lastSyncTimestamp)
+        return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
     }
 
     /// Refresh settings from UserDefaults (call when app returns to foreground)
@@ -778,6 +1095,7 @@ class SharedSettings: ObservableObject {
         if let data = try? JSONEncoder().encode(sanitizedConfigs) {
             defaults?.set(data, forKey: Constants.Keys.configuredAIProviders)
         }
+        syncToiCloud()
     }
 
     func addAIProvider(_ config: AIProviderConfig) {
@@ -862,6 +1180,7 @@ class SharedSettings: ObservableObject {
         if let data = try? JSONEncoder().encode(customTemplates) {
             defaults?.set(data, forKey: Constants.Keys.customTemplates)
         }
+        syncToiCloud()
     }
 
     func addCustomTemplate(_ template: CustomTemplate) {
@@ -887,16 +1206,25 @@ class SharedSettings: ObservableObject {
     // MARK: - Helper Methods
 
     func addTranscription(_ record: TranscriptionRecord) {
-        var history = transcriptionHistory
-        history.insert(record, at: 0)
-        if history.count > 100 {
-            history = Array(history.prefix(100))
-        }
-        transcriptionHistory = history
+        // Store in Core Data (syncs to CloudKit automatically, no limit)
+        CoreDataManager.shared.addTranscription(record)
+
+        // Also save a small cache to UserDefaults for keyboard extension
+        saveTranscriptionHistory()
+
+        // Trigger UI update
+        _transcriptionHistoryUpdateTrigger = Date()
     }
 
     func clearHistory() {
-        transcriptionHistory = []
+        // Clear from Core Data (and CloudKit)
+        CoreDataManager.shared.clearTranscriptionHistory()
+
+        // Clear local cache
+        defaults?.removeObject(forKey: Constants.Keys.transcriptionHistory)
+
+        // Trigger UI update
+        _transcriptionHistoryUpdateTrigger = Date()
     }
 
     // MARK: - Phase 6: Data Retention
@@ -1042,6 +1370,7 @@ class SharedSettings: ObservableObject {
         if let data = try? JSONEncoder().encode(contexts) {
             defaults?.set(data, forKey: Constants.Keys.contexts)
         }
+        syncToiCloud()
     }
 
     func addContext(_ context: ConversationContext) {
@@ -1181,6 +1510,7 @@ class SharedSettings: ObservableObject {
         if let data = try? JSONEncoder().encode(powerModes) {
             defaults?.set(data, forKey: Constants.Keys.powerModes)
         }
+        syncToiCloud()
     }
 
     func addPowerMode(_ mode: PowerMode) {
