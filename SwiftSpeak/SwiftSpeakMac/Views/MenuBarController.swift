@@ -7,6 +7,7 @@
 
 import AppKit
 import SwiftUI
+import SwiftSpeakCore
 import Combine
 import UserNotifications
 
@@ -43,6 +44,7 @@ final class MenuBarController: ObservableObject {
     private var frontmostAppObserver: NSObjectProtocol?
     private var lastFrontmostBundleId: String?
     private var localKeyboardMonitor: Any?
+    private var powerModeOverlayController: MacPowerModeOverlayController?
 
     // MARK: - Dependencies
 
@@ -50,6 +52,8 @@ final class MenuBarController: ObservableObject {
     private let textInsertion: MacTextInsertionService
     private let settings: MacSettings
     private let hotkeyManager: MacHotkeyManager
+    private lazy var windowContextService = MacWindowContextService()
+    private lazy var providerFactory = ProviderFactory(settings: settings)
 
     init(audioRecorder: MacAudioRecorder,
          textInsertion: MacTextInsertionService,
@@ -435,8 +439,22 @@ final class MenuBarController: ObservableObject {
         // Register default hotkey (Cmd+Shift+D)
         try? hotkeyManager.registerDefaultHotkeys()
 
-        // Set handler
-        hotkeyManager.setHandler { [weak self] action in
+        // Register global power mode hotkey if configured
+        if let globalHotkey = settings.globalPowerModeHotkey {
+            try? hotkeyManager.registerHotkey(globalHotkey, for: .openPowerModeOverlay)
+        }
+
+        // Re-register saved power mode hotkeys
+        for (powerModeId, combination) in settings.powerModeHotkeys {
+            hotkeyManager.registerPowerModeHotkey(
+                powerModeId: powerModeId,
+                keyCode: combination.keyCode,
+                modifiers: combination.modifiers
+            )
+        }
+
+        // Set handler - context is captured in the Carbon callback BEFORE async dispatch
+        hotkeyManager.setHandler { [weak self] action, context in
             switch action {
             case .toggleRecording:
                 self?.toggleRecording()
@@ -445,6 +463,12 @@ final class MenuBarController: ObservableObject {
             case .quickPaste:
                 // Quick paste from clipboard
                 break
+            case .openPowerModeOverlay:
+                // Open power mode selector overlay with captured context
+                self?.openPowerModeOverlay(context: context)
+            case .powerMode(let powerModeId):
+                // Handle power mode activation with captured context
+                self?.activatePowerMode(powerModeId, context: context)
             }
         }
     }
@@ -589,28 +613,34 @@ final class MenuBarController: ObservableObject {
     }
 
     @objc private func openSettings() {
-        // Activate app and show settings
-        NSApp.activate(ignoringOtherApps: true)
+        // Dispatch to main thread to avoid objc_retain crash
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
 
-        // Always recreate the window to ensure fresh state
-        let settingsView = MacSettingsView(settings: MacSettings.shared)
-        let hostingView = NSHostingView(rootView: settingsView)
+            // Activate app and show settings
+            NSApp.activate(ignoringOtherApps: true)
 
-        if settingsWindow == nil {
-            let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            window.title = "SwiftSpeak Settings"
-            window.minSize = NSSize(width: 750, height: 500)
-            window.center()
-            settingsWindow = window
+            // Create window first if needed (before view initialization)
+            if self.settingsWindow == nil {
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
+                    styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.title = "SwiftSpeak Settings"
+                window.minSize = NSSize(width: 750, height: 500)
+                window.center()
+                self.settingsWindow = window
+            }
+
+            // Create view after window exists
+            let settingsView = MacSettingsView(settings: MacSettings.shared)
+            let hostingView = NSHostingView(rootView: settingsView)
+
+            self.settingsWindow?.contentView = hostingView
+            self.settingsWindow?.makeKeyAndOrderFront(nil)
         }
-
-        settingsWindow?.contentView = hostingView
-        settingsWindow?.makeKeyAndOrderFront(nil)
     }
 
     @objc private func quit() {
@@ -679,6 +709,173 @@ final class MenuBarController: ObservableObject {
         hideOverlay()
     }
 
+    /// Open the power mode overlay with selector to cycle through modes
+    public func openPowerModeOverlay(context: HotkeyContext? = nil) {
+        // Get first active power mode, or return if none
+        guard let firstPowerMode = settings.activePowerModes.first else {
+            print("No active power modes available")
+            return
+        }
+
+        // Use last active power mode if set, otherwise use first
+        let powerMode = settings.activePowerMode ?? firstPowerMode
+
+        showPowerModeOverlay(for: powerMode, hotkeyContext: context)
+    }
+
+    /// Activate a specific power mode by ID
+    public func activatePowerMode(_ powerModeId: UUID, context: HotkeyContext? = nil) {
+        // Find the power mode
+        guard let powerMode = settings.activePowerModes.first(where: { $0.id == powerModeId }) else {
+            print("Power Mode not found: \(powerModeId)")
+            return
+        }
+
+        showPowerModeOverlay(for: powerMode, hotkeyContext: context)
+    }
+
+    /// Show the power mode overlay for a specific mode
+    /// - Parameters:
+    ///   - powerMode: The power mode to show
+    ///   - hotkeyContext: Context captured in the Carbon callback (before any async dispatch)
+    private func showPowerModeOverlay(for powerMode: PowerMode, hotkeyContext: HotkeyContext? = nil) {
+        let inputConfig = powerMode.inputConfig
+
+        // Use context from hotkey callback if available, otherwise capture now (fallback for menu clicks)
+        let capturedPid: pid_t
+        let capturedBundleId: String
+        let capturedAppName: String
+        let preCapturedClipboard: String?
+
+        // DEBUG: Show what we received
+        print("[SHOW OVERLAY] hotkeyContext: \(hotkeyContext != nil ? "present" : "nil")")
+        if let ctx = hotkeyContext {
+            print("[SHOW OVERLAY] hotkeyContext.pid: \(ctx.frontmostAppPid), app: \(ctx.frontmostAppName)")
+        }
+
+        if let context = hotkeyContext, context.frontmostAppPid > 0 {
+            // Use context captured in Carbon callback (most reliable)
+            capturedPid = context.frontmostAppPid
+            capturedBundleId = context.frontmostAppBundleId
+            capturedAppName = context.frontmostAppName
+            preCapturedClipboard = inputConfig.includeClipboard ? context.clipboard : nil
+            print("[SHOW OVERLAY] Using hotkey context: \(capturedAppName) (PID: \(capturedPid))")
+        } else {
+            // Fallback: capture now (for menu bar clicks, may capture our own app)
+            let frontmostApp = NSWorkspace.shared.frontmostApplication
+            capturedPid = frontmostApp?.processIdentifier ?? 0
+            capturedBundleId = frontmostApp?.bundleIdentifier ?? ""
+            capturedAppName = frontmostApp?.localizedName ?? capturedBundleId
+            preCapturedClipboard = inputConfig.includeClipboard
+                ? NSPasteboard.general.string(forType: .string)
+                : nil
+            print("[SHOW OVERLAY] Fallback capture: \(capturedAppName) (PID: \(capturedPid))")
+        }
+
+        // Build debug info string for display in overlay
+        var debugStr = "Hotkey: \(hotkeyContext != nil ? "✓" : "✗")\n"
+        debugStr += "Captured: \(capturedAppName) (PID:\(capturedPid))\n"
+        debugStr += "Config: selText=\(inputConfig.includeSelectedText), appText=\(inputConfig.includeActiveAppText)"
+
+        // Use pre-captured context from hotkey callback (captured BEFORE async dispatch)
+        var preCapturedWindowContext: WindowContext?
+
+        if inputConfig.includeSelectedText || inputConfig.includeActiveAppText {
+            if let context = hotkeyContext, context.frontmostAppPid > 0 {
+                // Use selected text captured in the Carbon callback (most reliable!)
+                preCapturedWindowContext = WindowContext(
+                    appName: context.frontmostAppName,
+                    appBundleId: context.frontmostAppBundleId,
+                    windowTitle: context.windowTitle ?? "",
+                    selectedText: inputConfig.includeSelectedText ? context.selectedText : nil,
+                    visibleText: nil,  // Not captured in callback (too expensive)
+                    capturedAt: Date()
+                )
+                debugStr += "\nCapture: ✓ (hotkey)"
+                print("[CAPTURE] Using hotkey context - selectedText: \(context.selectedText?.prefix(50) ?? "nil")")
+            } else {
+                // Fallback: try to capture now (may fail if focus changed)
+                Task { @MainActor in
+                    var captureDebug = debugStr
+                    if capturedPid > 0 && !capturedBundleId.isEmpty {
+                        do {
+                            let windowContext = try await windowContextService.captureWindowContext(
+                                from: capturedPid,
+                                bundleId: capturedBundleId,
+                                appName: capturedAppName
+                            )
+                            captureDebug += "\nCapture: ✓ (fallback)"
+                            print("[CAPTURE] Fallback success from \(capturedAppName)")
+                            self.showOverlayWithContext(
+                                powerMode: powerMode,
+                                windowContext: windowContext,
+                                clipboard: preCapturedClipboard,
+                                debugInfo: captureDebug
+                            )
+                        } catch {
+                            captureDebug += "\nCapture: ✗ \(error.localizedDescription)"
+                            print("[CAPTURE] Fallback failed: \(error)")
+                            self.showOverlayWithContext(
+                                powerMode: powerMode,
+                                windowContext: nil,
+                                clipboard: preCapturedClipboard,
+                                debugInfo: captureDebug
+                            )
+                        }
+                    } else {
+                        captureDebug += "\nCapture: ✗ Invalid PID"
+                        print("[CAPTURE] Invalid PID or bundleId")
+                        self.showOverlayWithContext(
+                            powerMode: powerMode,
+                            windowContext: nil,
+                            clipboard: preCapturedClipboard,
+                            debugInfo: captureDebug
+                        )
+                    }
+                }
+                return  // Early return, showOverlayWithContext called in Task
+            }
+        } else {
+            debugStr += "\nCapture: skipped (config disabled)"
+        }
+
+        // Show overlay with pre-captured context (synchronous path)
+        showOverlayWithContext(
+            powerMode: powerMode,
+            windowContext: preCapturedWindowContext,
+            clipboard: preCapturedClipboard,
+            debugInfo: debugStr
+        )
+    }
+
+    /// Internal method to show overlay after context is captured
+    private func showOverlayWithContext(powerMode: PowerMode, windowContext: WindowContext?, clipboard: String?, debugInfo: String = "") {
+        // Create overlay controller lazily
+        if powerModeOverlayController == nil {
+            let obsidianService = MacObsidianQueryService(settings: settings)
+
+            powerModeOverlayController = MacPowerModeOverlayController(
+                settings: settings,
+                windowContextService: windowContextService,
+                audioRecorder: audioRecorder,
+                providerFactory: providerFactory,
+                obsidianQueryService: obsidianService,
+                textInsertion: textInsertion
+            )
+        }
+
+        // Update the active power mode
+        settings.setActivePowerMode(powerMode)
+
+        // Show overlay with pre-captured context
+        powerModeOverlayController?.showOverlay(
+            for: powerMode,
+            windowContext: windowContext,
+            clipboard: clipboard,
+            debugInfo: debugInfo
+        )
+    }
+
     // MARK: - Transcription & Translation
 
     private func transcribe(audioURL: URL) async throws -> String {
@@ -698,7 +895,7 @@ final class MenuBarController: ObservableObject {
         // Use ProviderFactory to create the translation provider
         let providerFactory = ProviderFactory(settings: settings)
 
-        guard let translationService = providerFactory.createDefaultTranslationProvider() else {
+        guard let translationService = providerFactory.createTranslationProvider() else {
             throw TranscriptionError.apiKeyMissing
         }
 
@@ -707,12 +904,13 @@ final class MenuBarController: ObservableObject {
 
     private func saveToHistory(transcription: String, finalText: String, wasTranslated: Bool) {
         let record = TranscriptionRecord(
-            rawTranscription: transcription,
-            formattedText: finalText,
-            formattingMode: .raw,  // macOS uses translation, not formatting modes
+            rawTranscribedText: transcription,
+            text: finalText,
+            mode: .raw,  // macOS uses translation, not formatting modes
+            provider: settings.selectedTranscriptionProvider,
             duration: audioRecorder.duration,
-            transcriptionProvider: settings.selectedTranscriptionProvider,
-            formattingProvider: wasTranslated ? settings.selectedTranscriptionProvider : nil
+            translated: wasTranslated,
+            targetLanguage: wasTranslated ? settings.selectedTargetLanguage : nil
         )
         settings.addToHistory(record)
     }
@@ -878,71 +1076,258 @@ final class MenuBarController: ObservableObject {
     }
 }
 
-// MARK: - Settings Navigation
+// MARK: - Settings Section Enum
 
 enum SettingsSection: String, CaseIterable, Identifiable {
-    case general = "General"
-    case providers = "Providers"
-    case contexts = "Contexts"
-    case powerModes = "Power Modes"
-    case memory = "Memory"
-    case analytics = "Analytics"
+    // Main categories (match iOS)
+    case voiceLanguage = "Voice & Language"
+    case transcription = "Transcription & AI"
+    case personalization = "Personalization"
+    case behavior = "Behavior"
+    case security = "Security & Privacy"
+    case usage = "Usage & Costs"
+    case vaults = "Vaults"
+    // macOS-specific
     case hotkeys = "Hotkeys"
+    case logs = "Logs"
+    case about = "About"
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .general: return "gear"
-        case .providers: return "cloud"
-        case .contexts: return "person.2"
-        case .powerModes: return "bolt.circle"
-        case .memory: return "brain"
-        case .analytics: return "chart.bar"
+        case .voiceLanguage: return "waveform"
+        case .transcription: return "cpu"
+        case .personalization: return "person.fill"
+        case .behavior: return "bolt.fill"
+        case .security: return "lock.shield.fill"
+        case .usage: return "chart.pie.fill"
+        case .vaults: return "seal.fill"
         case .hotkeys: return "keyboard"
+        case .logs: return "doc.text"
+        case .about: return "info.circle.fill"
+        }
+    }
+
+    var iconColor: Color {
+        switch self {
+        case .voiceLanguage: return .blue
+        case .transcription: return .purple
+        case .personalization: return .orange
+        case .behavior: return .yellow
+        case .security: return .green
+        case .usage: return .mint
+        case .vaults: return .purple
+        case .hotkeys: return .gray
+        case .logs: return .cyan
+        case .about: return .blue
         }
     }
 }
 
-// MARK: - Settings View with Sidebar
+// MARK: - Settings View (macOS Sidebar Style)
 
 struct MacSettingsView: View {
     @ObservedObject var settings: MacSettings
-    @State private var selectedSection: SettingsSection = .general
+    @State private var selectedSection: SettingsSection = .voiceLanguage
 
     var body: some View {
         NavigationSplitView {
-            // Sidebar - always visible
-            List(SettingsSection.allCases, selection: $selectedSection) { section in
-                Label(section.rawValue, systemImage: section.icon)
-                    .tag(section)
+            // Sidebar with header inside list
+            List(selection: $selectedSection) {
+                // App Header
+                Section {
+                    VStack(spacing: 6) {
+                        if let logo = NSImage(named: "SwiftSpeakLogo") {
+                            Image(nsImage: logo)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 40, height: 40)
+                        } else {
+                            Image(systemName: "waveform.circle.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.purple)
+                        }
+                        Text("SwiftSpeak")
+                            .font(.headline)
+                        Text("v1.0.0")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                }
+
+                // Main settings (matches iOS)
+                Section {
+                    ForEach([SettingsSection.voiceLanguage, .transcription, .personalization, .behavior, .security, .usage, .vaults], id: \.self) { section in
+                        SidebarRow(section: section, settings: settings)
+                            .tag(section)
+                    }
+                }
+
+                // macOS-specific
+                Section("macOS") {
+                    ForEach([SettingsSection.hotkeys, .logs], id: \.self) { section in
+                        SidebarRow(section: section, settings: settings)
+                            .tag(section)
+                    }
+                }
+
+                // About
+                Section {
+                    SidebarRow(section: .about, settings: settings)
+                        .tag(SettingsSection.about)
+                }
             }
             .listStyle(.sidebar)
-            .frame(minWidth: 180)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 250)
+            .frame(minWidth: 200)
         } detail: {
-            // Content area
+            // Detail View
             Group {
                 switch selectedSection {
-                case .general:
+                case .voiceLanguage:
                     GeneralSettingsTab(settings: settings)
-                case .providers:
+                case .transcription:
                     ProvidersSettingsTab(settings: settings)
-                case .contexts:
-                    MacContextsView(settings: settings)
-                case .powerModes:
-                    MacPowerModesView(settings: settings)
-                case .memory:
-                    MacMemoryView(settings: settings)
-                case .analytics:
+                case .personalization:
+                    MacPersonalizationView(settings: settings)
+                case .behavior:
+                    MacBehaviorView(settings: settings)
+                case .security:
+                    MacSecurityPrivacyView(settings: settings)
+                case .usage:
                     MacCostAnalyticsView(settings: settings)
+                case .vaults:
+                    MacVaultsSettingsView(settings: settings)
                 case .hotkeys:
                     HotkeySettingsTab()
+                case .logs:
+                    MacLocalLogViewer()
+                case .about:
+                    AboutSettingsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(minWidth: 900, minHeight: 600)
+        .frame(minWidth: 800, minHeight: 550)
+        .toolbar(.hidden, for: .windowToolbar)
+    }
+}
+
+// MARK: - Sidebar Row
+
+struct SidebarRow: View {
+    let section: SettingsSection
+    let settings: MacSettings
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(section.iconColor.gradient)
+                    .frame(width: 24, height: 24)
+                if section == .vaults {
+                    Image("ObsidianIcon")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: section.icon)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(section.rawValue)
+                    .font(.body)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var subtitle: String {
+        switch section {
+        case .voiceLanguage:
+            return settings.selectedDictationLanguage?.displayName ?? "Auto-detect"
+        case .transcription:
+            let count = settings.configuredAIProviders.count
+            return count > 0 ? "\(count) provider\(count == 1 ? "" : "s")" : "Configure"
+        case .personalization:
+            let contextCount = settings.contexts.count
+            return contextCount > 0 ? "\(contextCount) context\(contextCount == 1 ? "" : "s")" : "Contexts, memory"
+        case .behavior:
+            let powerModeCount = settings.activePowerModes.count
+            return powerModeCount > 0 ? "\(powerModeCount) Power Mode\(powerModeCount == 1 ? "" : "s") active" : "Power Modes, streaming"
+        case .security:
+            return "Biometrics, data retention"
+        case .usage:
+            return "Statistics"
+        case .vaults:
+            let count = ObsidianVaultManager.shared.vaults.count
+            return count > 0 ? "\(count) vault\(count == 1 ? "" : "s")" : "None"
+        case .hotkeys:
+            return "Shortcuts"
+        case .logs:
+            return "View app logs"
+        case .about:
+            return "v1.0.0"
+        }
+    }
+}
+
+// MARK: - About Settings View
+
+struct AboutSettingsView: View {
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            // Logo
+            if let logo = NSImage(named: "SwiftSpeakLogo") {
+                Image(nsImage: logo)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+            } else {
+                Image(systemName: "waveform.circle.fill")
+                    .font(.system(size: 80))
+                    .foregroundStyle(.purple)
+            }
+
+            // App Name & Version
+            VStack(spacing: 4) {
+                Text("SwiftSpeak")
+                    .font(.largeTitle.weight(.semibold))
+                Text("Version 1.0.0 (Build 1)")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Description
+            Text("Voice transcription with AI formatting")
+                .font(.body)
+                .foregroundStyle(.secondary)
+
+            // Links
+            HStack(spacing: 20) {
+                Link("Website", destination: URL(string: "https://swiftspeak.app")!)
+                Link("Privacy Policy", destination: URL(string: "https://swiftspeak.app/privacy")!)
+                Link("Terms of Service", destination: URL(string: "https://swiftspeak.app/terms")!)
+            }
+            .font(.callout)
+
+            Spacer()
+
+            // Copyright
+            Text("© 2025 SwiftSpeak. All rights reserved.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .padding(.bottom, 20)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -1793,7 +2178,8 @@ struct GeneralSettingsTab: View {
 }
 
 struct HotkeySettingsTab: View {
-    @StateObject private var hotkeyManager = MacHotkeyManager()
+    @ObservedObject private var hotkeyManager = MacHotkeyManager.shared
+    @ObservedObject private var settings = MacSettings.shared
     @State private var recordingAction: HotkeyAction?
     @State private var showConflictAlert = false
     @State private var conflictMessage = ""
@@ -1812,9 +2198,9 @@ struct HotkeySettingsTab: View {
                 }
                 .padding(.bottom, 8)
 
-                // Hotkey List
+                // Basic Actions
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Actions")
+                    Text("Basic Actions")
                         .font(.headline)
                         .foregroundStyle(.secondary)
 
@@ -1863,6 +2249,60 @@ struct HotkeySettingsTab: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
+                // Global Power Mode Shortcut
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Power Mode")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+
+                    VStack(spacing: 0) {
+                        HotkeyRow(
+                            action: .openPowerModeOverlay,
+                            title: "Open Power Mode Overlay",
+                            description: "Opens the Power Mode overlay - cycle modes with arrow keys",
+                            icon: "bolt.fill",
+                            color: .purple,
+                            currentCombination: hotkeyManager.registeredHotkeys[.openPowerModeOverlay],
+                            isRecording: recordingAction == .openPowerModeOverlay,
+                            onStartRecording: { recordingAction = .openPowerModeOverlay },
+                            onClear: {
+                                hotkeyManager.unregisterHotkey(for: .openPowerModeOverlay)
+                                settings.globalPowerModeHotkey = nil
+                            }
+                        )
+                    }
+                    .background(Color.primary.opacity(0.03))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
+                // Per-Power Mode Hotkeys
+                if !settings.powerModes.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Direct Power Mode Shortcuts")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+
+                        Text("Assign hotkeys to directly activate specific Power Modes")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(settings.activePowerModes.enumerated()), id: \.element.id) { index, powerMode in
+                                if index > 0 {
+                                    Divider().padding(.horizontal, 12)
+                                }
+                                PowerModeHotkeyRow(
+                                    powerMode: powerMode,
+                                    settings: settings,
+                                    hotkeyManager: hotkeyManager
+                                )
+                            }
+                        }
+                        .background(Color.primary.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+
                 // Tips
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tips")
@@ -1873,6 +2313,7 @@ struct HotkeySettingsTab: View {
                         HotkeyTipRow(icon: "keyboard", text: "Click \"Set\" then press your desired key combination")
                         HotkeyTipRow(icon: "exclamationmark.triangle", text: "Avoid system shortcuts like Cmd+C, Cmd+V, Cmd+Tab")
                         HotkeyTipRow(icon: "hand.raised", text: "Use modifiers: Cmd (⌘), Option (⌥), Control (⌃), Shift (⇧)")
+                        HotkeyTipRow(icon: "bolt.circle", text: "Power Mode hotkeys open the overlay for voice input")
                     }
                     .padding(12)
                     .background(Color.blue.opacity(0.05))
@@ -1908,6 +2349,10 @@ struct HotkeySettingsTab: View {
                     if let action = recordingAction {
                         do {
                             try hotkeyManager.registerHotkey(combination, for: action)
+                            // Save to settings for persistence
+                            if action == .openPowerModeOverlay {
+                                settings.globalPowerModeHotkey = combination
+                            }
                         } catch {
                             conflictMessage = error.localizedDescription
                             showConflictAlert = true
@@ -1918,6 +2363,189 @@ struct HotkeySettingsTab: View {
                 onCancel: { recordingAction = nil }
             )
         )
+    }
+}
+
+// MARK: - Power Mode Hotkey Row
+
+private struct PowerModeHotkeyRow: View {
+    let powerMode: PowerMode
+    @ObservedObject var settings: MacSettings
+    @ObservedObject var hotkeyManager: MacHotkeyManager
+
+    @State private var isRecording = false
+    @State private var keyMonitor: Any?
+    @State private var showError = false
+    @State private var errorMessage = ""
+
+    private var currentHotkey: HotkeyCombination? {
+        settings.powerModeHotkeys[powerMode.id]
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Image(systemName: powerMode.icon)
+                    .foregroundStyle(.purple)
+            }
+
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(powerMode.name)
+                    .font(.callout.weight(.medium))
+                Text("Activate Power Mode overlay")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // Hotkey display / recording
+            if isRecording {
+                Text("Press keys...")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else if let hotkey = currentHotkey {
+                HStack(spacing: 4) {
+                    Text(hotkey.displayString)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.primary)
+                    Button {
+                        clearHotkey()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.primary.opacity(0.05))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else {
+                Text("Not Set")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+            // Set button
+            Button(isRecording ? "Cancel" : "Set") {
+                toggleRecording()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(12)
+        .alert("Hotkey Error", isPresented: $showError) {
+            Button("OK") {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+
+    private func toggleRecording() {
+        if isRecording {
+            stopRecording()
+        } else {
+            startRecording()
+        }
+    }
+
+    private func startRecording() {
+        isRecording = true
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handleKeyPress(event)
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    private func handleKeyPress(_ event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let hasModifier = modifiers.contains(.command) || modifiers.contains(.control) ||
+                         modifiers.contains(.option) || modifiers.contains(.shift)
+
+        guard hasModifier else {
+            errorMessage = "Hotkeys must include a modifier key (⌘, ⌃, ⌥, or ⇧)"
+            showError = true
+            stopRecording()
+            return
+        }
+
+        let keyCode = UInt16(event.keyCode)
+        let modifierFlags = UInt(modifiers.rawValue)
+
+        // Create display string
+        let displayString = createDisplayString(keyCode: keyCode, modifiers: modifierFlags)
+
+        // Save hotkey
+        let combination = HotkeyCombination(
+            keyCode: keyCode,
+            modifiers: modifierFlags,
+            displayString: displayString
+        )
+
+        settings.powerModeHotkeys[powerMode.id] = combination
+
+        // Register with hotkey manager
+        let success = hotkeyManager.registerPowerModeHotkey(
+            powerModeId: powerMode.id,
+            keyCode: keyCode,
+            modifiers: modifierFlags
+        )
+
+        if !success {
+            errorMessage = "Failed to register hotkey"
+            showError = true
+            settings.powerModeHotkeys.removeValue(forKey: powerMode.id)
+        }
+
+        stopRecording()
+    }
+
+    private func clearHotkey() {
+        settings.powerModeHotkeys.removeValue(forKey: powerMode.id)
+        hotkeyManager.unregisterPowerModeHotkey(powerModeId: powerMode.id)
+    }
+
+    private func createDisplayString(keyCode: UInt16, modifiers: UInt) -> String {
+        var result = ""
+        let flags = NSEvent.ModifierFlags(rawValue: modifiers)
+
+        if flags.contains(.control) { result += "⌃" }
+        if flags.contains(.option) { result += "⌥" }
+        if flags.contains(.shift) { result += "⇧" }
+        if flags.contains(.command) { result += "⌘" }
+
+        // Map key codes to characters
+        let keyMap: [UInt16: String] = [
+            0x00: "A", 0x01: "S", 0x02: "D", 0x03: "F", 0x04: "H", 0x05: "G",
+            0x06: "Z", 0x07: "X", 0x08: "C", 0x09: "V", 0x0B: "B", 0x0C: "Q",
+            0x0D: "W", 0x0E: "E", 0x0F: "R", 0x10: "Y", 0x11: "T", 0x1F: "O",
+            0x20: "U", 0x22: "I", 0x23: "P", 0x25: "L", 0x26: "J", 0x28: "K",
+            0x2D: "N", 0x2E: "M", 0x12: "1", 0x13: "2", 0x14: "3", 0x15: "4",
+            0x17: "5", 0x16: "6", 0x1A: "7", 0x1C: "8", 0x19: "9", 0x1D: "0",
+            0x31: "Space"
+        ]
+
+        result += keyMap[keyCode] ?? "?"
+        return result
     }
 }
 
@@ -2082,5 +2710,235 @@ class HotkeyRecorderNSView: NSView {
 
     override func flagsChanged(with event: NSEvent) {
         // Just update display, don't record on modifier-only press
+    }
+}
+
+// MARK: - Personalization View (matches iOS)
+
+struct MacPersonalizationView: View {
+    @ObservedObject var settings: MacSettings
+    @State private var selectedTab = 0
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Personalization")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("Customize contexts, memory, and app assignments")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+
+                // Tab Picker
+                Picker("", selection: $selectedTab) {
+                    Text("Contexts").tag(0)
+                    Text("Memory").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+
+                // Content
+                if selectedTab == 0 {
+                    // Embed Contexts View
+                    MacContextsView(settings: settings)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    // Embed Memory View
+                    MacMemoryView(settings: settings)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(20)
+        }
+    }
+}
+
+// MARK: - Behavior View (matches iOS)
+
+struct MacBehaviorView: View {
+    @ObservedObject var settings: MacSettings
+    @State private var selectedTab = 0
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Behavior")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("Configure Power Modes, streaming, and automation")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+
+                // Tab Picker
+                Picker("", selection: $selectedTab) {
+                    Text("Power Modes").tag(0)
+                    Text("Settings").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+
+                if selectedTab == 0 {
+                    // Power Modes
+                    MacPowerModesView(settings: settings)
+                        .frame(maxWidth: .infinity)
+                } else {
+                    // Behavior settings
+                    behaviorSettings
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    private var behaviorSettings: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Streaming
+            GroupBox("Streaming") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Enable streaming for Power Modes", isOn: $settings.powerModeStreamingEnabled)
+                    Text("Stream AI responses as they're generated instead of waiting for completion")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+            }
+
+            // Auto-return
+            GroupBox("Auto-Return") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Return to previous app after recording", isOn: $settings.autoReturnEnabled)
+                    Text("Automatically switch back to the app you were using after transcription completes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+            }
+
+            // Sound effects
+            GroupBox("Sound Effects") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Play sound when recording starts", isOn: $settings.playSoundOnRecordStart)
+                    Toggle("Play sound when recording ends", isOn: $settings.playSoundOnRecordEnd)
+                }
+                .padding(8)
+            }
+
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Security & Privacy View (matches iOS)
+
+struct MacSecurityPrivacyView: View {
+    @ObservedObject var settings: MacSettings
+    @State private var showClearHistoryConfirmation = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                // Header
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Security & Privacy")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("Protect your data and control privacy settings")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 8)
+
+                // Biometrics (Touch ID on Mac)
+                GroupBox("Authentication") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Require Touch ID to access settings", isOn: $settings.biometricProtectionEnabled)
+                        Text("Protect sensitive settings with Touch ID authentication")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                // Data Retention
+                GroupBox("Data Retention") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Picker("Keep transcription history for:", selection: $settings.historyRetentionDays) {
+                            Text("7 days").tag(7)
+                            Text("30 days").tag(30)
+                            Text("90 days").tag(90)
+                            Text("Forever").tag(0)
+                        }
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 200)
+
+                        Text("Older transcriptions will be automatically deleted")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        Button(role: .destructive) {
+                            showClearHistoryConfirmation = true
+                        } label: {
+                            Label("Clear All History", systemImage: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    .padding(8)
+                }
+
+                // Privacy Settings
+                GroupBox("Privacy") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Toggle("Send anonymous usage analytics", isOn: $settings.analyticsEnabled)
+                        Text("Help improve SwiftSpeak by sending anonymous usage data")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Divider()
+
+                        Toggle("Enable cloud log sync", isOn: $settings.cloudLogSyncEnabled)
+                        Text("Sync logs from iOS devices for debugging")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                // API Key Security
+                GroupBox("API Key Security") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Image(systemName: "lock.shield.fill")
+                                .foregroundStyle(.green)
+                            Text("API keys are stored securely in Keychain")
+                        }
+                        Text("Your API keys are encrypted and stored in the macOS Keychain, separate from app data.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(8)
+                }
+
+                Spacer()
+            }
+            .padding(20)
+        }
+        .alert("Clear All History?", isPresented: $showClearHistoryConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear", role: .destructive) {
+                settings.clearTranscriptionHistory()
+            }
+        } message: {
+            Text("This will permanently delete all transcription history. This action cannot be undone.")
+        }
     }
 }
