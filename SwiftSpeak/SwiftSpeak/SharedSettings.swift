@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import SwiftSpeakCore
 
 @MainActor
 class SharedSettings: ObservableObject {
@@ -21,7 +22,9 @@ class SharedSettings: ObservableObject {
 
     // MARK: - iCloud Sync
 
-    private let iCloud = NSUbiquitousKeyValueStore.default
+    // DISABLED: NSUbiquitousKeyValueStore causes CloudKit entitlement crash
+    // TODO: Re-enable once iCloud container is properly configured in Developer Portal
+    private var iCloud: NSUbiquitousKeyValueStore? { nil }
     private var iCloudObserver: NSObjectProtocol?
     private var isSyncing = false
     private var isInitializing = true  // Prevent syncing during init
@@ -164,6 +167,14 @@ class SharedSettings: ObservableObject {
     @Published var powerModes: [PowerMode] = [] {
         didSet {
             savePowerModes()
+        }
+    }
+
+    // MARK: - Obsidian Vaults
+
+    @Published var obsidianVaults: [ObsidianVault] = [] {
+        didSet {
+            saveObsidianVaults()
         }
     }
 
@@ -566,18 +577,27 @@ class SharedSettings: ObservableObject {
     // MARK: - iCloud Sync Setup
 
     private func setupiCloudSync() {
+        // Skip if iCloud is disabled
+        guard iCloud != nil else {
+            appLog("iCloud KVS disabled, skipping sync setup", category: "iCloud")
+            return
+        }
+
         appLog("Setting up iCloud KVS sync...", category: "iCloud")
 
         // Check if iCloud is available
         let testKey = "icloud_test_\(Date().timeIntervalSince1970)"
-        iCloud.set("test", forKey: testKey)
-        let syncResult = iCloud.synchronize()
+        iCloud?.set("test", forKey: testKey)
+        let syncResult = iCloud?.synchronize() ?? false
         appLog("iCloud KVS sync test: synchronize() returned \(syncResult)", category: "iCloud")
-        iCloud.removeObject(forKey: testKey)
+        iCloud?.removeObject(forKey: testKey)
 
         // Log current iCloud state
-        let allKeys = iCloud.dictionaryRepresentation.keys
-        appLog("iCloud KVS current keys: \(Array(allKeys).joined(separator: ", "))", category: "iCloud")
+        if let allKeys = iCloud?.dictionaryRepresentation.keys {
+            appLog("iCloud KVS current keys: \(Array(allKeys).joined(separator: ", "))", category: "iCloud")
+        } else {
+            appLog("iCloud KVS: Not available", category: "iCloud")
+        }
 
         // Listen for iCloud changes from other devices (e.g., macOS)
         iCloudObserver = NotificationCenter.default.addObserver(
@@ -628,7 +648,7 @@ class SharedSettings: ObservableObject {
         }
 
         // Synchronize to get latest changes
-        let initialSync = iCloud.synchronize()
+        let initialSync = iCloud?.synchronize()
         appLog("iCloud sync initialized, initial synchronize() returned \(initialSync)", category: "iCloud")
 
         // Try to load any existing data
@@ -639,7 +659,7 @@ class SharedSettings: ObservableObject {
         appLog("loadFromiCloud: Starting to load from iCloud KVS...", category: "iCloud")
 
         // Load providers WITH API keys from iCloud (cross-platform sync)
-        if let data = iCloud.data(forKey: iCloudKeys.configuredAIProviders) {
+        if let data = iCloud?.data(forKey: iCloudKeys.configuredAIProviders) {
             appLog("loadFromiCloud: Found providers data (\(data.count) bytes)", category: "iCloud")
             if let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
                 // Save API keys to local Keychain for offline access
@@ -657,7 +677,7 @@ class SharedSettings: ObservableObject {
         }
 
         // Load contexts
-        if let data = iCloud.data(forKey: iCloudKeys.contexts),
+        if let data = iCloud?.data(forKey: iCloudKeys.contexts),
            let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
             contexts = loadedContexts
             appLog("loadFromiCloud: Loaded \(loadedContexts.count) contexts", category: "iCloud")
@@ -666,57 +686,57 @@ class SharedSettings: ObservableObject {
         }
 
         // Load power modes
-        if let data = iCloud.data(forKey: iCloudKeys.powerModes),
+        if let data = iCloud?.data(forKey: iCloudKeys.powerModes),
            let loadedModes = try? JSONDecoder().decode([PowerMode].self, from: data) {
             powerModes = loadedModes
         }
 
         // Load vocabulary
-        if let data = iCloud.data(forKey: iCloudKeys.vocabulary),
+        if let data = iCloud?.data(forKey: iCloudKeys.vocabulary),
            let entries = try? JSONDecoder().decode([VocabularyEntry].self, from: data) {
             vocabulary = entries
         }
 
         // Load custom templates
-        if let data = iCloud.data(forKey: iCloudKeys.customTemplates),
+        if let data = iCloud?.data(forKey: iCloudKeys.customTemplates),
            let templates = try? JSONDecoder().decode([CustomTemplate].self, from: data) {
             customTemplates = templates
         }
 
         // Load primitive values
-        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedTranscriptionProvider),
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedTranscriptionProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedTranscriptionProvider = provider
         }
 
-        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedTranslationProvider),
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedTranslationProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedTranslationProvider = provider
         }
 
-        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedPowerModeProvider),
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedPowerModeProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedPowerModeProvider = provider
         }
 
-        if let modeRaw = iCloud.string(forKey: iCloudKeys.selectedMode),
+        if let modeRaw = iCloud?.string(forKey: iCloudKeys.selectedMode),
            let mode = FormattingMode(rawValue: modeRaw) {
             selectedMode = mode
         }
 
-        if let langRaw = iCloud.string(forKey: iCloudKeys.selectedTargetLanguage),
+        if let langRaw = iCloud?.string(forKey: iCloudKeys.selectedTargetLanguage),
            let lang = Language(rawValue: langRaw) {
             selectedTargetLanguage = lang
         }
 
-        isTranslationEnabled = iCloud.bool(forKey: iCloudKeys.isTranslationEnabled)
+        isTranslationEnabled = iCloud?.bool(forKey: iCloudKeys.isTranslationEnabled) ?? isTranslationEnabled
 
         // Load global memory settings
-        if let memory = iCloud.string(forKey: iCloudKeys.globalMemory) {
+        if let memory = iCloud?.string(forKey: iCloudKeys.globalMemory) {
             globalMemory = memory
         }
-        globalMemoryEnabled = iCloud.bool(forKey: iCloudKeys.globalMemoryEnabled)
-        let limit = iCloud.longLong(forKey: iCloudKeys.globalMemoryLimit)
+        globalMemoryEnabled = iCloud?.bool(forKey: iCloudKeys.globalMemoryEnabled) ?? globalMemoryEnabled
+        let limit = iCloud?.longLong(forKey: iCloudKeys.globalMemoryLimit) ?? 0
         if limit > 0 {
             globalMemoryLimit = Int(limit)
         }
@@ -725,7 +745,7 @@ class SharedSettings: ObservableObject {
         // No longer using iCloud KVS for history due to size limits
 
         // Load history memory
-        if let data = iCloud.data(forKey: iCloudKeys.historyMemory),
+        if let data = iCloud?.data(forKey: iCloudKeys.historyMemory),
            let memory = try? JSONDecoder().decode(HistoryMemory.self, from: data) {
             // Use iCloud version if newer or local is nil
             if historyMemory == nil || memory.lastUpdated > (historyMemory?.lastUpdated ?? .distantPast) {
@@ -750,62 +770,62 @@ class SharedSettings: ObservableObject {
         // Sync providers WITH API keys for cross-platform sync (iOS <-> macOS)
         // API keys are also stored in local Keychain for offline access
         if let data = try? JSONEncoder().encode(configuredAIProviders) {
-            iCloud.set(data, forKey: iCloudKeys.configuredAIProviders)
+            iCloud?.set(data, forKey: iCloudKeys.configuredAIProviders)
             appLog("syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)", category: "iCloud")
         }
 
         // Sync contexts
         if let data = try? JSONEncoder().encode(contexts) {
-            iCloud.set(data, forKey: iCloudKeys.contexts)
+            iCloud?.set(data, forKey: iCloudKeys.contexts)
         }
 
         // Sync power modes
         if let data = try? JSONEncoder().encode(powerModes) {
-            iCloud.set(data, forKey: iCloudKeys.powerModes)
+            iCloud?.set(data, forKey: iCloudKeys.powerModes)
         }
 
         // Sync vocabulary
         if let data = try? JSONEncoder().encode(vocabulary) {
-            iCloud.set(data, forKey: iCloudKeys.vocabulary)
+            iCloud?.set(data, forKey: iCloudKeys.vocabulary)
         }
 
         // Sync custom templates
         if let data = try? JSONEncoder().encode(customTemplates) {
-            iCloud.set(data, forKey: iCloudKeys.customTemplates)
+            iCloud?.set(data, forKey: iCloudKeys.customTemplates)
         }
 
         // Sync primitive values
-        iCloud.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
-        iCloud.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
-        iCloud.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
-        iCloud.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
-        iCloud.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
-        iCloud.set(isTranslationEnabled, forKey: iCloudKeys.isTranslationEnabled)
+        iCloud?.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
+        iCloud?.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
+        iCloud?.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
+        iCloud?.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
+        iCloud?.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
+        iCloud?.set(isTranslationEnabled, forKey: iCloudKeys.isTranslationEnabled)
 
         // Sync global memory settings
         if let memory = globalMemory {
-            iCloud.set(memory, forKey: iCloudKeys.globalMemory)
+            iCloud?.set(memory, forKey: iCloudKeys.globalMemory)
         } else {
-            iCloud.removeObject(forKey: iCloudKeys.globalMemory)
+            iCloud?.removeObject(forKey: iCloudKeys.globalMemory)
         }
-        iCloud.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
-        iCloud.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
+        iCloud?.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
+        iCloud?.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
 
         // Transcription history is synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
 
         // Sync history memory
         if let memory = historyMemory, let data = try? JSONEncoder().encode(memory) {
-            iCloud.set(data, forKey: iCloudKeys.historyMemory)
+            iCloud?.set(data, forKey: iCloudKeys.historyMemory)
         } else {
-            iCloud.removeObject(forKey: iCloudKeys.historyMemory)
+            iCloud?.removeObject(forKey: iCloudKeys.historyMemory)
         }
 
         // Set sync timestamp
-        iCloud.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
+        iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
         // Trigger synchronization
-        let syncResult = iCloud.synchronize()
+        let syncResult = iCloud?.synchronize()
         appLog("syncToiCloud: synchronize() returned \(syncResult)", category: "iCloud")
     }
 
@@ -816,7 +836,7 @@ class SharedSettings: ObservableObject {
 
     /// Get last sync timestamp
     var lastSyncTime: Date? {
-        let timestamp = iCloud.double(forKey: iCloudKeys.lastSyncTimestamp)
+        let timestamp = iCloud?.double(forKey: iCloudKeys.lastSyncTimestamp) ?? 0
         return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
     }
 
@@ -902,6 +922,7 @@ class SharedSettings: ObservableObject {
         // Load contexts and power modes
         loadContexts()
         loadPowerModes()
+        loadObsidianVaults()
         loadHistoryMemory()
 
         // Load transcription history (cached, not computed on every access)
@@ -1511,6 +1532,36 @@ class SharedSettings: ObservableObject {
             defaults?.set(data, forKey: Constants.Keys.powerModes)
         }
         syncToiCloud()
+    }
+
+    // MARK: - Obsidian Vaults Methods
+
+    private func saveObsidianVaults() {
+        if let data = try? JSONEncoder().encode(obsidianVaults) {
+            defaults?.set(data, forKey: "obsidianVaults")
+        }
+        syncToiCloud()
+    }
+
+    private func loadObsidianVaults() {
+        if let data = defaults?.data(forKey: "obsidianVaults"),
+           let vaults = try? JSONDecoder().decode([ObsidianVault].self, from: data) {
+            self.obsidianVaults = vaults
+        }
+    }
+
+    func addObsidianVault(_ vault: ObsidianVault) {
+        obsidianVaults.append(vault)
+    }
+
+    func updateObsidianVault(_ vault: ObsidianVault) {
+        if let index = obsidianVaults.firstIndex(where: { $0.id == vault.id }) {
+            obsidianVaults[index] = vault
+        }
+    }
+
+    func deleteObsidianVault(id: UUID) {
+        obsidianVaults.removeAll { $0.id == id }
     }
 
     func addPowerMode(_ mode: PowerMode) {

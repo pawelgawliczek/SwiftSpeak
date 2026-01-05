@@ -11,6 +11,9 @@
 		833363C52F09145800ACDE90 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C42F09145800ACDE90 /* ApplicationServices.framework */; };
 		833363C72F09146100ACDE90 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C62F09146100ACDE90 /* UserNotifications.framework */; };
 		833363C92F09146C00ACDE90 /* LocalAuthentication.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C82F09146C00ACDE90 /* LocalAuthentication.framework */; };
+		838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117402F014001009B3FD9 /* SwiftSpeakCore */; };
+		838749822F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117412F014002009B3FD9 /* SwiftSpeakCore */; };
+		838749832F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117422F014003009B3FD9 /* SwiftSpeakCore */; };
 		83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117202F012F3B009B3FD9 /* RevenueCat */; };
 		83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 83E1172D2F013425009B3FD9 /* WhisperKit */; };
 		83E118BC2F018978009B3FD9 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */; };
@@ -112,19 +115,13 @@
 			membershipExceptions = (
 				Assets.xcassets,
 				Shared/AppLibrary.swift,
-				Shared/Constants.swift,
 				Shared/Models.swift,
 				Shared/Models/AIProvider.swift,
 				Shared/Models/AIProviderConfig.swift,
-				Shared/Models/Context.swift,
 				Shared/Models/Cost.swift,
-				Shared/Models/FormattingMode.swift,
-				Shared/Models/KeyboardAction.swift,
 				Shared/Models/Knowledge.swift,
-				Shared/Models/Language.swift,
 				Shared/Models/LocalProvider.swift,
 				Shared/Models/PendingAudio.swift,
-				Shared/Models/PowerMode.swift,
 				Shared/Models/Processing.swift,
 				Shared/Models/ProviderSelection.swift,
 				Shared/Models/RAG.swift,
@@ -134,7 +131,6 @@
 				Shared/Models/Webhook.swift,
 				Shared/ProviderHelpContent.swift,
 				Shared/ProviderLanguageSupport.swift,
-				Shared/Theme.swift,
 			);
 			target = 83ED79262EFE4D8F00880604 /* SwiftSpeakKeyboard */;
 		};
@@ -199,6 +195,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				838749832F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */,
 				833363C92F09146C00ACDE90 /* LocalAuthentication.framework in Frameworks */,
 				833363C32F09144C00ACDE90 /* Carbon.framework in Frameworks */,
 				833363C52F09145800ACDE90 /* ApplicationServices.framework in Frameworks */,
@@ -224,6 +221,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */,
 				83E118BC2F018978009B3FD9 /* FirebaseRemoteConfig in Frameworks */,
 				83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */,
 				83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */,
@@ -234,6 +232,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				838749822F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -314,6 +313,7 @@
 			);
 			name = SwiftSpeakMac;
 			packageProductDependencies = (
+				83E117422F014003009B3FD9 /* SwiftSpeakCore */,
 			);
 			productName = SwiftSpeakMac;
 			productReference = 833362572F090F3400ACDE90 /* SwiftSpeakMac.app */;
@@ -387,6 +387,7 @@
 				83E117202F012F3B009B3FD9 /* RevenueCat */,
 				83E1172D2F013425009B3FD9 /* WhisperKit */,
 				83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */,
+				83E117402F014001009B3FD9 /* SwiftSpeakCore */,
 			);
 			productName = SwiftSpeak;
 			productReference = 83ED79152EFE4CB900880604 /* SwiftSpeak.app */;
@@ -409,6 +410,7 @@
 			);
 			name = SwiftSpeakKeyboard;
 			packageProductDependencies = (
+				83E117412F014002009B3FD9 /* SwiftSpeakCore */,
 			);
 			productName = SwiftSpeakKeyboard;
 			productReference = 83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */;
@@ -509,6 +511,7 @@
 			packageReferences = (
 				83E1171F2F012F3B009B3FD9 /* XCLocalSwiftPackageReference "../RevenueCat" */,
 				83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */,
+				83E1173F2F014000009B3FD9 /* XCLocalSwiftPackageReference "SwiftSpeakCore" */,
 				83E118BA2F018978009B3FD9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -686,11 +689,8 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeak;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "SwiftSpeak needs microphone access to transcribe your voice.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SwiftSpeakMac/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -736,11 +736,8 @@
 				ENABLE_RESOURCE_ACCESS_PRINTING = NO;
 				ENABLE_RESOURCE_ACCESS_USB = NO;
 				ENABLE_USER_SELECTED_FILES = readwrite;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeak;
-				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "SwiftSpeak needs microphone access to transcribe your voice.";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = SwiftSpeakMac/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -975,6 +972,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SwiftSpeak/SwiftSpeak.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = BSDVBGN72H;
@@ -994,6 +992,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1010,6 +1009,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SwiftSpeak/SwiftSpeak.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = BSDVBGN72H;
@@ -1029,6 +1029,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -1267,6 +1268,10 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../WhisperKit-Package";
 		};
+		83E1173F2F014000009B3FD9 /* XCLocalSwiftPackageReference "SwiftSpeakCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = SwiftSpeakCore;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
@@ -1288,6 +1293,18 @@
 		83E1172D2F013425009B3FD9 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = WhisperKit;
+		};
+		83E117402F014001009B3FD9 /* SwiftSpeakCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftSpeakCore;
+		};
+		83E117412F014002009B3FD9 /* SwiftSpeakCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftSpeakCore;
+		};
+		83E117422F014003009B3FD9 /* SwiftSpeakCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SwiftSpeakCore;
 		};
 		83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */ = {
 			isa = XCSwiftPackageProductDependency;

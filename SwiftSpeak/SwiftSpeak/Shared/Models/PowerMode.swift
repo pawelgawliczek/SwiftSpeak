@@ -104,6 +104,16 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     var enterSendsMessage: Bool         // Enter key sends/submits after inserting
     var enterRunsContext: Bool          // Enter key runs power mode AI processing before inserting
 
+    // Obsidian Integration (Phase 3)
+    var obsidianVaultIds: [UUID]           // Which vaults to query
+    var includeWindowContext: Bool          // macOS: capture window text (DEPRECATED - use inputConfig)
+    var maxObsidianChunks: Int              // 1-10, default 3
+    var obsidianAction: ObsidianActionConfig?  // What to do with output (DEPRECATED - use outputConfig)
+
+    // Input/Output Configuration (Phase 16)
+    var inputConfig: PowerModeInputConfig
+    var outputConfig: PowerModeOutputConfig
+
     init(
         id: UUID = UUID(),
         name: String,
@@ -127,7 +137,13 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         providerOverride: ProviderSelection? = nil,
         aiAutocorrectEnabled: Bool = false,
         enterSendsMessage: Bool = true,
-        enterRunsContext: Bool = false
+        enterRunsContext: Bool = false,
+        obsidianVaultIds: [UUID] = [],
+        includeWindowContext: Bool = false,
+        maxObsidianChunks: Int = 3,
+        obsidianAction: ObsidianActionConfig? = nil,
+        inputConfig: PowerModeInputConfig = .default,
+        outputConfig: PowerModeOutputConfig = .default
     ) {
         self.id = id
         self.name = name
@@ -152,6 +168,12 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.aiAutocorrectEnabled = aiAutocorrectEnabled
         self.enterSendsMessage = enterSendsMessage
         self.enterRunsContext = enterRunsContext
+        self.obsidianVaultIds = obsidianVaultIds
+        self.includeWindowContext = includeWindowContext
+        self.maxObsidianChunks = maxObsidianChunks
+        self.obsidianAction = obsidianAction
+        self.inputConfig = inputConfig
+        self.outputConfig = outputConfig
     }
 
     /// Preset power modes for new users
@@ -214,6 +236,8 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         case isArchived, appAssignment, enabledWebhookIds
         case providerOverride, aiAutocorrectEnabled
         case enterSendsMessage, enterRunsContext
+        case obsidianVaultIds, includeWindowContext, maxObsidianChunks, obsidianAction
+        case inputConfig, outputConfig
         // Legacy
         case systemPrompt  // Migrate to instruction
     }
@@ -254,6 +278,35 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         aiAutocorrectEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiAutocorrectEnabled) ?? false
         enterSendsMessage = try container.decodeIfPresent(Bool.self, forKey: .enterSendsMessage) ?? true
         enterRunsContext = try container.decodeIfPresent(Bool.self, forKey: .enterRunsContext) ?? false
+        obsidianVaultIds = try container.decodeIfPresent([UUID].self, forKey: .obsidianVaultIds) ?? []
+        includeWindowContext = try container.decodeIfPresent(Bool.self, forKey: .includeWindowContext) ?? false
+        maxObsidianChunks = try container.decodeIfPresent(Int.self, forKey: .maxObsidianChunks) ?? 3
+        obsidianAction = try container.decodeIfPresent(ObsidianActionConfig.self, forKey: .obsidianAction)
+
+        // Input/Output config with migration from legacy fields
+        if let inputCfg = try container.decodeIfPresent(PowerModeInputConfig.self, forKey: .inputConfig) {
+            inputConfig = inputCfg
+        } else {
+            // Migrate from legacy fields
+            var cfg = PowerModeInputConfig.default
+            cfg.includePowerModeMemory = memoryEnabled
+            cfg.includeRAGDocuments = !knowledgeDocumentIds.isEmpty
+            cfg.includeObsidianVaults = !obsidianVaultIds.isEmpty
+            cfg.includeActiveAppText = includeWindowContext
+            inputConfig = cfg
+        }
+
+        if let outputCfg = try container.decodeIfPresent(PowerModeOutputConfig.self, forKey: .outputConfig) {
+            outputConfig = outputCfg
+        } else {
+            // Migrate from legacy fields
+            var cfg = PowerModeOutputConfig.default
+            cfg.autoSendAfterInsert = enterSendsMessage
+            cfg.webhookEnabled = !enabledWebhookIds.isEmpty
+            cfg.webhookIds = enabledWebhookIds
+            cfg.obsidianAction = obsidianAction
+            outputConfig = cfg
+        }
     }
 
     func encode(to encoder: Encoder) throws {
@@ -282,6 +335,184 @@ struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         try container.encode(aiAutocorrectEnabled, forKey: .aiAutocorrectEnabled)
         try container.encode(enterSendsMessage, forKey: .enterSendsMessage)
         try container.encode(enterRunsContext, forKey: .enterRunsContext)
+        try container.encode(obsidianVaultIds, forKey: .obsidianVaultIds)
+        try container.encode(includeWindowContext, forKey: .includeWindowContext)
+        try container.encode(maxObsidianChunks, forKey: .maxObsidianChunks)
+        try container.encodeIfPresent(obsidianAction, forKey: .obsidianAction)
+        try container.encode(inputConfig, forKey: .inputConfig)
+        try container.encode(outputConfig, forKey: .outputConfig)
+    }
+}
+
+// MARK: - Power Mode Input Configuration
+
+/// Configuration for what context sources to include in the Power Mode prompt
+struct PowerModeInputConfig: Codable, Equatable, Hashable, Sendable {
+    /// Include global memory in context
+    var includeGlobalMemory: Bool
+
+    /// Include power mode-specific memory
+    var includePowerModeMemory: Bool
+
+    /// Include RAG document embeddings
+    var includeRAGDocuments: Bool
+
+    /// Include Obsidian vault embeddings
+    var includeObsidianVaults: Bool
+
+    /// (macOS only) Include currently selected text
+    var includeSelectedText: Bool
+
+    /// (macOS only) Include text from active application window
+    var includeActiveAppText: Bool
+
+    /// (macOS only) Include text from clipboard
+    var includeClipboard: Bool
+
+    init(
+        includeGlobalMemory: Bool = true,
+        includePowerModeMemory: Bool = true,
+        includeRAGDocuments: Bool = false,
+        includeObsidianVaults: Bool = false,
+        includeSelectedText: Bool = true,
+        includeActiveAppText: Bool = false,
+        includeClipboard: Bool = false
+    ) {
+        self.includeGlobalMemory = includeGlobalMemory
+        self.includePowerModeMemory = includePowerModeMemory
+        self.includeRAGDocuments = includeRAGDocuments
+        self.includeObsidianVaults = includeObsidianVaults
+        self.includeSelectedText = includeSelectedText
+        self.includeActiveAppText = includeActiveAppText
+        self.includeClipboard = includeClipboard
+    }
+
+    static let `default` = PowerModeInputConfig()
+}
+
+// MARK: - Power Mode Output Action
+
+/// How to deliver the Power Mode output
+enum PowerModeOutputAction: String, Codable, CaseIterable, Sendable {
+    case clipboard              // Copy to clipboard only
+    case clipboardAndTextField  // Copy to clipboard + insert in active text field
+    case textFieldOnly          // Insert in active text field only
+
+    var displayName: String {
+        switch self {
+        case .clipboard: return "Copy to Clipboard"
+        case .clipboardAndTextField: return "Clipboard + Text Field"
+        case .textFieldOnly: return "Text Field Only"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .clipboard: return "Copies the result to your clipboard"
+        case .clipboardAndTextField: return "Copies to clipboard and inserts at cursor"
+        case .textFieldOnly: return "Inserts directly at cursor position"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .clipboard: return "doc.on.clipboard"
+        case .clipboardAndTextField: return "doc.on.clipboard.fill"
+        case .textFieldOnly: return "text.cursor"
+        }
+    }
+}
+
+// MARK: - Power Mode Output Configuration
+
+/// Configuration for how to handle Power Mode output
+struct PowerModeOutputConfig: Codable, Equatable, Hashable, Sendable {
+    /// Primary output action (clipboard, text field, or both)
+    var primaryAction: PowerModeOutputAction
+
+    /// Auto-send after inserting (press Enter/Return)
+    var autoSendAfterInsert: Bool
+
+    /// Enable webhook output
+    var webhookEnabled: Bool
+
+    /// Webhook IDs to trigger (if webhookEnabled)
+    var webhookIds: [UUID]
+
+    /// Obsidian action configuration
+    var obsidianAction: ObsidianActionConfig?
+
+    init(
+        primaryAction: PowerModeOutputAction = .clipboardAndTextField,
+        autoSendAfterInsert: Bool = false,
+        webhookEnabled: Bool = false,
+        webhookIds: [UUID] = [],
+        obsidianAction: ObsidianActionConfig? = nil
+    ) {
+        self.primaryAction = primaryAction
+        self.autoSendAfterInsert = autoSendAfterInsert
+        self.webhookEnabled = webhookEnabled
+        self.webhookIds = webhookIds
+        self.obsidianAction = obsidianAction
+    }
+
+    static let `default` = PowerModeOutputConfig()
+}
+
+// MARK: - Obsidian Action Configuration
+
+struct ObsidianActionConfig: Codable, Equatable, Hashable, Sendable {
+    var action: ObsidianAction
+    var targetVaultId: UUID
+    var targetNoteName: String?
+    var autoExecute: Bool
+
+    init(
+        action: ObsidianAction,
+        targetVaultId: UUID,
+        targetNoteName: String? = nil,
+        autoExecute: Bool = false
+    ) {
+        self.action = action
+        self.targetVaultId = targetVaultId
+        self.targetNoteName = targetNoteName
+        self.autoExecute = autoExecute
+    }
+}
+
+// MARK: - Obsidian Action
+
+enum ObsidianAction: String, Codable, CaseIterable, Sendable {
+    case appendToDaily     // Append to daily note
+    case appendToNote      // Append to specific note
+    case createNote        // Create new note
+    case none              // No action
+
+    var displayName: String {
+        switch self {
+        case .appendToDaily: return "Append to Daily Note"
+        case .appendToNote: return "Append to Note"
+        case .createNote: return "Create New Note"
+        case .none: return "No Action"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .appendToDaily: return "calendar.badge.plus"
+        case .appendToNote: return "doc.badge.plus"
+        case .createNote: return "doc.fill.badge.plus"
+        case .none: return "minus.circle"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .appendToDaily: return "Add output to today's daily note"
+        case .appendToNote: return "Add output to a specific note"
+        case .createNote: return "Create a new note with the output"
+        case .none: return "No automatic action"
+        }
     }
 }
 

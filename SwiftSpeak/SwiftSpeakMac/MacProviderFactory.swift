@@ -6,23 +6,7 @@
 //
 
 import Foundation
-
-// MARK: - Provider Protocols
-
-protocol TranscriptionProvider {
-    var providerId: AIProvider { get }
-    var isConfigured: Bool { get }
-    var model: String { get }
-    func transcribe(audioURL: URL, language: Language?) async throws -> String
-    func validateAPIKey(_ key: String) async -> Bool
-}
-
-protocol FormattingProvider {
-    var providerId: AIProvider { get }
-    var isConfigured: Bool { get }
-    var model: String { get }
-    func format(text: String, mode: FormattingMode, customPrompt: String?) async throws -> String
-}
+import SwiftSpeakCore
 
 // MARK: - Provider Factory
 
@@ -57,6 +41,34 @@ struct ProviderFactory {
             return nil
         }
     }
+
+    // MARK: - Translation Providers
+
+    func createTranslationProvider() -> TranslationProvider? {
+        let provider = settings.selectedTranslationProvider
+        switch provider {
+        case .openAI:
+            guard let apiKey = settings.apiKey(for: .openAI) else { return nil }
+            return OpenAITranslationService(apiKey: apiKey)
+        default:
+            return nil
+        }
+    }
+}
+
+// MARK: - Translation Provider Protocol (for macOS)
+
+protocol TranslationProvider {
+    var providerId: AIProvider { get }
+    var isConfigured: Bool { get }
+    var model: String { get }
+    var supportedLanguages: [Language] { get }
+
+    func translate(
+        text: String,
+        from sourceLanguage: Language?,
+        to targetLanguage: Language
+    ) async throws -> String
 }
 
 // MARK: - OpenAI Transcription Service (Minimal Implementation)
@@ -72,7 +84,7 @@ class OpenAITranscriptionService: TranscriptionProvider {
         self.apiKey = apiKey
     }
 
-    func transcribe(audioURL: URL, language: Language?) async throws -> String {
+    func transcribe(audioURL: URL, language: Language?, promptHint: String?) async throws -> String {
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -104,6 +116,13 @@ class OpenAITranscriptionService: TranscriptionProvider {
             body.append("\(lang.rawValue)\r\n".data(using: .utf8)!)
         }
 
+        // Add prompt hint if specified
+        if let hint = promptHint {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(hint)\r\n".data(using: .utf8)!)
+        }
+
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
         request.httpBody = body
 
@@ -111,7 +130,7 @@ class OpenAITranscriptionService: TranscriptionProvider {
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
-            throw TranscriptionError.transcriptionFailed(NSError(domain: "OpenAI", code: -1))
+            throw TranscriptionError.transcriptionFailed("OpenAI API request failed")
         }
 
         struct TranscriptionResponse: Decodable {
@@ -141,7 +160,7 @@ class OpenAIFormattingService: FormattingProvider {
         self.apiKey = apiKey
     }
 
-    func format(text: String, mode: FormattingMode, customPrompt: String?) async throws -> String {
+    func format(text: String, mode: FormattingMode, customPrompt: String?, context: PromptContext?) async throws -> String {
         guard mode != .raw else { return text }
 
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
@@ -150,7 +169,20 @@ class OpenAIFormattingService: FormattingProvider {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let systemPrompt = customPrompt ?? mode.prompt
+        // Build system prompt with optional context
+        var systemPrompt = customPrompt ?? mode.prompt
+        if let ctx = context {
+            if let globalMemory = ctx.globalMemory, !globalMemory.isEmpty {
+                systemPrompt += "\n\nUser context: \(globalMemory)"
+            }
+            if let contextMemory = ctx.contextMemory, !contextMemory.isEmpty {
+                systemPrompt += "\n\nContext: \(contextMemory)"
+            }
+            if let customInstructions = ctx.customInstructions, !customInstructions.isEmpty {
+                systemPrompt += "\n\nInstructions: \(customInstructions)"
+            }
+        }
+
         let payload: [String: Any] = [
             "model": model,
             "messages": [
@@ -166,7 +198,68 @@ class OpenAIFormattingService: FormattingProvider {
 
         guard let httpResponse = response as? HTTPURLResponse,
               (200...299).contains(httpResponse.statusCode) else {
-            throw TranscriptionError.transcriptionFailed(NSError(domain: "OpenAI", code: -1))
+            throw TranscriptionError.transcriptionFailed("OpenAI API request failed")
+        }
+
+        struct ChatResponse: Decodable {
+            struct Choice: Decodable {
+                struct Message: Decodable {
+                    let content: String
+                }
+                let message: Message
+            }
+            let choices: [Choice]
+        }
+
+        let result = try JSONDecoder().decode(ChatResponse.self, from: data)
+        return result.choices.first?.message.content ?? text
+    }
+}
+
+// MARK: - OpenAI Translation Service (Minimal Implementation)
+
+class OpenAITranslationService: TranslationProvider {
+    let providerId: AIProvider = .openAI
+    let model: String = "gpt-4o-mini"
+    private let apiKey: String
+
+    var isConfigured: Bool { !apiKey.isEmpty }
+    var supportedLanguages: [Language] { Language.allCases }
+
+    init(apiKey: String) {
+        self.apiKey = apiKey
+    }
+
+    func translate(text: String, from sourceLanguage: Language?, to targetLanguage: Language) async throws -> String {
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let sourceLang = sourceLanguage?.displayName ?? "the source language"
+        let systemPrompt = """
+        You are a professional translator. Translate the following text from \(sourceLang) to \(targetLanguage.displayName).
+        Provide only the translation, with no additional commentary or explanation.
+        Maintain the original tone and style while ensuring natural fluency in the target language.
+        """
+
+        let payload: [String: Any] = [
+            "model": model,
+            "messages": [
+                ["role": "system", "content": systemPrompt],
+                ["role": "user", "content": text]
+            ],
+            "max_tokens": 2048
+        ]
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode) else {
+            throw TranscriptionError.transcriptionFailed("OpenAI translation failed")
         }
 
         struct ChatResponse: Decodable {

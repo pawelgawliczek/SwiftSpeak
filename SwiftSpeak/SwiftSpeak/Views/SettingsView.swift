@@ -84,6 +84,14 @@ struct SettingsView: View {
         return "Configure security"
     }
 
+    private var vaultsSubtitle: String {
+        let count = settings.obsidianVaults.count
+        if count == 0 {
+            return "Configure Obsidian vaults"
+        }
+        return "\(count) vault\(count == 1 ? "" : "s") configured"
+    }
+
     #if DEBUG
     private var microphonePermissionStatus: String {
         switch AVAudioApplication.shared.recordPermission {
@@ -266,6 +274,19 @@ struct SettingsView: View {
                     iconColor: .mint,
                     title: "Usage & Costs",
                     subtitle: "View usage statistics"
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Obsidian Vaults
+            NavigationLink {
+                VaultsSettingsView()
+            } label: {
+                SettingsRow(
+                    icon: "doc.on.doc.fill",
+                    iconColor: .purple,
+                    title: "Vaults",
+                    subtitle: vaultsSubtitle
                 )
             }
             .listRowBackground(rowBackground)

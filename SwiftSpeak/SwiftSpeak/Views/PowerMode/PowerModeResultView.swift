@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct PowerModeResultView: View {
     @State var session: PowerModeSession
@@ -16,6 +17,11 @@ struct PowerModeResultView: View {
     let onAccept: () -> Void
 
     @State private var showDiff = false
+    @State private var showObsidianActionSheet = false
+
+    // Phase 4: Obsidian action support
+    @ObservedObject var orchestrator: PowerModeOrchestrator
+    @ObservedObject var settings: SharedSettings
 
     var body: some View {
         VStack(spacing: 16) {
@@ -43,6 +49,33 @@ struct PowerModeResultView: View {
 
             // Action buttons
             actionButtons
+        }
+        .sheet(isPresented: $showObsidianActionSheet) {
+            if let pending = orchestrator.pendingObsidianAction,
+               let vault = settings.obsidianVaults.first(where: { $0.id == pending.action.targetVaultId }) {
+                ObsidianActionSheet(
+                    action: pending.action,
+                    targetVault: vault,
+                    content: pending.content,
+                    onConfirm: {
+                        Task {
+                            await orchestrator.confirmPendingObsidianAction()
+                        }
+                    },
+                    onCancel: {
+                        orchestrator.cancelPendingObsidianAction()
+                    }
+                )
+            }
+        }
+        .onAppear {
+            // Check if there's a pending Obsidian action
+            if orchestrator.pendingObsidianAction != nil {
+                showObsidianActionSheet = true
+            }
+        }
+        .onChange(of: orchestrator.pendingObsidianAction != nil) { _, hasPending in
+            showObsidianActionSheet = hasPending
         }
     }
 
@@ -474,13 +507,19 @@ private struct DiffElement: Identifiable {
     var session = PowerModeSession()
     session.addResult(PowerModeResult.sample)
 
+    let powerMode = PowerMode.presets[0]
+    let orchestrator = PowerModeOrchestrator(powerMode: powerMode)
+    let settings = SharedSettings.shared
+
     return PowerModeResultView(
         session: session,
         isFromKeyboard: false,
         onCopyAndDone: {},
         onRefine: {},
         onRegenerate: {},
-        onAccept: {}
+        onAccept: {},
+        orchestrator: orchestrator,
+        settings: settings
     )
     .background(AppTheme.darkBase)
     .preferredColorScheme(.dark)
@@ -490,13 +529,19 @@ private struct DiffElement: Identifiable {
     var session = PowerModeSession()
     session.addResult(PowerModeResult.sample)
 
+    let powerMode = PowerMode.presets[0]
+    let orchestrator = PowerModeOrchestrator(powerMode: powerMode)
+    let settings = SharedSettings.shared
+
     return PowerModeResultView(
         session: session,
         isFromKeyboard: true,
         onCopyAndDone: {},
         onRefine: {},
         onRegenerate: {},
-        onAccept: {}
+        onAccept: {},
+        orchestrator: orchestrator,
+        settings: settings
     )
     .background(AppTheme.darkBase)
     .preferredColorScheme(.dark)

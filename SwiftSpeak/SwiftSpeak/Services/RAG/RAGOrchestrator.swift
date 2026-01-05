@@ -438,4 +438,82 @@ final class RAGOrchestrator: ObservableObject {
 
         return content
     }
+
+    // MARK: - Obsidian Integration (Phase 3)
+
+    /// Query with combined Obsidian vault and Power Mode document context
+    func queryWithObsidian(
+        query: String,
+        powerMode: PowerMode,
+        obsidianQueryService: ObsidianQueryService? = nil,
+        existingContext: [SimilarityResult]? = nil
+    ) async throws -> CombinedRAGResult {
+        // Get Power Mode document results
+        var documentResults: [SimilarityResult] = existingContext ?? []
+        if documentResults.isEmpty && !powerMode.knowledgeDocumentIds.isEmpty {
+            let ragResult = try await self.query(query, powerMode: powerMode)
+            documentResults = ragResult.chunks
+        }
+
+        // Get Obsidian results
+        var obsidianResults: [ObsidianSearchResult] = []
+        if !powerMode.obsidianVaultIds.isEmpty, let queryService = obsidianQueryService {
+            obsidianResults = try await queryService.query(
+                text: query,
+                vaultIds: powerMode.obsidianVaultIds,
+                maxChunks: powerMode.maxObsidianChunks,
+                minSimilarity: powerMode.ragConfiguration.similarityThreshold
+            )
+        }
+
+        return CombinedRAGResult(
+            documentResults: documentResults,
+            obsidianResults: obsidianResults
+        )
+    }
+}
+
+// MARK: - Combined RAG Result
+
+/// Combined result from Power Mode documents and Obsidian vaults
+struct CombinedRAGResult {
+    let documentResults: [SimilarityResult]
+    let obsidianResults: [ObsidianSearchResult]
+
+    /// Combined formatted context for LLM prompt injection
+    var combinedContext: String {
+        var parts: [String] = []
+
+        // Add Power Mode document context
+        if !documentResults.isEmpty {
+            parts.append("## From Knowledge Base Documents\n")
+            for (index, result) in documentResults.enumerated() {
+                parts.append("### Document \(index + 1): \(result.documentName)")
+                parts.append(result.chunk.content)
+                parts.append("")  // Blank line
+            }
+        }
+
+        // Add Obsidian vault context
+        if !obsidianResults.isEmpty {
+            parts.append("## From Obsidian Notes\n")
+            for (index, result) in obsidianResults.enumerated() {
+                parts.append("### [\(result.noteTitle)] (vault: \(result.vaultName))")
+                parts.append(result.chunkContent)
+                parts.append("")  // Blank line
+            }
+        }
+
+        return parts.joined(separator: "\n")
+    }
+
+    /// Estimate token count for combined context
+    var estimatedTokens: Int {
+        combinedContext.count / 4
+    }
+
+    /// Check if any results were found
+    var hasResults: Bool {
+        !documentResults.isEmpty || !obsidianResults.isEmpty
+    }
 }

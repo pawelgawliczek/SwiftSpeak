@@ -199,7 +199,9 @@ struct PowerModeExecutionView: View {
                             await orchestrator.regenerate()
                         }
                     },
-                    onAccept: acceptAndInsert
+                    onAccept: acceptAndInsert,
+                    orchestrator: orchestrator,
+                    settings: settings
                 )
             case .error(let message):
                 errorView(message)

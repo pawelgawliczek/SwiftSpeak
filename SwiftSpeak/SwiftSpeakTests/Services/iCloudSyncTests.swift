@@ -149,7 +149,7 @@ struct iCloudSyncTests {
     @Test("Power mode encodes/decodes correctly for sync")
     func testPowerModeCodable() throws {
         var mode = PowerMode(name: "Email Assistant")
-        mode.agentInstructions = "Help draft emails"
+        mode.instruction = "Help draft emails"
         mode.memory = "User signature: John Doe"
 
         let encoded = try JSONEncoder().encode([mode])
@@ -180,24 +180,21 @@ struct iCloudSyncTests {
     @Test("TranscriptionRecord encodes for Core Data storage")
     func testTranscriptionRecordCodable() throws {
         let record = TranscriptionRecord(
-            text: "Hello world",
-            formattedText: "Hello, World!",
-            mode: .professional,
+            rawTranscribedText: "Hello world",
+            text: "Hello, World!",
+            mode: .formal,
             provider: .openAI,
-            duration: 5.5,
-            wordCount: 2,
-            cost: 0.006
+            duration: 5.5
         )
 
         // Core Data stores as JSON in jsonData field
         let encoded = try JSONEncoder().encode(record)
         let decoded = try JSONDecoder().decode(TranscriptionRecord.self, from: encoded)
 
-        #expect(decoded.text == "Hello world")
-        #expect(decoded.formattedText == "Hello, World!")
-        #expect(decoded.mode == .professional)
+        #expect(decoded.rawTranscribedText == "Hello world")
+        #expect(decoded.text == "Hello, World!")
+        #expect(decoded.mode == .formal)
         #expect(decoded.duration == 5.5)
-        #expect(decoded.wordCount == 2)
     }
 
     // MARK: - Sync Size Tests
@@ -215,7 +212,7 @@ struct iCloudSyncTests {
                 usageCategories: [.transcription, .translation, .powerMode],
                 transcriptionModel: "model-\(i)",
                 translationModel: "gpt-4",
-                formattingModel: "gpt-4"
+                powerModeModel: "gpt-4"
             )
             configs.append(config)
         }

@@ -47,6 +47,7 @@ struct SwiftSpeakApp: App {
                         get: { settings.hasCompletedOnboarding },
                         set: { settings.hasCompletedOnboarding = $0 }
                     ))
+                    .environmentObject(settings)
                     .transition(.opacity)
                     .zIndex(1)
                 }

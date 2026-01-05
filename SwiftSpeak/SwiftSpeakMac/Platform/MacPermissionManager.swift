@@ -115,6 +115,16 @@ public final class MacPermissionManager: PermissionManagerProtocol, ObservableOb
     public func promptForAccessibilityPermission() {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
         AXIsProcessTrustedWithOptions(options as CFDictionary)
+
+        // Refresh status after prompting
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            _ = self?.checkAccessibilityPermission()
+        }
+    }
+
+    /// Check if accessibility is enabled (convenience for services)
+    public var isAccessibilityEnabled: Bool {
+        return accessibilityStatus == .authorized
     }
 
     // MARK: - Helpers

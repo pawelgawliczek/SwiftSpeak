@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 import AppKit
 import Combine
 
@@ -403,6 +404,7 @@ extension Language {
         case .russian: return "🇷🇺"
         case .polish: return "🇵🇱"
         case .arabic: return "🇸🇦"
+        case .egyptianArabic: return "🇪🇬"
         }
     }
 }

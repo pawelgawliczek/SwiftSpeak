@@ -788,11 +788,15 @@ final class MenuBarController: ObservableObject {
                     appBundleId: context.frontmostAppBundleId,
                     windowTitle: context.windowTitle ?? "",
                     selectedText: inputConfig.includeSelectedText ? context.selectedText : nil,
-                    visibleText: nil,  // Not captured in callback (too expensive)
+                    visibleText: nil,  // Will be captured async if needed
                     capturedAt: Date()
                 )
                 debugStr += "\nCapture: ✓ (hotkey)"
                 print("[CAPTURE] Using hotkey context - selectedText: \(context.selectedText?.prefix(50) ?? "nil")")
+
+                // Note: Window Text (Active App Text) is not reliably capturable because
+                // accessibility APIs fail when the target app loses focus.
+                // Selected Text via Cmd+C is the primary context capture method.
             } else {
                 // Fallback: try to capture now (may fail if focus changed)
                 Task { @MainActor in

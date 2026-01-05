@@ -10,6 +10,7 @@
 import Combine
 import Foundation
 import UIKit
+import SwiftSpeakCore
 
 // Note: PowerModeExecutionState is defined in Models.swift
 
@@ -65,10 +66,26 @@ final class PowerModeOrchestrator: ObservableObject {
     /// Last RAG query result (used in prompt building)
     private var lastRAGResult: RAGQueryResult?
 
+    // MARK: - Obsidian State (Phase 3)
+
+    /// Obsidian query service (optional)
+    private var obsidianQueryService: ObsidianQueryService?
+
+    /// Last combined RAG result (Power Mode docs + Obsidian vaults)
+    private var lastCombinedRAGResult: CombinedRAGResult?
+
     // MARK: - Webhook State
 
     /// Context fetched from webhooks (used in prompt building)
     private var webhookContextResults: [WebhookExecutor.ContextSourceResult] = []
+
+    // MARK: - Obsidian Action State (Phase 4)
+
+    /// Pending Obsidian action for UI confirmation
+    @Published private(set) var pendingObsidianAction: (action: ObsidianActionConfig, content: String)?
+
+    /// Obsidian note writer
+    private let noteWriter = ObsidianNoteWriter()
 
     // MARK: - Timing
 
@@ -197,9 +214,10 @@ final class PowerModeOrchestrator: ObservableObject {
                 }
             }
 
-            // Query knowledge base if configured (Phase 4e - RAG)
+            // Query knowledge base if configured (Phase 4e - RAG + Phase 3 - Obsidian)
             lastRAGResult = nil
-            if !powerMode.knowledgeDocumentIds.isEmpty {
+            lastCombinedRAGResult = nil
+            if !powerMode.knowledgeDocumentIds.isEmpty || !powerMode.obsidianVaultIds.isEmpty {
                 state = .queryingKnowledge
                 do {
                     // Configure RAG if needed
@@ -209,13 +227,22 @@ final class PowerModeOrchestrator: ObservableObject {
                         try ragOrchestrator.configure(openAIApiKey: openAIKey)
                     }
 
-                    // Query for relevant context
+                    // Initialize Obsidian query service if needed
+                    if obsidianQueryService == nil, !powerMode.obsidianVaultIds.isEmpty {
+                        obsidianQueryService = try await ObsidianQueryService.create(from: settings)
+                    }
+
+                    // Query for relevant context (combined Power Mode docs + Obsidian)
                     if ragOrchestrator.isConfigured {
-                        lastRAGResult = try await ragOrchestrator.query(processedInput, powerMode: powerMode)
+                        lastCombinedRAGResult = try await ragOrchestrator.queryWithObsidian(
+                            query: processedInput,
+                            powerMode: powerMode,
+                            obsidianQueryService: obsidianQueryService
+                        )
                     }
                 } catch {
                     // RAG failure is non-fatal - continue without RAG context
-                    appLog("RAG query failed (non-fatal): \(LogSanitizer.sanitizeError(error))", category: "RAG", level: .warning)
+                    appLog("RAG/Obsidian query failed (non-fatal): \(LogSanitizer.sanitizeError(error))", category: "RAG", level: .warning)
                 }
             }
 
@@ -287,6 +314,19 @@ final class PowerModeOrchestrator: ObservableObject {
                         output: output,
                         contextName: contextName
                     )
+                }
+            }
+
+            // Handle Obsidian action (Phase 4)
+            if let action = powerMode.obsidianAction, action.action != .none {
+                if action.autoExecute {
+                    // Auto-execute: save directly without confirmation
+                    Task {
+                        await executeObsidianAction(action, content: output)
+                    }
+                } else {
+                    // Store pending action for UI confirmation
+                    pendingObsidianAction = (action, output)
                 }
             }
 
@@ -635,8 +675,13 @@ final class PowerModeOrchestrator: ObservableObject {
             parts.append(memorySection)
         }
 
-        // 5. RAG context injection (Phase 4e)
-        if let ragResult = lastRAGResult, !ragResult.chunks.isEmpty {
+        // 5. RAG context injection (Phase 4e + Phase 3 - Obsidian)
+        if let combined = lastCombinedRAGResult, combined.hasResults {
+            // Use formatted combined context from CombinedRAGResult
+            parts.append("\n" + combined.combinedContext)
+            parts.append("Use this information to inform your response when relevant.")
+        } else if let ragResult = lastRAGResult, !ragResult.chunks.isEmpty {
+            // Fallback to legacy RAG-only context
             parts.append("\n## Knowledge Base Context")
             parts.append("The following relevant information was retrieved from attached documents:")
             parts.append("Sources: \(ragResult.documentNames.joined(separator: ", "))")
@@ -802,5 +847,64 @@ extension PowerModeOrchestrator {
             sources.append(powerMode.name)
         }
         return sources
+    }
+
+    // MARK: - Obsidian Action Execution (Phase 4)
+
+    /// Execute a pending Obsidian action (called from UI confirmation)
+    func confirmPendingObsidianAction() async {
+        guard let pending = pendingObsidianAction else { return }
+
+        await executeObsidianAction(pending.action, content: pending.content)
+        pendingObsidianAction = nil
+    }
+
+    /// Cancel pending Obsidian action
+    func cancelPendingObsidianAction() {
+        pendingObsidianAction = nil
+    }
+
+    /// Execute an Obsidian action
+    private func executeObsidianAction(_ action: ObsidianActionConfig, content: String) async {
+        // Find the target vault
+        guard let vault = settings.obsidianVaults.first(where: { $0.id == action.targetVaultId }) else {
+            appLog("Obsidian action failed: vault not found \(action.targetVaultId)", category: "Obsidian", level: .error)
+            return
+        }
+
+        do {
+            switch action.action {
+            case .appendToDaily:
+                try await noteWriter.appendToDaily(content: content, vault: vault)
+                appLog("Appended to daily note in vault: \(vault.name)", category: "Obsidian")
+
+            case .appendToNote:
+                guard let targetNote = action.targetNoteName else {
+                    appLog("Obsidian action failed: no target note specified", category: "Obsidian", level: .error)
+                    return
+                }
+                try await noteWriter.appendToNote(
+                    content: content,
+                    notePath: targetNote,
+                    vault: vault,
+                    createIfNeeded: false
+                )
+                appLog("Appended to note '\(targetNote)' in vault: \(vault.name)", category: "Obsidian")
+
+            case .createNote:
+                let title = action.targetNoteName ?? "Power Mode Output"
+                let createdPath = try await noteWriter.createNote(
+                    title: title,
+                    content: content,
+                    vault: vault
+                )
+                appLog("Created note '\(createdPath)' in vault: \(vault.name)", category: "Obsidian")
+
+            case .none:
+                break
+            }
+        } catch {
+            appLog("Obsidian action failed: \(LogSanitizer.sanitizeError(error))", category: "Obsidian", level: .error)
+        }
     }
 }

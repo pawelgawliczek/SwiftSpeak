@@ -15,7 +15,9 @@ class MacSettings: ObservableObject {
     static let shared = MacSettings()
 
     private let defaults: UserDefaults?
-    private let iCloud = NSUbiquitousKeyValueStore.default
+    // DISABLED: NSUbiquitousKeyValueStore causes CloudKit entitlement crash
+    // TODO: Re-enable once iCloud container is properly configured in Developer Portal
+    private var iCloud: NSUbiquitousKeyValueStore? { nil }
     private var iCloudObserver: NSObjectProtocol?
     private var isSyncing = false
     private var isInitializing = true  // Prevent syncing during init
@@ -158,6 +160,67 @@ class MacSettings: ObservableObject {
         }
     }
 
+    // MARK: - Power Mode Hotkeys (macOS only)
+
+    /// Global hotkey to open the Power Mode selector overlay
+    @Published var globalPowerModeHotkey: HotkeyCombination? = nil {
+        didSet {
+            saveGlobalPowerModeHotkey()
+        }
+    }
+
+    /// Dictionary mapping Power Mode IDs to their hotkey combinations
+    @Published var powerModeHotkeys: [UUID: HotkeyCombination] = [:] {
+        didSet {
+            savePowerModeHotkeys()
+        }
+    }
+
+    private func saveGlobalPowerModeHotkey() {
+        if let hotkey = globalPowerModeHotkey,
+           let data = try? JSONEncoder().encode(hotkey) {
+            defaults?.set(data, forKey: "globalPowerModeHotkey")
+        } else {
+            defaults?.removeObject(forKey: "globalPowerModeHotkey")
+        }
+    }
+
+    private func loadGlobalPowerModeHotkey() {
+        guard let data = defaults?.data(forKey: "globalPowerModeHotkey"),
+              let hotkey = try? JSONDecoder().decode(HotkeyCombination.self, from: data) else {
+            return
+        }
+        globalPowerModeHotkey = hotkey
+    }
+
+    private func savePowerModeHotkeys() {
+        let encoder = JSONEncoder()
+        // Convert to [String: HotkeyCombination] for JSON encoding
+        let stringKeyed = Dictionary(uniqueKeysWithValues: powerModeHotkeys.map { (key, value) in
+            (key.uuidString, value)
+        })
+
+        if let data = try? encoder.encode(stringKeyed) {
+            defaults?.set(data, forKey: "powerModeHotkeys")
+        }
+    }
+
+    private func loadPowerModeHotkeys() {
+        guard let data = defaults?.data(forKey: "powerModeHotkeys") else { return }
+        let decoder = JSONDecoder()
+
+        do {
+            let stringKeyed = try decoder.decode([String: HotkeyCombination].self, from: data)
+            // Convert back to [UUID: HotkeyCombination]
+            powerModeHotkeys = Dictionary(uniqueKeysWithValues: stringKeyed.compactMap { (key, value) in
+                guard let uuid = UUID(uuidString: key) else { return nil }
+                return (uuid, value)
+            })
+        } catch {
+            print("Failed to load power mode hotkeys: \(error)")
+        }
+    }
+
     // MARK: - Memory System
 
     @Published var globalMemory: String? {
@@ -211,6 +274,58 @@ class MacSettings: ObservableObject {
 
     @Published var transcriptionHistory: [TranscriptionRecord] = []
 
+    // MARK: - Behavior Settings
+
+    @Published var powerModeStreamingEnabled: Bool = true {
+        didSet {
+            defaults?.set(powerModeStreamingEnabled, forKey: "powerModeStreamingEnabled")
+        }
+    }
+
+    @Published var autoReturnEnabled: Bool = true {
+        didSet {
+            defaults?.set(autoReturnEnabled, forKey: "autoReturnEnabled")
+        }
+    }
+
+    @Published var playSoundOnRecordStart: Bool = true {
+        didSet {
+            defaults?.set(playSoundOnRecordStart, forKey: "playSoundOnRecordStart")
+        }
+    }
+
+    @Published var playSoundOnRecordEnd: Bool = true {
+        didSet {
+            defaults?.set(playSoundOnRecordEnd, forKey: "playSoundOnRecordEnd")
+        }
+    }
+
+    // MARK: - Security & Privacy
+
+    @Published var biometricProtectionEnabled: Bool = false {
+        didSet {
+            defaults?.set(biometricProtectionEnabled, forKey: "biometricProtectionEnabled")
+        }
+    }
+
+    @Published var historyRetentionDays: Int = 30 {
+        didSet {
+            defaults?.set(historyRetentionDays, forKey: "historyRetentionDays")
+        }
+    }
+
+    @Published var analyticsEnabled: Bool = true {
+        didSet {
+            defaults?.set(analyticsEnabled, forKey: "analyticsEnabled")
+        }
+    }
+
+    @Published var cloudLogSyncEnabled: Bool = true {
+        didSet {
+            defaults?.set(cloudLogSyncEnabled, forKey: "cloudLogSyncEnabled")
+        }
+    }
+
     // MARK: - Initialization
 
     init() {
@@ -232,18 +347,27 @@ class MacSettings: ObservableObject {
     // MARK: - iCloud Sync Setup
 
     private func setupiCloudSync() {
+        // Skip if iCloud is disabled
+        guard iCloud != nil else {
+            print("[iCloud] iCloud KVS disabled, skipping sync setup")
+            return
+        }
+
         print("[iCloud] Setting up iCloud KVS sync...")
 
         // Check if iCloud is available
         let testKey = "icloud_test_\(Date().timeIntervalSince1970)"
-        iCloud.set("test", forKey: testKey)
-        let syncResult = iCloud.synchronize()
+        iCloud?.set("test", forKey: testKey)
+        let syncResult = iCloud?.synchronize()
         print("[iCloud] KVS sync test: synchronize() returned \(syncResult)")
-        iCloud.removeObject(forKey: testKey)
+        iCloud?.removeObject(forKey: testKey)
 
         // Log current iCloud state
-        let allKeys = iCloud.dictionaryRepresentation.keys
-        print("[iCloud] KVS current keys: \(Array(allKeys).joined(separator: ", "))")
+        if let keys = iCloud?.dictionaryRepresentation.keys {
+            print("[iCloud] KVS current keys: \(Array(keys).joined(separator: ", "))")
+        } else {
+            print("[iCloud] KVS not available")
+        }
 
         // Listen for iCloud changes from other devices
         iCloudObserver = NotificationCenter.default.addObserver(
@@ -294,7 +418,7 @@ class MacSettings: ObservableObject {
         }
 
         // Synchronize to get latest changes
-        let initialSync = iCloud.synchronize()
+        let initialSync = iCloud?.synchronize()
         print("[iCloud] Sync initialized, initial synchronize() returned \(initialSync)")
 
         // Try to load any existing data
@@ -305,7 +429,7 @@ class MacSettings: ObservableObject {
         print("[iCloud] loadFromiCloud: Starting to load from iCloud KVS...")
 
         // Load providers
-        if let data = iCloud.data(forKey: iCloudKeys.configuredAIProviders) {
+        if let data = iCloud?.data(forKey: iCloudKeys.configuredAIProviders) {
             print("[iCloud] loadFromiCloud: Found providers data (\(data.count) bytes)")
             if let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
                 configuredAIProviders = providers
@@ -318,7 +442,7 @@ class MacSettings: ObservableObject {
         }
 
         // Load contexts
-        if let data = iCloud.data(forKey: iCloudKeys.contexts),
+        if let data = iCloud?.data(forKey: iCloudKeys.contexts),
            let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
             contexts = loadedContexts
             print("[iCloud] loadFromiCloud: Loaded \(loadedContexts.count) contexts")
@@ -327,58 +451,57 @@ class MacSettings: ObservableObject {
         }
 
         // Load power modes
-        if let data = iCloud.data(forKey: iCloudKeys.powerModes),
+        if let data = iCloud?.data(forKey: iCloudKeys.powerModes),
            let loadedModes = try? JSONDecoder().decode([PowerMode].self, from: data) {
             powerModes = loadedModes
         }
 
         // Load vocabulary
-        if let data = iCloud.data(forKey: iCloudKeys.vocabulary),
+        if let data = iCloud?.data(forKey: iCloudKeys.vocabulary),
            let entries = try? JSONDecoder().decode([VocabularyEntry].self, from: data) {
             vocabulary = entries
         }
 
         // Load custom templates
-        if let data = iCloud.data(forKey: iCloudKeys.customTemplates),
+        if let data = iCloud?.data(forKey: iCloudKeys.customTemplates),
            let templates = try? JSONDecoder().decode([CustomTemplate].self, from: data) {
             customTemplates = templates
         }
 
         // Load primitive values
-        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedTranscriptionProvider),
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedTranscriptionProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedTranscriptionProvider = provider
         }
 
-        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedTranslationProvider),
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedTranslationProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedTranslationProvider = provider
         }
 
-        if let providerRaw = iCloud.string(forKey: iCloudKeys.selectedPowerModeProvider),
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedPowerModeProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedPowerModeProvider = provider
         }
 
-        if let modeRaw = iCloud.string(forKey: iCloudKeys.selectedMode),
+        if let modeRaw = iCloud?.string(forKey: iCloudKeys.selectedMode),
            let mode = FormattingMode(rawValue: modeRaw) {
             selectedMode = mode
         }
 
-        if let langRaw = iCloud.string(forKey: iCloudKeys.selectedTargetLanguage),
+        if let langRaw = iCloud?.string(forKey: iCloudKeys.selectedTargetLanguage),
            let lang = Language(rawValue: langRaw) {
             selectedTargetLanguage = lang
         }
 
-        isTranslationEnabled = iCloud.bool(forKey: iCloudKeys.isTranslationEnabled)
+        isTranslationEnabled = iCloud?.bool(forKey: iCloudKeys.isTranslationEnabled) ?? false
 
         // Load global memory settings
-        if let memory = iCloud.string(forKey: iCloudKeys.globalMemory) {
+        if let memory = iCloud?.string(forKey: iCloudKeys.globalMemory) {
             globalMemory = memory
         }
-        globalMemoryEnabled = iCloud.bool(forKey: iCloudKeys.globalMemoryEnabled)
-        let limit = iCloud.longLong(forKey: iCloudKeys.globalMemoryLimit)
-        if limit > 0 {
+        globalMemoryEnabled = iCloud?.bool(forKey: iCloudKeys.globalMemoryEnabled) ?? true
+        if let limit = iCloud?.longLong(forKey: iCloudKeys.globalMemoryLimit), limit > 0 {
             globalMemoryLimit = Int(limit)
         }
 
@@ -386,7 +509,7 @@ class MacSettings: ObservableObject {
         // No longer using iCloud KVS for history due to size limits
 
         // Load history memory
-        if let data = iCloud.data(forKey: iCloudKeys.historyMemory),
+        if let data = iCloud?.data(forKey: iCloudKeys.historyMemory),
            let memory = try? JSONDecoder().decode(HistoryMemory.self, from: data) {
             // Use iCloud version if newer or local is nil
             if historyMemory == nil || memory.lastUpdated > (historyMemory?.lastUpdated ?? .distantPast) {
@@ -410,62 +533,62 @@ class MacSettings: ObservableObject {
 
         // Sync providers
         if let data = try? JSONEncoder().encode(configuredAIProviders) {
-            iCloud.set(data, forKey: iCloudKeys.configuredAIProviders)
+            iCloud?.set(data, forKey: iCloudKeys.configuredAIProviders)
             print("[iCloud] syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)")
         }
 
         // Sync contexts
         if let data = try? JSONEncoder().encode(contexts) {
-            iCloud.set(data, forKey: iCloudKeys.contexts)
+            iCloud?.set(data, forKey: iCloudKeys.contexts)
         }
 
         // Sync power modes
         if let data = try? JSONEncoder().encode(powerModes) {
-            iCloud.set(data, forKey: iCloudKeys.powerModes)
+            iCloud?.set(data, forKey: iCloudKeys.powerModes)
         }
 
         // Sync vocabulary
         if let data = try? JSONEncoder().encode(vocabulary) {
-            iCloud.set(data, forKey: iCloudKeys.vocabulary)
+            iCloud?.set(data, forKey: iCloudKeys.vocabulary)
         }
 
         // Sync custom templates
         if let data = try? JSONEncoder().encode(customTemplates) {
-            iCloud.set(data, forKey: iCloudKeys.customTemplates)
+            iCloud?.set(data, forKey: iCloudKeys.customTemplates)
         }
 
         // Sync primitive values
-        iCloud.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
-        iCloud.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
-        iCloud.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
-        iCloud.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
-        iCloud.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
-        iCloud.set(isTranslationEnabled, forKey: iCloudKeys.isTranslationEnabled)
+        iCloud?.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
+        iCloud?.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
+        iCloud?.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
+        iCloud?.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
+        iCloud?.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
+        iCloud?.set(isTranslationEnabled, forKey: iCloudKeys.isTranslationEnabled)
 
         // Sync global memory settings
         if let memory = globalMemory {
-            iCloud.set(memory, forKey: iCloudKeys.globalMemory)
+            iCloud?.set(memory, forKey: iCloudKeys.globalMemory)
         } else {
-            iCloud.removeObject(forKey: iCloudKeys.globalMemory)
+            iCloud?.removeObject(forKey: iCloudKeys.globalMemory)
         }
-        iCloud.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
-        iCloud.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
+        iCloud?.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
+        iCloud?.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
 
         // Transcription history is synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
 
         // Sync history memory
         if let memory = historyMemory, let data = try? JSONEncoder().encode(memory) {
-            iCloud.set(data, forKey: iCloudKeys.historyMemory)
+            iCloud?.set(data, forKey: iCloudKeys.historyMemory)
         } else {
-            iCloud.removeObject(forKey: iCloudKeys.historyMemory)
+            iCloud?.removeObject(forKey: iCloudKeys.historyMemory)
         }
 
         // Set sync timestamp
-        iCloud.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
+        iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
         // Trigger synchronization
-        let syncResult = iCloud.synchronize()
+        let syncResult = iCloud?.synchronize()
         print("[iCloud] syncToiCloud: synchronize() returned \(syncResult)")
     }
 
@@ -476,8 +599,10 @@ class MacSettings: ObservableObject {
 
     /// Get last sync timestamp
     var lastSyncTime: Date? {
-        let timestamp = iCloud.double(forKey: iCloudKeys.lastSyncTimestamp)
-        return timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : nil
+        guard let timestamp = iCloud?.double(forKey: iCloudKeys.lastSyncTimestamp), timestamp > 0 else {
+            return nil
+        }
+        return Date(timeIntervalSince1970: timestamp)
     }
 
     private func loadSettings() {
@@ -527,9 +652,12 @@ class MacSettings: ObservableObject {
         // Load contexts and power modes
         loadContexts()
         loadPowerModes()
+        loadGlobalPowerModeHotkey()
+        loadPowerModeHotkeys()
         loadHistoryMemory()
         loadCustomTemplates()
         loadVocabulary()
+        loadObsidianVaults()
 
         // Load active context
         if let contextIdString = defaults?.string(forKey: "activeContextId"),
@@ -555,7 +683,42 @@ class MacSettings: ObservableObject {
             globalMemoryLimit = defaults?.integer(forKey: "globalMemoryLimit") ?? 2000
         }
 
+        // Load behavior settings
+        if defaults?.object(forKey: "powerModeStreamingEnabled") != nil {
+            powerModeStreamingEnabled = defaults?.bool(forKey: "powerModeStreamingEnabled") ?? true
+        }
+        if defaults?.object(forKey: "autoReturnEnabled") != nil {
+            autoReturnEnabled = defaults?.bool(forKey: "autoReturnEnabled") ?? true
+        }
+        if defaults?.object(forKey: "playSoundOnRecordStart") != nil {
+            playSoundOnRecordStart = defaults?.bool(forKey: "playSoundOnRecordStart") ?? true
+        }
+        if defaults?.object(forKey: "playSoundOnRecordEnd") != nil {
+            playSoundOnRecordEnd = defaults?.bool(forKey: "playSoundOnRecordEnd") ?? true
+        }
+
+        // Load security & privacy settings
+        if defaults?.object(forKey: "biometricProtectionEnabled") != nil {
+            biometricProtectionEnabled = defaults?.bool(forKey: "biometricProtectionEnabled") ?? false
+        }
+        if defaults?.object(forKey: "historyRetentionDays") != nil {
+            historyRetentionDays = defaults?.integer(forKey: "historyRetentionDays") ?? 30
+        }
+        if defaults?.object(forKey: "analyticsEnabled") != nil {
+            analyticsEnabled = defaults?.bool(forKey: "analyticsEnabled") ?? true
+        }
+        if defaults?.object(forKey: "cloudLogSyncEnabled") != nil {
+            cloudLogSyncEnabled = defaults?.bool(forKey: "cloudLogSyncEnabled") ?? true
+        }
+
         loadHistory()
+    }
+
+    // MARK: - History Management
+
+    func clearTranscriptionHistory() {
+        transcriptionHistory.removeAll()
+        defaults?.removeObject(forKey: "transcriptionHistory")
     }
 
     // MARK: - AI Provider Management
@@ -707,6 +870,46 @@ class MacSettings: ObservableObject {
                 contexts[i].isActive = false
             }
         }
+    }
+
+    // MARK: - Obsidian Vaults
+
+    @Published var obsidianVaults: [ObsidianVault] = [] {
+        didSet {
+            saveObsidianVaults()
+        }
+    }
+
+    private func loadObsidianVaults() {
+        if let data = defaults?.data(forKey: "obsidianVaults"),
+           let vaults = try? JSONDecoder().decode([ObsidianVault].self, from: data) {
+            obsidianVaults = vaults
+        }
+    }
+
+    private func saveObsidianVaults() {
+        if let data = try? JSONEncoder().encode(obsidianVaults) {
+            defaults?.set(data, forKey: "obsidianVaults")
+        }
+    }
+
+    func addObsidianVault(_ vault: ObsidianVault) {
+        guard !obsidianVaults.contains(where: { $0.id == vault.id }) else { return }
+        obsidianVaults.append(vault)
+    }
+
+    func updateObsidianVault(_ vault: ObsidianVault) {
+        if let index = obsidianVaults.firstIndex(where: { $0.id == vault.id }) {
+            obsidianVaults[index] = vault
+        }
+    }
+
+    func removeObsidianVault(id: UUID) {
+        obsidianVaults.removeAll { $0.id == id }
+    }
+
+    func getObsidianVault(id: UUID) -> ObsidianVault? {
+        obsidianVaults.first { $0.id == id }
     }
 
     // MARK: - Power Mode Management

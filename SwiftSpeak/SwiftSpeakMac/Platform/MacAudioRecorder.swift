@@ -8,6 +8,7 @@
 
 import AVFoundation
 import Combine
+import SwiftSpeakCore
 
 /// macOS audio recorder using AVAudioEngine
 /// Outputs 16kHz mono AAC optimized for Whisper API
