@@ -440,23 +440,21 @@ struct QWERTYKeyboard: View {
         var finalCorrection: String? = nil
         let currentLang = autocorrectLanguage
 
-        // 1. Check for contraction fix (English: dont -> don't)
-        if currentLang == "en" {
-            if let contraction = AutoCapitalizationService.fixContraction(wordString) {
-                if !AutoCapitalizationService.ambiguousWords.contains(wordString.lowercased()) {
-                    finalCorrection = contraction
-                }
-            }
+        // 1. Multi-language spell checker (UITextChecker + priority corrections)
+        //    Handles typos, contractions, and common misspellings for ALL languages
+        if let spellCorrection = MultiLanguageSpellChecker.shared.correctWord(wordString, language: currentLang) {
+            finalCorrection = spellCorrection
         }
 
-        // 3. Check for proper noun capitalization (monday -> Monday) - English only
+        // 2. Check for proper noun capitalization (monday -> Monday) - English only
         if finalCorrection == nil && currentLang == "en" {
             if let properNoun = AutoCapitalizationService.shouldAutoCapitalizeWord(wordString, contextBefore: beforeText) {
                 finalCorrection = properNoun
             }
         }
 
-        // 4. Language-specific diacritic/spelling corrections (runs for non-English languages)
+        // 3. Language-specific diacritic/character corrections (fallback for special cases)
+        //    These services handle nuanced corrections that UITextChecker might miss
         if finalCorrection == nil {
             switch currentLang {
             // Latin-script languages with diacritics
@@ -483,7 +481,7 @@ struct QWERTYKeyboard: View {
             case "arz":
                 finalCorrection = EgyptianArabicAutocorrectService.fixEgyptianArabicWord(wordString)
 
-            // CJK (uses UITextChecker-based correction)
+            // CJK
             case "zh":
                 finalCorrection = ChineseAutocorrectService.fixChineseCharacter(wordString)
             case "ja":
