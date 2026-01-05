@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Contexts View
 
@@ -184,226 +185,246 @@ private struct ContextCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header row (always visible)
-            Button(action: onTap) {
-                HStack(spacing: 12) {
-                    // Icon
-                    ZStack {
-                        Circle()
-                            .fill(context.color.color.opacity(0.2))
-                            .frame(width: 40, height: 40)
-                        Text(context.icon)
-                            .font(.system(size: 18))
-                    }
+            headerButton
+            expandedContent
+        }
+        .background(Color(.controlBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(isActive ? context.color.color : Color.clear, lineWidth: 2)
+        )
+    }
 
-                    // Name and description
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack(spacing: 8) {
-                            Text(context.name)
-                                .font(.headline)
-
-                            if isActive {
-                                Text("Active")
-                                    .font(.caption2)
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(context.color.color)
-                                    .clipShape(Capsule())
-                            }
-
-                            if isPreset {
-                                Text("Preset")
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.secondary.opacity(0.15))
-                                    .clipShape(Capsule())
-                            }
-                        }
-
-                        if !context.description.isEmpty {
-                            Text(context.description)
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(isExpanded ? nil : 1)
-                        }
-                    }
-
-                    Spacer()
-
-                    // Feature badges
-                    HStack(spacing: 6) {
-                        if context.useContextMemory {
-                            Image(systemName: "brain")
-                                .font(.caption)
-                                .foregroundStyle(.purple)
-                        }
-                        if !context.selectedInstructions.isEmpty {
-                            Image(systemName: "text.alignleft")
-                                .font(.caption)
-                                .foregroundStyle(.blue)
-                        }
-                    }
-
-                    // Expand indicator
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundStyle(.tertiary)
-                        .font(.caption)
-                }
-                .padding(12)
-                .contentShape(Rectangle())
+    @ViewBuilder
+    private var headerButton: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                contextIcon
+                nameAndDescription
+                Spacer()
+                featureBadges
+                expandIndicator
             }
-            .buttonStyle(.plain)
+            .padding(12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
-            // Expanded content
-            if isExpanded {
-                Divider()
-                    .padding(.horizontal, 12)
+    private var contextIcon: some View {
+        ZStack {
+            Circle()
+                .fill(context.color.color.opacity(0.2))
+                .frame(width: 40, height: 40)
 
-                VStack(alignment: .leading, spacing: 16) {
-                    // Settings Grid
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 12) {
-                        settingBadge(
-                            title: "Domain",
-                            value: context.domainJargon.displayName,
-                            icon: context.domainJargon.icon,
-                            color: .blue
-                        )
-
-                        settingBadge(
-                            title: "Formatting",
-                            value: "\(context.selectedInstructions.count) rules",
-                            icon: "textformat",
-                            color: .green
-                        )
-
-                        settingBadge(
-                            title: "Memory",
-                            value: context.useContextMemory ? "On" : "Off",
-                            icon: "brain",
-                            color: .purple
-                        )
-
-                        settingBadge(
-                            title: "Insertion",
-                            value: context.textInsertionMethod == .auto ? "Auto" : context.textInsertionMethod.displayName.components(separatedBy: " ").first ?? "Custom",
-                            icon: context.textInsertionMethod.icon,
-                            color: .orange
-                        )
-                    }
-
-                    // Formatting instructions chips
-                    if !context.formattingInstructions.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Formatting Instructions")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            FlowLayout(spacing: 6) {
-                                ForEach(context.formattingInstructions, id: \.id) { instruction in
-                                    HStack(spacing: 4) {
-                                        if let icon = instruction.icon {
-                                            Image(systemName: icon)
-                                                .font(.caption2)
-                                        }
-                                        Text(instruction.displayName)
-                                            .font(.caption)
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.1))
-                                    .clipShape(Capsule())
-                                }
-                            }
-                        }
-                    }
-
-                    // Custom instructions
-                    if let customInstructions = context.customInstructions, !customInstructions.isEmpty {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Custom Instructions")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-
-                            Text(customInstructions)
-                                .font(.callout)
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.primary.opacity(0.03))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
-
-                    // Memory content
-                    if context.useContextMemory {
-                        VStack(alignment: .leading, spacing: 6) {
-                            HStack {
-                                Text("Context Memory")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                if let lastUpdate = context.lastMemoryUpdate {
-                                    Spacer()
-                                    Text("Updated \(lastUpdate, style: .relative)")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-
-                            Text(context.contextMemory ?? "No memory stored yet")
-                                .font(.callout)
-                                .foregroundStyle(context.contextMemory == nil ? .tertiary : .primary)
-                                .padding(10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.purple.opacity(0.05))
-                                .clipShape(RoundedRectangle(cornerRadius: 6))
-                        }
-                    }
-
-                    // Action buttons
-                    HStack(spacing: 12) {
-                        Button(action: onSetActive) {
-                            if isActive {
-                                Label("Active", systemImage: "checkmark.circle.fill")
-                            } else {
-                                Label("Set Active", systemImage: "circle")
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(isActive ? context.color.color : .accentColor)
-
-                        if let onEdit = onEdit {
-                            Button("Edit", action: onEdit)
-                                .buttonStyle(.bordered)
-                        }
-
-                        Spacer()
-
-                        if let onDelete = onDelete {
-                            Button(role: .destructive, action: onDelete) {
-                                Image(systemName: "trash")
-                            }
-                            .buttonStyle(.borderless)
-                            .foregroundStyle(.red)
-                        }
-                    }
-                }
-                .padding(12)
+            if context.icon.contains(".") {
+                Image(systemName: context.icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(context.color.gradient)
+            } else {
+                Text(context.icon)
+                    .font(.system(size: 18))
             }
         }
-        .background(Color.primary.opacity(0.03))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(isActive ? context.color.color.opacity(0.5) : Color.clear, lineWidth: 2)
-        )
+    }
+
+    private var nameAndDescription: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text(context.name)
+                    .font(.headline)
+
+                if isActive {
+                    Text("Active")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(context.color.color)
+                        .clipShape(Capsule())
+                }
+
+                if isPreset {
+                    Text("Preset")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.15))
+                        .clipShape(Capsule())
+                }
+            }
+
+            if !context.description.isEmpty {
+                Text(context.description)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(isExpanded ? nil : 1)
+            }
+        }
+    }
+
+    private var featureBadges: some View {
+        HStack(spacing: 6) {
+            if context.useContextMemory {
+                Image(systemName: "brain")
+                    .font(.caption)
+                    .foregroundStyle(.purple)
+            }
+            if !context.selectedInstructions.isEmpty {
+                Image(systemName: "text.alignleft")
+                    .font(.caption)
+                    .foregroundStyle(.blue)
+            }
+        }
+    }
+
+    private var expandIndicator: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .foregroundStyle(.tertiary)
+            .font(.caption)
+    }
+
+    @ViewBuilder
+    private var expandedContent: some View {
+        if isExpanded {
+            Divider()
+                .padding(.horizontal, 12)
+
+            VStack(alignment: .leading, spacing: 16) {
+                settingsGrid
+                formattingChips
+                actionButtons
+            }
+            .padding(12)
+        }
+    }
+
+    private var settingsGrid: some View {
+        LazyVGrid(columns: [
+            GridItem(.flexible()),
+            GridItem(.flexible()),
+            GridItem(.flexible())
+        ], spacing: 12) {
+            settingBadge(
+                title: "Domain",
+                value: context.domainJargon.displayName,
+                icon: context.domainJargon.icon,
+                color: .blue
+            )
+
+            settingBadge(
+                title: "Formatting",
+                value: "\(context.selectedInstructions.count) rules",
+                icon: "textformat",
+                color: .green
+            )
+
+            settingBadge(
+                title: "Memory",
+                value: context.useContextMemory ? "On" : "Off",
+                icon: "brain",
+                color: .purple
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var formattingChips: some View {
+        if !context.formattingInstructions.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Formatting Instructions")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                FlowLayout(spacing: 6) {
+                    ForEach(context.formattingInstructions, id: \.id) { instruction in
+                        HStack(spacing: 4) {
+                            if let icon = instruction.icon {
+                                Image(systemName: icon)
+                                    .font(.caption2)
+                            }
+                            Text(instruction.displayName)
+                                .font(.caption)
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+        }
+
+        if let customInstructions = context.customInstructions, !customInstructions.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Custom Instructions")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text(customInstructions)
+                    .font(.callout)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.primary.opacity(0.03))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+
+        if context.useContextMemory {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Context Memory")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let lastUpdate = context.lastMemoryUpdate {
+                        Spacer()
+                        Text("Updated \(lastUpdate, style: .relative)")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+
+                Text(context.contextMemory ?? "No memory stored yet")
+                    .font(.callout)
+                    .foregroundStyle(context.contextMemory == nil ? .tertiary : .primary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.purple.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+    }
+
+    private var actionButtons: some View {
+        HStack(spacing: 12) {
+            Button(action: onSetActive) {
+                if isActive {
+                    Label("Active", systemImage: "checkmark.circle.fill")
+                } else {
+                    Label("Set Active", systemImage: "circle")
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(isActive ? context.color.color : .accentColor)
+
+            if let onEdit = onEdit {
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.bordered)
+            }
+
+            Spacer()
+
+            if let onDelete = onDelete {
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
+            }
+        }
     }
 
     private func settingBadge(title: String, value: String, icon: String, color: Color) -> some View {
@@ -436,7 +457,7 @@ struct MacContextEditorSheet: View {
     let onSave: (ConversationContext) -> Void
     let onCancel: () -> Void
 
-    private let emojiOptions = ["💼", "😊", "✨", "🎯", "📝", "💡", "🔥", "🚀", "💬", "📚", "🎨", "⚡️"]
+    @State private var showingIconPicker = false
 
     private func appName(for bundleId: String) -> String {
         if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
@@ -474,7 +495,6 @@ struct MacContextEditorSheet: View {
                             memoryLimit: context.memoryLimit,
                             autoSendAfterInsert: context.autoSendAfterInsert,
                             enterKeyBehavior: context.enterKeyBehavior,
-                            textInsertionMethod: context.textInsertionMethod,
                             appAssignment: context.appAssignment,
                             isPreset: false
                         )
@@ -490,34 +510,65 @@ struct MacContextEditorSheet: View {
 
             // Form
             Form {
+                // Icon and Color Section
+                Section {
+                    HStack {
+                        Spacer()
+                        Button(action: { showingIconPicker = true }) {
+                            VStack(spacing: 8) {
+                                ZStack {
+                                    Circle()
+                                        .fill(context.color.color.opacity(0.15))
+                                        .frame(width: 80, height: 80)
+
+                                    if context.icon.contains(".") {
+                                        Image(systemName: context.icon)
+                                            .font(.system(size: 36))
+                                            .foregroundStyle(context.color.gradient)
+                                    } else {
+                                        Text(context.icon)
+                                            .font(.system(size: 36))
+                                    }
+                                }
+
+                                Text("Click to change icon")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+
+                    // Color picker row
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Color")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            ForEach(PowerModeColorPreset.allCases) { colorPreset in
+                                Button(action: { context.color = colorPreset }) {
+                                    Circle()
+                                        .fill(colorPreset.gradient)
+                                        .frame(width: 24, height: 24)
+                                        .overlay(
+                                            Circle()
+                                                .strokeBorder(context.color == colorPreset ? Color.white : Color.clear, lineWidth: 2)
+                                        )
+                                        .scaleEffect(context.color == colorPreset ? 1.15 : 1.0)
+                                        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: context.color)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+
                 // Basic Info
                 Section("Basic Information") {
                     TextField("Name", text: $context.name)
                     TextField("Description", text: $context.description)
-
-                    HStack {
-                        Text("Icon")
-                        Spacer()
-                        Picker("", selection: $context.icon) {
-                            ForEach(emojiOptions, id: \.self) { emoji in
-                                Text(emoji).tag(emoji)
-                            }
-                        }
-                        .pickerStyle(.menu)
-                        .labelsHidden()
-                    }
-
-                    Picker("Color", selection: $context.color) {
-                        ForEach(PowerModeColorPreset.allCases) { color in
-                            HStack {
-                                Circle()
-                                    .fill(color.color)
-                                    .frame(width: 12, height: 12)
-                                Text(color.displayName)
-                            }
-                            .tag(color)
-                        }
-                    }
                 }
 
                 // Transcription Settings
@@ -603,26 +654,9 @@ struct MacContextEditorSheet: View {
                     }
                 }
 
-                // Text Insertion
-                Section {
-                    Picker("Text Insertion Method", selection: $context.textInsertionMethod) {
-                        ForEach(TextInsertionMethod.allCases) { method in
-                            HStack {
-                                Image(systemName: method.icon)
-                                Text(method.displayName)
-                            }
-                            .tag(method)
-                        }
-                    }
-
-                    Text(context.textInsertionMethod.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } header: {
-                    Text("Text Insertion")
-                } footer: {
-                    Text("Choose how transcribed text is inserted into the focused application.")
-                }
+                // TODO: Text Insertion Method - macOS-specific feature to be added to shared model
+                // This feature allows choosing how text is inserted:
+                // .auto, .accessibility, .clipboard, .typeCharacters
 
                 // App Auto-Enable
                 Section {
@@ -709,6 +743,14 @@ struct MacContextEditorSheet: View {
             .formStyle(.grouped)
         }
         .frame(width: 550, height: 750)
+        .sheet(isPresented: $showingIconPicker) {
+            MacIconPicker(
+                selectedIcon: $context.icon,
+                selectedColor: $context.color,
+                showBackgroundColorPicker: false,
+                backgroundColor: $context.color
+            )
+        }
     }
 }
 
