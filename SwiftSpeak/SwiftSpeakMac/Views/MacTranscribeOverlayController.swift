@@ -246,9 +246,9 @@ final class MacTranscribeOverlayController {
         let screenFrame = screen.visibleFrame
         let windowSize = window.frame.size
 
-        // Center horizontally, position in upper third of screen
+        // Center horizontally, position just above the dock
         let x = screenFrame.midX - windowSize.width / 2
-        let y = screenFrame.maxY - screenFrame.height * 0.3 - windowSize.height / 2
+        let y = screenFrame.minY + 80
 
         window.setFrameOrigin(NSPoint(x: x, y: y))
     }
