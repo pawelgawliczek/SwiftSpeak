@@ -15,6 +15,9 @@ struct MacPowerModeOverlayView: View {
     @ObservedObject var viewModel: MacPowerModeOverlayViewModel
     let onClose: () -> Void
 
+    /// Focus state for the Obsidian search text field
+    @FocusState private var isSearchFieldFocused: Bool
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -24,7 +27,7 @@ struct MacPowerModeOverlayView: View {
 
             // Content (changes based on state)
             contentView
-                .frame(minHeight: 200, maxHeight: 500)
+                .frame(minHeight: 250, maxHeight: 600)
                 .animation(.easeInOut(duration: 0.3), value: viewModel.state)
 
             // Error banner (if any)
@@ -32,24 +35,12 @@ struct MacPowerModeOverlayView: View {
                 errorBanner(error)
             }
 
-            // DEBUG: Show captured context info
-            if !viewModel.debugInfo.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.debugInfo)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.orange)
-                }
-                .padding(8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.black.opacity(0.8))
-            }
-
             Divider()
 
             // Footer (actions)
             footerView
         }
-        .frame(width: 500)
+        .frame(width: 580)
         .background(overlayBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
@@ -144,16 +135,21 @@ struct MacPowerModeOverlayView: View {
         switch viewModel.state {
         case .contextPreview:
             contextPreviewView
+        case .obsidianSearch:
+            obsidianSearchView
         case .recording:
             recordingView
-        case .processing:
+        case .processing, .transcribing, .thinking, .queryingKnowledge, .generating, .streaming:
             processingView
-        case .aiQuestion:
+        case .aiQuestion, .askingQuestion:
             questionView
         case .result:
             resultView
-        case .actionComplete:
+        case .actionComplete, .complete:
             completeView
+        case .idle, .error:
+            // These states are not used in macOS overlay, show context preview as fallback
+            contextPreviewView
         }
     }
 
@@ -174,27 +170,8 @@ struct MacPowerModeOverlayView: View {
                 Divider()
                     .padding(.horizontal, 16)
 
-                // Input method selection
-                Text("Start")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 16)
-
-                HStack(spacing: 12) {
-                    Button(action: { Task { await viewModel.startRecording() } }) {
-                        Label("Voice Input", systemImage: "mic.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-
-                    Button(action: { /* Type input not implemented yet */ }) {
-                        Label("Type", systemImage: "keyboard")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(true)
-                }
-                .padding(.horizontal, 16)
+                // TOKEN COUNTER
+                tokenCounterSection
             }
             .padding(.vertical, 16)
         }
@@ -228,18 +205,6 @@ struct MacPowerModeOverlayView: View {
                         title: "Selected Text",
                         content: text,
                         emptyMessage: "No text selected"
-                    )
-                }
-
-                // Active App Text
-                if inputConfig.includeActiveAppText {
-                    let text = viewModel.windowContext?.visibleText
-                    compactInputRow(
-                        icon: "macwindow",
-                        iconColor: .cyan,
-                        title: "Window Text",
-                        content: text,
-                        emptyMessage: "No window text"
                     )
                 }
 
@@ -334,41 +299,244 @@ struct MacPowerModeOverlayView: View {
     }
 
     private func compactObsidianRow() -> some View {
-        let hasResults = !viewModel.obsidianResults.isEmpty
+        let hasDefaultSearch = !viewModel.currentPowerMode.defaultObsidianSearchQuery.isEmpty
+        let isLoading = viewModel.isLoadingObsidianContext
+        let count = viewModel.obsidianResults.count
+
         return HStack(spacing: 8) {
             Image("ObsidianIcon")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 14, height: 14)
-                .opacity(hasResults ? 1.0 : 0.5)
+                .opacity(isLoading ? 0.5 : (count > 0 ? 1.0 : 0.5))
 
             Text("Obsidian")
                 .font(.caption.weight(.medium))
-                .foregroundStyle(hasResults ? .primary : .secondary)
+                .foregroundStyle(isLoading ? .secondary : (count > 0 ? .primary : .secondary))
 
             Text("—")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
 
-            if hasResults {
-                Text("\(viewModel.obsidianResults.count) notes")
+            if isLoading {
+                // Loading indicator
+                HStack(spacing: 4) {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                        .frame(width: 12, height: 12)
+                    Text(hasDefaultSearch ? "Searching..." : "Loading...")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                        .italic()
+                }
+            } else if hasDefaultSearch {
+                // Has search query configured - show match count
+                Text("\(count) note\(count == 1 ? "" : "s") found")
+                    .font(.caption)
+                    .foregroundStyle(count > 0 ? .secondary : .tertiary)
+            } else {
+                // No search query = all notes included
+                Text("\(count) note\(count == 1 ? "" : "s")")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else {
-                Text("No matching notes")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                    .italic()
             }
 
             Spacer()
 
-            Image(systemName: hasResults ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.caption2)
-                .foregroundStyle(hasResults ? .green : .secondary.opacity(0.5))
+            if isLoading {
+                ProgressView()
+                    .scaleEffect(0.6)
+                    .frame(width: 14, height: 14)
+            } else {
+                Image(systemName: count > 0 ? "checkmark.circle.fill" : "circle.dashed")
+                    .font(.caption2)
+                    .foregroundStyle(count > 0 ? .green : .secondary.opacity(0.5))
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+    }
+
+    // MARK: - Obsidian Search View
+
+    private var obsidianSearchView: some View {
+        VStack(spacing: 16) {
+            // Header with selection count
+            HStack {
+                Image("ObsidianIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                Text("Search Obsidian Notes")
+                    .font(.headline)
+                Spacer()
+                if !viewModel.manualObsidianResults.isEmpty {
+                    Text("\(viewModel.selectedObsidianResultIds.count)/\(viewModel.manualObsidianResults.count) selected")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            // Search input with voice button
+            HStack(spacing: 8) {
+                TextField("Search for...", text: $viewModel.obsidianSearchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isSearchFieldFocused)
+                    .onSubmit {
+                        Task { await viewModel.searchObsidian() }
+                    }
+
+                // Voice dictation button
+                Button(action: {
+                    Task {
+                        if viewModel.isDictatingSearchQuery {
+                            await viewModel.stopSearchDictation()
+                        } else {
+                            await viewModel.startSearchDictation()
+                        }
+                    }
+                }) {
+                    Image(systemName: viewModel.isDictatingSearchQuery ? "mic.fill" : "mic")
+                        .foregroundStyle(viewModel.isDictatingSearchQuery ? .red : .primary)
+                }
+                .buttonStyle(.bordered)
+                .keyboardShortcut("d", modifiers: .command)
+
+                // Search button (empty query = load all notes)
+                Button(action: { Task { await viewModel.searchObsidian() } }) {
+                    Image(systemName: "magnifyingglass")
+                }
+                .buttonStyle(.bordered)
+                .disabled(viewModel.isSearchingObsidian)
+            }
+            .padding(.horizontal, 16)
+
+            // Results list with checkboxes
+            if viewModel.isSearchingObsidian {
+                Spacer()
+                ProgressView("Searching...")
+                Spacer()
+            } else if viewModel.manualObsidianResults.isEmpty {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.largeTitle)
+                        .foregroundStyle(.secondary)
+                    Text("No notes found. Try a different search or clear to load all.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(viewModel.manualObsidianResults.enumerated()), id: \.element.id) { index, result in
+                            obsidianSearchResultRow(result, index: index + 1)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            // Token counter (updates as user selects/deselects notes)
+            obsidianSearchTokenCounter
+
+            // Action buttons
+            HStack {
+                Button("Back") {
+                    viewModel.state = .contextPreview
+                }
+                .buttonStyle(.bordered)
+
+                Spacer()
+
+                // Select all / deselect all
+                if !viewModel.manualObsidianResults.isEmpty {
+                    Button("All") { viewModel.selectAllResults() }
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut("a", modifiers: .command)
+
+                    Button("None") { viewModel.deselectAllResults() }
+                        .buttonStyle(.bordered)
+                        .keyboardShortcut("a", modifiers: [.command, .shift])
+                }
+
+                Button(action: { Task { await viewModel.proceedFromObsidianSearch() } }) {
+                    HStack(spacing: 4) {
+                        Text("Continue")
+                        if !viewModel.selectedObsidianResultIds.isEmpty {
+                            Text("(\(viewModel.selectedObsidianResultIds.count))")
+                                .foregroundStyle(.secondary)
+                        }
+                        Image(systemName: "arrow.right")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.selectedObsidianResultIds.isEmpty && !viewModel.manualObsidianResults.isEmpty)
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 16)
+        .onAppear {
+            // Focus the search field when this view appears
+            isSearchFieldFocused = true
+            // Only load if no results were carried over from contextPreview
+            // Results are reused from the first screen to avoid duplicate searches
+            if viewModel.manualObsidianResults.isEmpty {
+                Task {
+                    if viewModel.obsidianSearchQuery.isEmpty {
+                        await viewModel.loadAllObsidianNotes()
+                    } else {
+                        await viewModel.searchObsidian()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Obsidian search result row with checkbox
+    private func obsidianSearchResultRow(_ result: ObsidianSearchResult, index: Int) -> some View {
+        let isSelected = viewModel.selectedObsidianResultIds.contains(result.id)
+
+        return Button(action: { viewModel.toggleResultSelection(result.id) }) {
+            HStack(spacing: 10) {
+                // Index number (for keyboard shortcut reference)
+                Text("\(index)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 16)
+
+                // Checkbox
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isSelected ? .purple : .secondary)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Image("ObsidianIcon")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 12, height: 12)
+                        Text(result.noteTitle)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(result.similarityPercentage)%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(String(result.content.prefix(100)) + (result.content.count > 100 ? "..." : ""))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            .padding(8)
+            .background(isSelected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Output Section
@@ -457,6 +625,102 @@ struct MacPowerModeOverlayView: View {
         .padding(.vertical, 6)
     }
 
+    // MARK: - Token Counter Section
+
+    private var tokenCounterSection: some View {
+        let tokens = viewModel.contextTokens
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "number.circle.fill")
+                    .foregroundStyle(tokenLevelColor(tokens.total))
+                    .font(.caption)
+                Text("Context Size")
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(tokens.formattedTotal)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tokenLevelColor(tokens.total))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+
+            // Breakdown of token sources
+            if !tokens.breakdown.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(tokens.breakdown.prefix(4), id: \.name) { item in
+                        HStack(spacing: 4) {
+                            Text(item.name)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Text(TokenCounter.formatTokenCount(item.tokens))
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    /// Color based on token count level
+    private func tokenLevelColor(_ count: Int) -> Color {
+        switch TokenCounter.TokenLevel.from(count) {
+        case .low:
+            return .green
+        case .medium:
+            return .yellow
+        case .high:
+            return .orange
+        case .critical:
+            return .red
+        }
+    }
+
+    /// Token counter for Obsidian search screen (shows selected notes impact)
+    private var obsidianSearchTokenCounter: some View {
+        let tokens = viewModel.contextTokens
+
+        return HStack(spacing: 12) {
+            // Total tokens
+            HStack(spacing: 6) {
+                Image(systemName: "number.circle.fill")
+                    .foregroundStyle(tokenLevelColor(tokens.total))
+                    .font(.caption)
+                Text("Context:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(tokens.formattedTotal)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(tokenLevelColor(tokens.total))
+            }
+
+            // Obsidian contribution
+            if tokens.obsidianNotes > 0 {
+                Text("•")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+
+                HStack(spacing: 4) {
+                    Image("ObsidianIcon")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 10, height: 10)
+                    Text(TokenCounter.formatTokenCount(tokens.obsidianNotes))
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.purple)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.03))
+    }
+
     // MARK: - Recording View
 
     private var recordingView: some View {
@@ -534,8 +798,8 @@ struct MacPowerModeOverlayView: View {
                 Image(systemName: "brain.head.profile")
                     .font(.system(size: 50))
                     .foregroundStyle(.orange)
-                    .rotationEffect(.degrees(viewModel.state == .processing ? 360 : 0))
-                    .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: viewModel.state)
+                    .rotationEffect(.degrees(viewModel.state.isProcessing ? 360 : 0))
+                    .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: viewModel.state.isProcessing)
             }
 
             Text("Processing...")
@@ -618,15 +882,36 @@ struct MacPowerModeOverlayView: View {
             }
             .frame(maxHeight: 300)
 
-            // Refine input (optional)
+            // Refine input (optional) - same style as Obsidian search
             VStack(alignment: .leading, spacing: 8) {
                 Text("Refine (optional):")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
 
-                HStack {
-                    TextField("Add refinements...", text: $viewModel.userInput)
+                HStack(spacing: 8) {
+                    TextField("Add comments or ask for changes...", text: $viewModel.userInput)
                         .textFieldStyle(.roundedBorder)
+                        .onSubmit {
+                            if !viewModel.userInput.isEmpty {
+                                Task { await viewModel.refineResult(viewModel.userInput) }
+                            }
+                        }
+
+                    // Voice dictation button
+                    Button(action: {
+                        Task {
+                            if viewModel.isDictatingSearchQuery {
+                                await viewModel.stopSearchDictation()
+                            } else {
+                                await viewModel.startSearchDictation()
+                            }
+                        }
+                    }) {
+                        Image(systemName: viewModel.isDictatingSearchQuery ? "mic.fill" : "mic")
+                            .foregroundStyle(viewModel.isDictatingSearchQuery ? .red : .primary)
+                    }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut("d", modifiers: .command)
 
                     Button(action: { Task { await viewModel.refineResult(viewModel.userInput) } }) {
                         Image(systemName: "arrow.clockwise")
@@ -860,10 +1145,27 @@ struct MacPowerModeOverlayView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            } else if viewModel.state == .obsidianSearch {
+                HStack(spacing: 12) {
+                    keyboardHint(key: "↩︎", action: "Search")
+                    keyboardHint(key: "⇧↩︎", action: "Continue")
+                    keyboardHint(key: "1-9", action: "Toggle")
+                    keyboardHint(key: "Esc", action: "Back")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
             } else if viewModel.state == .recording {
                 HStack(spacing: 12) {
                     keyboardHint(key: "Space", action: "Stop")
                     keyboardHint(key: "Esc", action: "Cancel")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            } else if viewModel.state == .result {
+                HStack(spacing: 12) {
+                    keyboardHint(key: "↩︎", action: "Refine")
+                    keyboardHint(key: "⌘D", action: "Dictate")
+                    keyboardHint(key: "Esc", action: "Close")
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -894,20 +1196,8 @@ struct MacPowerModeOverlayView: View {
     }
 
     private var stateDescription: String {
-        switch viewModel.state {
-        case .contextPreview:
-            return "Configure context and input"
-        case .recording:
-            return "Recording your voice..."
-        case .processing:
-            return "AI is thinking..."
-        case .aiQuestion:
-            return "Needs clarification"
-        case .result:
-            return "Review and refine"
-        case .actionComplete:
-            return "Complete!"
-        }
+        // Use the shared statusText from the enum
+        viewModel.state.statusText
     }
 
     private func formattedDuration(_ duration: TimeInterval) -> String {

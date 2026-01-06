@@ -211,7 +211,10 @@ final class MacObsidianIndexer {
         for batchStart in stride(from: 0, to: allChunks.count, by: batchSize) {
             let batchEnd = min(batchStart + batchSize, allChunks.count)
 
-            let texts = allChunks[batchStart..<batchEnd].map { $0.content }
+            // Include title in embedding for better search (so "welcome" matches "Welcome" titled notes)
+            let texts = allChunks[batchStart..<batchEnd].map { chunk in
+                "Title: \(chunk.noteTitle)\n\n\(chunk.content)"
+            }
             let embeddings = try await generateEmbeddings(texts: texts)
 
             // Attach embeddings to chunks

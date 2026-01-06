@@ -164,14 +164,25 @@ final class MacObsidianVectorStore {
 
     // MARK: - Query Operations
 
-    /// Search for similar chunks using cosine similarity
+    /// Search for similar chunks using cosine similarity + keyword boosting
+    /// Returns unique notes (deduplicated by noteId, keeping best matching chunk per note)
+    /// - Parameters:
+    ///   - embedding: Query embedding vector
+    ///   - queryText: Original query text for keyword boosting (optional)
+    ///   - vaultIds: Vault IDs to search
+    ///   - limit: Max results
+    ///   - minSimilarity: Minimum similarity threshold
     func search(
         query embedding: [Float],
+        queryText: String? = nil,
         vaultIds: [UUID],
         limit: Int = 5,
         minSimilarity: Float = 0.3
     ) throws -> [ObsidianSearchResult] {
         var allResults: [(chunk: ObsidianChunk, similarity: Float, vaultName: String)] = []
+
+        // Prepare query terms for keyword boosting
+        let queryTerms = queryText?.lowercased().components(separatedBy: .whitespaces).filter { !$0.isEmpty } ?? []
 
         for vaultId in vaultIds {
             let chunks = try load(vaultId: vaultId)
@@ -182,7 +193,28 @@ final class MacObsidianVectorStore {
 
             for chunk in chunks {
                 guard let chunkEmbedding = chunk.embedding else { continue }
-                let similarity = cosineSimilarity(embedding, chunkEmbedding)
+                var similarity = cosineSimilarity(embedding, chunkEmbedding)
+
+                // Keyword boosting: boost score if query terms appear in title or content
+                if !queryTerms.isEmpty {
+                    let titleLower = chunk.noteTitle.lowercased()
+                    let contentLower = chunk.content.lowercased()
+
+                    for term in queryTerms {
+                        // Strong boost for title match (adds up to 0.4)
+                        if titleLower.contains(term) {
+                            similarity += 0.4
+                        }
+                        // Moderate boost for content match (adds up to 0.2)
+                        else if contentLower.contains(term) {
+                            similarity += 0.2
+                        }
+                    }
+
+                    // Cap at 1.0
+                    similarity = min(similarity, 1.0)
+                }
+
                 if similarity >= minSimilarity {
                     allResults.append((chunk, similarity, vaultName))
                 }
@@ -192,10 +224,23 @@ final class MacObsidianVectorStore {
         // Sort by similarity descending
         allResults.sort { $0.similarity > $1.similarity }
 
+        // Deduplicate by notePath - keep only the best matching chunk per note
+        // Dedup across all vaults to handle duplicate vaults
+        var seenNotePaths: Set<String> = []
+        var uniqueResults: [(chunk: ObsidianChunk, similarity: Float, vaultName: String)] = []
+
+        for item in allResults {
+            guard !seenNotePaths.contains(item.chunk.notePath) else { continue }
+            seenNotePaths.insert(item.chunk.notePath)
+            uniqueResults.append(item)
+            if uniqueResults.count >= limit { break }
+        }
+
         // Convert to search results
-        return allResults.prefix(limit).map { item in
+        return uniqueResults.map { item in
             ObsidianSearchResult(
                 id: item.chunk.id,
+                noteId: item.chunk.noteId,
                 vaultId: item.chunk.vaultId,
                 vaultName: item.vaultName,
                 notePath: item.chunk.notePath,
@@ -215,6 +260,59 @@ final class MacObsidianVectorStore {
             try fileManager.removeItem(at: dir)
             macLog("Deleted vault data: \(vaultId)", category: "VectorStore")
         }
+    }
+
+    // MARK: - Browse All
+
+    /// Get all chunks from specified vaults without similarity filtering (for browsing)
+    /// Returns unique notes (deduplicated by notePath)
+    func getAllChunks(
+        vaultIds: [UUID],
+        limit: Int = 50
+    ) throws -> [ObsidianSearchResult] {
+        var allResults: [ObsidianSearchResult] = []
+        var seenNotePaths: Set<String> = []
+
+        for vaultId in vaultIds {
+            let chunks = try load(vaultId: vaultId)
+            guard !chunks.isEmpty else { continue }
+
+            // Get unique note paths for debug
+            let uniquePaths = Set(chunks.map { $0.notePath })
+            macLog("getAllChunks: vault \(vaultId) has \(chunks.count) chunks from \(uniquePaths.count) unique notes: \(uniquePaths)", category: "VectorStore")
+
+            // Get vault name from settings
+            let vaultName = MacSettings.shared.getObsidianVault(id: vaultId)?.name ?? "Unknown"
+
+            // Group by note and take first chunk for each note
+            // Deduplicate by notePath only (across all vaults) to handle duplicate vaults
+            for chunk in chunks {
+                guard !seenNotePaths.contains(chunk.notePath) else { continue }
+                seenNotePaths.insert(chunk.notePath)
+
+                let result = ObsidianSearchResult(
+                    id: chunk.id,
+                    noteId: chunk.noteId,
+                    vaultId: chunk.vaultId,
+                    vaultName: vaultName,
+                    notePath: chunk.notePath,
+                    noteTitle: chunk.noteTitle,
+                    content: chunk.content,
+                    similarity: 1.0 // No filtering applied
+                )
+                allResults.append(result)
+
+                if allResults.count >= limit { break }
+            }
+
+            if allResults.count >= limit { break }
+        }
+
+        // Sort by title
+        allResults.sort { $0.noteTitle.localizedCaseInsensitiveCompare($1.noteTitle) == .orderedAscending }
+
+        macLog("getAllChunks: Returning \(allResults.count) unique notes (from \(seenNotePaths.count) paths)", category: "VectorStore")
+        return Array(allResults.prefix(limit))
     }
 
     // MARK: - Helpers

@@ -29,11 +29,13 @@ final class MacObsidianQueryService {
     ///   - query: Search query text
     ///   - vaultIds: Optional list of vault IDs to search (nil = all indexed vaults)
     ///   - maxResults: Maximum number of results to return
+    ///   - minSimilarity: Minimum similarity threshold (0.0-1.0, default 0.3)
     /// - Returns: Array of search results sorted by similarity
     func search(
         query: String,
         vaultIds: [UUID]?,
-        maxResults: Int = 5
+        maxResults: Int = 5,
+        minSimilarity: Float = 0.3
     ) async throws -> [ObsidianSearchResult] {
         guard let apiKey = apiKey, !apiKey.isEmpty else {
             macLog("No OpenAI API key for Obsidian search", category: "Obsidian", level: .warning)
@@ -46,17 +48,18 @@ final class MacObsidianQueryService {
             return []
         }
 
-        macLog("Searching \(searchVaultIds.count) vaults for: \(query.prefix(50))...", category: "Obsidian")
+        macLog("Searching \(searchVaultIds.count) vaults for: \(query.prefix(50))... (minSimilarity: \(Int(minSimilarity * 100))%)", category: "Obsidian")
 
         // Generate embedding for query
         let queryEmbedding = try await generateEmbedding(text: query, apiKey: apiKey)
 
-        // Search vector store
+        // Search vector store with keyword boosting
         let results = try vectorStore.search(
             query: queryEmbedding,
+            queryText: query,  // Pass original text for keyword boosting
             vaultIds: searchVaultIds,
             limit: maxResults,
-            minSimilarity: 0.3
+            minSimilarity: minSimilarity
         )
 
         macLog("Found \(results.count) results", category: "Obsidian")
@@ -73,6 +76,32 @@ final class MacObsidianQueryService {
         settings.obsidianVaults
             .filter { $0.status == .synced }
             .map { $0.id }
+    }
+
+    /// Get all notes from specified vaults (no filtering, for browsing)
+    /// - Parameters:
+    ///   - vaultIds: List of vault IDs to get notes from
+    ///   - maxResults: Maximum number of results to return
+    /// - Returns: Array of all notes sorted by title
+    func getAllNotes(
+        vaultIds: [UUID],
+        maxResults: Int = 50
+    ) async throws -> [ObsidianSearchResult] {
+        let searchVaultIds = vaultIds.isEmpty ? indexedVaultIds : vaultIds
+        guard !searchVaultIds.isEmpty else {
+            macLog("No indexed vaults to browse", category: "Obsidian", level: .warning)
+            return []
+        }
+
+        macLog("Loading all notes from \(searchVaultIds.count) vaults", category: "Obsidian")
+
+        let results = try vectorStore.getAllChunks(
+            vaultIds: searchVaultIds,
+            limit: maxResults
+        )
+
+        macLog("Loaded \(results.count) notes", category: "Obsidian")
+        return results
     }
 
     // MARK: - Private

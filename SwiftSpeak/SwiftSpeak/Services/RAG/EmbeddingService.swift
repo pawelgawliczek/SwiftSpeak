@@ -171,8 +171,14 @@ final class EmbeddingService {
     }
 
     /// Generate embeddings for document chunks
+    /// Includes section/heading in the text for better search (so searching for a title finds the note)
     func embedChunks(_ chunks: [DocumentChunk]) async throws -> [DocumentChunk] {
-        let texts = chunks.map { $0.content }
+        let texts = chunks.map { chunk -> String in
+            if let section = chunk.metadata.section, !section.isEmpty {
+                return "Title: \(section)\n\n\(chunk.content)"
+            }
+            return chunk.content
+        }
         let embeddings = try await embedBatch(texts: texts)
 
         return zip(chunks, embeddings).map { chunk, embedding in
