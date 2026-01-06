@@ -77,6 +77,106 @@ enum SpellChecker {
         return Array(getLanguageMap().keys)
     }
 
+    // MARK: - Multiple Suggestions
+
+    /// Get multiple spelling suggestions for a word (up to maxSuggestions)
+    static func getSuggestions(_ word: String, language languageCode: String, maxSuggestions: Int = 3) -> [String] {
+        guard !word.isEmpty, word.count >= 2, word.count <= 50 else { return [] }
+        guard !word.contains("/") && !word.contains("@") && !word.contains(":") else { return [] }
+
+        let lowercased = word.lowercased()
+
+        // Skip ignored words
+        if shouldIgnoreWord(lowercased, language: languageCode) {
+            return []
+        }
+
+        var suggestions: [String] = []
+
+        // 1. Check priority corrections first
+        if let correction = getPriorityCorrection(lowercased, language: languageCode) {
+            suggestions.append(preserveCase(original: word, corrected: correction))
+        }
+
+        // 2. Get UITextChecker suggestions
+        if let locale = getLanguageMap()[languageCode] {
+            let uiSuggestions = getUITextCheckerSuggestions(word, language: locale, max: maxSuggestions)
+            for suggestion in uiSuggestions {
+                let cased = preserveCase(original: word, corrected: suggestion)
+                if !suggestions.contains(cased) && cased.lowercased() != word.lowercased() {
+                    suggestions.append(cased)
+                }
+            }
+        }
+
+        return Array(suggestions.prefix(maxSuggestions))
+    }
+
+    /// Get multiple suggestions from UITextChecker
+    private static func getUITextCheckerSuggestions(_ word: String, language locale: String, max: Int) -> [String] {
+        guard !locale.isEmpty, !word.isEmpty, word.utf16.count > 0 else { return [] }
+
+        let langPrefix = String(locale.prefix(2))
+        let isDirectMatch = availableLanguages.contains(locale)
+        let isPrefixMatch = availableLanguages.contains(where: { $0.hasPrefix(langPrefix) })
+
+        guard isDirectMatch || isPrefixMatch else { return [] }
+
+        let actualLocale: String
+        if isDirectMatch {
+            actualLocale = locale
+        } else if let prefixMatch = availableLanguages.first(where: { $0.hasPrefix(langPrefix) }) {
+            actualLocale = prefixMatch
+        } else {
+            return []
+        }
+
+        let range = NSRange(location: 0, length: word.utf16.count)
+        let misspelledRange = textChecker.rangeOfMisspelledWord(
+            in: word,
+            range: range,
+            startingAt: 0,
+            wrap: false,
+            language: actualLocale
+        )
+
+        guard misspelledRange.location != NSNotFound else { return [] }
+
+        let guesses = textChecker.guesses(
+            forWordRange: misspelledRange,
+            in: word,
+            language: actualLocale
+        ) ?? []
+
+        return Array(guesses.prefix(max))
+    }
+
+    // MARK: - User Vocabulary (Learned Words)
+
+    /// Learn a word so it won't be flagged as misspelled
+    static func learnWord(_ word: String) {
+        guard !word.isEmpty else { return }
+        UITextChecker.learnWord(word)
+    }
+
+    /// Check if a word has been learned
+    static func hasLearnedWord(_ word: String) -> Bool {
+        guard !word.isEmpty else { return false }
+        return UITextChecker.hasLearnedWord(word)
+    }
+
+    /// Unlearn a previously learned word
+    static func unlearnWord(_ word: String) {
+        guard !word.isEmpty else { return }
+        UITextChecker.unlearnWord(word)
+    }
+
+    /// Ignore a word for the current session only
+    static func ignoreWord(_ word: String) {
+        guard !word.isEmpty else { return }
+        textChecker.ignoreWord(word)
+    }
+
     // MARK: - Private Helpers
 
     private static func shouldIgnoreWord(_ word: String, language: String) -> Bool {
@@ -299,6 +399,10 @@ final class MultiLanguageSpellChecker {
         return SpellChecker.correctWord(word, language: languageCode)
     }
 
+    func getSuggestions(_ word: String, language languageCode: String, maxSuggestions: Int = 3) -> [String] {
+        return SpellChecker.getSuggestions(word, language: languageCode, maxSuggestions: maxSuggestions)
+    }
+
     func isValidWord(_ word: String, language languageCode: String) -> Bool {
         return true // Disabled
     }
@@ -309,5 +413,21 @@ final class MultiLanguageSpellChecker {
 
     func supportedLanguages() -> [String] {
         return SpellChecker.supportedLanguages()
+    }
+
+    func learnWord(_ word: String) {
+        SpellChecker.learnWord(word)
+    }
+
+    func hasLearnedWord(_ word: String) -> Bool {
+        return SpellChecker.hasLearnedWord(word)
+    }
+
+    func unlearnWord(_ word: String) {
+        SpellChecker.unlearnWord(word)
+    }
+
+    func ignoreWord(_ word: String) {
+        SpellChecker.ignoreWord(word)
     }
 }
