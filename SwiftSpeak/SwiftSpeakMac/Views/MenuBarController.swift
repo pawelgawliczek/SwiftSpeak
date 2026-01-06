@@ -14,7 +14,7 @@ import UserNotifications
 // OverlayViewModel is defined in RecordingOverlayView.swift
 
 @MainActor
-final class MenuBarController: ObservableObject {
+final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
 
     // MARK: - Published State
 
@@ -63,6 +63,7 @@ final class MenuBarController: ObservableObject {
         self.textInsertion = textInsertion
         self.settings = settings
         self.hotkeyManager = hotkeyManager
+        super.init()
     }
 
     // MARK: - Setup
@@ -613,14 +614,21 @@ final class MenuBarController: ObservableObject {
     }
 
     @objc private func openSettings() {
-        // Dispatch to main thread to avoid objc_retain crash
-        DispatchQueue.main.async { [weak self] in
+        // Use asyncAfter to ensure we're outside any active CA transaction
+        // This avoids "Invalid attempt to open a new transaction during CA commit" crashes
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) { [weak self] in
             guard let self = self else { return }
 
             // Activate app and show settings
             NSApp.activate(ignoringOtherApps: true)
 
-            // Create window first if needed (before view initialization)
+            // If window exists and is visible, just bring it to front
+            if let existingWindow = self.settingsWindow, existingWindow.isVisible {
+                existingWindow.makeKeyAndOrderFront(nil)
+                return
+            }
+
+            // Create window if needed
             if self.settingsWindow == nil {
                 let window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
@@ -630,6 +638,8 @@ final class MenuBarController: ObservableObject {
                 )
                 window.title = "SwiftSpeak Settings"
                 window.minSize = NSSize(width: 750, height: 500)
+                window.isReleasedWhenClosed = false  // Prevent dangling pointer
+                window.delegate = self
                 window.center()
                 self.settingsWindow = window
             }
@@ -640,6 +650,17 @@ final class MenuBarController: ObservableObject {
 
             self.settingsWindow?.contentView = hostingView
             self.settingsWindow?.makeKeyAndOrderFront(nil)
+        }
+    }
+
+    // MARK: - NSWindowDelegate
+
+    nonisolated func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        Task { @MainActor in
+            if window === self.settingsWindow {
+                self.settingsWindow = nil
+            }
         }
     }
 
@@ -772,11 +793,6 @@ final class MenuBarController: ObservableObject {
             print("[SHOW OVERLAY] Fallback capture: \(capturedAppName) (PID: \(capturedPid))")
         }
 
-        // Build debug info string for display in overlay
-        var debugStr = "Hotkey: \(hotkeyContext != nil ? "✓" : "✗")\n"
-        debugStr += "Captured: \(capturedAppName) (PID:\(capturedPid))\n"
-        debugStr += "Config: selText=\(inputConfig.includeSelectedText), appText=\(inputConfig.includeActiveAppText)"
-
         // Use pre-captured context from hotkey callback (captured BEFORE async dispatch)
         var preCapturedWindowContext: WindowContext?
 
@@ -791,7 +807,6 @@ final class MenuBarController: ObservableObject {
                     visibleText: nil,  // Will be captured async if needed
                     capturedAt: Date()
                 )
-                debugStr += "\nCapture: ✓ (hotkey)"
                 print("[CAPTURE] Using hotkey context - selectedText: \(context.selectedText?.prefix(50) ?? "nil")")
 
                 // Note: Window Text (Active App Text) is not reliably capturable because
@@ -800,7 +815,6 @@ final class MenuBarController: ObservableObject {
             } else {
                 // Fallback: try to capture now (may fail if focus changed)
                 Task { @MainActor in
-                    var captureDebug = debugStr
                     if capturedPid > 0 && !capturedBundleId.isEmpty {
                         do {
                             let windowContext = try await windowContextService.captureWindowContext(
@@ -808,52 +822,43 @@ final class MenuBarController: ObservableObject {
                                 bundleId: capturedBundleId,
                                 appName: capturedAppName
                             )
-                            captureDebug += "\nCapture: ✓ (fallback)"
                             print("[CAPTURE] Fallback success from \(capturedAppName)")
                             self.showOverlayWithContext(
                                 powerMode: powerMode,
                                 windowContext: windowContext,
-                                clipboard: preCapturedClipboard,
-                                debugInfo: captureDebug
+                                clipboard: preCapturedClipboard
                             )
                         } catch {
-                            captureDebug += "\nCapture: ✗ \(error.localizedDescription)"
                             print("[CAPTURE] Fallback failed: \(error)")
                             self.showOverlayWithContext(
                                 powerMode: powerMode,
                                 windowContext: nil,
-                                clipboard: preCapturedClipboard,
-                                debugInfo: captureDebug
+                                clipboard: preCapturedClipboard
                             )
                         }
                     } else {
-                        captureDebug += "\nCapture: ✗ Invalid PID"
                         print("[CAPTURE] Invalid PID or bundleId")
                         self.showOverlayWithContext(
                             powerMode: powerMode,
                             windowContext: nil,
-                            clipboard: preCapturedClipboard,
-                            debugInfo: captureDebug
+                            clipboard: preCapturedClipboard
                         )
                     }
                 }
                 return  // Early return, showOverlayWithContext called in Task
             }
-        } else {
-            debugStr += "\nCapture: skipped (config disabled)"
         }
 
         // Show overlay with pre-captured context (synchronous path)
         showOverlayWithContext(
             powerMode: powerMode,
             windowContext: preCapturedWindowContext,
-            clipboard: preCapturedClipboard,
-            debugInfo: debugStr
+            clipboard: preCapturedClipboard
         )
     }
 
     /// Internal method to show overlay after context is captured
-    private func showOverlayWithContext(powerMode: PowerMode, windowContext: WindowContext?, clipboard: String?, debugInfo: String = "") {
+    private func showOverlayWithContext(powerMode: PowerMode, windowContext: WindowContext?, clipboard: String?) {
         // Create overlay controller lazily
         if powerModeOverlayController == nil {
             let obsidianService = MacObsidianQueryService(settings: settings)
@@ -875,8 +880,7 @@ final class MenuBarController: ObservableObject {
         powerModeOverlayController?.showOverlay(
             for: powerMode,
             windowContext: windowContext,
-            clipboard: clipboard,
-            debugInfo: debugInfo
+            clipboard: clipboard
         )
     }
 
@@ -1337,7 +1341,7 @@ struct AboutSettingsView: View {
 
 struct ProvidersSettingsTab: View {
     @ObservedObject var settings: MacSettings
-    @State private var showingAddProvider = false
+    @State private var providerToAdd: AIProvider?
     @State private var editingConfig: AIProviderConfig?
 
     var body: some View {
@@ -1354,10 +1358,11 @@ struct ProvidersSettingsTab: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button(action: { showingAddProvider = true }) {
+                    Button(action: { providerToAdd = settings.availableProvidersToAdd.first ?? .openAI }) {
                         Label("Add Provider", systemImage: "plus")
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(settings.availableProvidersToAdd.isEmpty)
                 }
                 .padding(.bottom, 8)
 
@@ -1386,7 +1391,7 @@ struct ProvidersSettingsTab: View {
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
                                 Button("Add Provider") {
-                                    showingAddProvider = true
+                                    providerToAdd = settings.availableProvidersToAdd.first ?? .openAI
                                 }
                                 .buttonStyle(.bordered)
                             }
