@@ -448,12 +448,38 @@ struct QWERTYKeyboard: View {
         let currentLang = autocorrectLanguage
         if let correction = SpellChecker.correctWord(wordString, language: currentLang),
            correction != wordString {
+
+            // Check personal dictionary and ignored corrections (synchronous from cache)
+            if AutocorrectCache.isInPersonalDictionary(wordString) {
+                // Word is in personal dictionary - don't correct
+                proxy.insertText(text)
+                viewModel?.updateTypingContext()
+                return
+            }
+
+            if AutocorrectCache.shouldIgnoreCorrection(original: wordString, correctedTo: correction) {
+                // User previously undid this correction - don't apply
+                proxy.insertText(text)
+                viewModel?.updateTypingContext()
+                return
+            }
+
             // Apply correction
             for _ in 0..<wordString.count {
                 proxy.deleteBackward()
             }
             proxy.insertText(correction)
             KeyboardHaptics.lightTap()
+
+            // Record correction for undo functionality (async is fine here)
+            let position = beforeText.count
+            Task {
+                await AutocorrectHistoryService.shared.recordCorrection(
+                    original: wordString,
+                    corrected: correction,
+                    atPosition: position
+                )
+            }
         }
 
         proxy.insertText(text)

@@ -8,6 +8,40 @@
 
 import Foundation
 
+// MARK: - Synchronous Cache (for fast keyboard checks)
+
+/// Synchronous cache for personal dictionary and ignored corrections
+/// Reads directly from UserDefaults to avoid async actor overhead
+enum AutocorrectCache {
+    private static let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+    /// Check if word is in personal dictionary (synchronous)
+    static func isInPersonalDictionary(_ word: String) -> Bool {
+        guard let words = defaults?.stringArray(forKey: "personalDictionaryWords") else {
+            return false
+        }
+        return words.contains(word.lowercased())
+    }
+
+    /// Check if correction should be ignored (synchronous)
+    static func shouldIgnoreCorrection(original: String, correctedTo: String) -> Bool {
+        guard let data = defaults?.data(forKey: "ignoredCorrections"),
+              let ignored = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return false
+        }
+        guard let ignoredCorrection = ignored[original.lowercased()] else {
+            return false
+        }
+        return ignoredCorrection == correctedTo.lowercased()
+    }
+
+    /// Invalidate cache (call after updates via actor)
+    static func invalidate() {
+        // UserDefaults is already the source of truth, no cache to invalidate
+        // This is here for future optimization if we add in-memory caching
+    }
+}
+
 /// Represents a recent autocorrection that can be undone
 struct AutocorrectEntry: Codable, Equatable {
     let originalWord: String      // What the user typed
