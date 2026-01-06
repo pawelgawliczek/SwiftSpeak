@@ -42,7 +42,7 @@ public struct BaseCostCalculator: CostCalculatorProtocol {
         switch provider {
         case .openAI: costPerMinute = 0.006       // Whisper $0.006/min
         case .deepgram: costPerMinute = 0.0043    // Nova-2 $0.0043/min
-        case .assemblyAI: costPerMinute = 0.00037 // Best model ~$0.00037/min (cheaper than shown)
+        case .assemblyAI: costPerMinute = 0.00617 // Best model ~$0.37/hour = $0.00617/min
         case .elevenLabs: costPerMinute = 0.01
         case .google: costPerMinute = 0.006
         case .azure: costPerMinute = 0.006
