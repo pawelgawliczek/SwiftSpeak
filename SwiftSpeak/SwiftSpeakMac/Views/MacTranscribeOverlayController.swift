@@ -10,6 +10,7 @@ import AppKit
 import SwiftUI
 import SwiftSpeakCore
 import Carbon.HIToolbox
+import Combine
 
 // MARK: - Keyable Borderless Window
 
@@ -38,6 +39,9 @@ final class MacTranscribeOverlayController {
 
     /// Local keyboard event monitor for overlay-specific shortcuts
     private var localMonitor: Any?
+
+    /// Combine cancellable for auto-close observation
+    private var autoCloseCancellable: AnyCancellable?
 
     /// Whether the overlay is currently visible
     var isVisible: Bool { overlayWindow?.isVisible ?? false }
@@ -96,6 +100,15 @@ final class MacTranscribeOverlayController {
         vm.mode = mode
         vm.setPreCapturedContext(context)
         viewModel = vm
+
+        // Observe shouldAutoClose to automatically close overlay after insertion
+        autoCloseCancellable = vm.$shouldAutoClose
+            .dropFirst()
+            .filter { $0 }
+            .sink { [weak self] _ in
+                macLog("Auto-closing overlay after insertion complete", category: "Transcribe")
+                self?.finishAndClose()
+            }
 
         // Create overlay view
         let overlayView = MacTranscribeOverlayView(
@@ -164,6 +177,10 @@ final class MacTranscribeOverlayController {
     }
 
     private func cleanupAndClose() {
+        // Cancel auto-close observation
+        autoCloseCancellable?.cancel()
+        autoCloseCancellable = nil
+
         // Remove keyboard monitors first
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)

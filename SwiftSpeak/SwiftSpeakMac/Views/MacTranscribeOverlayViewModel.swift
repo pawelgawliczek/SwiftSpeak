@@ -91,6 +91,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     @Published var sourceAppName: String = ""
     @Published var sourceAppBundleId: String = ""
 
+    /// Signals that insertion is complete and overlay should close
+    @Published var shouldAutoClose: Bool = false
+
     // MARK: - Dependencies
 
     let settings: MacSettings
@@ -433,7 +436,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     // MARK: - Enter Key Behavior Execution
 
     private func executeEnterKeyBehavior() async {
-        let behavior = activeContext?.enterKeyBehavior ?? .defaultNewLine
+        // Default to .justSend when no context is selected (auto-insert and send)
+        let behavior = activeContext?.enterKeyBehavior ?? .justSend
 
         switch behavior {
         case .defaultNewLine:
@@ -452,6 +456,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             // Already formatted, insert and send
             await insertTextAndSend()
         }
+
+        // Signal that insertion is complete - overlay should auto-close
+        shouldAutoClose = true
     }
 
     // MARK: - Text Insertion
