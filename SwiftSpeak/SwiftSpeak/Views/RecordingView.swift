@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // Enum for available waveform types
 enum WaveformType: CaseIterable {

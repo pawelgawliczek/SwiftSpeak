@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import Combine
 
 /// Scheduling intervals for memory updates

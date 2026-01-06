@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct TranscriptionAISettingsView: View {
     @EnvironmentObject var settings: SharedSettings

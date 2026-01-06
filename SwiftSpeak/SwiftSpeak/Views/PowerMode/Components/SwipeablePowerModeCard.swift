@@ -154,8 +154,8 @@ struct SwipeablePowerModeCard: View {
                         }
                         .buttonStyle(.plain)
 
-                        // Memory indicator
-                        if powerMode.memoryEnabled {
+                        // Memory indicator (Power Mode or Global memory enabled)
+                        if powerMode.inputConfig.includePowerModeMemory || powerMode.inputConfig.includeGlobalMemory {
                             HStack(spacing: 4) {
                                 Image(systemName: "brain")
                                     .font(.caption2)
@@ -165,15 +165,26 @@ struct SwipeablePowerModeCard: View {
                             .foregroundStyle(.purple.opacity(0.8))
                         }
 
-                        // Knowledge base indicator
-                        if !powerMode.knowledgeDocumentIds.isEmpty {
+                        // RAG Documents indicator (enabled AND has documents)
+                        if powerMode.inputConfig.includeRAGDocuments && !powerMode.knowledgeDocumentIds.isEmpty {
                             HStack(spacing: 4) {
                                 Image(systemName: "doc.text.magnifyingglass")
                                     .font(.caption2)
                                 Text("\(powerMode.knowledgeDocumentIds.count)")
                                     .font(.caption)
                             }
-                            .foregroundStyle(.blue.opacity(0.8))
+                            .foregroundStyle(.green.opacity(0.8))
+                        }
+
+                        // Obsidian Vaults indicator (enabled AND has vaults selected)
+                        if powerMode.inputConfig.includeObsidianVaults && !powerMode.obsidianVaultIds.isEmpty {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder.fill")
+                                    .font(.caption2)
+                                Text("\(powerMode.obsidianVaultIds.count)")
+                                    .font(.caption)
+                            }
+                            .foregroundStyle(.purple.opacity(0.8))
                         }
 
                         // Provider override indicator (Phase 10)

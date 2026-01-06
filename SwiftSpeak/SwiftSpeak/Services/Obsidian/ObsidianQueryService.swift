@@ -179,4 +179,44 @@ actor ObsidianQueryService {
             minSimilarity: minSimilarity
         )
     }
+
+    /// Get all notes from specified vaults (no filtering, for browsing)
+    func getAllNotes(
+        vaultIds: [UUID],
+        maxResults: Int = 50
+    ) async throws -> [ObsidianSearchResult] {
+        guard !vaultIds.isEmpty else {
+            throw ObsidianQueryError.noVaultsSelected
+        }
+
+        appLog("Loading all notes from \(vaultIds.count) vaults (max: \(maxResults))", category: "Obsidian")
+
+        do {
+            // Get all chunks from vector store (without similarity filtering)
+            let storeResults = try await vectorStore.getAllChunks(
+                vaultIds: vaultIds,
+                limit: maxResults
+            )
+
+            // Convert to ObsidianSearchResult with 100% similarity (since no filtering)
+            let results = storeResults.map { storeResult -> ObsidianSearchResult in
+                ObsidianSearchResult(
+                    vaultId: storeResult.chunk.documentId,
+                    vaultName: storeResult.vaultName,
+                    noteId: storeResult.chunk.documentId,
+                    notePath: storeResult.notePath,
+                    noteTitle: storeResult.noteTitle,
+                    chunkContent: storeResult.chunk.content,
+                    similarity: 1.0 // No filtering applied
+                )
+            }
+
+            appLog("Loaded \(results.count) notes from vaults", category: "Obsidian")
+            return results
+
+        } catch {
+            appLog("Failed to load all notes: \(LogSanitizer.sanitizeError(error))", category: "Obsidian", level: .error)
+            throw ObsidianQueryError.queryFailed(error.localizedDescription)
+        }
+    }
 }

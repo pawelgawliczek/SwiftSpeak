@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Cost Breakdown (Phase 9)
 

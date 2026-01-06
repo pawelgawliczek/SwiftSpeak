@@ -7,6 +7,7 @@
 
 import AVFoundation
 import SwiftUI
+import SwiftSpeakCore
 
 struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings

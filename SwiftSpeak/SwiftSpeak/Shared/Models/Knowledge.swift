@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Knowledge Document (Phase 4 RAG)
 

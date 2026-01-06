@@ -1,8 +1,10 @@
 //
 //  AssemblyAIStreamingService.swift
-//  SwiftSpeak
+//  SwiftSpeakCore
 //
-//  Real-time streaming transcription using AssemblyAI WebSocket API v3
+//  Shared AssemblyAI real-time streaming transcription service
+//  Uses WebSocket connection to wss://streaming.assemblyai.com/v3/ws
+//  Works on both iOS and macOS
 //
 
 import Foundation
@@ -10,35 +12,35 @@ import Combine
 
 /// AssemblyAI real-time streaming transcription service
 /// Uses WebSocket connection to wss://streaming.assemblyai.com/v3/ws
-final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider {
+public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider {
 
     // MARK: - StreamingTranscriptionProvider
 
-    let providerId: AIProvider = .assemblyAI
+    public let providerId: AIProvider = .assemblyAI
 
-    var isConfigured: Bool {
+    public var isConfigured: Bool {
         !apiKey.isEmpty
     }
 
-    var supportsStreaming: Bool { true }
+    public var supportsStreaming: Bool { true }
 
-    private(set) var connectionState: StreamingConnectionState = .disconnected {
+    public private(set) var connectionState: StreamingConnectionState = .disconnected {
         didSet {
             delegate?.connectionStateDidChange(connectionState)
         }
     }
 
-    weak var delegate: StreamingTranscriptionDelegate?
+    public weak var delegate: StreamingTranscriptionDelegate?
 
-    var partialTranscriptPublisher: AnyPublisher<String, Never> {
+    public var partialTranscriptPublisher: AnyPublisher<String, Never> {
         partialTranscriptSubject.eraseToAnyPublisher()
     }
 
-    var finalTranscriptPublisher: AnyPublisher<String, Never> {
+    public var finalTranscriptPublisher: AnyPublisher<String, Never> {
         finalTranscriptSubject.eraseToAnyPublisher()
     }
 
-    private(set) var fullTranscript: String = ""
+    public private(set) var fullTranscript: String = ""
 
     // MARK: - Properties
 
@@ -53,14 +55,17 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
     private var currentLanguage: Language?
     private var sessionId: String?
 
+    /// WebSocket endpoint
+    private static let streamingEndpoint = "wss://streaming.assemblyai.com/v3/ws"
+
     // MARK: - Initialization
 
-    init(apiKey: String) {
+    public init(apiKey: String) {
         self.apiKey = apiKey
         super.init()
     }
 
-    convenience init?(config: AIProviderConfig) {
+    public convenience init?(config: AIProviderConfig) {
         guard config.provider == .assemblyAI,
               !config.apiKey.isEmpty
         else { return nil }
@@ -70,7 +75,7 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
 
     // MARK: - Connection
 
-    func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
+    public func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
         // Note: AssemblyAI doesn't support system instructions, only vocabulary via word_boost
         guard isConfigured else {
             throw TranscriptionError.apiKeyMissing
@@ -78,7 +83,7 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
 
         // Build WebSocket URL with parameters
         // Quality optimizations based on AssemblyAI v3 best practices
-        var components = URLComponents(string: "wss://streaming.assemblyai.com/v3/ws")!
+        var components = URLComponents(string: Self.streamingEndpoint)!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "sample_rate", value: String(sampleRate)),
             URLQueryItem(name: "format_turns", value: "true"),  // Request formatted final transcripts
@@ -96,22 +101,13 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
 
         // Extract keywords from transcription prompt for AssemblyAI word boosting
         if let prompt = transcriptionPrompt, !prompt.isEmpty {
-            // Extract words after "Keywords:" if present
-            let keywordsSection = prompt.components(separatedBy: "Keywords:").last ?? prompt
-            let keywords = keywordsSection
-                .components(separatedBy: CharacterSet(charactersIn: ",.:"))
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty && $0.count > 2 }
-                .prefix(20)
-
+            let keywords = extractKeywords(from: prompt)
             if !keywords.isEmpty {
                 // AssemblyAI uses word_boost parameter with JSON array
-                let keywordArray = Array(keywords)
-                if let jsonData = try? JSONSerialization.data(withJSONObject: keywordArray),
+                if let jsonData = try? JSONSerialization.data(withJSONObject: keywords),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
                     queryItems.append(URLQueryItem(name: "word_boost", value: jsonString))
                 }
-                appLog("AssemblyAI word_boost: \(keywordArray.joined(separator: ", "))", category: "AssemblyAIStreaming")
             }
         }
 
@@ -154,7 +150,7 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
         }
     }
 
-    func sendAudio(_ audioData: Data) {
+    public func sendAudio(_ audioData: Data) {
         guard connectionState == .connected, !isFinishing else { return }
 
         // AssemblyAI expects raw binary audio data
@@ -166,7 +162,7 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
         }
     }
 
-    func finishAudio() {
+    public func finishAudio() {
         guard connectionState == .connected, !isFinishing else { return }
         isFinishing = true
 
@@ -180,7 +176,7 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
         }
     }
 
-    func disconnect() {
+    public func disconnect() {
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         urlSession?.invalidateAndCancel()
@@ -188,6 +184,20 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
         connectionState = .disconnected
         isFinishing = false
         sessionId = nil
+    }
+
+    // MARK: - Private Helpers
+
+    /// Extract keywords from transcription prompt for word boosting
+    private func extractKeywords(from prompt: String) -> [String] {
+        // Extract words after "Keywords:" if present, otherwise use whole prompt
+        let keywordsSection = prompt.components(separatedBy: "Keywords:").last ?? prompt
+        return keywordsSection
+            .components(separatedBy: CharacterSet(charactersIn: ",.:;"))
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && $0.count > 2 }
+            .prefix(100)  // AssemblyAI limit
+            .map { $0 }
     }
 
     // MARK: - Message Handling
@@ -309,14 +319,13 @@ final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionProvider
 // MARK: - URLSessionWebSocketDelegate
 
 extension AssemblyAIStreamingService: URLSessionWebSocketDelegate {
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
         // Connection opened, wait for Begin message
     }
 
-    func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+    public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
         DispatchQueue.main.async { [weak self] in
             self?.connectionState = .disconnected
         }
     }
 }
-

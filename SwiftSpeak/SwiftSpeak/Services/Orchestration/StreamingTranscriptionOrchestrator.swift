@@ -7,6 +7,7 @@
 
 import Foundation
 import Combine
+import SwiftSpeakCore
 
 /// Orchestrates streaming transcription using WebSocket-based providers
 /// Provides real-time transcript updates as the user speaks
@@ -322,7 +323,8 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
 
         case .assemblyAI:
             appLog("Creating AssemblyAI streaming service...", category: "StreamingOrch")
-            guard let service = AssemblyAIStreamingService(config: config) else {
+            // Use shared service from SwiftSpeakCore
+            guard let service = SwiftSpeakCore.AssemblyAIStreamingService(config: config) else {
                 appLog("Failed to create AssemblyAI streaming service", category: "StreamingOrch", level: .error)
                 throw TranscriptionError.providerNotConfigured
             }

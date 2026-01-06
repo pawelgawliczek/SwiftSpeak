@@ -7,6 +7,7 @@
 
 import FirebaseCore
 import SwiftUI
+import SwiftSpeakCore
 
 @main
 struct SwiftSpeakApp: App {

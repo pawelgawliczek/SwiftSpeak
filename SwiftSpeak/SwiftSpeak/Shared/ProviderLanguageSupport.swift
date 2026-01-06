@@ -11,6 +11,7 @@
 //    3. Bundled fallback-provider-config.json (if no cache/network)
 //
 
+import SwiftSpeakCore
 import SwiftUI
 
 // MARK: - Language Support Level

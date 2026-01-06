@@ -14,15 +14,8 @@ import SwiftSpeakCore
 
 // MARK: - Overlay State
 
-/// Power Mode overlay execution states
-enum OverlayState: String, Sendable {
-    case contextPreview     // Show context sources with toggles
-    case recording          // Recording voice input
-    case processing         // AI thinking
-    case aiQuestion         // AI asking clarification
-    case result             // Show result, allow iteration
-    case actionComplete     // Saved to Obsidian, auto-close
-}
+/// Use shared state enum from SwiftSpeakCore
+typealias OverlayState = PowerModeExecutionState
 
 // MARK: - Power Mode Overlay View Model
 
@@ -92,9 +85,27 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
 
     @Published var errorMessage: String?
 
-    // MARK: - Debug Info (temporary)
+    // MARK: - Loading State
 
-    @Published var debugInfo: String = ""
+    /// Whether Obsidian notes are being loaded in background
+    @Published var isLoadingObsidianContext: Bool = false
+
+    // MARK: - Obsidian Search State
+
+    /// Search query for manual Obsidian search
+    @Published var obsidianSearchQuery: String = ""
+
+    /// Whether currently searching Obsidian
+    @Published var isSearchingObsidian: Bool = false
+
+    /// Manual search results (separate from auto-loaded results)
+    @Published var manualObsidianResults: [ObsidianSearchResult] = []
+
+    /// Selected result IDs (for filtering which results go to LLM)
+    @Published var selectedObsidianResultIds: Set<UUID> = []
+
+    /// Whether voice dictation is active for search query
+    @Published var isDictatingSearchQuery: Bool = false
 
     // MARK: - Configuration
 
@@ -104,6 +115,35 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
     private let windowContextService: MacWindowContextService
     private let audioRecorder: MacAudioRecorder
     private var cancellables = Set<AnyCancellable>()
+
+    // MARK: - Token Count
+
+    /// Estimated token count for current context
+    var contextTokens: TokenCounter.ContextTokens {
+        // Use obsidianResults (from loadContext) in contextPreview, selectedObsidianResults after search
+        let obsidianContent: [String]
+        if state == .contextPreview {
+            obsidianContent = obsidianResults.map { $0.content }
+        } else {
+            obsidianContent = selectedObsidianResults.map { $0.content }
+        }
+
+        return TokenCounter.countContextTokens(
+            systemPrompt: currentPowerMode.instruction,
+            globalMemory: includeMemory ? settings.globalMemory : nil,
+            powerModeMemory: currentPowerMode.memoryEnabled ? currentPowerMode.memory : nil,
+            ragDocuments: [], // RAG docs loaded separately
+            obsidianNotes: obsidianContent,
+            selectedText: windowContext?.selectedText,
+            clipboardText: includeClipboard ? clipboardContent : nil,
+            webhookContext: nil // Webhooks loaded during execution
+        )
+    }
+
+    /// Selected Obsidian results (filtered by selection)
+    var selectedObsidianResults: [ObsidianSearchResult] {
+        manualObsidianResults.filter { selectedObsidianResultIds.contains($0.id) }
+    }
 
     // MARK: - Dependencies (injected later)
 
@@ -168,18 +208,6 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
     func setPreCapturedContext(windowContext: WindowContext?, clipboard: String?) {
         self.preCapturedWindowContext = windowContext
         self.preCapturedClipboard = clipboard
-
-        // DEBUG: Set debug info for display
-        var info = "DEBUG:\n"
-        if let ctx = windowContext {
-            info += "App: \(ctx.appName) (\(ctx.appBundleId))\n"
-            info += "Window: \(ctx.windowTitle)\n"
-            info += "Selected: \(ctx.selectedText?.prefix(50) ?? "nil")\n"
-            info += "Visible: \(ctx.visibleText?.prefix(50) ?? "nil")"
-        } else {
-            info += "WindowContext: nil"
-        }
-        self.debugInfo = info
     }
 
     /// Update visible text async (called after window text capture completes)
@@ -246,29 +274,48 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
             clipboardContent = ""
         }
 
-        // Query Obsidian if enabled and vaults are selected
+        // Load memory context based on config (fast, no network)
+        memoryContext = buildMemoryContext()
+
+        // Query Obsidian in background (non-blocking) if enabled
         if inputConfig.includeObsidianVaults,
            !currentPowerMode.obsidianVaultIds.isEmpty,
            let obsidianService = obsidianQueryService {
-            // Use window context text or power mode name as query
-            let queryText = windowContext?.displayText ?? currentPowerMode.name
-            do {
-                let results = try await obsidianService.search(
-                    query: queryText,
-                    vaultIds: currentPowerMode.obsidianVaultIds,
-                    maxResults: currentPowerMode.maxObsidianChunks
-                )
-                obsidianResults = results
-            } catch {
-                macLog("Failed to query Obsidian: \(error)", category: "PowerMode")
-                obsidianResults = []
+            // Start loading in background
+            isLoadingObsidianContext = true
+            Task {
+                await loadObsidianContext(service: obsidianService)
             }
         } else {
             obsidianResults = []
         }
+    }
 
-        // Load memory context based on config
-        memoryContext = buildMemoryContext()
+    /// Load Obsidian context in background
+    private func loadObsidianContext(service: MacObsidianQueryService) async {
+        defer { isLoadingObsidianContext = false }
+
+        do {
+            // If default search query is configured, use it for searching
+            if !currentPowerMode.defaultObsidianSearchQuery.isEmpty {
+                let results = try await service.search(
+                    query: currentPowerMode.defaultObsidianSearchQuery,
+                    vaultIds: currentPowerMode.obsidianVaultIds,
+                    maxResults: currentPowerMode.maxObsidianChunks
+                )
+                obsidianResults = results
+            } else {
+                // No default search = load all notes
+                let results = try await service.getAllNotes(
+                    vaultIds: currentPowerMode.obsidianVaultIds,
+                    maxResults: 50
+                )
+                obsidianResults = results
+            }
+        } catch {
+            macLog("Failed to query Obsidian: \(error)", category: "PowerMode")
+            obsidianResults = []
+        }
     }
 
     /// Build combined memory context based on inputConfig
@@ -302,6 +349,12 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
     // MARK: - Recording
 
     func startRecording() async {
+        // If Obsidian is enabled and we're in contextPreview, go to search first
+        if state == .contextPreview && hasObsidianEnabled {
+            startObsidianSearch()
+            return
+        }
+
         state = .recording
         errorMessage = nil
 
@@ -329,7 +382,8 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
 
             userInput = try await transcriptionService.transcribe(
                 audioURL: audioURL,
-                language: settings.selectedDictationLanguage
+                language: settings.selectedDictationLanguage,
+                promptHint: buildVocabularyPrompt()
             )
 
             // Send to AI
@@ -419,57 +473,84 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         }
     }
 
-    /// Build prompt with all context sources based on inputConfig
-    private func buildPrompt() -> String {
+    /// Build the system prompt that explains the structure to the LLM
+    private func buildSystemPrompt() -> String {
+        var systemPrompt = """
+        You are a "\(currentPowerMode.name)" assistant. You will receive structured input with the following components:
+
+        1. [INSTRUCTION] - A predefined task description that defines what this assistant does. This sets the context for your role.
+
+        2. [CONTEXT] - Optional supporting information from various sources (notes, clipboard, selected text, memory). Use this information to inform your response.
+
+        3. [USER_INPUT] - The user's spoken request. This is the MOST IMPORTANT part - it contains the specific action the user wants you to perform right now.
+
+        Your job is to:
+        - Understand the task from [INSTRUCTION]
+        - Use relevant information from [CONTEXT] to support your response
+        - Execute the specific request in [USER_INPUT]
+        - The user's spoken input takes priority and drives what you actually do
+        """
+
+        // Add output format guidance if specified
+        if !currentPowerMode.outputFormat.isEmpty {
+            systemPrompt += "\n\n[OUTPUT_FORMAT]\nFormat your response as follows:\n\(currentPowerMode.outputFormat)"
+        }
+
+        return systemPrompt
+    }
+
+    /// Build the user message with instruction, context, and user input
+    private func buildUserMessage() -> String {
         let inputConfig = currentPowerMode.inputConfig
         var parts: [String] = []
 
-        // Power mode instructions
-        parts.append("You are a \(currentPowerMode.name) assistant.")
-        parts.append("Instructions: \(currentPowerMode.instruction)")
+        // Instruction block (predefined task from Power Mode settings)
+        parts.append("[INSTRUCTION]\n\(currentPowerMode.instruction)\n[/INSTRUCTION]")
 
-        // Output format (if specified)
-        if !currentPowerMode.outputFormat.isEmpty {
-            parts.append("Output Format: \(currentPowerMode.outputFormat)")
+        // Context block (all supporting information)
+        var contextParts: [String] = []
+
+        // Selected text
+        if inputConfig.includeSelectedText,
+           let window = windowContext,
+           let selectedText = window.selectedText,
+           !selectedText.isEmpty {
+            contextParts.append("[SELECTED_TEXT from=\"\(window.appName)\"]\n\(selectedText)\n[/SELECTED_TEXT]")
         }
 
-        // Window context (selected text / active app text)
-        if let window = windowContext, !window.displayText.isEmpty {
-            if inputConfig.includeSelectedText && inputConfig.includeActiveAppText {
-                parts.append("\nWindow Context from \(window.appName):")
-            } else if inputConfig.includeSelectedText {
-                parts.append("\nSelected Text from \(window.appName):")
-            } else if inputConfig.includeActiveAppText {
-                parts.append("\nActive Window Content from \(window.appName):")
-            }
-            parts.append(window.displayText)
-        }
-
-        // Clipboard content
+        // Clipboard
         if inputConfig.includeClipboard, !clipboardContent.isEmpty {
-            parts.append("\nClipboard Content:")
-            parts.append(clipboardContent)
+            contextParts.append("[CLIPBOARD]\n\(clipboardContent)\n[/CLIPBOARD]")
         }
 
-        // Obsidian context
+        // Obsidian notes
         if inputConfig.includeObsidianVaults, !obsidianResults.isEmpty {
-            parts.append("\nRelevant Notes from Obsidian:")
+            var noteParts: [String] = []
             for result in obsidianResults.prefix(currentPowerMode.maxObsidianChunks) {
-                parts.append("[\(result.noteTitle)] \(result.content)")
+                noteParts.append("[NOTE title=\"\(result.noteTitle)\"]\n\(result.content)\n[/NOTE]")
             }
+            contextParts.append("[KNOWLEDGE_BASE]\n\(noteParts.joined(separator: "\n\n"))\n[/KNOWLEDGE_BASE]")
         }
 
-        // Memory context
+        // Memory
         if !memoryContext.isEmpty {
-            parts.append("\nMemory Context:")
-            parts.append(memoryContext)
+            contextParts.append("[MEMORY]\n\(memoryContext)\n[/MEMORY]")
         }
 
-        // User input
-        parts.append("\nUser Request:")
-        parts.append(userInput)
+        // Add context block if we have any context
+        if !contextParts.isEmpty {
+            parts.append("[CONTEXT]\n\(contextParts.joined(separator: "\n\n"))\n[/CONTEXT]")
+        }
 
-        return parts.joined(separator: "\n")
+        // User input block (the spoken instruction - most important)
+        parts.append("[USER_INPUT]\n\(userInput)\n[/USER_INPUT]")
+
+        return parts.joined(separator: "\n\n")
+    }
+
+    /// Build the complete prompt (system + user message combined for providers that don't support separate system prompts)
+    private func buildPrompt() -> String {
+        return buildSystemPrompt() + "\n\n---\n\n" + buildUserMessage()
     }
 
     /// Extract question from AI response
@@ -611,5 +692,219 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         memoryContext = ""
         preCapturedWindowContext = nil
         preCapturedClipboard = nil
+        // Reset Obsidian search state
+        obsidianSearchQuery = ""
+        isSearchingObsidian = false
+        manualObsidianResults = []
+        selectedObsidianResultIds = []
+        isDictatingSearchQuery = false
+    }
+
+    // MARK: - Obsidian Search
+
+    /// Whether the current Power Mode has Obsidian search enabled
+    var hasObsidianEnabled: Bool {
+        currentPowerMode.inputConfig.includeObsidianVaults &&
+        !currentPowerMode.obsidianVaultIds.isEmpty
+    }
+
+    /// Transition to Obsidian search step (from contextPreview)
+    func startObsidianSearch() {
+        // Pre-fill search query: default query from PowerMode (or empty for "all notes")
+        obsidianSearchQuery = currentPowerMode.defaultObsidianSearchQuery
+
+        // Reuse results from contextPreview (already loaded via loadContext)
+        // This avoids re-executing the same search
+        if !obsidianResults.isEmpty {
+            manualObsidianResults = obsidianResults
+            selectedObsidianResultIds = Set(obsidianResults.map { $0.id })
+        } else {
+            manualObsidianResults = []
+            selectedObsidianResultIds = []
+        }
+
+        state = .obsidianSearch
+    }
+
+    /// Perform Obsidian search with current query
+    func searchObsidian() async {
+        guard let service = obsidianQueryService else { return }
+
+        // If empty query, load all notes instead
+        if obsidianSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            await loadAllObsidianNotes()
+            return
+        }
+
+        isSearchingObsidian = true
+        errorMessage = nil
+
+        do {
+            manualObsidianResults = try await service.search(
+                query: obsidianSearchQuery,
+                vaultIds: currentPowerMode.obsidianVaultIds,
+                maxResults: currentPowerMode.maxObsidianChunks,
+                minSimilarity: currentPowerMode.obsidianMinSimilarity
+            )
+            // Auto-select only results above the autoSelectThreshold
+            let autoSelectThreshold = currentPowerMode.obsidianAutoSelectThreshold
+            selectedObsidianResultIds = Set(
+                manualObsidianResults
+                    .filter { $0.similarity >= autoSelectThreshold }
+                    .map { $0.id }
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            macLog("Obsidian search failed: \(error)", category: "PowerMode")
+        }
+
+        isSearchingObsidian = false
+    }
+
+    /// Load all Obsidian notes from configured vaults (no filtering)
+    func loadAllObsidianNotes() async {
+        guard let service = obsidianQueryService else { return }
+
+        isSearchingObsidian = true
+        errorMessage = nil
+
+        do {
+            manualObsidianResults = try await service.getAllNotes(
+                vaultIds: currentPowerMode.obsidianVaultIds,
+                maxResults: 50
+            )
+            // For "all notes" mode, select all by default (no similarity filtering)
+            selectedObsidianResultIds = Set(manualObsidianResults.map { $0.id })
+        } catch {
+            macLog("Failed to load all Obsidian notes: \(error)", category: "PowerMode")
+        }
+
+        isSearchingObsidian = false
+    }
+
+    /// Toggle selection of a specific result
+    func toggleResultSelection(_ resultId: UUID) {
+        if selectedObsidianResultIds.contains(resultId) {
+            selectedObsidianResultIds.remove(resultId)
+        } else {
+            selectedObsidianResultIds.insert(resultId)
+        }
+    }
+
+    /// Toggle result selection by 1-based index (for keyboard shortcuts 1-9)
+    func toggleResultByIndex(_ index: Int) {
+        guard index > 0, index <= manualObsidianResults.count else { return }
+        let result = manualObsidianResults[index - 1]
+        toggleResultSelection(result.id)
+    }
+
+    /// Select all search results
+    func selectAllResults() {
+        selectedObsidianResultIds = Set(manualObsidianResults.map { $0.id })
+    }
+
+    /// Deselect all search results
+    func deselectAllResults() {
+        selectedObsidianResultIds.removeAll()
+    }
+
+    /// Proceed from Obsidian search to recording
+    func proceedFromObsidianSearch() async {
+        // Filter to only selected results for the LLM prompt
+        obsidianResults = selectedObsidianResults
+
+        // Start recording
+        state = .recording
+        errorMessage = nil
+
+        do {
+            try await audioRecorder.startRecording()
+        } catch {
+            errorMessage = error.localizedDescription
+            state = .obsidianSearch
+        }
+    }
+
+    /// Start voice dictation for the search query field
+    func startSearchDictation() async {
+        guard !isDictatingSearchQuery else { return }
+
+        isDictatingSearchQuery = true
+        errorMessage = nil
+
+        do {
+            try await audioRecorder.startRecording()
+        } catch {
+            errorMessage = error.localizedDescription
+            isDictatingSearchQuery = false
+        }
+    }
+
+    /// Stop voice dictation and transcribe to search query
+    func stopSearchDictation() async {
+        guard isDictatingSearchQuery else { return }
+
+        do {
+            let audioURL = try audioRecorder.stopRecording()
+
+            // Transcribe audio
+            guard let provider = providerFactory,
+                  let transcriptionService = provider.createTranscriptionProvider(for: settings.selectedTranscriptionProvider) else {
+                throw NSError(domain: "PowerMode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Transcription provider not configured"])
+            }
+
+            let transcribedText = try await transcriptionService.transcribe(
+                audioURL: audioURL,
+                language: settings.selectedDictationLanguage,
+                promptHint: buildVocabularyPrompt()
+            )
+
+            // Append to search query (or replace if empty)
+            if obsidianSearchQuery.isEmpty {
+                obsidianSearchQuery = transcribedText
+            } else {
+                obsidianSearchQuery += " " + transcribedText
+            }
+
+            isDictatingSearchQuery = false
+
+            // Auto-search after dictation
+            await searchObsidian()
+
+        } catch {
+            errorMessage = error.localizedDescription
+            isDictatingSearchQuery = false
+        }
+    }
+
+    // MARK: - Vocabulary Support
+
+    /// Build vocabulary prompt for transcription from vocabulary entries and active context
+    /// This helps the transcription provider recognize domain-specific terms
+    private func buildVocabularyPrompt() -> String? {
+        var vocabWords: [String] = []
+
+        // Add vocabulary replacement words (target words that should be recognized)
+        vocabWords.append(contentsOf: settings.vocabulary
+            .filter { $0.isEnabled }
+            .map { $0.replacementWord }
+        )
+
+        // Add domain jargon from active context
+        if let context = settings.activeContext {
+            vocabWords.append(contentsOf: context.transcriptionVocabulary)
+        }
+
+        // Add Power Mode specific vocabulary if available
+        if !currentPowerMode.name.isEmpty {
+            vocabWords.append(currentPowerMode.name)
+        }
+
+        // Return nil if no vocabulary, otherwise comma-separated list
+        guard !vocabWords.isEmpty else { return nil }
+
+        // Remove duplicates and join
+        let uniqueWords = Array(Set(vocabWords))
+        return uniqueWords.joined(separator: ", ")
     }
 }

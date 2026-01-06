@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 #if canImport(Translation)
 import Translation

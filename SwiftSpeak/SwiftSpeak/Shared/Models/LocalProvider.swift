@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Phase 10: Local Provider Types
 

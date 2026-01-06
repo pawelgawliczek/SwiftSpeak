@@ -62,8 +62,7 @@ final class MacPowerModeOverlayController: NSObject {
     ///   - powerMode: The Power Mode to execute
     ///   - windowContext: Optional pre-captured window context
     ///   - clipboard: Optional pre-captured clipboard content
-    ///   - debugInfo: Debug info string to display in overlay
-    public func showOverlay(for powerMode: PowerMode, windowContext: WindowContext? = nil, clipboard: String? = nil, debugInfo: String = "") {
+    public func showOverlay(for powerMode: PowerMode, windowContext: WindowContext? = nil, clipboard: String? = nil) {
         // Store the currently active application before showing overlay
         previousApp = NSWorkspace.shared.frontmostApplication
 
@@ -85,9 +84,6 @@ final class MacPowerModeOverlayController: NSObject {
 
         // Set pre-captured context (captured before overlay opens)
         newViewModel.setPreCapturedContext(windowContext: windowContext, clipboard: clipboard)
-
-        // Set debug info for display
-        newViewModel.debugInfo = debugInfo
 
         viewModel = newViewModel
 
@@ -219,14 +215,42 @@ final class MacPowerModeOverlayController: NSObject {
             guard let self = self, self.isVisible else { return event }
 
             switch event.keyCode {
-            case 53: // Escape - Close overlay and return to previous app
-                self.hideOverlay()
-                return nil
+            case 53: // Escape - Close overlay, go back, or cancel
+                if self.viewModel?.state == .obsidianSearch {
+                    // Go back to contextPreview
+                    self.viewModel?.state = .contextPreview
+                    return nil
+                } else {
+                    self.hideOverlay()
+                    return nil
+                }
 
-            case 36: // Enter/Return - Start recording or proceed (in contextPreview)
-                if self.viewModel?.state == .contextPreview {
+            case 36: // Enter/Return - Context-sensitive action
+                // Recording state: Shift+Enter stops recording
+                if self.viewModel?.state == .recording {
+                    if event.modifierFlags.contains(.shift) {
+                        Task { await self.viewModel?.stopRecording() }
+                        return nil
+                    }
+                } else if self.viewModel?.state == .contextPreview {
+                    // Context preview: Enter starts recording (or goes to Obsidian search)
                     Task { await self.viewModel?.startRecording() }
                     return nil
+                } else if self.viewModel?.state == .obsidianSearch {
+                    if event.modifierFlags.contains(.shift) {
+                        // Shift+Enter = proceed to recording
+                        Task { await self.viewModel?.proceedFromObsidianSearch() }
+                    } else {
+                        // Plain Enter = search
+                        Task { await self.viewModel?.searchObsidian() }
+                    }
+                    return nil
+                } else if self.viewModel?.state == .result {
+                    // Enter in result view = refine (if text field has content)
+                    if let vm = self.viewModel, !vm.userInput.isEmpty {
+                        Task { await vm.refineResult(vm.userInput) }
+                        return nil
+                    }
                 }
 
             case 49: // Space - Stop recording (if recording)
@@ -244,6 +268,14 @@ final class MacPowerModeOverlayController: NSObject {
             case 124, 125: // Right Arrow (124) or Down Arrow (125) - Next power mode
                 if self.viewModel?.state == .contextPreview {
                     self.viewModel?.cycleToNextPowerMode()
+                    return nil
+                }
+
+            // Number keys 1-9 for toggling Obsidian search results
+            case 18...26: // Keys 1-9 (keyCodes 18-26)
+                if self.viewModel?.state == .obsidianSearch {
+                    let index = Int(event.keyCode) - 17 // keyCode 18 = "1", so subtract 17 to get 1-based index
+                    self.viewModel?.toggleResultByIndex(index)
                     return nil
                 }
 

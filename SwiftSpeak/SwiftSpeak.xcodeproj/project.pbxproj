@@ -116,8 +116,6 @@
 				Assets.xcassets,
 				Shared/AppLibrary.swift,
 				Shared/Models.swift,
-				Shared/Models/AIProvider.swift,
-				Shared/Models/AIProviderConfig.swift,
 				Shared/Models/Cost.swift,
 				Shared/Models/Knowledge.swift,
 				Shared/Models/LocalProvider.swift,

@@ -14,6 +14,7 @@ import Foundation
 /// Result from semantic search across Obsidian vaults
 public struct ObsidianSearchResult: Identifiable, Sendable, Codable {
     public let id: UUID
+    public let noteId: UUID  // Unique per note (same for all chunks from same note)
     public let vaultId: UUID
     public let vaultName: String
     public let notePath: String
@@ -23,6 +24,7 @@ public struct ObsidianSearchResult: Identifiable, Sendable, Codable {
 
     public init(
         id: UUID = UUID(),
+        noteId: UUID,
         vaultId: UUID,
         vaultName: String,
         notePath: String,
@@ -31,6 +33,7 @@ public struct ObsidianSearchResult: Identifiable, Sendable, Codable {
         similarity: Float
     ) {
         self.id = id
+        self.noteId = noteId
         self.vaultId = vaultId
         self.vaultName = vaultName
         self.notePath = notePath

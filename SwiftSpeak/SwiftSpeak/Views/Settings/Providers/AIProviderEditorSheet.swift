@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct AIProviderEditorSheet: View {
     let config: AIProviderConfig

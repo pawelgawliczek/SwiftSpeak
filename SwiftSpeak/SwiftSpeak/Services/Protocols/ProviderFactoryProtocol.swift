@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Protocol for creating provider instances
 /// Enables dependency injection and testing

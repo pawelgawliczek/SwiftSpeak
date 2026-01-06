@@ -1,65 +1,56 @@
 //
 //  OpenAITranslationService.swift
-//  SwiftSpeak
+//  SwiftSpeakCore
 //
-//  Created by Claude Code on 26/12/2025.
+//  Shared OpenAI GPT translation service
 //
 
 import Foundation
 
 /// OpenAI GPT translation service
-/// Uses GPT to translate text between languages
-final class OpenAITranslationService: TranslationProvider {
+public final class OpenAITranslationService: TranslationProvider {
 
     // MARK: - TranslationProvider
 
-    let providerId: AIProvider = .openAI
+    public let providerId: AIProvider = .openAI
 
-    var isConfigured: Bool {
+    public var isConfigured: Bool {
         !apiKey.isEmpty
     }
 
-    var model: String {
+    public var model: String {
         modelName
     }
 
-    var supportedLanguages: [Language] {
+    public var supportedLanguages: [Language] {
         Language.allCases
     }
 
-    var supportsFormality: Bool {
-        true // LLM can understand formality through context
+    public var supportsFormality: Bool {
+        true
     }
 
     // MARK: - Properties
 
     private let apiKey: String
     private let modelName: String
-    private let apiClient: APIClient
+    private let httpClient: HTTPClient
 
-    /// Chat completions endpoint
     private let endpoint = URL(string: Constants.API.openAIChat)!
 
     // MARK: - Initialization
 
-    /// Initialize with API key and optional model
-    /// - Parameters:
-    ///   - apiKey: OpenAI API key
-    ///   - model: GPT model to use (default: gpt-4o-mini for cost efficiency)
-    ///   - apiClient: API client instance
-    init(
+    public init(
         apiKey: String,
         model: String = "gpt-4o-mini",
-        apiClient: APIClient = .shared
+        httpClient: HTTPClient = .shared
     ) {
         self.apiKey = apiKey
         self.modelName = model
-        self.apiClient = apiClient
+        self.httpClient = httpClient
     }
 
-    /// Initialize from provider configuration
-    /// - Parameter config: AI provider configuration
-    convenience init?(config: AIProviderConfig) {
+    public convenience init?(config: AIProviderConfig) {
         guard config.provider == .openAI,
               !config.apiKey.isEmpty
         else { return nil }
@@ -70,7 +61,7 @@ final class OpenAITranslationService: TranslationProvider {
 
     // MARK: - Translation
 
-    func translate(
+    public func translate(
         text: String,
         from sourceLanguage: Language?,
         to targetLanguage: Language,
@@ -81,13 +72,10 @@ final class OpenAITranslationService: TranslationProvider {
             throw TranscriptionError.apiKeyMissing
         }
 
-        // Build the system prompt for translation
         let systemPrompt: String
         if let ctx = context, ctx.hasContent {
-            // Use PromptContext to build enriched translation prompt
             systemPrompt = ctx.buildTranslationPrompt(to: targetLanguage, from: sourceLanguage)
         } else {
-            // Fall back to basic translation prompt
             systemPrompt = buildTranslationPrompt(
                 sourceLanguage: sourceLanguage,
                 targetLanguage: targetLanguage,
@@ -95,35 +83,30 @@ final class OpenAITranslationService: TranslationProvider {
             )
         }
 
-        // Build request
-        let request = TranslationChatRequest(
+        let request = TranslationRequest(
             model: modelName,
             messages: [
                 TranslationMessage(role: "system", content: systemPrompt),
                 TranslationMessage(role: "user", content: text)
             ],
-            temperature: 0.3, // Lower temperature for more consistent translation
+            temperature: 0.3,
             maxTokens: 4000
         )
 
-        // Make API call
-        let response: TranslationChatResponse = try await apiClient.post(
+        let response: TranslationResponse = try await httpClient.post(
             url: endpoint,
             body: request,
-            headers: [
-                "Authorization": "Bearer \(apiKey)"
-            ],
+            headers: ["Authorization": "Bearer \(apiKey)"],
             timeout: 30
         )
 
-        // Extract translated text
-        guard let translatedText = response.choices.first?.message.content,
-              !translatedText.isEmpty
+        guard let translated = response.choices.first?.message.content,
+              !translated.isEmpty
         else {
             throw TranscriptionError.emptyResponse
         }
 
-        return translatedText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return translated.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     // MARK: - Private Helpers
@@ -175,29 +158,21 @@ final class OpenAITranslationService: TranslationProvider {
 
 // MARK: - Request/Response Models
 
-private struct TranslationChatRequest: Encodable {
+private struct TranslationRequest: Encodable {
     let model: String
     let messages: [TranslationMessage]
     let temperature: Double
     let maxTokens: Int
 
     enum CodingKeys: String, CodingKey {
-        case model
-        case messages
-        case temperature
+        case model, messages, temperature
         case maxTokens = "max_tokens"
     }
 }
 
 private struct TranslationMessage: Codable {
     let role: String
-    let content: String?  // Content can be null in some API responses
-
-    // Use manual coding keys to ignore extra fields
-    enum CodingKeys: String, CodingKey {
-        case role
-        case content
-    }
+    let content: String?
 
     init(role: String, content: String) {
         self.role = role
@@ -205,20 +180,10 @@ private struct TranslationMessage: Codable {
     }
 }
 
-private struct TranslationChatResponse: Decodable {
-    let choices: [TranslationChoice]
+private struct TranslationResponse: Decodable {
+    let choices: [Choice]
 
-    // Only decode what we need, ignore other fields
-    enum CodingKeys: String, CodingKey {
-        case choices
-    }
-
-    struct TranslationChoice: Decodable {
+    struct Choice: Decodable {
         let message: TranslationMessage
-
-        // Only decode message, ignore index and finish_reason
-        enum CodingKeys: String, CodingKey {
-            case message
-        }
     }
 }

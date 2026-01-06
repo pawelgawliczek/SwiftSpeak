@@ -75,6 +75,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         setupBindings()
         setupHotkeys()
         setupFrontmostAppMonitor()
+        setupMeetingNotificationHandler()
     }
 
     deinit {
@@ -374,6 +375,20 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         historyItem.target = self
         menu?.addItem(historyItem)
 
+        // Meeting Recording
+        let meetingItem = NSMenuItem(title: "Meeting Recording...",
+                                     action: #selector(openMeetingRecording),
+                                     keyEquivalent: "m")
+        meetingItem.target = self
+        menu?.addItem(meetingItem)
+
+        // Meeting History
+        let meetingHistoryItem = NSMenuItem(title: "Meeting History...",
+                                            action: #selector(openMeetingHistory),
+                                            keyEquivalent: "M")
+        meetingHistoryItem.target = self
+        menu?.addItem(meetingHistoryItem)
+
         // Settings
         let settingsItem = NSMenuItem(title: "Settings...",
                                       action: #selector(openSettings),
@@ -611,6 +626,89 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         window.contentView = hostingView
         window.center()
         window.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openMeetingRecording() {
+        // Show meeting recording window
+        NSApp.activate(ignoringOtherApps: true)
+
+        let meetingView = MacMeetingRecordingView()
+            .environmentObject(MacSettings.shared)
+        let hostingView = NSHostingView(rootView: meetingView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 450, height: 550),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Meeting Recording"
+        window.contentView = hostingView
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func openMeetingHistory() {
+        // Show meeting history window
+        NSApp.activate(ignoringOtherApps: true)
+
+        let historyView = MacMeetingHistoryView(orchestrator: nil)
+        let hostingView = NSHostingView(rootView: historyView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Meeting History"
+        window.contentView = hostingView
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    // MARK: - Meeting Notifications
+
+    private func setupMeetingNotificationHandler() {
+        // Observe the notification manager for showing result window
+        MeetingNotificationManager.shared.$showResultWindow
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] shouldShow in
+                if shouldShow {
+                    self?.showMeetingResultFromNotification()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func showMeetingResultFromNotification() {
+        guard let record = MeetingNotificationManager.shared.pendingResult else {
+            macLog("No pending meeting result to show", category: "Meeting", level: .error)
+            return
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let resultView = MacMeetingResultView(record: record) {
+            MeetingNotificationManager.shared.clearPendingResult()
+        }
+        let hostingView = NSHostingView(rootView: resultView)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = record.title
+        window.contentView = hostingView
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+
+        // Clear the flag after showing
+        MeetingNotificationManager.shared.showResultWindow = false
+
+        macLog("Opened meeting result window from notification", category: "Meeting")
     }
 
     @objc private func openSettings() {
@@ -895,15 +993,47 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             throw TranscriptionError.apiKeyMissing
         }
 
-        // Pass the selected dictation language (nil = auto-detect)
-        return try await transcriptionService.transcribe(audioURL: audioURL, language: settings.selectedDictationLanguage)
+        // Build vocabulary prompt from settings and active context
+        let vocabularyPrompt = buildVocabularyPrompt()
+
+        // Pass the selected dictation language and vocabulary hints
+        return try await transcriptionService.transcribe(
+            audioURL: audioURL,
+            language: settings.selectedDictationLanguage,
+            promptHint: vocabularyPrompt
+        )
+    }
+
+    /// Build vocabulary prompt for transcription from vocabulary entries and active context
+    /// This helps the transcription provider recognize domain-specific terms
+    private func buildVocabularyPrompt() -> String? {
+        var vocabWords: [String] = []
+
+        // Add vocabulary replacement words (target words that should be recognized)
+        vocabWords.append(contentsOf: settings.vocabulary
+            .filter { $0.isEnabled }
+            .map { $0.replacementWord }
+        )
+
+        // Add domain jargon from active context
+        if let context = settings.activeContext {
+            // Add domain-specific vocabulary hints
+            vocabWords.append(contentsOf: context.transcriptionVocabulary)
+        }
+
+        // Return nil if no vocabulary, otherwise comma-separated list
+        guard !vocabWords.isEmpty else { return nil }
+
+        // Remove duplicates and join
+        let uniqueWords = Array(Set(vocabWords))
+        return uniqueWords.joined(separator: ", ")
     }
 
     private func translate(text: String, to targetLanguage: Language) async throws -> String {
         // Use ProviderFactory to create the translation provider
         let providerFactory = ProviderFactory(settings: settings)
 
-        guard let translationService = providerFactory.createTranslationProvider() else {
+        guard let translationService = providerFactory.createSelectedTranslationProvider() else {
             throw TranscriptionError.apiKeyMissing
         }
 
@@ -1478,7 +1608,7 @@ struct ProvidersSettingsTab: View {
                         ], spacing: 12) {
                             ForEach(settings.availableProvidersToAdd, id: \.self) { provider in
                                 AvailableProviderCard(provider: provider) {
-                                    showingAddProvider = true
+                                    providerToAdd = provider
                                 }
                             }
                         }
@@ -1487,8 +1617,8 @@ struct ProvidersSettingsTab: View {
             }
             .padding(24)
         }
-        .sheet(isPresented: $showingAddProvider) {
-            AddProviderSheet(settings: settings)
+        .sheet(item: $providerToAdd) { provider in
+            AddProviderSheet(settings: settings, initialProvider: provider)
         }
         .sheet(item: $editingConfig) { config in
             EditProviderSheet(settings: settings, config: config)
@@ -1672,6 +1802,7 @@ private struct AvailableProviderCard: View {
 
 struct AddProviderSheet: View {
     @ObservedObject var settings: MacSettings
+    let initialProvider: AIProvider
     @Environment(\.dismiss) private var dismiss
     @State private var selectedProvider: AIProvider?
     @State private var apiKey = ""
@@ -1714,7 +1845,7 @@ struct AddProviderSheet: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("API Key")
                             .font(.headline)
-                        SecureField("Enter your \(provider.displayName) API key", text: $apiKey)
+                        TextField("Enter your \(provider.displayName) API key", text: $apiKey)
                             .textFieldStyle(.roundedBorder)
                         if let helpURL = provider.apiKeyHelpURL {
                             Link("Get API Key", destination: helpURL)
@@ -1741,6 +1872,9 @@ struct AddProviderSheet: View {
         }
         .padding(24)
         .frame(width: 400)
+        .onAppear {
+            selectedProvider = initialProvider
+        }
     }
 }
 
@@ -2068,10 +2202,18 @@ struct EditProviderSheet: View {
         case .openAI:
             return try await fetchOpenAIModels()
         case .anthropic:
-            // Anthropic doesn't have a models endpoint
-            return ([], config.provider.availableLLMModels)
+            return try await fetchAnthropicModels()
         case .google:
             return try await fetchGoogleModels()
+        case .deepgram:
+            return try await fetchDeepgramModels()
+        case .assemblyAI:
+            // AssemblyAI has fixed models (no API endpoint to list them)
+            // Validate API key works, then return known models
+            try await validateAssemblyAIKey()
+            return (["best", "nano"], [])
+        case .elevenLabs:
+            return try await fetchElevenLabsModels()
         default:
             // For other providers, just validate the key works
             return (config.provider.availableSTTModels, config.provider.availableLLMModels)
@@ -2147,6 +2289,121 @@ struct EditProviderSheet: View {
         let llmModels = allModels.filter { $0.contains("gemini") }
 
         return ([], llmModels)
+    }
+
+    private func fetchAnthropicModels() async throws -> (sttModels: [String], llmModels: [String]) {
+        // Anthropic models endpoint
+        var request = URLRequest(url: URL(string: "https://api.anthropic.com/v1/models")!)
+        request.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        request.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "Anthropic", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw NSError(domain: "Anthropic", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+            }
+            // Fallback to hardcoded models if endpoint not available
+            return ([], config.provider.availableLLMModels)
+        }
+
+        struct ModelsResponse: Codable {
+            struct Model: Codable { let id: String }
+            let data: [Model]
+        }
+
+        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        let llmModels = modelsResponse.data.map { $0.id }.sorted().reversed().map { String($0) }
+
+        return ([], Array(llmModels))
+    }
+
+    private func fetchDeepgramModels() async throws -> (sttModels: [String], llmModels: [String]) {
+        var request = URLRequest(url: URL(string: "https://api.deepgram.com/v1/models")!)
+        request.setValue("Token \(apiKey)", forHTTPHeaderField: "Authorization")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "Deepgram", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw NSError(domain: "Deepgram", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+            }
+            throw NSError(domain: "Deepgram", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "API error: \(httpResponse.statusCode)"])
+        }
+
+        struct ModelsResponse: Codable {
+            struct Model: Codable {
+                let name: String
+                let version: String?
+            }
+            let stt: [Model]?
+        }
+
+        let modelsResponse = try JSONDecoder().decode(ModelsResponse.self, from: data)
+        let sttModels = modelsResponse.stt?.map { $0.name } ?? ["nova-2", "nova", "enhanced", "base"]
+
+        return (sttModels, [])
+    }
+
+    private func validateAssemblyAIKey() async throws {
+        // Validate key by making a simple API call
+        var request = URLRequest(url: URL(string: "https://api.assemblyai.com/v2/transcript")!)
+        request.httpMethod = "POST"
+        request.setValue(apiKey, forHTTPHeaderField: "authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        // Send minimal body to check auth (will fail with bad request, but auth is checked first)
+        request.httpBody = "{}".data(using: .utf8)
+
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "AssemblyAI", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        // 401 means bad key, 400 means key is valid but request is bad (expected)
+        if httpResponse.statusCode == 401 {
+            throw NSError(domain: "AssemblyAI", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+        }
+        // Any other response (including 400) means key is valid
+    }
+
+    private func fetchElevenLabsModels() async throws -> (sttModels: [String], llmModels: [String]) {
+        var request = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/models")!)
+        request.setValue(apiKey, forHTTPHeaderField: "xi-api-key")
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw NSError(domain: "ElevenLabs", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid response"])
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            if httpResponse.statusCode == 401 {
+                throw NSError(domain: "ElevenLabs", code: 401, userInfo: [NSLocalizedDescriptionKey: "Invalid API key"])
+            }
+            throw NSError(domain: "ElevenLabs", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: "API error: \(httpResponse.statusCode)"])
+        }
+
+        struct Model: Codable {
+            let model_id: String
+            let name: String
+            let can_do_text_to_speech: Bool?
+            let can_be_finetuned: Bool?
+        }
+
+        let models = try JSONDecoder().decode([Model].self, from: data)
+        // ElevenLabs has STT model(s) - scribe_v1
+        let sttModels = ["scribe_v1"]  // ElevenLabs STT is Scribe
+
+        return (sttModels, [])
     }
 }
 

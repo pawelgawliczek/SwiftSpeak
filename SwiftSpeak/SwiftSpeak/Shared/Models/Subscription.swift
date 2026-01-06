@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Subscription Tier
 enum SubscriptionTier: String, Codable, CaseIterable {

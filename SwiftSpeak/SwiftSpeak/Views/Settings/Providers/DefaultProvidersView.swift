@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Default Providers View
 

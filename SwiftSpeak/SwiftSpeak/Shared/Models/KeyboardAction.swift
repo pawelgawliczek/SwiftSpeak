@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Keyboard Action Type
 

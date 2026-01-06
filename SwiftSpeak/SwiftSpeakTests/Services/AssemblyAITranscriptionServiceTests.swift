@@ -15,23 +15,23 @@ struct AssemblyAITranscriptionServiceTests {
     // MARK: - Initialization
 
     @Test func serviceInitializesWithApiKey() {
-        let service = AssemblyAITranscriptionService(apiKey: "test-key", model: "default")
+        let service = AssemblyAITranscriptionService(apiKey: "test-key", model: "best")
 
         #expect(service.providerId == .assemblyAI)
         #expect(service.isConfigured == true)
-        #expect(service.model == "default")
+        #expect(service.model == "best")
     }
 
     @Test func serviceNotConfiguredWithEmptyKey() {
-        let service = AssemblyAITranscriptionService(apiKey: "", model: "default")
+        let service = AssemblyAITranscriptionService(apiKey: "", model: "best")
 
         #expect(service.isConfigured == false)
     }
 
-    @Test func serviceDefaultsToDefaultModel() {
+    @Test func serviceDefaultsToBestModel() {
         let service = AssemblyAITranscriptionService(apiKey: "test-key")
 
-        #expect(service.model == "default")
+        #expect(service.model == "best")
     }
 
     @Test func serviceSupportsNanoModel() {
@@ -166,10 +166,10 @@ struct AssemblyAITranscriptionServiceTests {
 @MainActor
 struct AssemblyAIModelTests {
 
-    @Test func providerSupportsDefaultModel() {
+    @Test func providerSupportsBestModel() {
         let models = SwiftSpeak.AIProvider.assemblyAI.availableSTTModels
 
-        #expect(models.contains("default"))
+        #expect(models.contains("best"))
     }
 
     @Test func providerSupportsNanoModel() {
@@ -178,10 +178,10 @@ struct AssemblyAIModelTests {
         #expect(models.contains("nano"))
     }
 
-    @Test func providerDefaultModelIsDefault() {
+    @Test func providerDefaultModelIsBest() {
         let defaultModel = SwiftSpeak.AIProvider.assemblyAI.defaultSTTModel
 
-        #expect(defaultModel == "default")
+        #expect(defaultModel == "best")
     }
 
     @Test func providerSupportsTranscription() {

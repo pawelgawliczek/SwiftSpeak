@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import SwiftSpeakCore
 import UIKit
 
 /// Central coordinator for the transcription workflow

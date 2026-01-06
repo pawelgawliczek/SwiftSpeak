@@ -10,6 +10,7 @@ import AVFoundation
 import Foundation
 import Combine
 import UIKit
+import SwiftSpeakCore
 
 /// Manages SwiftLink background recording sessions.
 /// Enables dictation from keyboard without app switching.
@@ -486,7 +487,8 @@ final class SwiftLinkSessionManager: ObservableObject {
             return service
 
         case .assemblyAI:
-            guard let service = AssemblyAIStreamingService(config: config) else {
+            // Use shared service from SwiftSpeakCore
+            guard let service = SwiftSpeakCore.AssemblyAIStreamingService(config: config) else {
                 throw TranscriptionError.providerNotConfigured
             }
             return service

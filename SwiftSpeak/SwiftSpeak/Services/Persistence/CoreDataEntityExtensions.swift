@@ -8,6 +8,7 @@
 
 import CoreData
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - TranscriptionRecordEntity Extensions
 

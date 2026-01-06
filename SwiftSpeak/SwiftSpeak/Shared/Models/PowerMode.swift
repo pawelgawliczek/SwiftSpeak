@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import SwiftUI
 
 // MARK: - Power Mode Color Preset

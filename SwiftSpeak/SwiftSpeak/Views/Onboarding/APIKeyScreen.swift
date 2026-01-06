@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Provider Option for Free Tier
 enum FreeProviderOption: String, CaseIterable {

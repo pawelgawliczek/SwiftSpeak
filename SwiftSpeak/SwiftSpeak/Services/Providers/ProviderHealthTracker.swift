@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Tracks the health status of AI providers for automatic fallback
 actor ProviderHealthTracker {

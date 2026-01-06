@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 import UIKit
 
 // MARK: - Provider Icon View

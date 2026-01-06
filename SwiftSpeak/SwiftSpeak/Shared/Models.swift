@@ -27,6 +27,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // This file intentionally left minimal after refactoring.
 // All types are now in the Models/ subdirectory and are automatically

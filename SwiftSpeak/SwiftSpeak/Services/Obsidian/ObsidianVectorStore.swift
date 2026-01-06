@@ -608,6 +608,107 @@ struct VectorStoreSearchResult: Identifiable {
     }
 }
 
+// MARK: - Browse All Chunks
+
+extension ObsidianVectorStore {
+
+    /// Get all chunks from specified vaults without similarity filtering (for browsing)
+    func getAllChunks(
+        vaultIds: [UUID],
+        limit: Int = 50
+    ) throws -> [VectorStoreSearchResult] {
+        guard db != nil else { throw ObsidianVectorStoreError.databaseNotOpen }
+        guard !vaultIds.isEmpty else { return [] }
+
+        // Build SQL with vault filter
+        let vaultPlaceholders = vaultIds.map { _ in "?" }.joined(separator: ", ")
+        let sql = """
+        SELECT c.id, c.note_id, c.vault_id, c.chunk_index, c.content, c.start_offset, c.end_offset,
+               c.metadata, c.created_at, n.title as note_title, n.relative_path,
+               v.name as vault_name
+        FROM chunks c
+        JOIN notes n ON c.note_id = n.id
+        JOIN vaults v ON c.vault_id = v.id
+        WHERE c.vault_id IN (\(vaultPlaceholders))
+        GROUP BY n.id
+        ORDER BY n.title ASC
+        LIMIT ?
+        """
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            throw ObsidianVectorStoreError.databaseError(lastErrorMessage)
+        }
+        defer { sqlite3_finalize(stmt) }
+
+        // Bind vault IDs
+        for (index, vaultId) in vaultIds.enumerated() {
+            sqlite3_bind_text(stmt, Int32(index + 1), vaultId.uuidString, -1, SQLITE_TRANSIENT)
+        }
+
+        // Bind limit
+        sqlite3_bind_int(stmt, Int32(vaultIds.count + 1), Int32(limit))
+
+        var results: [VectorStoreSearchResult] = []
+
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            guard let idString = sqlite3_column_text(stmt, 0),
+                  let noteIdString = sqlite3_column_text(stmt, 1),
+                  let vaultIdString = sqlite3_column_text(stmt, 2),
+                  let contentText = sqlite3_column_text(stmt, 4) else {
+                continue
+            }
+
+            guard let chunkId = UUID(uuidString: String(cString: idString)),
+                  let noteId = UUID(uuidString: String(cString: noteIdString)),
+                  let vaultId = UUID(uuidString: String(cString: vaultIdString)) else {
+                continue
+            }
+
+            let chunkIndex = Int(sqlite3_column_int(stmt, 3))
+            let content = String(cString: contentText)
+            let startOffset = Int(sqlite3_column_int(stmt, 5))
+            let endOffset = Int(sqlite3_column_int(stmt, 6))
+
+            // Parse metadata if present
+            var metadata: [String: String] = [:]
+            if let metadataText = sqlite3_column_text(stmt, 7) {
+                let metadataJson = String(cString: metadataText)
+                if let data = metadataJson.data(using: .utf8),
+                   let parsed = try? JSONDecoder().decode([String: String].self, from: data) {
+                    metadata = parsed
+                }
+            }
+
+            let noteTitle = sqlite3_column_text(stmt, 9).map { String(cString: $0) } ?? "Untitled"
+            let notePath = sqlite3_column_text(stmt, 10).map { String(cString: $0) } ?? ""
+            let vaultName = sqlite3_column_text(stmt, 11).map { String(cString: $0) } ?? "Unknown"
+
+            let chunk = DocumentChunk(
+                id: chunkId,
+                documentId: noteId,
+                chunkIndex: chunkIndex,
+                content: content,
+                startOffset: startOffset,
+                endOffset: endOffset,
+                metadata: metadata
+            )
+
+            let result = VectorStoreSearchResult(
+                chunk: chunk,
+                score: 1.0, // No similarity filtering
+                noteTitle: noteTitle,
+                notePath: notePath,
+                vaultName: vaultName
+            )
+
+            results.append(result)
+        }
+
+        return results
+    }
+}
+
 // MARK: - SQLite Constants
 
 private let SQLITE_TRANSIENT = unsafeBitCast(-1, to: sqlite3_destructor_type.self)

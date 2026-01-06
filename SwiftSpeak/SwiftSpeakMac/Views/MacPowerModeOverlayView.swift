@@ -1156,6 +1156,7 @@ struct MacPowerModeOverlayView: View {
                 .foregroundStyle(.secondary)
             } else if viewModel.state == .recording {
                 HStack(spacing: 12) {
+                    keyboardHint(key: "⇧↩︎", action: "Stop & Process")
                     keyboardHint(key: "Space", action: "Stop")
                     keyboardHint(key: "Esc", action: "Cancel")
                 }

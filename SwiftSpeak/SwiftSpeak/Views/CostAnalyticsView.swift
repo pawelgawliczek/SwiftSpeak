@@ -7,6 +7,7 @@
 
 import Charts
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Cost Analytics View
 

@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import SwiftUI
 
 // MARK: - Processing Step Type (Phase 11 - History Enhancement)

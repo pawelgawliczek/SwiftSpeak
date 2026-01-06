@@ -141,7 +141,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return ["scribe_v1"]
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]
         case .local: return [] // Models are fetched dynamically from the local server
-        case .assemblyAI: return ["default", "nano"]
+        case .assemblyAI: return ["best", "nano"]
         case .google: return ["long", "short", "telephony", "medical_dictation", "medical_conversation"]
         case .anthropic, .deepL, .azure: return []
         }
@@ -153,7 +153,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return "scribe_v1"
         case .deepgram: return "nova-2"
         case .local: return nil // Must be selected after connecting
-        case .assemblyAI: return "default"
+        case .assemblyAI: return "best"
         case .google: return "long"
         case .anthropic, .deepL, .azure: return nil
         }
@@ -173,7 +173,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]  // All Deepgram models support streaming
-        case .assemblyAI: return ["default", "nano"]  // All AssemblyAI models support streaming
+        case .assemblyAI: return ["best", "nano"]  // All AssemblyAI models support streaming
         case .elevenLabs, .google, .local, .anthropic, .deepL, .azure: return []
         }
     }

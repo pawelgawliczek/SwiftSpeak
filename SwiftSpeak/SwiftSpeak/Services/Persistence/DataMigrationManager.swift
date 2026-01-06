@@ -6,8 +6,9 @@
 //  Runs on first launch after update, preserves all existing user data.
 //
 
-import Foundation
 import CoreData
+import Foundation
+import SwiftSpeakCore
 
 /// Manages migration of existing UserDefaults data to Core Data.
 /// Runs once per device, tracks migration status to prevent re-running.

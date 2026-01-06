@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct ProviderStatusDashboard: View {
     @ObservedObject var settings: SharedSettings

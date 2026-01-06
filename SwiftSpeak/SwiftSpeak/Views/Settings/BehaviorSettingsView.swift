@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct BehaviorSettingsView: View {
     @EnvironmentObject var settings: SharedSettings

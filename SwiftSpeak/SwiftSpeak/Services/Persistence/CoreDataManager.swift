@@ -8,8 +8,9 @@
 //
 
 import CoreData
-import Foundation
 import Combine
+import Foundation
+import SwiftSpeakCore
 
 /// Manages Core Data operations with a clean interface for the app.
 /// Converts between Core Data entities and existing model structs.

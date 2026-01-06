@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// Modal sheet that displays config changes to the user
 struct ConfigUpdateSheet: View {

@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Mock provider factory for unit testing
 /// Returns configurable mock providers

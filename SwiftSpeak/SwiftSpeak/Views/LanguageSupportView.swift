@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct LanguageSupportView: View {
     @Environment(\.dismiss) private var dismiss

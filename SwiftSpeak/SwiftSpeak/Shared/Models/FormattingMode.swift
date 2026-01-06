@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Formatting Mode
 enum FormattingMode: String, Codable, CaseIterable, Identifiable {

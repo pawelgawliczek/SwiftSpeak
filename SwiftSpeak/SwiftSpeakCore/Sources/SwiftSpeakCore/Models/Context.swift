@@ -351,6 +351,34 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         selectedInstructions.compactMap { FormattingInstruction.instruction(withId: $0) }
     }
 
+    /// Extract vocabulary words for transcription word boost
+    /// Combines domain jargon terms with context name
+    /// Used by meeting transcription to improve recognition accuracy
+    public var transcriptionVocabulary: [String] {
+        var words: [String] = []
+
+        // Extract vocabulary from domain jargon hint
+        if let hint = domainJargon.transcriptionHint {
+            // Hint format: "Domain terminology: word1, word2, word3..."
+            // Extract words after the colon
+            if let colonIndex = hint.firstIndex(of: ":") {
+                let wordsPart = hint[hint.index(after: colonIndex)...]
+                let extractedWords = wordsPart
+                    .components(separatedBy: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }
+                words.append(contentsOf: extractedWords)
+            }
+        }
+
+        // Also add context name as a vocabulary hint
+        if !name.isEmpty {
+            words.append(name)
+        }
+
+        return words
+    }
+
     // MARK: - Static Properties
 
     public static var empty: ConversationContext {

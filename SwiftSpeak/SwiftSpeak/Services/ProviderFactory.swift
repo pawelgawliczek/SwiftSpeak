@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Central factory for creating provider instances based on configuration
 /// Supports all Phase 3 providers for transcription, translation, and power mode
@@ -33,31 +34,21 @@ struct ProviderFactory {
 
         switch provider {
         case .openAI:
-            return OpenAITranscriptionService(config: config)
+            return SwiftSpeakCore.OpenAITranscriptionService(config: config)
 
         case .assemblyAI:
             guard !config.apiKey.isEmpty else { return nil }
-            return AssemblyAITranscriptionService(
-                apiKey: config.apiKey,
-                model: config.transcriptionModel ?? "default"
-            )
+            return SwiftSpeakCore.AssemblyAITranscriptionService(config: config)
 
         case .deepgram:
             guard !config.apiKey.isEmpty else { return nil }
-            return DeepgramTranscriptionService(
-                apiKey: config.apiKey,
-                model: config.transcriptionModel ?? "nova-2"
-            )
+            return SwiftSpeakCore.DeepgramTranscriptionService(config: config)
 
         case .google:
             guard !config.apiKey.isEmpty,
                   let projectId = config.googleProjectId,
                   !projectId.isEmpty else { return nil }
-            return GoogleSTTService(
-                apiKey: config.apiKey,
-                projectId: projectId,
-                model: config.transcriptionModel ?? "long"
-            )
+            return SwiftSpeakCore.GoogleSTTService(config: config)
 
         case .local:
             // Phase 10f: WhisperKit on-device transcription
@@ -91,30 +82,27 @@ struct ProviderFactory {
 
         switch provider {
         case .openAI:
-            return OpenAITranslationService(config: config)
+            return SwiftSpeakCore.OpenAITranslationService(config: config)
 
         case .deepL:
             guard !config.apiKey.isEmpty else { return nil }
-            return DeepLTranslationService(apiKey: config.apiKey)
+            return SwiftSpeakCore.DeepLTranslationService(config: config)
 
         case .google:
             guard !config.apiKey.isEmpty else { return nil }
-            return GoogleTranslationService(apiKey: config.apiKey)
+            return SwiftSpeakCore.GoogleTranslationService(config: config)
 
         case .azure:
             guard !config.apiKey.isEmpty,
                   let region = config.azureRegion,
                   !region.isEmpty else { return nil }
-            return AzureTranslatorService(
-                apiKey: config.apiKey,
-                region: region
-            )
+            return SwiftSpeakCore.AzureTranslatorService(config: config)
 
         case .anthropic:
             // Anthropic can translate via LLM - use formatting provider approach
             guard !config.apiKey.isEmpty else { return nil }
             return AnthropicTranslationAdapter(
-                formattingService: AnthropicService(
+                formattingService: SwiftSpeakCore.AnthropicService(
                     apiKey: config.apiKey,
                     model: config.translationModel ?? "claude-3-5-sonnet-latest"
                 )
@@ -148,18 +136,18 @@ struct ProviderFactory {
 
         switch provider {
         case .openAI:
-            return OpenAIFormattingService(config: config)
+            return SwiftSpeakCore.OpenAIFormattingService(config: config)
 
         case .anthropic:
             guard !config.apiKey.isEmpty else { return nil }
-            return AnthropicService(
+            return SwiftSpeakCore.AnthropicService(
                 apiKey: config.apiKey,
                 model: config.powerModeModel ?? "claude-3-5-sonnet-latest"
             )
 
         case .google:
             guard !config.apiKey.isEmpty else { return nil }
-            return GeminiService(
+            return SwiftSpeakCore.GeminiService(
                 apiKey: config.apiKey,
                 model: config.powerModeModel ?? "gemini-2.0-flash-exp"
             )
@@ -274,12 +262,12 @@ struct ProviderFactory {
         switch provider {
         case .openAI:
             guard let config = settings.getAIProviderConfig(for: provider) else { return nil }
-            return OpenAIFormattingService(config: config)
+            return SwiftSpeakCore.OpenAIFormattingService(config: config)
 
         case .anthropic:
             guard let config = settings.getAIProviderConfig(for: provider),
                   !config.apiKey.isEmpty else { return nil }
-            return AnthropicService(
+            return SwiftSpeakCore.AnthropicService(
                 apiKey: config.apiKey,
                 model: config.powerModeModel ?? "claude-3-5-sonnet-latest"
             )
@@ -315,9 +303,9 @@ private final class AnthropicTranslationAdapter: TranslationProvider {
     var supportedLanguages: [Language] { Language.allCases }
     var supportsFormality: Bool { true } // LLM can understand formality through context
 
-    private let formattingService: AnthropicService
+    private let formattingService: SwiftSpeakCore.AnthropicService
 
-    init(formattingService: AnthropicService) {
+    init(formattingService: SwiftSpeakCore.AnthropicService) {
         self.formattingService = formattingService
     }
 

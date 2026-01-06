@@ -66,6 +66,39 @@ final class PowerModeOrchestrator: ObservableObject {
     /// Last RAG query result (used in prompt building)
     private var lastRAGResult: RAGQueryResult?
 
+    // MARK: - Obsidian Search State (Manual Search Step)
+
+    /// Search query for manual Obsidian search
+    @Published var obsidianSearchQuery: String = ""
+
+    /// Whether currently searching Obsidian
+    @Published private(set) var isSearchingObsidian: Bool = false
+
+    /// Manual search results (separate from auto-loaded)
+    @Published var manualObsidianResults: [ObsidianSearchResult] = []
+
+    /// Selected result IDs (for filtering which results go to LLM)
+    @Published var selectedObsidianResultIds: Set<UUID> = []
+
+    /// Whether currently dictating search query
+    @Published private(set) var isDictatingSearchQuery: Bool = false
+
+    // MARK: - Token Counter
+
+    /// Estimated token count for current context configuration
+    var contextTokens: TokenCounter.ContextTokens {
+        TokenCounter.countContextTokens(
+            systemPrompt: powerMode.instruction,
+            globalMemory: settings.globalMemoryEnabled ? settings.globalMemory : nil,
+            powerModeMemory: powerMode.memoryEnabled ? powerMode.memory : nil,
+            ragDocuments: [], // RAG docs loaded at runtime
+            obsidianNotes: selectedObsidianResults.map { $0.chunkContent },
+            selectedText: nil, // iOS doesn't have window context like macOS
+            clipboardText: nil, // Not configured in iOS idle state
+            webhookContext: nil // Webhooks loaded at runtime
+        )
+    }
+
     // MARK: - Obsidian State (Phase 3)
 
     /// Obsidian query service (optional)
@@ -171,6 +204,12 @@ final class PowerModeOrchestrator: ObservableObject {
 
     /// Start recording
     func startRecording() async {
+        // If Obsidian is enabled and we're in idle, go to search first
+        if state == .idle && hasObsidianEnabled {
+            startObsidianSearch()
+            return
+        }
+
         // Reset state
         transcribedText = ""
         errorMessage = nil
@@ -217,7 +256,11 @@ final class PowerModeOrchestrator: ObservableObject {
             // Query knowledge base if configured (Phase 4e - RAG + Phase 3 - Obsidian)
             lastRAGResult = nil
             lastCombinedRAGResult = nil
-            if !powerMode.knowledgeDocumentIds.isEmpty || !powerMode.obsidianVaultIds.isEmpty {
+
+            // Check if we have manually selected Obsidian results from search step
+            let hasManualObsidianSelection = !selectedObsidianResultIds.isEmpty && !manualObsidianResults.isEmpty
+
+            if !powerMode.knowledgeDocumentIds.isEmpty || (!powerMode.obsidianVaultIds.isEmpty && !hasManualObsidianSelection) {
                 state = .queryingKnowledge
                 do {
                     // Configure RAG if needed
@@ -244,6 +287,13 @@ final class PowerModeOrchestrator: ObservableObject {
                     // RAG failure is non-fatal - continue without RAG context
                     appLog("RAG/Obsidian query failed (non-fatal): \(LogSanitizer.sanitizeError(error))", category: "RAG", level: .warning)
                 }
+            } else if hasManualObsidianSelection {
+                // Use manually selected Obsidian results
+                state = .queryingKnowledge
+                lastCombinedRAGResult = CombinedRAGResult(
+                    ragResult: nil,
+                    obsidianResults: selectedObsidianResults
+                )
             }
 
             // Generate response (streaming or blocking)
@@ -484,6 +534,12 @@ final class PowerModeOrchestrator: ObservableObject {
         audioLevel = 0
         audioLevels = Array(repeating: 0, count: 12)
         startTime = nil
+
+        // Reset Obsidian search state
+        obsidianSearchQuery = ""
+        manualObsidianResults = []
+        selectedObsidianResultIds = []
+        isDictatingSearchQuery = false
     }
 
     /// Retry after error
@@ -764,6 +820,153 @@ final class PowerModeOrchestrator: ObservableObject {
         state = .error(message)
         errorMessage = message
         audioRecorder.cancelRecording()
+    }
+}
+
+// MARK: - Obsidian Search Methods
+
+extension PowerModeOrchestrator {
+
+    /// Check if Power Mode has Obsidian enabled
+    var hasObsidianEnabled: Bool {
+        powerMode.inputConfig.includeObsidianVaults && !powerMode.obsidianVaultIds.isEmpty
+    }
+
+    /// Transition to Obsidian search (from idle or after context)
+    func startObsidianSearch() {
+        // Pre-fill with default search query from Power Mode
+        obsidianSearchQuery = powerMode.defaultObsidianSearchQuery
+        manualObsidianResults = []
+        selectedObsidianResultIds = []
+        state = .obsidianSearch
+    }
+
+    /// Perform Obsidian search
+    func searchObsidian() async {
+        // If empty query, load all notes instead
+        if obsidianSearchQuery.trimmingCharacters(in: .whitespaces).isEmpty {
+            await loadAllObsidianNotes()
+            return
+        }
+
+        isSearchingObsidian = true
+        defer { isSearchingObsidian = false }
+
+        do {
+            // Initialize Obsidian query service if needed
+            if obsidianQueryService == nil {
+                obsidianQueryService = try await ObsidianQueryService.create(from: settings)
+            }
+
+            guard let service = obsidianQueryService else { return }
+
+            // Query Obsidian vaults
+            manualObsidianResults = try await service.query(
+                text: obsidianSearchQuery,
+                vaultIds: powerMode.obsidianVaultIds,
+                maxChunks: powerMode.maxObsidianChunks
+            )
+
+            // Select all results by default
+            selectedObsidianResultIds = Set(manualObsidianResults.map { $0.id })
+
+        } catch {
+            appLog("Obsidian search failed: \(LogSanitizer.sanitizeError(error))", category: "Obsidian", level: .error)
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Load all Obsidian notes from configured vaults (no filtering)
+    func loadAllObsidianNotes() async {
+        isSearchingObsidian = true
+        defer { isSearchingObsidian = false }
+
+        do {
+            // Initialize Obsidian query service if needed
+            if obsidianQueryService == nil {
+                obsidianQueryService = try await ObsidianQueryService.create(from: settings)
+            }
+
+            guard let service = obsidianQueryService else { return }
+
+            // Get all notes from configured vaults
+            manualObsidianResults = try await service.getAllNotes(
+                vaultIds: powerMode.obsidianVaultIds,
+                maxResults: 50 // Limit to prevent overwhelming
+            )
+
+            // Select all results by default
+            selectedObsidianResultIds = Set(manualObsidianResults.map { $0.id })
+
+        } catch {
+            appLog("Failed to load Obsidian notes: \(LogSanitizer.sanitizeError(error))", category: "Obsidian", level: .error)
+            // Don't set error message - this is a background operation
+        }
+    }
+
+    /// Toggle selection of a result
+    func toggleResultSelection(_ resultId: UUID) {
+        if selectedObsidianResultIds.contains(resultId) {
+            selectedObsidianResultIds.remove(resultId)
+        } else {
+            selectedObsidianResultIds.insert(resultId)
+        }
+    }
+
+    /// Toggle result by index (1-9 keyboard shortcut)
+    func toggleResultByIndex(_ index: Int) {
+        guard index > 0, index <= manualObsidianResults.count else { return }
+        let result = manualObsidianResults[index - 1]
+        toggleResultSelection(result.id)
+    }
+
+    /// Select all results
+    func selectAllResults() {
+        selectedObsidianResultIds = Set(manualObsidianResults.map { $0.id })
+    }
+
+    /// Deselect all results
+    func deselectAllResults() {
+        selectedObsidianResultIds.removeAll()
+    }
+
+    /// Selected Obsidian results
+    var selectedObsidianResults: [ObsidianSearchResult] {
+        manualObsidianResults.filter { selectedObsidianResultIds.contains($0.id) }
+    }
+
+    /// Proceed from Obsidian search to recording
+    func proceedFromObsidianSearch() async {
+        // Store selected results for use in prompt building
+        // The lastCombinedRAGResult will be built with these selected results
+        await startRecording()
+    }
+
+    /// Start voice dictation for search query
+    func startSearchDictation() async {
+        isDictatingSearchQuery = true
+        do {
+            try await audioRecorder.startRecording()
+        } catch {
+            isDictatingSearchQuery = false
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Stop voice dictation and transcribe to search query
+    func stopSearchDictation() async {
+        guard isDictatingSearchQuery else { return }
+
+        do {
+            let audioURL = try audioRecorder.stopRecording()
+            let transcribed = try await transcribe(audioURL: audioURL)
+            obsidianSearchQuery = settings.applyVocabulary(to: transcribed)
+            audioRecorder.deleteRecording()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+
+        isDictatingSearchQuery = false
     }
 }
 

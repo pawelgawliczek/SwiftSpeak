@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Mock formatting provider for unit and UI testing
 /// Allows configurable delays, results, and failures

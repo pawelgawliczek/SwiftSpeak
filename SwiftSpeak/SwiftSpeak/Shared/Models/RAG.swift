@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - RAG Configuration
 /// User-configurable settings for RAG (per Power Mode)

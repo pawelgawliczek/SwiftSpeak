@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct IncompatibilityWarning: View {
     let provider: AIProvider

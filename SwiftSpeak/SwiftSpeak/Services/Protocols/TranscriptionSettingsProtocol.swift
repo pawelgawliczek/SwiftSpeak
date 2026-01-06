@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Protocol for settings access in the transcription workflow
 /// Abstracts settings to enable code sharing between iOS and macOS

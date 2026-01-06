@@ -6,6 +6,7 @@
 //
 
 import Combine
+import SwiftSpeakCore
 import Foundation
 import SwiftUI
 

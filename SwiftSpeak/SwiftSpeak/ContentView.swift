@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct ContentView: View {
     @EnvironmentObject var settings: SharedSettings

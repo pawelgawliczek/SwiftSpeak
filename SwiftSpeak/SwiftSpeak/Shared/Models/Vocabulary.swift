@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import SwiftUI
 
 // MARK: - Custom Template (LEGACY - No UI, kept for data compatibility)

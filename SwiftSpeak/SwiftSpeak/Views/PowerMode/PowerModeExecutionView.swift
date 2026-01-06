@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct PowerModeExecutionView: View {
     let powerMode: PowerMode
@@ -25,6 +26,9 @@ struct PowerModeExecutionView: View {
 
     // Refine mode - record additional input to combine with current result
     @State private var isRefining = false
+
+    // Focus state for Obsidian search field
+    @FocusState private var isObsidianSearchFocused: Bool
 
     @EnvironmentObject var settings: SharedSettings
 
@@ -158,6 +162,8 @@ struct PowerModeExecutionView: View {
             switch orchestrator.state {
             case .idle:
                 idleView
+            case .obsidianSearch:
+                obsidianSearchView
             case .recording:
                 if isRefining {
                     refiningRecordingView
@@ -205,8 +211,219 @@ struct PowerModeExecutionView: View {
                 )
             case .error(let message):
                 errorView(message)
+
+            // macOS-specific states - fallback to idle view on iOS
+            case .contextPreview, .processing, .aiQuestion, .result, .actionComplete:
+                idleView
             }
         }
+    }
+
+    // MARK: - Obsidian Search View
+
+    private var obsidianSearchView: some View {
+        VStack(spacing: 16) {
+            // Header with Obsidian icon
+            HStack(spacing: 10) {
+                Image("ObsidianIcon")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 24, height: 24)
+                Text("Search Obsidian Notes")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                Spacer()
+                if !orchestrator.manualObsidianResults.isEmpty {
+                    Text("\(orchestrator.selectedObsidianResultIds.count)/\(orchestrator.manualObsidianResults.count)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 16)
+
+            // Search input with voice button
+            HStack(spacing: 8) {
+                TextField("Search notes...", text: $orchestrator.obsidianSearchQuery)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isObsidianSearchFocused)
+                    .submitLabel(.search)
+                    .onSubmit {
+                        Task { await orchestrator.searchObsidian() }
+                    }
+
+                // Voice dictation button
+                Button(action: {
+                    Task {
+                        if orchestrator.isDictatingSearchQuery {
+                            await orchestrator.stopSearchDictation()
+                        } else {
+                            await orchestrator.startSearchDictation()
+                        }
+                    }
+                }) {
+                    Image(systemName: orchestrator.isDictatingSearchQuery ? "mic.fill" : "mic")
+                        .font(.body)
+                        .foregroundStyle(orchestrator.isDictatingSearchQuery ? .red : .primary)
+                        .frame(width: 44, height: 44)
+                        .background(orchestrator.isDictatingSearchQuery ? Color.red.opacity(0.15) : Color.primary.opacity(0.08))
+                        .clipShape(Circle())
+                }
+
+                // Search button
+                Button(action: { Task { await orchestrator.searchObsidian() } }) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.body)
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .disabled(orchestrator.isSearchingObsidian)
+            }
+            .padding(.horizontal, 16)
+
+            // Results list with checkboxes
+            if orchestrator.isSearchingObsidian {
+                Spacer()
+                ProgressView("Searching...")
+                    .foregroundStyle(.secondary)
+                Spacer()
+            } else if orchestrator.manualObsidianResults.isEmpty {
+                Spacer()
+                VStack(spacing: 8) {
+                    Image(systemName: "doc.text.magnifyingglass")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.secondary)
+                    Text("Enter a search query or leave empty to load all notes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(Array(orchestrator.manualObsidianResults.enumerated()), id: \.element.id) { index, result in
+                            obsidianSearchResultRow(result, index: index + 1)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+            }
+
+            // Selection controls
+            if !orchestrator.manualObsidianResults.isEmpty {
+                HStack(spacing: 12) {
+                    Button(action: { orchestrator.selectAllResults() }) {
+                        Text("Select All")
+                            .font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button(action: { orchestrator.deselectAllResults() }) {
+                        Text("Clear")
+                            .font(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer()
+                }
+                .padding(.horizontal, 16)
+            }
+
+            // Action buttons
+            HStack(spacing: 12) {
+                Button(action: {
+                    HapticManager.lightTap()
+                    orchestrator.reset()
+                }) {
+                    Text("Cancel")
+                        .font(.callout.weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                }
+
+                Button(action: {
+                    HapticManager.mediumTap()
+                    Task { await orchestrator.proceedFromObsidianSearch() }
+                }) {
+                    HStack(spacing: 8) {
+                        Text("Continue")
+                        if !orchestrator.selectedObsidianResultIds.isEmpty {
+                            Text("(\(orchestrator.selectedObsidianResultIds.count))")
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                        Image(systemName: "mic.fill")
+                    }
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(AppTheme.powerGradient)
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 16)
+        }
+        .padding(.top, 16)
+        .onAppear {
+            isObsidianSearchFocused = true
+            // Auto-search or load all if no results yet
+            if orchestrator.manualObsidianResults.isEmpty {
+                Task {
+                    if orchestrator.obsidianSearchQuery.isEmpty {
+                        await orchestrator.loadAllObsidianNotes()
+                    } else {
+                        await orchestrator.searchObsidian()
+                    }
+                }
+            }
+        }
+    }
+
+    /// Obsidian search result row with checkbox
+    private func obsidianSearchResultRow(_ result: ObsidianSearchResult, index: Int) -> some View {
+        let isSelected = orchestrator.selectedObsidianResultIds.contains(result.id)
+
+        return Button(action: {
+            HapticManager.selection()
+            orchestrator.toggleResultSelection(result.id)
+        }) {
+            HStack(spacing: 12) {
+                // Checkbox
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(isSelected ? .purple : .secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Image("ObsidianIcon")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 14, height: 14)
+                        Text(result.noteTitle)
+                            .font(.subheadline.weight(.medium))
+                            .lineLimit(1)
+                        Spacer()
+                        Text("\(result.similarityPercentage)%")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(String(result.chunkContent.prefix(80)) + (result.chunkContent.count > 80 ? "..." : ""))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+            }
+            .padding(12)
+            .background(isSelected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Idle View
@@ -257,9 +474,63 @@ struct PowerModeExecutionView: View {
                 }
             }
 
+            // Token counter
+            tokenCounterRow
+
             Text("Ready to listen")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
+        }
+    }
+
+    // MARK: - Token Counter Row
+
+    private var tokenCounterRow: some View {
+        let tokens = orchestrator.contextTokens
+
+        return HStack(spacing: 8) {
+            Image(systemName: "number.circle.fill")
+                .font(.caption)
+                .foregroundStyle(tokenLevelColor(tokens.total))
+
+            Text("Context:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Text(tokens.formattedTotal)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(tokenLevelColor(tokens.total))
+
+            // Show breakdown if available
+            if !tokens.breakdown.isEmpty {
+                Text("•")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+
+                ForEach(tokens.breakdown.prefix(2), id: \.name) { item in
+                    Text("\(item.name): \(TokenCounter.formatTokenCount(item.tokens))")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(Capsule())
+    }
+
+    /// Color based on token count level
+    private func tokenLevelColor(_ count: Int) -> Color {
+        switch TokenCounter.TokenLevel.from(count) {
+        case .low:
+            return .green
+        case .medium:
+            return .yellow
+        case .high:
+            return .orange
+        case .critical:
+            return .red
         }
     }
 

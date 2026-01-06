@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Language
 enum Language: String, Codable, CaseIterable, Identifiable {

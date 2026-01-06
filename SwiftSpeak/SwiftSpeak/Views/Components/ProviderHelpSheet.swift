@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct ProviderHelpSheet: View {
     let provider: AIProvider

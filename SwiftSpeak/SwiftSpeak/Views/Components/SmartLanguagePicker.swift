@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct SmartLanguagePicker: View {
     @Binding var selection: Language

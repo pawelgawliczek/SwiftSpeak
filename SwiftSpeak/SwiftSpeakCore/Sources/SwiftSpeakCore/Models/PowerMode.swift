@@ -214,6 +214,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     public var includeWindowContext: Bool          // macOS: capture window text
     public var maxObsidianChunks: Int              // 1-10, default 3
     public var obsidianAction: ObsidianActionConfig?  // What to do with output
+    public var defaultObsidianSearchQuery: String  // Default search term (empty = show all)
+    public var obsidianMinSimilarity: Float       // Min similarity to show (0.0-1.0, default 0.3 = 30%)
+    public var obsidianAutoSelectThreshold: Float // Auto-select if above (0.0-1.0, default 0.7 = 70%)
 
     // Phase 16: Input/Output Configuration
     public var inputConfig: PowerModeInputConfig
@@ -247,6 +250,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         includeWindowContext: Bool = false,
         maxObsidianChunks: Int = 3,
         obsidianAction: ObsidianActionConfig? = nil,
+        defaultObsidianSearchQuery: String = "",
+        obsidianMinSimilarity: Float = 0.3,
+        obsidianAutoSelectThreshold: Float = 0.7,
         inputConfig: PowerModeInputConfig = .default,
         outputConfig: PowerModeOutputConfig = .default
     ) {
@@ -277,12 +283,64 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.includeWindowContext = includeWindowContext
         self.maxObsidianChunks = maxObsidianChunks
         self.obsidianAction = obsidianAction
+        self.defaultObsidianSearchQuery = defaultObsidianSearchQuery
+        self.obsidianMinSimilarity = obsidianMinSimilarity
+        self.obsidianAutoSelectThreshold = obsidianAutoSelectThreshold
         self.inputConfig = inputConfig
         self.outputConfig = outputConfig
     }
 
+    // MARK: - Meeting Notes Template
+
+    /// Pre-configured Power Mode for meeting transcription with speaker diarization
+    public static let meetingNotesTemplate = PowerMode(
+        name: "Meeting Notes",
+        icon: "person.3.fill",
+        iconColor: .teal,
+        iconBackgroundColor: .teal,
+        instruction: """
+        You are a professional meeting notes assistant. Analyze this transcript and create structured, actionable notes.
+
+        If the transcript includes speaker labels (e.g., [Speaker A], [Speaker B]), use them to attribute key points and action items to specific speakers.
+
+        Create notes with this structure:
+
+        ## Meeting Summary
+        [2-3 sentence overview of what was discussed]
+
+        ## Key Discussion Points
+        - [Main topics covered with relevant context]
+        - [Include who raised each topic if speaker labels are present]
+
+        ## Decisions Made
+        - [Any decisions reached during the meeting]
+        - [Note who made or approved each decision]
+
+        ## Action Items
+        - [ ] [Task description] - [Assignee if mentioned]
+        - [ ] [Next task] - [Assignee]
+
+        ## Follow-up Questions
+        - [Unresolved questions or items needing clarification]
+
+        ## Next Steps
+        - [What happens next, upcoming meetings, deadlines]
+
+        Guidelines:
+        - Be concise but comprehensive
+        - Prioritize action items and decisions
+        - Use bullet points for easy scanning
+        - Include timestamps or speaker attributions where helpful
+        - Highlight any deadlines or time-sensitive items
+        """,
+        outputFormat: "Markdown with headers, bullet points, and checkbox task lists",
+        memoryEnabled: true,
+        memoryLimit: 2000
+    )
+
     /// Preset power modes for new users
     public static let presets: [PowerMode] = [
+        PowerMode.meetingNotesTemplate,
         PowerMode(
             name: "Research Assistant",
             icon: "magnifyingglass.circle.fill",
@@ -341,7 +399,8 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         case isArchived, appAssignment, enabledWebhookIds
         case providerOverride, aiAutocorrectEnabled
         case enterSendsMessage, enterRunsContext
-        case obsidianVaultIds, includeWindowContext, maxObsidianChunks, obsidianAction
+        case obsidianVaultIds, includeWindowContext, maxObsidianChunks, obsidianAction, defaultObsidianSearchQuery
+        case obsidianMinSimilarity, obsidianAutoSelectThreshold
         case inputConfig, outputConfig
         // Legacy
         case systemPrompt  // Migrate to instruction
@@ -387,6 +446,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         includeWindowContext = try container.decodeIfPresent(Bool.self, forKey: .includeWindowContext) ?? false
         maxObsidianChunks = try container.decodeIfPresent(Int.self, forKey: .maxObsidianChunks) ?? 3
         obsidianAction = try container.decodeIfPresent(ObsidianActionConfig.self, forKey: .obsidianAction)
+        defaultObsidianSearchQuery = try container.decodeIfPresent(String.self, forKey: .defaultObsidianSearchQuery) ?? ""
+        obsidianMinSimilarity = try container.decodeIfPresent(Float.self, forKey: .obsidianMinSimilarity) ?? 0.3
+        obsidianAutoSelectThreshold = try container.decodeIfPresent(Float.self, forKey: .obsidianAutoSelectThreshold) ?? 0.7
 
         // Phase 16: Input/Output Configuration (with migration from legacy fields)
         if let decoded = try container.decodeIfPresent(PowerModeInputConfig.self, forKey: .inputConfig) {
@@ -448,6 +510,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         try container.encode(includeWindowContext, forKey: .includeWindowContext)
         try container.encode(maxObsidianChunks, forKey: .maxObsidianChunks)
         try container.encodeIfPresent(obsidianAction, forKey: .obsidianAction)
+        try container.encode(defaultObsidianSearchQuery, forKey: .defaultObsidianSearchQuery)
+        try container.encode(obsidianMinSimilarity, forKey: .obsidianMinSimilarity)
+        try container.encode(obsidianAutoSelectThreshold, forKey: .obsidianAutoSelectThreshold)
         try container.encode(inputConfig, forKey: .inputConfig)
         try container.encode(outputConfig, forKey: .outputConfig)
     }
@@ -722,26 +787,38 @@ public struct PowerModeSession: Codable, Identifiable, Equatable {
 // MARK: - Power Mode Execution State
 public enum PowerModeExecutionState: Equatable {
     case idle
+    case contextPreview        // macOS: Show context sources before recording
+    case obsidianSearch        // Manual Obsidian search step (when vaults enabled)
     case recording
     case transcribing
+    case processing            // macOS: Generic processing state (transcribing + LLM)
     case thinking              // Building context, fetching webhooks
     case queryingKnowledge     // Phase 4: RAG query
-    case askingQuestion(PowerModeQuestion)
+    case aiQuestion            // macOS: AI asking clarification (simple string)
+    case askingQuestion(PowerModeQuestion)  // iOS: AI asking clarification (with session)
     case generating            // LLM response (blocking mode)
     case streaming(String)     // LLM response (streaming mode) - partial text
+    case result                // Show result, allow refinement
+    case actionComplete        // macOS: Action completed (copy/insert/save), auto-closes
     case complete(PowerModeSession)
     case error(String)
 
     public var statusText: String {
         switch self {
         case .idle: return "Tap to speak"
+        case .contextPreview: return "Configure context"
+        case .obsidianSearch: return "Search Obsidian notes"
         case .recording: return "Listening..."
         case .transcribing: return "Transcribing..."
+        case .processing: return "Processing..."
         case .thinking: return "Thinking..."
         case .queryingKnowledge: return "Searching knowledge base..."
+        case .aiQuestion: return "Needs clarification"
         case .askingQuestion: return "Question"
         case .generating: return "Generating..."
         case .streaming: return "Generating..."
+        case .result: return "Review and refine"
+        case .actionComplete: return "Complete!"
         case .complete: return "Complete"
         case .error(let message): return message
         }
@@ -749,7 +826,7 @@ public enum PowerModeExecutionState: Equatable {
 
     public var isProcessing: Bool {
         switch self {
-        case .transcribing, .thinking, .queryingKnowledge, .generating, .streaming:
+        case .transcribing, .processing, .thinking, .queryingKnowledge, .generating, .streaming:
             return true
         default:
             return false

@@ -108,6 +108,25 @@ public enum Language: String, Codable, CaseIterable, Identifiable {
         googleCode
     }
 
+    /// OpenAI Whisper uses ISO 639-1 codes
+    public var whisperCode: String {
+        switch self {
+        case .english: return "en"
+        case .spanish: return "es"
+        case .french: return "fr"
+        case .german: return "de"
+        case .italian: return "it"
+        case .portuguese: return "pt"
+        case .russian: return "ru"
+        case .japanese: return "ja"
+        case .korean: return "ko"
+        case .chinese: return "zh"
+        case .arabic: return "ar"
+        case .egyptianArabic: return "ar"
+        case .polish: return "pl"
+        }
+    }
+
     /// AssemblyAI language codes - returns nil for unsupported languages
     /// AssemblyAI supports: en, es, fr, de, it, pt, nl, hi, ja, zh, fi, ko, pl, ru, tr, uk, vi
     public var assemblyAICode: String? {
