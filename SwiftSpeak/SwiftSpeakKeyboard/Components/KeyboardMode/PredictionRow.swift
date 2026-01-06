@@ -179,6 +179,11 @@ struct PredictionRow: View {
 
     /// Check if cursor is at/near a recently corrected word and offer undo
     private func checkForAutocorrectUndo(context: String) async -> AutocorrectUndoSuggestion? {
+        // Safety: Skip empty or very long contexts
+        guard !context.isEmpty, context.count <= 5000 else {
+            return nil
+        }
+
         // Get the word at or before the cursor
         let trimmed = context.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return nil }
@@ -189,12 +194,18 @@ struct PredictionRow: View {
 
         // Clean the word of trailing punctuation for lookup
         let cleanWord = String(lastWord).trimmingCharacters(in: .punctuationCharacters)
-        guard !cleanWord.isEmpty else { return nil }
+        guard !cleanWord.isEmpty, cleanWord.count <= 50 else { return nil }
+
+        // Safety: Skip if the word has unusual characters
+        guard cleanWord.allSatisfy({ $0.isLetter || $0 == "'" || $0 == "-" || $0 == "'" }) else {
+            return nil
+        }
 
         // Check if this word was recently corrected
         if let originalWord = await AutocorrectHistoryService.shared.getRecentCorrectionForUndo(correctedWord: cleanWord) {
             // Don't suggest if original is same as corrected (shouldn't happen but safety check)
             guard originalWord.lowercased() != cleanWord.lowercased() else { return nil }
+            guard !originalWord.isEmpty, originalWord.count <= 50 else { return nil }
 
             return AutocorrectUndoSuggestion(
                 originalWord: originalWord,

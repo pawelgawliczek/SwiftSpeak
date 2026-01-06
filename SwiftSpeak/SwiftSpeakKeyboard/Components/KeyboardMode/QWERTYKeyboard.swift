@@ -323,9 +323,8 @@ struct QWERTYKeyboard: View {
         guard let proxy = textDocumentProxy else { return }
         let contextBefore = proxy.documentContextBeforeInput
 
-        // Check for autocorrect before inserting space or punctuation
-        // Must complete BEFORE inserting the triggering character
-        if autocorrectEnabled && (text == " " || text == "." || text == "," || text == "!" || text == "?") {
+        // Autocorrect on space/punctuation - using minimal version to avoid hangs
+        if text == " " || text == "." || text == "," || text == "!" || text == "?" {
             performAutocorrectThenInsert(text, proxy: proxy, contextBefore: contextBefore)
             return
         }
@@ -404,125 +403,61 @@ struct QWERTYKeyboard: View {
     /// Perform autocorrection on the last typed word, then insert the triggering character
     private func performAutocorrectThenInsert(_ text: String, proxy: UITextDocumentProxy, contextBefore: String?) {
         guard let beforeText = contextBefore else {
-            // No context, just insert the text with smart punctuation
-            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+            proxy.insertText(text)
+            viewModel?.updateTypingContext()
+            return
+        }
+
+        // Safety: Skip very long context
+        guard beforeText.count <= 10000 else {
+            proxy.insertText(text)
+            viewModel?.updateTypingContext()
             return
         }
 
         // Find the last word
         let words = beforeText.split(separator: " ", omittingEmptySubsequences: true)
         guard let lastWord = words.last else {
-            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+            proxy.insertText(text)
+            viewModel?.updateTypingContext()
             return
         }
 
         let wordString = String(lastWord)
 
-        // Special case: handle "i" → "I" before length check (English only)
-        if autocorrectLanguage == "en" && wordString.lowercased() == "i" {
-            // Delete "i" and insert "I"
+        // Special case: handle "i" → "I" (English only)
+        if wordString.lowercased() == "i" && wordString.count == 1 {
             proxy.deleteBackward()
             proxy.insertText("I")
             KeyboardHaptics.lightTap()
-            keyboardLog("Autocorrected 'i' to 'I'", category: "Autocorrect")
-            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: proxy.documentContextBeforeInput)
+            proxy.insertText(text)
+            viewModel?.updateTypingContext()
             return
         }
 
         // Skip autocorrect if word is too short or contains numbers
         guard wordString.count >= 2,
-              !wordString.contains(where: { $0.isNumber }) else {
-            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+              !wordString.contains(where: { $0.isNumber }),
+              wordString.allSatisfy({ $0.isLetter || $0 == "'" || $0 == "-" || $0 == "'" }) else {
+            proxy.insertText(text)
+            viewModel?.updateTypingContext()
             return
         }
 
-        // SYNCHRONOUS corrections (fast, no async needed)
-        var finalCorrection: String? = nil
+        // Use SpellChecker (static functions, no singleton hang)
         let currentLang = autocorrectLanguage
-
-        // 1. Multi-language spell checker (UITextChecker + priority corrections)
-        //    Handles typos, contractions, and common misspellings for ALL languages
-        if let spellCorrection = MultiLanguageSpellChecker.shared.correctWord(wordString, language: currentLang) {
-            finalCorrection = spellCorrection
-        }
-
-        // 2. Check for proper noun capitalization (monday -> Monday) - English only
-        if finalCorrection == nil && currentLang == "en" {
-            if let properNoun = AutoCapitalizationService.shouldAutoCapitalizeWord(wordString, contextBefore: beforeText) {
-                finalCorrection = properNoun
-            }
-        }
-
-        // 3. Language-specific diacritic/character corrections (fallback for special cases)
-        //    These services handle nuanced corrections that UITextChecker might miss
-        if finalCorrection == nil {
-            switch currentLang {
-            // Latin-script languages with diacritics
-            case "pl":
-                finalCorrection = PolishAutocorrectService.fixPolishWord(wordString)
-            case "es":
-                finalCorrection = SpanishAutocorrectService.fixSpanishWord(wordString)
-            case "fr":
-                finalCorrection = FrenchAutocorrectService.fixFrenchWord(wordString)
-            case "de":
-                finalCorrection = GermanAutocorrectService.fixGermanWord(wordString)
-            case "it":
-                finalCorrection = ItalianAutocorrectService.fixItalianWord(wordString)
-            case "pt":
-                finalCorrection = PortugueseAutocorrectService.fixPortugueseWord(wordString)
-
-            // Cyrillic
-            case "ru":
-                finalCorrection = RussianAutocorrectService.fixRussianWord(wordString)
-
-            // Arabic
-            case "ar":
-                finalCorrection = ArabicAutocorrectService.fixArabicWord(wordString)
-            case "arz":
-                finalCorrection = EgyptianArabicAutocorrectService.fixEgyptianArabicWord(wordString)
-
-            // CJK
-            case "zh":
-                finalCorrection = ChineseAutocorrectService.fixChineseCharacter(wordString)
-            case "ja":
-                finalCorrection = JapaneseAutocorrectService.fixJapaneseWord(wordString)
-            case "ko":
-                finalCorrection = KoreanAutocorrectService.fixKoreanWord(wordString)
-
-            default:
-                break
-            }
-        }
-
-        // If we have a synchronous correction, apply it and insert punctuation
-        if let corrected = finalCorrection, corrected != wordString {
-            // Delete the original word
+        if let correction = SpellChecker.correctWord(wordString, language: currentLang),
+           correction != wordString {
+            // Apply correction
             for _ in 0..<wordString.count {
                 proxy.deleteBackward()
             }
-            // Insert the correction
-            proxy.insertText(corrected)
+            proxy.insertText(correction)
             KeyboardHaptics.lightTap()
-            keyboardLog("Autocorrected '\(wordString)' to '\(corrected)'", category: "Autocorrect")
-
-            // Record for undo feature
-            Task {
-                let position = (beforeText.count - wordString.count)
-                await AutocorrectHistoryService.shared.recordCorrection(
-                    original: wordString,
-                    corrected: corrected,
-                    atPosition: position
-                )
-            }
-
-            // Insert the triggering character
-            let newContextBefore = proxy.documentContextBeforeInput
-            insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: newContextBefore)
-            return
         }
 
-        // No additional corrections needed - iOS native autocorrect handles the rest
-        insertTextWithSmartPunctuation(text, proxy: proxy, contextBefore: contextBefore)
+        proxy.insertText(text)
+        viewModel?.updateTypingContext()
     }
 
     /// Insert text with smart punctuation applied
