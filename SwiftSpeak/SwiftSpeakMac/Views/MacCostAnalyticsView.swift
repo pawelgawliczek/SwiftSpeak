@@ -486,7 +486,8 @@ struct MacCostAnalyticsView: View {
     private var filteredTotalCost: Double {
         switch selectedCategory {
         case .all:
-            return filteredRecords.compactMap { $0.estimatedCost }.reduce(0, +)
+            // Use costBreakdown.total if available, fallback to estimatedCost for legacy records
+            return filteredRecords.map { $0.costBreakdown?.total ?? $0.estimatedCost ?? 0 }.reduce(0, +)
         case .transcription:
             return transcriptionCost
         case .powerMode:
