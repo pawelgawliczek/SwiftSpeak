@@ -20,9 +20,14 @@
 	<array>
 		<string>$(AppIdentifierPrefix)pawelgawliczek.SwiftSpeak</string>
 	</array>
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.pawelgawliczek.SwiftSpeak</string>
+	</array>
 	<key>com.apple.developer.icloud-services</key>
 	<array>
 		<string>CloudDocuments</string>
+		<string>CloudKit</string>
 	</array>
 	<key>com.apple.developer.ubiquity-container-identifiers</key>
 	<array>

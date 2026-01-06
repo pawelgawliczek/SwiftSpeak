@@ -40,11 +40,16 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     private var hostingView: NSHostingView<OverlayWrapperView>?
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
+    private var transcriptionHistoryWindow: NSWindow?
+    private var meetingHistoryWindow: NSWindow?
+    private var meetingRecordingWindow: NSWindow?
+    private var meetingResultWindow: NSWindow?
     private let overlayViewModel = OverlayViewModel()
     private var frontmostAppObserver: NSObjectProtocol?
     private var lastFrontmostBundleId: String?
     private var localKeyboardMonitor: Any?
     private var powerModeOverlayController: MacPowerModeOverlayController?
+    private var transcribeOverlayController: MacTranscribeOverlayController?
 
     // MARK: - Dependencies
 
@@ -485,6 +490,19 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             case .powerMode(let powerModeId):
                 // Handle power mode activation with captured context
                 self?.activatePowerMode(powerModeId, context: context)
+            case .transcribeToggle:
+                // Open transcribe overlay in toggle mode
+                self?.openTranscribeOverlay(mode: .toggle, context: context)
+            case .transcribePushToTalk:
+                // Open transcribe overlay in push-to-talk mode
+                self?.openTranscribeOverlay(mode: .pushToTalk, context: context)
+            }
+        }
+
+        // Set key up handler for push-to-talk
+        hotkeyManager.setKeyUpHandler { [weak self] action in
+            if action == .transcribePushToTalk {
+                self?.transcribeOverlayController?.onPushToTalkReleased()
             }
         }
     }
@@ -506,6 +524,15 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     @objc public func toggleRecording() {
+        // Use the new Transcribe overlay instead of old Power Mode overlay
+        openTranscribeOverlay(mode: .toggle, context: nil)
+    }
+
+    // MARK: - OBSOLETE Recording Methods (kept for reference)
+    // TODO: Remove these after Transcribe overlay is fully verified
+
+    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
+    private func _obsolete_toggleRecording() {
         if audioRecorder.isRecording {
             Task { await stopRecordingAndProcess() }
         } else {
@@ -610,7 +637,13 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     }
 
     @objc private func openHistory() {
-        // Show history window
+        // If window already exists, just bring it to front
+        if let existingWindow = transcriptionHistoryWindow, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         NSApp.activate(ignoringOtherApps: true)
 
         let historyView = MacHistoryView(settings: MacSettings.shared)
@@ -625,11 +658,21 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         window.title = "Transcription History"
         window.contentView = hostingView
         window.center()
+        window.isReleasedWhenClosed = false  // Don't release on close
         window.makeKeyAndOrderFront(nil)
+
+        // Retain the window
+        transcriptionHistoryWindow = window
     }
 
     @objc private func openMeetingRecording() {
-        // Show meeting recording window
+        // If window already exists, just bring it to front
+        if let existingWindow = meetingRecordingWindow, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         NSApp.activate(ignoringOtherApps: true)
 
         let meetingView = MacMeetingRecordingView()
@@ -645,11 +688,21 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         window.title = "Meeting Recording"
         window.contentView = hostingView
         window.center()
+        window.isReleasedWhenClosed = false  // Don't release on close
         window.makeKeyAndOrderFront(nil)
+
+        // Retain the window
+        meetingRecordingWindow = window
     }
 
     @objc private func openMeetingHistory() {
-        // Show meeting history window
+        // If window already exists, just bring it to front
+        if let existingWindow = meetingHistoryWindow, existingWindow.isVisible {
+            existingWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         NSApp.activate(ignoringOtherApps: true)
 
         let historyView = MacMeetingHistoryView(orchestrator: nil)
@@ -664,7 +717,11 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         window.title = "Meeting History"
         window.contentView = hostingView
         window.center()
+        window.isReleasedWhenClosed = false  // Don't release on close
         window.makeKeyAndOrderFront(nil)
+
+        // Retain the window
+        meetingHistoryWindow = window
     }
 
     // MARK: - Meeting Notifications
@@ -689,8 +746,9 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
 
-        let resultView = MacMeetingResultView(record: record) {
+        let resultView = MacMeetingResultView(record: record) { [weak self] in
             MeetingNotificationManager.shared.clearPendingResult()
+            self?.meetingResultWindow?.close()
         }
         let hostingView = NSHostingView(rootView: resultView)
 
@@ -703,7 +761,11 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         window.title = record.title
         window.contentView = hostingView
         window.center()
+        window.isReleasedWhenClosed = false  // Don't release on close
         window.makeKeyAndOrderFront(nil)
+
+        // Retain the window
+        meetingResultWindow = window
 
         // Clear the flag after showing
         MeetingNotificationManager.shared.showResultWindow = false
@@ -766,8 +828,10 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         NSApp.terminate(nil)
     }
 
-    // MARK: - Recording Flow
+    // MARK: - OBSOLETE Recording Flow (replaced by Transcribe overlay)
+    // TODO: Remove after Transcribe overlay is fully verified
 
+    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
     public func startRecording() async {
         showOverlay()
 
@@ -781,6 +845,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         }
     }
 
+    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
     public func stopRecordingAndProcess() async {
         isProcessing = true
         updateOverlayContent()
@@ -823,6 +888,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         hideOverlay()
     }
 
+    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
     public func cancelRecording() {
         audioRecorder.cancelRecording()
         hideOverlay()
@@ -851,6 +917,28 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         }
 
         showPowerModeOverlay(for: powerMode, hotkeyContext: context)
+    }
+
+    /// Open the transcribe overlay
+    /// - Parameters:
+    ///   - mode: Toggle or push-to-talk mode
+    ///   - context: Pre-captured context from hotkey callback
+    public func openTranscribeOverlay(mode: TranscribeMode, context: HotkeyContext? = nil) {
+        // Create controller lazily
+        if transcribeOverlayController == nil {
+            transcribeOverlayController = MacTranscribeOverlayController(
+                settings: settings,
+                audioRecorder: audioRecorder
+            )
+            transcribeOverlayController?.setDependencies(
+                providerFactory: providerFactory,
+                textInsertion: textInsertion
+            )
+        }
+
+        // Show overlay with captured context
+        let capturedContext = context ?? HotkeyContext.empty
+        transcribeOverlayController?.show(mode: mode, context: capturedContext)
     }
 
     /// Show the power mode overlay for a specific mode
@@ -1053,8 +1141,10 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         settings.addToHistory(record)
     }
 
-    // MARK: - UI Helpers
+    // MARK: - OBSOLETE UI Helpers (Power Mode overlay - replaced by Transcribe overlay)
+    // TODO: Remove after Transcribe overlay is fully verified
 
+    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
     public func showOverlay() {
         guard let window = floatingWindow else { return }
 

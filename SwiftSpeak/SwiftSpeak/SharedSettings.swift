@@ -22,9 +22,8 @@ class SharedSettings: ObservableObject {
 
     // MARK: - iCloud Sync
 
-    // DISABLED: NSUbiquitousKeyValueStore causes CloudKit entitlement crash
-    // TODO: Re-enable once iCloud container is properly configured in Developer Portal
-    private var iCloud: NSUbiquitousKeyValueStore? { nil }
+    /// iCloud Key-Value Store for syncing settings between iOS and macOS
+    private let iCloud: NSUbiquitousKeyValueStore? = NSUbiquitousKeyValueStore.default
     private var iCloudObserver: NSObjectProtocol?
     private var isSyncing = false
     private var isInitializing = true  // Prevent syncing during init

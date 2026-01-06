@@ -5,12 +5,26 @@
 //  Provides a clean CRUD interface for Core Data entities.
 //  Handles conversion between Core Data entities and app model structs.
 //  Uses JSON serialization for full model fidelity with CloudKit sync.
+//  Shared between iOS and macOS.
 //
 
 import CoreData
 import Combine
 import Foundation
 import SwiftSpeakCore
+
+// MARK: - Platform-aware Logging
+
+/// Log helper that works on both iOS and macOS
+#if os(iOS)
+private func coreDataLog(_ message: String, level: LogEntry.LogLevel = .info) {
+    appLog(message, category: "CoreData", level: level)
+}
+#elseif os(macOS)
+private func coreDataLog(_ message: String, level: MacLogLevel = .info) {
+    macLog(message, category: "CoreData", level: level)
+}
+#endif
 
 /// Manages Core Data operations with a clean interface for the app.
 /// Converts between Core Data entities and existing model structs.
@@ -56,7 +70,7 @@ final class CoreDataManager: ObservableObject {
 
     @objc private func handleCloudSync() {
         loadAllData()
-        appLog("CoreDataManager: Reloaded data after iCloud sync", category: "CoreData")
+        coreDataLog("Reloaded data after iCloud sync")
     }
 
     // MARK: - Load All Data
@@ -82,7 +96,7 @@ final class CoreDataManager: ObservableObject {
             let entities = try viewContext.fetch(request)
             transcriptionHistory = entities.compactMap { $0.toModel() }
         } catch {
-            appLog("Failed to load transcription history: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load transcription history: \(error)", level: .error)
         }
     }
 
@@ -104,7 +118,7 @@ final class CoreDataManager: ObservableObject {
                 loadTranscriptionHistory()
             }
         } catch {
-            appLog("Failed to update transcription: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update transcription: \(error)", level: .error)
         }
     }
 
@@ -119,7 +133,7 @@ final class CoreDataManager: ObservableObject {
                 loadTranscriptionHistory()
             }
         } catch {
-            appLog("Failed to delete transcription: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete transcription: \(error)", level: .error)
         }
     }
 
@@ -132,7 +146,7 @@ final class CoreDataManager: ObservableObject {
             persistence.save()
             transcriptionHistory = []
         } catch {
-            appLog("Failed to clear history: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to clear history: \(error)", level: .error)
         }
     }
 
@@ -153,7 +167,7 @@ final class CoreDataManager: ObservableObject {
                 }
             }
         } catch {
-            appLog("Failed to load contexts: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load contexts: \(error)", level: .error)
         }
     }
 
@@ -175,7 +189,7 @@ final class CoreDataManager: ObservableObject {
                 loadContexts()
             }
         } catch {
-            appLog("Failed to update context: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update context: \(error)", level: .error)
         }
     }
 
@@ -190,7 +204,7 @@ final class CoreDataManager: ObservableObject {
                 loadContexts()
             }
         } catch {
-            appLog("Failed to delete context: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete context: \(error)", level: .error)
         }
     }
 
@@ -215,7 +229,7 @@ final class CoreDataManager: ObservableObject {
                 }
             }
         } catch {
-            appLog("Failed to load power modes: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load power modes: \(error)", level: .error)
         }
     }
 
@@ -237,7 +251,7 @@ final class CoreDataManager: ObservableObject {
                 loadPowerModes()
             }
         } catch {
-            appLog("Failed to update power mode: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update power mode: \(error)", level: .error)
         }
     }
 
@@ -252,7 +266,7 @@ final class CoreDataManager: ObservableObject {
                 loadPowerModes()
             }
         } catch {
-            appLog("Failed to delete power mode: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete power mode: \(error)", level: .error)
         }
     }
 
@@ -270,7 +284,7 @@ final class CoreDataManager: ObservableObject {
             let entities = try viewContext.fetch(request)
             customTemplates = entities.compactMap { $0.toModel() }
         } catch {
-            appLog("Failed to load custom templates: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load custom templates: \(error)", level: .error)
         }
     }
 
@@ -292,7 +306,7 @@ final class CoreDataManager: ObservableObject {
                 loadCustomTemplates()
             }
         } catch {
-            appLog("Failed to update custom template: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update custom template: \(error)", level: .error)
         }
     }
 
@@ -307,7 +321,7 @@ final class CoreDataManager: ObservableObject {
                 loadCustomTemplates()
             }
         } catch {
-            appLog("Failed to delete custom template: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete custom template: \(error)", level: .error)
         }
     }
 
@@ -321,7 +335,7 @@ final class CoreDataManager: ObservableObject {
             let entities = try viewContext.fetch(request)
             vocabulary = entities.compactMap { $0.toModel() }
         } catch {
-            appLog("Failed to load vocabulary: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load vocabulary: \(error)", level: .error)
         }
     }
 
@@ -343,7 +357,7 @@ final class CoreDataManager: ObservableObject {
                 loadVocabulary()
             }
         } catch {
-            appLog("Failed to update vocabulary entry: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update vocabulary entry: \(error)", level: .error)
         }
     }
 
@@ -358,7 +372,7 @@ final class CoreDataManager: ObservableObject {
                 loadVocabulary()
             }
         } catch {
-            appLog("Failed to delete vocabulary entry: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete vocabulary entry: \(error)", level: .error)
         }
     }
 
@@ -372,7 +386,7 @@ final class CoreDataManager: ObservableObject {
             let entities = try viewContext.fetch(request)
             webhooks = entities.compactMap { $0.toModel() }
         } catch {
-            appLog("Failed to load webhooks: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load webhooks: \(error)", level: .error)
         }
     }
 
@@ -394,7 +408,7 @@ final class CoreDataManager: ObservableObject {
                 loadWebhooks()
             }
         } catch {
-            appLog("Failed to update webhook: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update webhook: \(error)", level: .error)
         }
     }
 
@@ -409,7 +423,7 @@ final class CoreDataManager: ObservableObject {
                 loadWebhooks()
             }
         } catch {
-            appLog("Failed to delete webhook: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete webhook: \(error)", level: .error)
         }
     }
 
@@ -423,7 +437,7 @@ final class CoreDataManager: ObservableObject {
             let entities = try viewContext.fetch(request)
             knowledgeDocuments = entities.compactMap { $0.toModel() }
         } catch {
-            appLog("Failed to load knowledge documents: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load knowledge documents: \(error)", level: .error)
         }
     }
 
@@ -445,7 +459,7 @@ final class CoreDataManager: ObservableObject {
                 loadKnowledgeDocuments()
             }
         } catch {
-            appLog("Failed to update knowledge document: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update knowledge document: \(error)", level: .error)
         }
     }
 
@@ -460,7 +474,7 @@ final class CoreDataManager: ObservableObject {
                 loadKnowledgeDocuments()
             }
         } catch {
-            appLog("Failed to delete knowledge document: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete knowledge document: \(error)", level: .error)
         }
     }
 
@@ -473,7 +487,7 @@ final class CoreDataManager: ObservableObject {
             let entities = try viewContext.fetch(request)
             aiProviderConfigs = entities.compactMap { $0.toModel() }
         } catch {
-            appLog("Failed to load AI provider configs: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to load AI provider configs: \(error)", level: .error)
         }
     }
 
@@ -495,7 +509,7 @@ final class CoreDataManager: ObservableObject {
                 loadAIProviderConfigs()
             }
         } catch {
-            appLog("Failed to update AI provider config: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to update AI provider config: \(error)", level: .error)
         }
     }
 
@@ -510,7 +524,7 @@ final class CoreDataManager: ObservableObject {
                 loadAIProviderConfigs()
             }
         } catch {
-            appLog("Failed to delete AI provider config: \(error)", category: "CoreData", level: .error)
+            coreDataLog("Failed to delete AI provider config: \(error)", level: .error)
         }
     }
 

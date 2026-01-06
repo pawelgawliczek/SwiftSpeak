@@ -2,14 +2,14 @@
 //  PersistenceController.swift
 //  SwiftSpeak
 //
-//  Core Data persistence controller.
-//  CloudKit sync is DISABLED until entitlements are properly configured.
+//  Core Data persistence controller with CloudKit sync.
+//  Syncs history, contexts, and settings between iOS and macOS.
 //
 
 import CoreData
 
-/// Manages Core Data persistence for local storage.
-/// CloudKit sync is temporarily disabled - data stored locally only.
+/// Manages Core Data persistence with CloudKit sync.
+/// Data is automatically synced between iOS and macOS via iCloud.
 final class PersistenceController: @unchecked Sendable {
 
     // MARK: - Shared Instance
@@ -24,8 +24,8 @@ final class PersistenceController: @unchecked Sendable {
 
     // MARK: - Properties
 
-    /// The persistent container (regular NSPersistentContainer - CloudKit disabled)
-    let container: NSPersistentContainer
+    /// The persistent container with CloudKit sync
+    let container: NSPersistentCloudKitContainer
 
     /// Main view context for UI operations (main thread only)
     var viewContext: NSManagedObjectContext {
@@ -42,8 +42,8 @@ final class PersistenceController: @unchecked Sendable {
     // MARK: - Initialization
 
     init(inMemory: Bool = false) {
-        // Use regular NSPersistentContainer (CloudKit disabled)
-        container = NSPersistentContainer(name: "SwiftSpeak")
+        // Use CloudKit container for sync between iOS and macOS
+        container = NSPersistentCloudKitContainer(name: "SwiftSpeak")
 
         // Configure store description
         guard let description = container.persistentStoreDescriptions.first else {
@@ -51,8 +51,9 @@ final class PersistenceController: @unchecked Sendable {
         }
 
         if inMemory {
-            // Use in-memory store for previews/testing
+            // Use in-memory store for previews/testing (no CloudKit)
             description.url = URL(fileURLWithPath: "/dev/null")
+            description.cloudKitContainerOptions = nil
         } else {
             // Platform-specific storage location
             #if os(iOS)
@@ -69,29 +70,70 @@ final class PersistenceController: @unchecked Sendable {
             let storeURL = storeDirectory.appendingPathComponent("SwiftSpeak.sqlite")
             description.url = storeURL
             #endif
+
+            // Configure CloudKit container options
+            let cloudKitOptions = NSPersistentCloudKitContainerOptions(
+                containerIdentifier: "iCloud.pawelgawliczek.SwiftSpeak"
+            )
+            description.cloudKitContainerOptions = cloudKitOptions
+
+            // Enable history tracking for CloudKit sync
+            description.setOption(true as NSNumber, forKey: NSPersistentHistoryTrackingKey)
+            description.setOption(true as NSNumber, forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey)
         }
 
         // Load persistent stores
         container.loadPersistentStores { storeDescription, error in
             if let error = error as NSError? {
                 // Log error but don't crash - allow app to run with potential data issues
+                #if os(iOS)
                 appLog("Core Data load error: \(error.localizedDescription)", category: "CoreData", level: .error)
+                #elseif os(macOS)
+                macLog("Core Data load error: \(error.localizedDescription)", category: "CoreData", level: .error)
+                #endif
 
                 // In development, you might want to crash to catch issues early
                 #if DEBUG
                 fatalError("Core Data load error: \(error)")
                 #endif
             } else {
-                appLog("Core Data store loaded: \(storeDescription.url?.lastPathComponent ?? "unknown")", category: "CoreData")
+                #if os(iOS)
+                appLog("Core Data store loaded with CloudKit: \(storeDescription.url?.lastPathComponent ?? "unknown")", category: "CoreData")
+                #elseif os(macOS)
+                macLog("Core Data store loaded with CloudKit: \(storeDescription.url?.lastPathComponent ?? "unknown")", category: "CoreData")
+                #endif
             }
         }
 
-        // Configure view context
+        // Configure view context for CloudKit
         container.viewContext.automaticallyMergesChangesFromParent = true
         container.viewContext.mergePolicy = NSMergeByPropertyObjectTrumpMergePolicy
 
         // Set query generation to keep a stable view of data
         try? container.viewContext.setQueryGenerationFrom(.current)
+
+        // Listen for remote change notifications from CloudKit
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRemoteChange),
+            name: .NSPersistentStoreRemoteChange,
+            object: container.persistentStoreCoordinator
+        )
+    }
+
+    // MARK: - CloudKit Sync
+
+    @objc private func handleRemoteChange(_ notification: Notification) {
+        // Post notification for UI to refresh
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .coreDataDidSyncFromCloud, object: nil)
+        }
+
+        #if os(iOS)
+        appLog("Received remote CloudKit changes", category: "CoreData", level: .debug)
+        #elseif os(macOS)
+        macLog("Received remote CloudKit changes", category: "CoreData", level: .debug)
+        #endif
     }
 
     // MARK: - Save Helpers
@@ -103,9 +145,17 @@ final class PersistenceController: @unchecked Sendable {
 
         do {
             try context.save()
+            #if os(iOS)
             appLog("Core Data changes saved", category: "CoreData", level: .debug)
+            #elseif os(macOS)
+            macLog("Core Data changes saved", category: "CoreData", level: .debug)
+            #endif
         } catch {
+            #if os(iOS)
             appLog("Core Data save error: \(error.localizedDescription)", category: "CoreData", level: .error)
+            #elseif os(macOS)
+            macLog("Core Data save error: \(error.localizedDescription)", category: "CoreData", level: .error)
+            #endif
         }
     }
 
@@ -116,7 +166,11 @@ final class PersistenceController: @unchecked Sendable {
         do {
             try context.save()
         } catch {
+            #if os(iOS)
             appLog("Core Data background save error: \(error.localizedDescription)", category: "CoreData", level: .error)
+            #elseif os(macOS)
+            macLog("Core Data background save error: \(error.localizedDescription)", category: "CoreData", level: .error)
+            #endif
         }
     }
 
@@ -130,7 +184,11 @@ final class PersistenceController: @unchecked Sendable {
                 do {
                     try context.save()
                 } catch {
+                    #if os(iOS)
                     appLog("Core Data background task save error: \(error.localizedDescription)", category: "CoreData", level: .error)
+                    #elseif os(macOS)
+                    macLog("Core Data background task save error: \(error.localizedDescription)", category: "CoreData", level: .error)
+                    #endif
                 }
             }
         }
@@ -152,12 +210,20 @@ final class PersistenceController: @unchecked Sendable {
             do {
                 try container.persistentStoreCoordinator.execute(deleteRequest, with: viewContext)
             } catch {
+                #if os(iOS)
                 appLog("Failed to delete \(entityName): \(error)", category: "CoreData", level: .error)
+                #elseif os(macOS)
+                macLog("Failed to delete \(entityName): \(error)", category: "CoreData", level: .error)
+                #endif
             }
         }
 
         save()
+        #if os(iOS)
         appLog("All Core Data deleted", category: "CoreData")
+        #elseif os(macOS)
+        macLog("All Core Data deleted", category: "CoreData")
+        #endif
     }
     #endif
 }
@@ -165,6 +231,6 @@ final class PersistenceController: @unchecked Sendable {
 // MARK: - Notifications
 
 extension Notification.Name {
-    /// Posted when Core Data receives changes from iCloud (placeholder for future CloudKit support)
+    /// Posted when Core Data receives changes from iCloud via CloudKit
     static let coreDataDidSyncFromCloud = Notification.Name("coreDataDidSyncFromCloud")
 }

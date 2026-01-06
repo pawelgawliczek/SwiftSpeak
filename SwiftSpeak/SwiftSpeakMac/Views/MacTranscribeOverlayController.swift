@@ -1,0 +1,305 @@
+//
+//  MacTranscribeOverlayController.swift
+//  SwiftSpeakMac
+//
+//  Manages the transcribe overlay window
+//  Supports toggle mode and push-to-talk mode
+//
+
+import AppKit
+import SwiftUI
+import SwiftSpeakCore
+import Carbon.HIToolbox
+
+// MARK: - Keyable Borderless Window
+
+/// Custom window that can become key even when borderless
+/// Required for keyboard input in overlay windows
+private class KeyableWindow: NSWindow {
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { true }
+}
+
+// MARK: - Transcribe Overlay Controller
+
+@MainActor
+final class MacTranscribeOverlayController {
+
+    // MARK: - Properties
+
+    private var overlayWindow: NSWindow?
+    private var viewModel: MacTranscribeOverlayViewModel?
+    private var hostingView: NSHostingView<AnyView>?
+
+    private let settings: MacSettings
+    private let audioRecorder: MacAudioRecorder
+    private var providerFactory: ProviderFactory?
+    private var textInsertion: MacTextInsertionService?
+
+    /// Local keyboard event monitor for overlay-specific shortcuts
+    private var localMonitor: Any?
+
+    /// Whether the overlay is currently visible
+    var isVisible: Bool { overlayWindow?.isVisible ?? false }
+
+    /// Current mode (toggle vs push-to-talk)
+    private(set) var currentMode: TranscribeMode = .toggle
+
+    /// Callback when overlay closes
+    var onClose: (() -> Void)?
+
+    // MARK: - Initialization
+
+    init(
+        settings: MacSettings,
+        audioRecorder: MacAudioRecorder
+    ) {
+        self.settings = settings
+        self.audioRecorder = audioRecorder
+    }
+
+    // MARK: - Dependency Injection
+
+    func setDependencies(
+        providerFactory: ProviderFactory,
+        textInsertion: MacTextInsertionService
+    ) {
+        self.providerFactory = providerFactory
+        self.textInsertion = textInsertion
+    }
+
+    // MARK: - Show / Hide
+
+    /// Show the transcribe overlay
+    /// - Parameters:
+    ///   - mode: Toggle or push-to-talk mode
+    ///   - context: Pre-captured context from hotkey callback
+    func show(mode: TranscribeMode, context: HotkeyContext) {
+        guard overlayWindow == nil else {
+            // Already showing, just update
+            viewModel?.setPreCapturedContext(context)
+            return
+        }
+
+        currentMode = mode
+
+        // Create view model
+        let vm = MacTranscribeOverlayViewModel(
+            settings: settings,
+            audioRecorder: audioRecorder
+        )
+
+        if let factory = providerFactory, let insertion = textInsertion {
+            vm.setDependencies(providerFactory: factory, textInsertion: insertion)
+        }
+
+        vm.mode = mode
+        vm.setPreCapturedContext(context)
+        viewModel = vm
+
+        // Create overlay view
+        let overlayView = MacTranscribeOverlayView(
+            viewModel: vm,
+            onClose: { [weak self] in
+                self?.hide()
+            },
+            onFinish: { [weak self] in
+                self?.finishAndClose()
+            }
+        )
+
+        // Create window
+        let window = createOverlayWindow()
+        overlayWindow = window
+
+        // Create hosting view
+        let hosting = NSHostingView(rootView: AnyView(overlayView))
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        hostingView = hosting
+
+        window.contentView = hosting
+
+        // Position window in center of screen
+        positionWindow(window)
+
+        // Show window and ensure it can receive keyboard events
+        window.makeKeyAndOrderFront(nil)
+        window.level = .floating
+
+        // Force the app to become active so we can receive keyboard events
+        NSApp.activate(ignoringOtherApps: true)
+
+        // Ensure window is first responder
+        window.makeFirstResponder(hosting)
+
+        // Setup keyboard monitoring
+        setupKeyboardMonitor()
+
+        macLog("Transcribe overlay window shown, isKey: \(window.isKeyWindow)", category: "Transcribe")
+
+        // Start recording automatically
+        Task {
+            await vm.startRecording()
+        }
+
+        macLog("Transcribe overlay shown (mode: \(mode))", category: "Transcribe")
+    }
+
+    /// Hide the overlay
+    func hide() {
+        // Cancel any ongoing recording
+        viewModel?.cancelRecording()
+
+        cleanupAndClose()
+    }
+
+    /// Finish transcription and close
+    private func finishAndClose() {
+        cleanupAndClose()
+    }
+
+    private func cleanupAndClose() {
+        // Remove keyboard monitors
+        if let monitor = localMonitor {
+            NSEvent.removeMonitor(monitor)
+            localMonitor = nil
+        }
+        if let monitor = globalMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalMonitor = nil
+        }
+
+        // Close window
+        overlayWindow?.close()
+        overlayWindow = nil
+        hostingView = nil
+        viewModel = nil
+
+        onClose?()
+        macLog("Transcribe overlay closed", category: "Transcribe")
+    }
+
+    // MARK: - Push-to-Talk Release
+
+    /// Called when push-to-talk hotkey is released
+    func onPushToTalkReleased() {
+        guard currentMode == .pushToTalk,
+              let vm = viewModel,
+              vm.state == .recording else {
+            return
+        }
+
+        Task { @MainActor in
+            // Stop recording and process
+            await vm.stopRecording()
+
+            // Wait for processing to complete, then execute context's enter behavior
+            // The viewModel will handle this based on enterKeyBehavior
+        }
+    }
+
+    // MARK: - Window Creation
+
+    private func createOverlayWindow() -> NSWindow {
+        let window = KeyableWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+
+        window.backgroundColor = .clear
+        window.isOpaque = false
+        window.hasShadow = true
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        window.ignoresMouseEvents = false
+        window.acceptsMouseMovedEvents = true
+
+        return window
+    }
+
+    private func positionWindow(_ window: NSWindow) {
+        guard let screen = NSScreen.main else { return }
+
+        let screenFrame = screen.visibleFrame
+        let windowSize = window.frame.size
+
+        // Center horizontally, position in upper third of screen
+        let x = screenFrame.midX - windowSize.width / 2
+        let y = screenFrame.maxY - screenFrame.height * 0.3 - windowSize.height / 2
+
+        window.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    // MARK: - Keyboard Handling
+
+    private func setupKeyboardMonitor() {
+        // Use both local and global monitors to ensure keyboard events are captured
+        // Local monitor for when window is key, global for accessory mode backup
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            return self?.handleKeyDown(event) ?? event
+        }
+
+        // Also add a global monitor as fallback for accessory mode apps
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            _ = self?.handleKeyDown(event)
+        }
+    }
+
+    /// Global event monitor for accessory mode
+    private var globalMonitor: Any?
+
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        guard isVisible, let vm = viewModel else {
+            macLog("Key ignored - overlay not visible or no viewModel", category: "Transcribe", level: .debug)
+            return event
+        }
+
+        let keyCode = event.keyCode
+        // Check for meaningful modifiers (ignore Caps Lock, Fn, etc.)
+        let meaningfulModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        let hasModifiers = !event.modifierFlags.intersection(meaningfulModifiers).isEmpty
+
+        macLog("Key pressed: \(keyCode), hasModifiers: \(hasModifiers)", category: "Transcribe", level: .debug)
+
+        // T (keyCode 17) - Toggle translation (no meaningful modifiers)
+        if keyCode == 17 && !hasModifiers {
+            macLog("T pressed - toggling translation", category: "Transcribe")
+            vm.toggleTranslation()
+            return nil
+        }
+
+        // C (keyCode 8) - Cycle context (no meaningful modifiers)
+        if keyCode == 8 && !hasModifiers {
+            macLog("C pressed - cycling context", category: "Transcribe")
+            vm.cycleToNextContext()
+            return nil
+        }
+
+        // Enter (keyCode 36) - Finish and execute enter behavior
+        if keyCode == 36 {
+            macLog("Enter pressed - state: \(vm.state)", category: "Transcribe")
+            if vm.state == .recording {
+                Task {
+                    await vm.stopRecording()
+                }
+            } else if vm.state == .complete {
+                Task {
+                    await vm.insertText()
+                    finishAndClose()
+                }
+            }
+            return nil
+        }
+
+        // Escape (keyCode 53) - Cancel
+        if keyCode == 53 {
+            macLog("Escape pressed - canceling", category: "Transcribe")
+            hide()
+            return nil
+        }
+
+        return event
+    }
+}
