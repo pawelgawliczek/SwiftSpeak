@@ -284,13 +284,13 @@ class MacSettings: ObservableObject {
         }
     }
 
-    @Published var playSoundOnRecordStart: Bool = true {
+    @Published var playSoundOnRecordStart: Bool = false {
         didSet {
             defaults?.set(playSoundOnRecordStart, forKey: "playSoundOnRecordStart")
         }
     }
 
-    @Published var playSoundOnRecordEnd: Bool = true {
+    @Published var playSoundOnRecordEnd: Bool = false {
         didSet {
             defaults?.set(playSoundOnRecordEnd, forKey: "playSoundOnRecordEnd")
         }
@@ -688,10 +688,10 @@ class MacSettings: ObservableObject {
             autoReturnEnabled = defaults?.bool(forKey: "autoReturnEnabled") ?? true
         }
         if defaults?.object(forKey: "playSoundOnRecordStart") != nil {
-            playSoundOnRecordStart = defaults?.bool(forKey: "playSoundOnRecordStart") ?? true
+            playSoundOnRecordStart = defaults?.bool(forKey: "playSoundOnRecordStart") ?? false
         }
         if defaults?.object(forKey: "playSoundOnRecordEnd") != nil {
-            playSoundOnRecordEnd = defaults?.bool(forKey: "playSoundOnRecordEnd") ?? true
+            playSoundOnRecordEnd = defaults?.bool(forKey: "playSoundOnRecordEnd") ?? false
         }
 
         // Load security & privacy settings
