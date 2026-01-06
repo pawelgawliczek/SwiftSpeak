@@ -887,7 +887,9 @@ struct MacHistoryDetailView: View {
                 VStack(spacing: 10) {
                     MacCostDetailRow(icon: "waveform", label: "Transcription", cost: breakdown.transcriptionCost)
 
-                    if record.mode != .raw {
+                    // Show formatting cost if formatting was applied (mode != raw OR formattingCost > 0 OR has formatting step)
+                    let hasFormattingStep = record.processingMetadata?.steps.contains { $0.stepType == .formatting } ?? false
+                    if record.mode != .raw || breakdown.formattingCost > 0 || hasFormattingStep {
                         MacCostDetailRow(
                             icon: "text.alignleft",
                             label: "Formatting",

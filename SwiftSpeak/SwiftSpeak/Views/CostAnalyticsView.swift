@@ -475,9 +475,11 @@ struct CostAnalyticsView: View {
     private var filteredTotalCost: Double {
         switch selectedCategory {
         case .all:
-            return filteredRecords.compactMap { $0.estimatedCost }.reduce(0, +)
+            return filteredRecords.map { $0.costBreakdown?.total ?? $0.estimatedCost ?? 0 }.reduce(0, +)
         case .transcription:
             return transcriptionCost
+        case .formatting:
+            return formattingCost
         case .powerMode:
             return powerModeCost
         case .translation:
@@ -505,8 +507,12 @@ struct CostAnalyticsView: View {
         filteredRecords.compactMap { $0.costBreakdown?.transcriptionCost }.reduce(0, +)
     }
 
-    private var powerModeCost: Double {
+    private var formattingCost: Double {
         filteredRecords.compactMap { $0.costBreakdown?.formattingCost }.reduce(0, +)
+    }
+
+    private var powerModeCost: Double {
+        filteredRecords.compactMap { $0.costBreakdown?.powerModeCost }.reduce(0, +)
     }
 
     private var translationCost: Double {
@@ -532,11 +538,13 @@ struct CostAnalyticsView: View {
             let cost: Double
             switch selectedCategory {
             case .all:
-                cost = record.estimatedCost ?? 0
+                cost = record.costBreakdown?.total ?? record.estimatedCost ?? 0
             case .transcription:
                 cost = record.costBreakdown?.transcriptionCost ?? 0
-            case .powerMode:
+            case .formatting:
                 cost = record.costBreakdown?.formattingCost ?? 0
+            case .powerMode:
+                cost = record.costBreakdown?.powerModeCost ?? 0
             case .translation:
                 cost = record.costBreakdown?.translationCost ?? 0
             case .prediction:
@@ -607,11 +615,13 @@ struct CostAnalyticsView: View {
             let cost: Double
             switch selectedCategory {
             case .all:
-                cost = record.estimatedCost ?? 0
+                cost = record.costBreakdown?.total ?? record.estimatedCost ?? 0
             case .transcription:
                 cost = record.costBreakdown?.transcriptionCost ?? 0
-            case .powerMode:
+            case .formatting:
                 cost = record.costBreakdown?.formattingCost ?? 0
+            case .powerMode:
+                cost = record.costBreakdown?.powerModeCost ?? 0
             case .translation:
                 cost = record.costBreakdown?.translationCost ?? 0
             case .prediction:
@@ -639,6 +649,7 @@ struct CostAnalyticsView: View {
     private var categoryCostData: [CategoryCostItem] {
         [
             CategoryCostItem(category: "Transcription", cost: transcriptionCost, color: .blue),
+            CategoryCostItem(category: "Formatting", cost: formattingCost, color: .green),
             CategoryCostItem(category: "Power Mode", cost: powerModeCost, color: .orange),
             CategoryCostItem(category: "Translation", cost: translationCost, color: .purple),
             CategoryCostItem(category: "Prediction", cost: predictionCost, color: .pink)
@@ -733,6 +744,7 @@ enum AnalyticsPeriod: String, CaseIterable, Identifiable {
 enum AnalyticsCategory: String, CaseIterable, Identifiable {
     case all
     case transcription
+    case formatting
     case powerMode
     case translation
     case prediction
@@ -743,6 +755,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
         switch self {
         case .all: return "All"
         case .transcription: return "Transcription"
+        case .formatting: return "Formatting"
         case .powerMode: return "Power Mode"
         case .translation: return "Translation"
         case .prediction: return "Prediction"
@@ -753,6 +766,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
         switch self {
         case .all: return "square.grid.2x2"
         case .transcription: return "waveform"
+        case .formatting: return "text.alignleft"
         case .powerMode: return "bolt.fill"
         case .translation: return "globe"
         case .prediction: return "sparkles"
@@ -763,6 +777,7 @@ enum AnalyticsCategory: String, CaseIterable, Identifiable {
         switch self {
         case .all: return .primary
         case .transcription: return .blue
+        case .formatting: return .green
         case .powerMode: return .orange
         case .translation: return .purple
         case .prediction: return .pink

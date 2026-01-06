@@ -284,6 +284,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     // MARK: - Processing
 
+    /// Result of formatting operation
+    private struct FormattingResult {
+        let text: String
+        let prompt: String
+        let startTime: Date
+        let endTime: Date
+    }
+
     private func processRecording(audioURL: URL) async {
         guard let factory = providerFactory else {
             errorMessage = "Provider factory not configured"
@@ -292,6 +300,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
 
         state = .transcribing
+        var processingSteps: [ProcessingStepInfo] = []
+        let overallStartTime = Date()
 
         do {
             // Get transcription provider
@@ -322,23 +332,60 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             // Transcribe audio with language and vocabulary hints
             macLog("Transcribing with language: \(inputLanguage?.displayName ?? "auto-detect")", category: "Transcribe")
 
+            let transcriptionStartTime = Date()
             var transcribedText = try await transcriptionProvider.transcribe(
                 audioURL: audioURL,
                 language: inputLanguage,
                 promptHint: promptContext.buildTranscriptionHint()
             )
+            let transcriptionEndTime = Date()
 
             // Apply vocabulary corrections
             transcribedText = settings.applyVocabulary(to: transcribedText)
 
             self.transcribedText = transcribedText
+            let rawTranscription = transcribedText  // Store raw for history
             macLog("Transcription complete: \(transcribedText.prefix(100))...", category: "Transcribe")
 
+            // Create transcription processing step
+            let transcriptionStep = ProcessingStepInfo(
+                stepType: .transcription,
+                provider: selectedProvider,
+                modelName: selectedProvider.defaultTranscriptionModel,
+                startTime: transcriptionStartTime,
+                endTime: transcriptionEndTime,
+                cost: 0,  // Cost calculated separately
+                prompt: promptContext.buildTranscriptionHint()
+            )
+            processingSteps.append(transcriptionStep)
+
+            // Track if formatting was actually applied
+            var formattingResult: FormattingResult?
+
             // Apply formatting if context has formatting enabled
-            if activeContext?.hasFormatting == true {
+            let shouldFormat = activeContext?.hasFormatting == true
+            macLog("Context: \(activeContext?.name ?? "none"), hasFormatting: \(shouldFormat), examples: \(activeContext?.examples.count ?? 0), selectedInstructions: \(activeContext?.selectedInstructions ?? []), customInstructions: \(activeContext?.customInstructions?.prefix(50) ?? "")", category: "Transcribe")
+
+            if shouldFormat {
                 state = .formatting
-                transcribedText = try await formatTranscription(transcribedText)
-                self.transcribedText = transcribedText
+                formattingResult = try await formatTranscription(transcribedText)
+                if let result = formattingResult {
+                    transcribedText = result.text
+                    self.transcribedText = transcribedText
+
+                    // Create formatting processing step
+                    let formattingStep = ProcessingStepInfo(
+                        stepType: .formatting,
+                        provider: settings.selectedPowerModeProvider,
+                        modelName: settings.selectedPowerModeProvider.defaultLLMModel ?? "default",
+                        startTime: result.startTime,
+                        endTime: result.endTime,
+                        cost: 0,  // Cost calculated separately
+                        prompt: result.prompt
+                    )
+                    processingSteps.append(formattingStep)
+                    macLog("Formatting applied", category: "Transcribe")
+                }
             }
 
             // Translate if enabled
@@ -350,11 +397,22 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
             state = .complete
 
+            // Build processing metadata
+            let overallEndTime = Date()
+            let processingMetadata = ProcessingMetadata(
+                steps: processingSteps,
+                totalProcessingTime: overallEndTime.timeIntervalSince(overallStartTime),
+                sourceLanguageHint: inputLanguage,
+                vocabularyApplied: settings.vocabulary.isEmpty ? nil : settings.vocabulary.map { $0.recognizedWord }
+            )
+
             // Save to history
             saveToHistory(
-                rawText: transcribedText,
+                rawText: rawTranscription,
                 finalText: self.transcribedText,
-                wasTranslated: isTranslationEnabled
+                wasTranslated: isTranslationEnabled,
+                didFormat: formattingResult != nil,
+                processingMetadata: processingMetadata
             )
 
             // Execute the context's enter key behavior
@@ -367,19 +425,21 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
     }
 
-    private func formatTranscription(_ text: String) async throws -> String {
+    private func formatTranscription(_ text: String) async throws -> FormattingResult? {
         guard let factory = providerFactory,
               let context = activeContext,
               context.hasFormatting else {
-            return text
+            return nil
         }
+
+        let startTime = Date()
 
         do {
             // Use Power Mode provider for formatting
             guard let formattingProvider = factory.createFormattingProvider(
                 for: settings.selectedPowerModeProvider
             ) else {
-                return text
+                return nil
             }
 
             // Build prompt context
@@ -390,7 +450,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
             // Get the formatting prompt from context
             guard let formattingPrompt = promptContext.buildFormattingPrompt() else {
-                return text
+                return nil
             }
 
             let formatted = try await formattingProvider.format(
@@ -400,12 +460,19 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 context: promptContext
             )
 
+            let endTime = Date()
             macLog("Formatting complete", category: "Transcribe")
-            return formatted
+
+            return FormattingResult(
+                text: formatted,
+                prompt: formattingPrompt,
+                startTime: startTime,
+                endTime: endTime
+            )
         } catch {
             macLog("Formatting failed: \(error)", category: "Transcribe", level: .warning)
-            // Return original text if formatting fails
-            return text
+            // Return nil if formatting fails
+            return nil
         }
     }
 
@@ -622,17 +689,29 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     // MARK: - History
 
-    private func saveToHistory(rawText: String, finalText: String, wasTranslated: Bool) {
+    private func saveToHistory(
+        rawText: String,
+        finalText: String,
+        wasTranslated: Bool,
+        didFormat: Bool,
+        processingMetadata: ProcessingMetadata
+    ) {
         // Calculate cost breakdown using shared BaseCostCalculator
         let costCalculator = BaseCostCalculator()
         let transcriptionProvider = settings.selectedTranscriptionProvider
         let translationProvider = wasTranslated ? settings.selectedTranslationProvider : nil
 
+        // Use didFormat flag (actual formatting happened) instead of hasFormatting (would formatting happen)
+        let formattingProvider = didFormat ? settings.selectedPowerModeProvider : nil
+        let formattingModel = didFormat ? settings.selectedPowerModeProvider.defaultLLMModel : nil
+
+        macLog("Saving to history - didFormat: \(didFormat), formattingProvider: \(formattingProvider?.displayName ?? "none"), formattingModel: \(formattingModel ?? "none")", category: "Transcribe")
+
         let costBreakdown = costCalculator.calculateCostBreakdown(
             transcriptionProvider: transcriptionProvider,
             transcriptionModel: transcriptionProvider.defaultTranscriptionModel,
-            formattingProvider: activeContext?.hasFormatting == true ? settings.selectedPowerModeProvider : nil,
-            formattingModel: activeContext?.hasFormatting == true ? settings.selectedPowerModeProvider.defaultLLMModel : nil,
+            formattingProvider: formattingProvider,
+            formattingModel: formattingModel,
             translationProvider: translationProvider,
             translationModel: translationProvider?.defaultLLMModel,
             durationSeconds: recordingDuration,
@@ -640,10 +719,13 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             text: finalText
         )
 
+        macLog("Cost breakdown - transcription: $\(String(format: "%.6f", costBreakdown.transcriptionCost)), formatting: $\(String(format: "%.6f", costBreakdown.formattingCost)), total: $\(String(format: "%.6f", costBreakdown.total))", category: "Transcribe")
+        macLog("Processing steps: \(processingMetadata.steps.map { "\($0.stepType.displayName) (\($0.provider.displayName))" })", category: "Transcribe")
+
         let record = TranscriptionRecord(
             rawTranscribedText: rawText,
             text: finalText,
-            mode: FormattingMode.raw,
+            mode: didFormat ? .formal : .raw,  // Set mode based on whether formatting was applied
             provider: transcriptionProvider,
             duration: recordingDuration,
             translated: wasTranslated,
@@ -652,6 +734,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             contextName: activeContext?.name,
             contextIcon: activeContext?.icon,
             costBreakdown: costBreakdown,
+            processingMetadata: processingMetadata,
             source: .app,
             globalMemoryEnabled: settings.globalMemoryEnabled,
             contextMemoryEnabled: activeContext?.useContextMemory ?? false
