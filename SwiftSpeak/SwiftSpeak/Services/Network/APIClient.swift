@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Generic HTTP client for API calls
 /// Handles JSON requests, multipart uploads, and error handling

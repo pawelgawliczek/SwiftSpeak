@@ -7,6 +7,7 @@
 
 import Foundation
 import Testing
+import SwiftSpeakCore
 @testable import SwiftSpeak
 
 // MARK: - Memory Update Interval Tests

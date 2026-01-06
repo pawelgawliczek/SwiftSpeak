@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// A blur overlay that blocks access to premium features
 /// Shows a lock icon, feature name, and upgrade call-to-action

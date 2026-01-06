@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct KeyboardPreviewView: View {
     @EnvironmentObject var settings: SharedSettings

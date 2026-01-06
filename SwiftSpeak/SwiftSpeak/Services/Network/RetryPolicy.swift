@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Configuration for retry behavior
 struct RetryPolicy: Codable, Equatable {

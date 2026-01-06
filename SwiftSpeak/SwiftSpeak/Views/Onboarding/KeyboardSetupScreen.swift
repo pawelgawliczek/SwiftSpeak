@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct KeyboardSetupScreen: View {
     @Binding var isKeyboardEnabled: Bool

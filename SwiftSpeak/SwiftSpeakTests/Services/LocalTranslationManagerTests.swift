@@ -8,6 +8,7 @@
 //  Note: These tests require iOS 18.0+ and will skip on older versions
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 

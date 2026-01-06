@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct KnowledgeBaseView: View {
     let powerMode: PowerMode

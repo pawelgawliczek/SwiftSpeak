@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 
@@ -82,7 +83,7 @@ struct GoogleSTTServiceTests {
     // MARK: - Provider Config Initialization
 
     @Test func serviceInitializesFromProviderConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: "test-api-key",
             usageCategories: [.transcription],
@@ -98,7 +99,7 @@ struct GoogleSTTServiceTests {
     }
 
     @Test func serviceReturnsNilForNonGoogleConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "test-api-key",
             usageCategories: [.transcription],
@@ -111,7 +112,7 @@ struct GoogleSTTServiceTests {
     }
 
     @Test func serviceReturnsNilForEmptyApiKey() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: "",
             usageCategories: [.transcription],
@@ -124,7 +125,7 @@ struct GoogleSTTServiceTests {
     }
 
     @Test func serviceReturnsNilForMissingProjectId() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: "test-api-key",
             usageCategories: [.transcription],
@@ -137,7 +138,7 @@ struct GoogleSTTServiceTests {
     }
 
     @Test func serviceReturnsNilForEmptyProjectId() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: "test-api-key",
             usageCategories: [.transcription],
@@ -150,7 +151,7 @@ struct GoogleSTTServiceTests {
     }
 
     @Test func serviceUsesDefaultModelWhenNotSpecified() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: "test-api-key",
             usageCategories: [.transcription],
@@ -217,7 +218,7 @@ struct GoogleSTTServiceTests {
 struct GoogleSTTLanguageCodeTests {
 
     @Test func allLanguagesHaveGoogleSTTCodes() {
-        for language in SwiftSpeak.Language.allCases {
+        for language in Language.allCases {
             let code = language.googleSTTCode
             #expect(!code.isEmpty)
         }
@@ -225,7 +226,7 @@ struct GoogleSTTLanguageCodeTests {
 
     @Test func languageCodesFollowBCP47Format() {
         // BCP-47 codes should be in format "xx-YY" (language-REGION)
-        for language in SwiftSpeak.Language.allCases {
+        for language in Language.allCases {
             let code = language.googleSTTCode
             let components = code.split(separator: "-")
 
@@ -239,25 +240,25 @@ struct GoogleSTTLanguageCodeTests {
     }
 
     @Test func specificLanguageCodesAreCorrect() {
-        #expect(SwiftSpeak.Language.english.googleSTTCode == "en-US")
-        #expect(SwiftSpeak.Language.spanish.googleSTTCode == "es-ES")
-        #expect(SwiftSpeak.Language.french.googleSTTCode == "fr-FR")
-        #expect(SwiftSpeak.Language.german.googleSTTCode == "de-DE")
-        #expect(SwiftSpeak.Language.italian.googleSTTCode == "it-IT")
-        #expect(SwiftSpeak.Language.portuguese.googleSTTCode == "pt-BR")
-        #expect(SwiftSpeak.Language.chinese.googleSTTCode == "zh-CN")
-        #expect(SwiftSpeak.Language.japanese.googleSTTCode == "ja-JP")
-        #expect(SwiftSpeak.Language.korean.googleSTTCode == "ko-KR")
-        #expect(SwiftSpeak.Language.arabic.googleSTTCode == "ar-SA")
-        #expect(SwiftSpeak.Language.egyptianArabic.googleSTTCode == "ar-EG")
-        #expect(SwiftSpeak.Language.russian.googleSTTCode == "ru-RU")
-        #expect(SwiftSpeak.Language.polish.googleSTTCode == "pl-PL")
+        #expect(Language.english.googleSTTCode == "en-US")
+        #expect(Language.spanish.googleSTTCode == "es-ES")
+        #expect(Language.french.googleSTTCode == "fr-FR")
+        #expect(Language.german.googleSTTCode == "de-DE")
+        #expect(Language.italian.googleSTTCode == "it-IT")
+        #expect(Language.portuguese.googleSTTCode == "pt-BR")
+        #expect(Language.chinese.googleSTTCode == "zh-CN")
+        #expect(Language.japanese.googleSTTCode == "ja-JP")
+        #expect(Language.korean.googleSTTCode == "ko-KR")
+        #expect(Language.arabic.googleSTTCode == "ar-SA")
+        #expect(Language.egyptianArabic.googleSTTCode == "ar-EG")
+        #expect(Language.russian.googleSTTCode == "ru-RU")
+        #expect(Language.polish.googleSTTCode == "pl-PL")
     }
 
     @Test func egyptianArabicHasUniqueCode() {
         // Egyptian Arabic should have its own code (ar-EG), not just ar-SA
-        let arabicCode = SwiftSpeak.Language.arabic.googleSTTCode
-        let egyptianCode = SwiftSpeak.Language.egyptianArabic.googleSTTCode
+        let arabicCode = Language.arabic.googleSTTCode
+        let egyptianCode = Language.egyptianArabic.googleSTTCode
 
         #expect(arabicCode != egyptianCode)
         #expect(egyptianCode == "ar-EG")
@@ -271,7 +272,7 @@ struct GoogleSTTModelTests {
 
     @Test func availableModelsIncludesAllExpectedModels() {
         let expectedModels = ["long", "short", "telephony", "medical_dictation", "medical_conversation"]
-        let availableModels = SwiftSpeak.AIProvider.google.availableSTTModels
+        let availableModels = AIProvider.google.availableSTTModels
 
         for model in expectedModels {
             #expect(availableModels.contains(model), "Missing model: \(model)")
@@ -279,13 +280,13 @@ struct GoogleSTTModelTests {
     }
 
     @Test func defaultModelIsLong() {
-        let defaultModel = SwiftSpeak.AIProvider.google.defaultSTTModel
+        let defaultModel = AIProvider.google.defaultSTTModel
 
         #expect(defaultModel == "long")
     }
 
     @Test func googleSupportsTranscription() {
-        #expect(SwiftSpeak.AIProvider.google.supportsTranscription == true)
+        #expect(AIProvider.google.supportsTranscription == true)
     }
 }
 
@@ -385,7 +386,7 @@ struct GoogleSTTIntegrationTests {
         #expect(service.isConfigured)
 
         // Verify service can be created with different language hints
-        let languages: [SwiftSpeak.Language] = [
+        let languages: [Language] = [
             .english, .spanish, .french, .german,
             .italian, .portuguese, .chinese, .japanese
         ]

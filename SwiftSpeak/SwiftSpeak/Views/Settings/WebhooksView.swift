@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct WebhooksView: View {
     @EnvironmentObject private var settings: SharedSettings

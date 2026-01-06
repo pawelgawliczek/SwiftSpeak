@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 import LocalAuthentication
 
 /// View displayed when access to a protected section requires authentication

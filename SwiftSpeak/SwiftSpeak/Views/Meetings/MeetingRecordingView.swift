@@ -135,7 +135,7 @@ struct MeetingRecordingView: View {
 
     private var barGradient: LinearGradient {
         LinearGradient(
-            colors: [AppTheme.primaryColor, AppTheme.primaryColor.opacity(0.6)],
+            colors: [AppTheme.accent, AppTheme.accent.opacity(0.6)],
             startPoint: .bottom,
             endPoint: .top
         )
@@ -266,7 +266,7 @@ struct MeetingRecordingView: View {
     // MARK: - Actions
 
     private func handleMainButtonTap() {
-        HapticManager.impact(style: .medium)
+        HapticManager.mediumTap()
 
         Task {
             if orchestrator.isRecording {
@@ -275,7 +275,7 @@ struct MeetingRecordingView: View {
                 do {
                     try await orchestrator.startRecording()
                 } catch {
-                    appLog("Failed to start meeting recording: \(error)", level: .error, category: "Meeting")
+                    appLog("Failed to start meeting recording: \(error)", category: "Meeting", level: .error)
                 }
             } else if case .error = orchestrator.state {
                 orchestrator.reset()
@@ -447,7 +447,7 @@ struct MeetingResultView: View {
                 }
             }
             .sheet(isPresented: $showingShareSheet) {
-                ShareSheet(items: [shareText])
+                MeetingShareSheet(items: [shareText])
             }
         }
     }
@@ -524,7 +524,7 @@ struct MeetingResultView: View {
 
 // MARK: - Share Sheet
 
-struct ShareSheet: UIViewControllerRepresentable {
+private struct MeetingShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
@@ -538,5 +538,5 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 #Preview {
     MeetingRecordingView()
-        .environmentObject(SharedSettings())
+        .environmentObject(SharedSettings.shared)
 }

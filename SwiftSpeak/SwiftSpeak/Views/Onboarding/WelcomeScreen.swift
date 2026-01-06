@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct WelcomeScreen: View {
     let onContinue: () -> Void

@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 @testable import SwiftSpeak
 
 // MARK: - Transcription Provider Creation Tests

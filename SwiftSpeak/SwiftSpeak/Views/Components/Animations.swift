@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Pulse Animation
 /// A pulsing circle that expands and fades out repeatedly

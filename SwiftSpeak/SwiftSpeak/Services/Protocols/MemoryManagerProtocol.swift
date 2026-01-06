@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Protocol for memory management operations
 /// Enables dependency injection and testing

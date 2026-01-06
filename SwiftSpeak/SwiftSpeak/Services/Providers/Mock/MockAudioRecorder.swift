@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import SwiftSpeakCore
 
 /// Mock audio recorder for unit testing
 /// Simulates recording behavior without actual audio capture

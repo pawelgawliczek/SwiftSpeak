@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct LocalModelStorageView: View {
     @EnvironmentObject var settings: SharedSettings

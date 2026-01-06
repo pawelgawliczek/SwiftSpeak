@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct OnboardingView: View {
     @StateObject private var settings = SharedSettings.shared

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Circuit breaker pattern for webhook execution
 /// Automatically skips webhooks that are failing or timing out

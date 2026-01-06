@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct HistoryView: View {
     @EnvironmentObject var settings: SharedSettings

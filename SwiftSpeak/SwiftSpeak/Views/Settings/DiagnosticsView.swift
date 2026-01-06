@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct DiagnosticsView: View {
     @Environment(\.colorScheme) var colorScheme

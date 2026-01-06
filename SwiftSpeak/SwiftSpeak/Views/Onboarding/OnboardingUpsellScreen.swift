@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct OnboardingUpsellScreen: View {
     let onStartTrial: () -> Void

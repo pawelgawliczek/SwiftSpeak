@@ -9,6 +9,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import SwiftSpeakCore
 
 /// Audio recorder optimized for streaming transcription
 /// Captures raw PCM16 audio and provides chunks via callback

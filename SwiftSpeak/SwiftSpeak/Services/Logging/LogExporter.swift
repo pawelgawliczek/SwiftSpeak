@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import UIKit
 
 /// Exports logs for customer support

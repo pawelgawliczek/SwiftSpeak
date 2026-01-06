@@ -7,6 +7,7 @@
 
 import AVFoundation
 import SwiftUI
+import SwiftSpeakCore
 
 struct AllSetScreen: View {
     let onComplete: () -> Void

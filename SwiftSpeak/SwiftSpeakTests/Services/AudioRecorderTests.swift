@@ -8,6 +8,7 @@
 import Combine
 import Foundation
 import Testing
+import SwiftSpeakCore
 @testable import SwiftSpeak
 
 // MARK: - AudioRecorder Initialization Tests

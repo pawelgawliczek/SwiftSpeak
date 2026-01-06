@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Types of permissions the app may need
 enum PermissionType: String, CaseIterable, Sendable {

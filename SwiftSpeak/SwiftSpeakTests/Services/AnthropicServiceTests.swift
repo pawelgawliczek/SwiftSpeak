@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 
@@ -43,7 +44,7 @@ struct AnthropicServiceTests {
     // MARK: - Initialization from Config
 
     @Test func initializesFromValidConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .anthropic,
             apiKey: "test-key",
             powerModeModel: "claude-3-opus-latest"
@@ -55,7 +56,7 @@ struct AnthropicServiceTests {
     }
 
     @Test func failsToInitializeFromWrongProvider() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "test-key"
         )
@@ -65,7 +66,7 @@ struct AnthropicServiceTests {
     }
 
     @Test func failsToInitializeFromEmptyApiKey() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .anthropic,
             apiKey: ""
         )
@@ -75,7 +76,7 @@ struct AnthropicServiceTests {
     }
 
     @Test func usesDefaultModelWhenNotSpecifiedInConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .anthropic,
             apiKey: "test-key"
         )

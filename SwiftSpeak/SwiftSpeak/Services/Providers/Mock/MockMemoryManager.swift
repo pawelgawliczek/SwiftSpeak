@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Mock memory manager for unit testing
 /// Provides controllable responses for memory operations

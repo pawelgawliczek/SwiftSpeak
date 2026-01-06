@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct PowerModeDetailView: View {
     let powerMode: PowerMode

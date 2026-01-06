@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Webhook Executor
 

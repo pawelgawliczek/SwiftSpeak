@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Unified Icon Picker (supports both SF Symbols and emojis)
 

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Power Mode List View (Standalone wrapper)
 

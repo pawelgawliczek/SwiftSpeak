@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// A section for editing app assignments in Context or PowerMode editors
 struct AppAssignmentSection: View {

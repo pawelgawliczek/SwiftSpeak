@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Sanitizes user input to prevent prompt injection attacks
 /// Apply at all injection points: vocabulary, context instructions, webhook data, RAG chunks

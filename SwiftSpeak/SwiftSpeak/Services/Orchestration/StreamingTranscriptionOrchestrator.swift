@@ -116,9 +116,10 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
         appLog("StreamingOrch.startStreaming: settings.activeContext='\(settings.activeContext?.name ?? "nil")'", category: "Context", level: .debug)
 
         let promptContext = PromptContext.from(
-            settings: settings,
             context: settings.activeContext,
-            powerMode: nil
+            powerMode: nil,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
         )
         let transcriptionPrompt = promptContext.buildTranscriptionHint()
 

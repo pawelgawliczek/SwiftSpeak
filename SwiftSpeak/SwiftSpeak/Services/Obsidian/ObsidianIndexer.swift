@@ -21,57 +21,23 @@ private func indexerLog(_ message: String) {
 
 // MARK: - Indexing Errors
 
-enum ObsidianIndexerError: Error, LocalizedError {
-    case vaultNotFound(String)
-    case notObsidianVault(String)
-    case noMarkdownFiles
+// Uses ObsidianIndexerError from SwiftSpeakCore
+
+/// Additional error case for iOS (cancellation not in core)
+enum LocalObsidianIndexerError: Error, LocalizedError {
     case indexingCancelled
-    case embeddingFailed(String)
 
     var errorDescription: String? {
         switch self {
-        case .vaultNotFound(let path):
-            return "Vault folder not found: \(path)"
-        case .notObsidianVault(let path):
-            return "Not a valid Obsidian vault (missing .obsidian folder): \(path)"
-        case .noMarkdownFiles:
-            return "No markdown files found in vault"
         case .indexingCancelled:
             return "Indexing was cancelled"
-        case .embeddingFailed(let message):
-            return "Failed to generate embeddings: \(message)"
         }
     }
 }
 
 // MARK: - Indexing Progress
 
-/// Progress updates during indexing
-struct ObsidianIndexingProgress {
-    let phase: IndexingPhase
-    let currentNote: String?
-    let notesProcessed: Int
-    let totalNotes: Int
-    let chunksGenerated: Int
-    let estimatedCost: Double
-
-    enum IndexingPhase: String {
-        case scanning = "Scanning vault..."
-        case parsing = "Parsing notes..."
-        case chunking = "Chunking content..."
-        case embedding = "Generating embeddings..."
-        case complete = "Complete"
-        case error = "Error"
-    }
-
-    /// Error message (only set when phase == .error)
-    var errorMessage: String?
-
-    var progress: Double {
-        guard totalNotes > 0 else { return 0 }
-        return Double(notesProcessed) / Double(totalNotes)
-    }
-}
+// Uses ObsidianIndexingProgress from SwiftSpeakCore
 
 // MARK: - Obsidian Indexer
 
@@ -279,7 +245,7 @@ final class ObsidianIndexer {
         // Phase 2-3: Parse and chunk each note
         for (index, fileURL) in markdownFiles.enumerated() {
             if isCancelled {
-                throw ObsidianIndexerError.indexingCancelled
+                throw LocalObsidianIndexerError.indexingCancelled
             }
 
             let relativePath = fileURL.path.replacingOccurrences(of: path + "/", with: "")
@@ -497,7 +463,7 @@ final class ObsidianIndexer {
                     // Process each changed file
                     for (index, relativePath) in changedPaths.enumerated() {
                         if isCancelled {
-                            throw ObsidianIndexerError.indexingCancelled
+                            throw LocalObsidianIndexerError.indexingCancelled
                         }
 
                         let fullPath = (localPath as NSString).appendingPathComponent(relativePath)

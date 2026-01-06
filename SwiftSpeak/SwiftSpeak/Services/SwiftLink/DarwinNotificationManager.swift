@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Manager for Darwin notifications - enables IPC between app and keyboard extension.
 /// Darwin notifications are system-wide and can be observed across processes.

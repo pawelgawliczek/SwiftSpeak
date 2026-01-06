@@ -318,9 +318,10 @@ final class TranscriptionOrchestrator: ObservableObject {
     private func buildPromptContext() -> PromptContext {
         // Use the factory method on PromptContext
         return PromptContext.from(
-            settings: settings,
             context: activeContext,
-            powerMode: activePowerMode
+            powerMode: activePowerMode,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
         )
     }
 

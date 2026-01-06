@@ -1,4 +1,4 @@
- //
+//
 //  AppLibrary.swift
 //  SwiftSpeak
 //
@@ -9,9 +9,31 @@
 
 import Foundation
 import SwiftUI
+import SwiftSpeakCore
 
-// MARK: - App Category
+// NOTE: AppCategory is now defined in SwiftSpeakCore
 
+// Extension to add iOS-specific color property
+extension AppCategory {
+    var color: Color {
+        switch self {
+        case .messaging: return .green
+        case .email: return .blue
+        case .social: return .purple
+        case .work: return .orange
+        case .personal: return .pink
+        case .browser: return .cyan
+        case .notes: return .yellow
+        case .finance: return .mint
+        case .dating: return .red
+        case .gaming: return .indigo
+        case .other: return .gray
+        }
+    }
+}
+
+// MARK: - DELETED: App Category (now in SwiftSpeakCore)
+/*
 /// Categories for organizing apps and assigning contexts
 enum AppCategory: String, Codable, CaseIterable, Identifiable {
     case messaging = "messaging"
@@ -76,28 +98,10 @@ enum AppCategory: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
+*/
+// END DELETED: AppCategory
 
-// MARK: - App Info
-
-/// Information about a known app
-struct AppInfo: Codable, Identifiable, Equatable, Hashable {
-    let id: String                  // Bundle ID (e.g., "net.whatsapp.WhatsApp")
-    let name: String                // Display name (e.g., "WhatsApp")
-    let defaultCategory: AppCategory
-
-    init(bundleId: String, name: String, category: AppCategory) {
-        self.id = bundleId
-        self.name = name
-        self.defaultCategory = category
-    }
-
-    /// Search helper - matches name or bundle id
-    func matches(query: String) -> Bool {
-        let lowercased = query.lowercased()
-        return name.lowercased().contains(lowercased) ||
-               id.lowercased().contains(lowercased)
-    }
-}
+// NOTE: AppInfo is now defined in SwiftSpeakCore
 
 // MARK: - App Library
 
@@ -329,6 +333,9 @@ struct AppLibrary {
     }
 }
 
+// NOTE: UserAppCategoryOverride and AppAssignment are now defined in SwiftSpeakCore
+
+/* DELETED - Now in SwiftSpeakCore
 // MARK: - User App Category Override
 
 /// Stores user's custom category assignment for an app
@@ -410,3 +417,5 @@ struct AppAssignment: Codable, Equatable, Hashable {
 
     static let empty = AppAssignment()
 }
+*/
+// END DELETED: UserAppCategoryOverride and AppAssignment

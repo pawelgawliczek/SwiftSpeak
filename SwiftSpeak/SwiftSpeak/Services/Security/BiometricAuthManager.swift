@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import LocalAuthentication
 import Combine
 

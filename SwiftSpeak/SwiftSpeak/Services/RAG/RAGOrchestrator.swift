@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import Combine
 
 // MARK: - RAG Orchestrator Errors

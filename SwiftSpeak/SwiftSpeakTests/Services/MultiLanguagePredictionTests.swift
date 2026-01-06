@@ -10,6 +10,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 

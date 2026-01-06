@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct ContextEditorSheet: View {
     let context: ConversationContext

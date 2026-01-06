@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 @testable import SwiftSpeak
 
 // This file serves as the entry point for the test module.

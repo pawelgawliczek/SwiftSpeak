@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// A view wrapper that requires biometric authentication to access its content
 /// Uses session-based authentication - once authenticated, remains valid for 5 minutes

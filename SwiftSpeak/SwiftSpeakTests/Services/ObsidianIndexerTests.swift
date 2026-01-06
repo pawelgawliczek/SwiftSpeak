@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 
@@ -129,7 +130,7 @@ struct ObsidianIndexerTests {
         let vaultId = UUID()
         let progressStream = indexer.indexVault(at: tempDir.path, vaultId: vaultId)
 
-        var receivedPhases: [ObsidianIndexingProgress.IndexingPhase] = []
+        var receivedPhases: [ObsidianIndexingProgress.Phase] = []
 
         for await progress in progressStream {
             receivedPhases.append(progress.phase)

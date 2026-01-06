@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct SwipeablePowerModeCard: View {
     let powerMode: PowerMode

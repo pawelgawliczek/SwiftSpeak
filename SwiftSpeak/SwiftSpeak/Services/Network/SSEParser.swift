@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Represents a Server-Sent Event
 struct SSEEvent: Equatable, Sendable {

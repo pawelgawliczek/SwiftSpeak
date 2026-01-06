@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct PowerTabView: View {
     enum Tab: String, CaseIterable {

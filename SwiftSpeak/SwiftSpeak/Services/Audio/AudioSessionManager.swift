@@ -7,6 +7,7 @@
 
 import AVFoundation
 import Foundation
+import SwiftSpeakCore
 
 /// Manages AVAudioSession configuration for recording
 /// Handles permissions, interruptions, and audio session lifecycle

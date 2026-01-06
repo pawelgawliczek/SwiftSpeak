@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct KeyboardActionOverlay: View {
     @ObservedObject var handler: KeyboardActionHandler

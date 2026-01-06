@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 import AVFoundation
 @testable import SwiftSpeak

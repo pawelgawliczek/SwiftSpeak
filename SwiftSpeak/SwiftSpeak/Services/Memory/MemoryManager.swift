@@ -9,6 +9,7 @@
 
 import Combine
 import Foundation
+import SwiftSpeakCore
 
 /// Memory tier for targeting specific memory stores
 enum MemoryTierTarget {

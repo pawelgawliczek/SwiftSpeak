@@ -8,6 +8,7 @@
 
 import Foundation
 import Testing
+import SwiftSpeakCore
 @testable import SwiftSpeak
 
 // MARK: - Initialization Tests

@@ -114,19 +114,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Assets.xcassets,
-				Shared/AppLibrary.swift,
 				Shared/Models.swift,
-				Shared/Models/Cost.swift,
-				Shared/Models/Knowledge.swift,
-				Shared/Models/LocalProvider.swift,
-				Shared/Models/PendingAudio.swift,
-				Shared/Models/Processing.swift,
-				Shared/Models/ProviderSelection.swift,
-				Shared/Models/RAG.swift,
-				Shared/Models/Subscription.swift,
-				Shared/Models/Transcription.swift,
-				Shared/Models/Vocabulary.swift,
-				Shared/Models/Webhook.swift,
 				Shared/ProviderHelpContent.swift,
 				Shared/ProviderLanguageSupport.swift,
 			);

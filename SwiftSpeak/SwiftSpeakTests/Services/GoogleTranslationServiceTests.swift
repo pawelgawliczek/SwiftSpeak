@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 
@@ -24,7 +25,7 @@ struct GoogleTranslationServiceTests {
         #expect(service.providerId == .google)
         #expect(service.isConfigured == true)
         #expect(service.model == "translation-v2")
-        #expect(service.supportedLanguages.count == SwiftSpeak.Language.allCases.count)
+        #expect(service.supportedLanguages.count == Language.allCases.count)
     }
 
     @Test("Initialize with empty API key marks as not configured")
@@ -36,7 +37,7 @@ struct GoogleTranslationServiceTests {
 
     @Test("Initialize from provider config")
     func testInitFromConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: "test-api-key"
         )
@@ -49,7 +50,7 @@ struct GoogleTranslationServiceTests {
 
     @Test("Fail to initialize from wrong provider config")
     func testInitFromWrongProviderConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "test-api-key"
         )
@@ -61,7 +62,7 @@ struct GoogleTranslationServiceTests {
 
     @Test("Fail to initialize from config with empty API key")
     func testInitFromConfigWithEmptyKey() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .google,
             apiKey: ""
         )
@@ -75,19 +76,19 @@ struct GoogleTranslationServiceTests {
 
     @Test("Language googleCode extension returns lowercase codes")
     func testLanguageGoogleCodes() {
-        #expect(SwiftSpeak.Language.english.googleCode == "en")
-        #expect(SwiftSpeak.Language.spanish.googleCode == "es")
-        #expect(SwiftSpeak.Language.french.googleCode == "fr")
-        #expect(SwiftSpeak.Language.german.googleCode == "de")
-        #expect(SwiftSpeak.Language.italian.googleCode == "it")
-        #expect(SwiftSpeak.Language.portuguese.googleCode == "pt")
-        #expect(SwiftSpeak.Language.chinese.googleCode == "zh")
-        #expect(SwiftSpeak.Language.japanese.googleCode == "ja")
-        #expect(SwiftSpeak.Language.korean.googleCode == "ko")
-        #expect(SwiftSpeak.Language.arabic.googleCode == "ar")
-        #expect(SwiftSpeak.Language.egyptianArabic.googleCode == "ar") // Uses standard Arabic
-        #expect(SwiftSpeak.Language.russian.googleCode == "ru")
-        #expect(SwiftSpeak.Language.polish.googleCode == "pl")
+        #expect(Language.english.googleCode == "en")
+        #expect(Language.spanish.googleCode == "es")
+        #expect(Language.french.googleCode == "fr")
+        #expect(Language.german.googleCode == "de")
+        #expect(Language.italian.googleCode == "it")
+        #expect(Language.portuguese.googleCode == "pt")
+        #expect(Language.chinese.googleCode == "zh")
+        #expect(Language.japanese.googleCode == "ja")
+        #expect(Language.korean.googleCode == "ko")
+        #expect(Language.arabic.googleCode == "ar")
+        #expect(Language.egyptianArabic.googleCode == "ar") // Uses standard Arabic
+        #expect(Language.russian.googleCode == "ru")
+        #expect(Language.polish.googleCode == "pl")
     }
 
     // MARK: - Error Handling Tests
@@ -262,9 +263,9 @@ struct GoogleTranslationServiceTests {
     func testSupportedLanguages() {
         let service = GoogleTranslationService(apiKey: "test-api-key")
 
-        #expect(service.supportedLanguages.count == SwiftSpeak.Language.allCases.count)
+        #expect(service.supportedLanguages.count == Language.allCases.count)
 
-        for language in SwiftSpeak.Language.allCases {
+        for language in Language.allCases {
             #expect(service.supportedLanguages.contains(language))
         }
     }

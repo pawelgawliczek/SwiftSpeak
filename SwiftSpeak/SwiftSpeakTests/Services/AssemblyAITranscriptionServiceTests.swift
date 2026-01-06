@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 
@@ -43,7 +44,7 @@ struct AssemblyAITranscriptionServiceTests {
     // MARK: - Provider Config Initialization
 
     @Test func serviceInitializesFromProviderConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .assemblyAI,
             apiKey: "test-api-key",
             usageCategories: [.transcription],
@@ -58,7 +59,7 @@ struct AssemblyAITranscriptionServiceTests {
     }
 
     @Test func serviceReturnsNilForNonAssemblyAIConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "test-api-key",
             usageCategories: [.transcription]
@@ -70,7 +71,7 @@ struct AssemblyAITranscriptionServiceTests {
     }
 
     @Test func serviceReturnsNilForEmptyApiKey() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .assemblyAI,
             apiKey: "",
             usageCategories: [.transcription]
@@ -96,23 +97,23 @@ struct AssemblyAITranscriptionServiceTests {
 
     @Test func languageHasAssemblyAICode() {
         // Supported languages
-        #expect(SwiftSpeak.Language.english.assemblyAICode == "en")
-        #expect(SwiftSpeak.Language.spanish.assemblyAICode == "es")
-        #expect(SwiftSpeak.Language.french.assemblyAICode == "fr")
-        #expect(SwiftSpeak.Language.german.assemblyAICode == "de")
-        #expect(SwiftSpeak.Language.italian.assemblyAICode == "it")
-        #expect(SwiftSpeak.Language.portuguese.assemblyAICode == "pt")
-        #expect(SwiftSpeak.Language.chinese.assemblyAICode == "zh")
-        #expect(SwiftSpeak.Language.japanese.assemblyAICode == "ja")
-        #expect(SwiftSpeak.Language.korean.assemblyAICode == "ko")
-        #expect(SwiftSpeak.Language.russian.assemblyAICode == "ru")
-        #expect(SwiftSpeak.Language.polish.assemblyAICode == "pl")
+        #expect(Language.english.assemblyAICode == "en")
+        #expect(Language.spanish.assemblyAICode == "es")
+        #expect(Language.french.assemblyAICode == "fr")
+        #expect(Language.german.assemblyAICode == "de")
+        #expect(Language.italian.assemblyAICode == "it")
+        #expect(Language.portuguese.assemblyAICode == "pt")
+        #expect(Language.chinese.assemblyAICode == "zh")
+        #expect(Language.japanese.assemblyAICode == "ja")
+        #expect(Language.korean.assemblyAICode == "ko")
+        #expect(Language.russian.assemblyAICode == "ru")
+        #expect(Language.polish.assemblyAICode == "pl")
     }
 
     @Test func unsupportedLanguagesReturnNil() {
         // AssemblyAI doesn't support Arabic
-        #expect(SwiftSpeak.Language.arabic.assemblyAICode == nil)
-        #expect(SwiftSpeak.Language.egyptianArabic.assemblyAICode == nil)
+        #expect(Language.arabic.assemblyAICode == nil)
+        #expect(Language.egyptianArabic.assemblyAICode == nil)
     }
 
     // MARK: - Error Handling Tests
@@ -167,41 +168,41 @@ struct AssemblyAITranscriptionServiceTests {
 struct AssemblyAIModelTests {
 
     @Test func providerSupportsBestModel() {
-        let models = SwiftSpeak.AIProvider.assemblyAI.availableSTTModels
+        let models = AIProvider.assemblyAI.availableSTTModels
 
         #expect(models.contains("best"))
     }
 
     @Test func providerSupportsNanoModel() {
-        let models = SwiftSpeak.AIProvider.assemblyAI.availableSTTModels
+        let models = AIProvider.assemblyAI.availableSTTModels
 
         #expect(models.contains("nano"))
     }
 
     @Test func providerDefaultModelIsBest() {
-        let defaultModel = SwiftSpeak.AIProvider.assemblyAI.defaultSTTModel
+        let defaultModel = AIProvider.assemblyAI.defaultSTTModel
 
         #expect(defaultModel == "best")
     }
 
     @Test func providerSupportsTranscription() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.supportsTranscription == true)
+        #expect(AIProvider.assemblyAI.supportsTranscription == true)
     }
 
     @Test func providerDoesNotSupportTranslation() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.supportsTranslation == false)
+        #expect(AIProvider.assemblyAI.supportsTranslation == false)
     }
 
     @Test func providerDoesNotSupportPowerMode() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.supportsPowerMode == false)
+        #expect(AIProvider.assemblyAI.supportsPowerMode == false)
     }
 
     @Test func providerRequiresApiKey() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.requiresAPIKey == true)
+        #expect(AIProvider.assemblyAI.requiresAPIKey == true)
     }
 
     @Test func providerIsNotLocalProvider() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.isLocalProvider == false)
+        #expect(AIProvider.assemblyAI.isLocalProvider == false)
     }
 }
 
@@ -211,51 +212,51 @@ struct AssemblyAIModelTests {
 struct AssemblyAIProviderInfoTests {
 
     @Test func providerHasDisplayName() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.displayName == "AssemblyAI")
+        #expect(AIProvider.assemblyAI.displayName == "AssemblyAI")
     }
 
     @Test func providerHasShortName() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.shortName == "AssemblyAI")
+        #expect(AIProvider.assemblyAI.shortName == "AssemblyAI")
     }
 
     @Test func providerHasIcon() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.icon == "waveform.circle.fill")
+        #expect(AIProvider.assemblyAI.icon == "waveform.circle.fill")
     }
 
     @Test func providerHasDescription() {
-        let description = SwiftSpeak.AIProvider.assemblyAI.description
+        let description = AIProvider.assemblyAI.description
 
         #expect(!description.isEmpty)
         #expect(description.lowercased().contains("transcription"))
     }
 
     @Test func providerHasApiKeyHelpURL() {
-        let helpURL = SwiftSpeak.AIProvider.assemblyAI.apiKeyHelpURL
+        let helpURL = AIProvider.assemblyAI.apiKeyHelpURL
 
         #expect(helpURL != nil)
         #expect(helpURL?.absoluteString.contains("assemblyai.com") == true)
     }
 
     @Test func providerHasSetupInstructions() {
-        let instructions = SwiftSpeak.AIProvider.assemblyAI.setupInstructions
+        let instructions = AIProvider.assemblyAI.setupInstructions
 
         #expect(!instructions.isEmpty)
         #expect(instructions.lowercased().contains("api key"))
     }
 
     @Test func providerHasCostPerMinute() {
-        let cost = SwiftSpeak.AIProvider.assemblyAI.costPerMinute
+        let cost = AIProvider.assemblyAI.costPerMinute
 
         // AssemblyAI is $0.00025/second = $0.015/minute
         #expect(cost == 0.00025)
     }
 
     @Test func providerDoesNotRequirePowerTier() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.requiresPowerTier == false)
+        #expect(AIProvider.assemblyAI.requiresPowerTier == false)
     }
 
     @Test func providerMinimumTierIsFree() {
-        #expect(SwiftSpeak.AIProvider.assemblyAI.minimumTier == .free)
+        #expect(AIProvider.assemblyAI.minimumTier == .free)
     }
 }
 
@@ -284,7 +285,7 @@ struct AssemblyAIIntegrationTests {
 
     @Test func configurationWorkflowCreatesValidService() {
         // Simulate user configuration flow
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .assemblyAI,
             apiKey: "test-assemblyai-api-key",
             usageCategories: [.transcription],
@@ -307,13 +308,13 @@ struct AssemblyAIIntegrationTests {
 
     @Test func multiProviderConfigurationSupportsAssemblyAI() {
         // User can have multiple providers configured
-        let openAIConfig = SwiftSpeak.AIProviderConfig(
+        let openAIConfig = AIProviderConfig(
             provider: .openAI,
             apiKey: "openai-key",
             usageCategories: [.transcription, .translation, .powerMode]
         )
 
-        let assemblyAIConfig = SwiftSpeak.AIProviderConfig(
+        let assemblyAIConfig = AIProviderConfig(
             provider: .assemblyAI,
             apiKey: "assemblyai-key",
             usageCategories: [.transcription]
@@ -333,7 +334,7 @@ struct AssemblyAIIntegrationTests {
 
     @Test func languageCodeHandlingForUnsupportedLanguages() {
         // Arabic is not supported by AssemblyAI
-        let arabic = SwiftSpeak.Language.arabic
+        let arabic = Language.arabic
 
         #expect(arabic.assemblyAICode == nil)
 
@@ -342,7 +343,7 @@ struct AssemblyAIIntegrationTests {
     }
 
     @Test func modelSelectionPersistsInConfig() {
-        let nanoConfig = SwiftSpeak.AIProviderConfig(
+        let nanoConfig = AIProviderConfig(
             provider: .assemblyAI,
             apiKey: "test-key",
             transcriptionModel: "nano"

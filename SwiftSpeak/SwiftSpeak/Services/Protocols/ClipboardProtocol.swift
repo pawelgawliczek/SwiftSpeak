@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Protocol for clipboard operations
 /// iOS uses UIPasteboard, macOS uses NSPasteboard

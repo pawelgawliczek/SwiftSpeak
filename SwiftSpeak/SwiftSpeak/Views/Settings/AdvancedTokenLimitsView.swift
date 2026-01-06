@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct AdvancedTokenLimitsView: View {
     @EnvironmentObject var settings: SharedSettings

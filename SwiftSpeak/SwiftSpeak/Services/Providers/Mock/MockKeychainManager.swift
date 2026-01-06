@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Mock implementation of SecureStorageProtocol for unit testing
 /// Stores values in memory instead of actual Keychain

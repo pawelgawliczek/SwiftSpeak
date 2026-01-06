@@ -14,6 +14,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - LEGACY CODE COMMENTED OUT
 // The implementation below has been commented out because it references

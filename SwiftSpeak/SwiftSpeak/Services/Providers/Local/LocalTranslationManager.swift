@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import SwiftUI
 
 #if canImport(Translation)

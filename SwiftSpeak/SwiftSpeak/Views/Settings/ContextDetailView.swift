@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct ContextDetailView: View {
     let context: ConversationContext

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct WebhookEditorSheet: View {
     let webhook: Webhook

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct ContextQuickSwitcher: View {
     @Binding var isPresented: Bool

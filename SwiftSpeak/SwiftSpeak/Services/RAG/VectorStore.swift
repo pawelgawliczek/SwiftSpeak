@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import SQLite3
 
 // MARK: - Vector Store Errors

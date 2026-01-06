@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import Combine
 
 /// Actions that can be triggered by global hotkeys

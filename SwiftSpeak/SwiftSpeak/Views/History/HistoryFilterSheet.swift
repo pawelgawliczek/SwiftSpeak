@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct HistoryFilterSheet: View {
     @Binding var selectedPowerModeId: UUID?

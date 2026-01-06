@@ -9,6 +9,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import os.log
 
 // MARK: - Logger Extensions

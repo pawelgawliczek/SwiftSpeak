@@ -10,6 +10,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 import CoreData
 import Combine
 

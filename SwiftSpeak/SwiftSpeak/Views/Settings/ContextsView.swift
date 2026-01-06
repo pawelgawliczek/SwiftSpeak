@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Contexts View (Standalone wrapper)
 

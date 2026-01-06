@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct SwiftLinkSetupView: View {
     @EnvironmentObject var settings: SharedSettings

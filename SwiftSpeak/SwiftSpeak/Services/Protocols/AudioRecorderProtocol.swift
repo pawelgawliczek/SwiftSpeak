@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import SwiftSpeakCore
 
 /// Protocol for audio recording operations
 /// Enables dependency injection and testing

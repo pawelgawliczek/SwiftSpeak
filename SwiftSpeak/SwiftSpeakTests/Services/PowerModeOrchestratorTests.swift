@@ -7,6 +7,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 @testable import SwiftSpeak
 
 // MARK: - Test Helpers

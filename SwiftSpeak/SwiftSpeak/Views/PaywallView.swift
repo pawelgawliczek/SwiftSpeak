@@ -8,6 +8,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 // MARK: - Billing Period
 enum BillingPeriod: String, CaseIterable {

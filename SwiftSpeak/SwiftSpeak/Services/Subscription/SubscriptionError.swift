@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Errors that can occur during subscription operations
 enum SubscriptionError: LocalizedError {

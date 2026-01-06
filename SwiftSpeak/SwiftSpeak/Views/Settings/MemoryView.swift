@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct MemoryView: View {
     @EnvironmentObject var settings: SharedSettings

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSpeakCore
 
 enum TextInsertionResult: Sendable {
     case accessibilitySuccess

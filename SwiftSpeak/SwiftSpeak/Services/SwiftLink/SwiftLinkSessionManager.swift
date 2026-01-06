@@ -863,9 +863,10 @@ final class SwiftLinkSessionManager: ObservableObject {
 
             // Build context for formatting (includes memory, tone, instructions)
             let promptContext = PromptContext.from(
-                settings: settings,
                 context: activeContext,
-                powerMode: nil
+                powerMode: nil,
+                globalMemory: settings.globalMemory,
+                vocabularyEntries: settings.vocabularyEntries
             )
 
             // Determine if we need formatting:
@@ -1349,9 +1350,10 @@ final class SwiftLinkSessionManager: ObservableObject {
 
                 // Build context for formatting (includes memory, tone, instructions)
                 let promptContext = PromptContext.from(
-                    settings: settings,
                     context: activeContext,
-                    powerMode: nil
+                    powerMode: nil,
+                    globalMemory: settings.globalMemory,
+                    vocabularyEntries: settings.vocabularyEntries
                 )
 
                 // Determine if we need formatting:
@@ -2172,7 +2174,11 @@ final class SwiftLinkSessionManager: ObservableObject {
         let settings = SharedSettings.shared
 
         // Build prompt using PromptContext for consistent formatting
-        let promptContext = PromptContext.from(settings: settings, context: context)
+        let promptContext = PromptContext.from(
+            context: context,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
+        )
 
         // Use the formatting provider to process
         let provider = settings.selectedPowerModeProvider

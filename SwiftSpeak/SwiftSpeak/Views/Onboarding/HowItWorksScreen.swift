@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct HowItWorksScreen: View {
     let onContinue: () -> Void

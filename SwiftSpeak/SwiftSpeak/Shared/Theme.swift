@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 import UIKit
 
 // MARK: - App Theme
@@ -249,53 +250,7 @@ enum KeyboardHaptics {
 }
 
 // MARK: - Glass Background Modifier
-/// Glassmorphic background following branding guidelines
-struct GlassBackground: ViewModifier {
-    let cornerRadius: CGFloat
-    let includeShadow: Bool
-
-    init(cornerRadius: CGFloat = AppTheme.cornerRadiusMedium, includeShadow: Bool = true) {
-        self.cornerRadius = cornerRadius
-        self.includeShadow = includeShadow
-    }
-
-    func body(content: Content) -> some View {
-        content
-            .background(.ultraThinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .shadow(
-                color: includeShadow ? .black.opacity(0.3) : .clear,
-                radius: includeShadow ? AppTheme.cardShadowRadius : 0,
-                x: 0,
-                y: includeShadow ? AppTheme.cardShadowY : 0
-            )
-    }
-}
-
-extension View {
-    /// Apply glassmorphic background with optional shadow
-    func glassBackground(cornerRadius: CGFloat = AppTheme.cornerRadiusMedium, includeShadow: Bool = true) -> some View {
-        modifier(GlassBackground(cornerRadius: cornerRadius, includeShadow: includeShadow))
-    }
-}
-
-// MARK: - Themed Background Modifier
-/// Apply themed background color based on color scheme
-struct ThemedBackground: ViewModifier {
-    @Environment(\.colorScheme) var colorScheme
-
-    func body(content: Content) -> some View {
-        content
-            .background(colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase)
-    }
-}
-
-extension View {
-    /// Apply themed background that adapts to dark/light mode
-    func themedBackground() -> some View {
-        modifier(ThemedBackground())
-    }
-}
+// Uses GlassBackground, glassBackground(), ThemedBackground, themedBackground() from SwiftSpeakCore
 
 // MARK: - Primary Button Style
 /// Standard primary button following branding guidelines

@@ -349,6 +349,12 @@ public struct DownloadedTranslationLanguage: Codable, Identifiable, Equatable {
     public var sizeBytes: Int
     public var isSystem: Bool  // System language, can't be removed
 
+    public init(language: Language, sizeBytes: Int, isSystem: Bool) {
+        self.language = language
+        self.sizeBytes = sizeBytes
+        self.isSystem = isSystem
+    }
+
     public var sizeFormatted: String {
         let mb = Double(sizeBytes) / (1024 * 1024)
         return String(format: "%.0f MB", mb)

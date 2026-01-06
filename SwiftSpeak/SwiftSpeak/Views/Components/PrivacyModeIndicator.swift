@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// Compact indicator showing Privacy Mode is enabled
 struct PrivacyModeIndicator: View {

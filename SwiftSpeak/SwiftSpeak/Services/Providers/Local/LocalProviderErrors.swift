@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// Errors specific to local on-device AI providers
 enum LocalProviderError: LocalizedError, Equatable {

@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 import UniformTypeIdentifiers
 
 struct DocumentPickerSheet: View {

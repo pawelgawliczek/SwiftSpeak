@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// A compact badge indicating subscription tier requirement
 /// Used to mark premium features in lists and UI elements

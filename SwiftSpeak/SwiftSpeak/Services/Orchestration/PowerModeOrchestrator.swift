@@ -291,7 +291,7 @@ final class PowerModeOrchestrator: ObservableObject {
                 // Use manually selected Obsidian results
                 state = .queryingKnowledge
                 lastCombinedRAGResult = CombinedRAGResult(
-                    ragResult: nil,
+                    documentResults: [],
                     obsidianResults: selectedObsidianResults
                 )
             }
@@ -585,7 +585,12 @@ final class PowerModeOrchestrator: ObservableObject {
         }
 
         // Build prompt hint from context (domain jargon, vocabulary)
-        let promptContext = PromptContext.from(settings: settings, context: activeContext, powerMode: powerMode)
+        let promptContext = PromptContext.from(
+            context: activeContext,
+            powerMode: powerMode,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
+        )
         let promptHint = promptContext.buildTranscriptionHint()
 
         return try await provider.transcribe(
@@ -598,7 +603,12 @@ final class PowerModeOrchestrator: ObservableObject {
     /// Build transcription hint from vocabulary and context
     private func buildTranscriptionHint() -> String? {
         // Use PromptContext for consistent hint building
-        let promptContext = PromptContext.from(settings: settings, context: activeContext, powerMode: powerMode)
+        let promptContext = PromptContext.from(
+            context: activeContext,
+            powerMode: powerMode,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
+        )
         return promptContext.buildTranscriptionHint()
     }
 
@@ -805,9 +815,10 @@ final class PowerModeOrchestrator: ObservableObject {
     /// Build PromptContext for provider
     private func buildPromptContext() -> PromptContext {
         return PromptContext.from(
-            settings: settings,
             context: activeContext,
-            powerMode: powerMode
+            powerMode: powerMode,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
         )
     }
 

@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// An inline banner prompting users to upgrade
 /// Used in lists and settings to subtly suggest upgrading

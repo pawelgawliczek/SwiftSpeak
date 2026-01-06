@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct VoiceLanguageSettingsView: View {
     @EnvironmentObject var settings: SharedSettings

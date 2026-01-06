@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct AppleTranslationSetupView: View {
     @EnvironmentObject var settings: SharedSettings

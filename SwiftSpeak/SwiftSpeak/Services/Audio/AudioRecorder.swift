@@ -8,6 +8,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import SwiftSpeakCore
 
 /// Wraps AVAudioRecorder for voice recording
 /// Publishes audio levels for waveform visualization

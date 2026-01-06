@@ -684,14 +684,24 @@ extension ObsidianVectorStore {
             let notePath = sqlite3_column_text(stmt, 10).map { String(cString: $0) } ?? ""
             let vaultName = sqlite3_column_text(stmt, 11).map { String(cString: $0) } ?? "Unknown"
 
+            // Build ChunkMetadata from parsed metadata dictionary
+            let chunkMetadata = ChunkMetadata(
+                section: metadata["section"],
+                pageNumber: nil,
+                startLine: nil,
+                endLine: nil,
+                isHeader: false,
+                contentType: .paragraph
+            )
+
             let chunk = DocumentChunk(
                 id: chunkId,
                 documentId: noteId,
-                chunkIndex: chunkIndex,
+                index: chunkIndex,
                 content: content,
                 startOffset: startOffset,
                 endOffset: endOffset,
-                metadata: metadata
+                metadata: chunkMetadata
             )
 
             let result = VectorStoreSearchResult(

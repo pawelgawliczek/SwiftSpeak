@@ -157,3 +157,19 @@ public struct AppAssignment: Codable, Equatable, Hashable, Sendable {
 
     public static let empty = AppAssignment()
 }
+
+// MARK: - User App Category Override
+
+/// Stores user's custom category assignment for an app
+public struct UserAppCategoryOverride: Codable, Identifiable, Equatable, Sendable {
+    public var id: String { bundleId }
+    public let bundleId: String
+    public var category: AppCategory
+    public let updatedAt: Date
+
+    public init(bundleId: String, category: AppCategory, updatedAt: Date = Date()) {
+        self.bundleId = bundleId
+        self.category = category
+        self.updatedAt = updatedAt
+    }
+}

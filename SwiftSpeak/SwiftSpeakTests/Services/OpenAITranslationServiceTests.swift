@@ -6,6 +6,7 @@
 //
 
 import Testing
+import SwiftSpeakCore
 import Foundation
 @testable import SwiftSpeak
 
@@ -39,9 +40,9 @@ struct OpenAITranslationServiceTests {
     @Test func serviceSupportAllLanguages() {
         let service = OpenAITranslationService(apiKey: "test-key")
 
-        #expect(service.supportedLanguages.count == SwiftSpeak.Language.allCases.count)
+        #expect(service.supportedLanguages.count == Language.allCases.count)
 
-        for language in SwiftSpeak.Language.allCases {
+        for language in Language.allCases {
             #expect(service.supportedLanguages.contains(language))
         }
     }
@@ -49,7 +50,7 @@ struct OpenAITranslationServiceTests {
     // MARK: - Provider Config Initialization
 
     @Test func serviceInitializesFromProviderConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "test-api-key",
             usageCategories: [.translation],
@@ -64,7 +65,7 @@ struct OpenAITranslationServiceTests {
     }
 
     @Test func serviceReturnsNilForNonOpenAIConfig() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .anthropic,
             apiKey: "test-api-key",
             usageCategories: [.translation]
@@ -76,7 +77,7 @@ struct OpenAITranslationServiceTests {
     }
 
     @Test func serviceReturnsNilForEmptyApiKey() {
-        let config = SwiftSpeak.AIProviderConfig(
+        let config = AIProviderConfig(
             provider: .openAI,
             apiKey: "",
             usageCategories: [.translation]
@@ -96,7 +97,7 @@ struct OpenAITranslationServiceTests {
         #expect(service.providerId == .openAI)
         #expect(type(of: service.isConfigured) == Bool.self)
         #expect(type(of: service.model) == String.self)
-        #expect(type(of: service.supportedLanguages) == [SwiftSpeak.Language].self)
+        #expect(type(of: service.supportedLanguages) == [Language].self)
     }
 }
 
@@ -106,31 +107,31 @@ struct OpenAITranslationServiceTests {
 struct MockTranslationTests {
 
     @Test func languageHasCorrectDisplayName() {
-        #expect(SwiftSpeak.Language.spanish.displayName == "Spanish")
-        #expect(SwiftSpeak.Language.french.displayName == "French")
-        #expect(SwiftSpeak.Language.german.displayName == "German")
+        #expect(Language.spanish.displayName == "Spanish")
+        #expect(Language.french.displayName == "French")
+        #expect(Language.german.displayName == "German")
     }
 
     @Test func languageHasFlag() {
-        for language in SwiftSpeak.Language.allCases {
+        for language in Language.allCases {
             #expect(!language.flag.isEmpty)
         }
     }
 
     @Test func languageEncodesAndDecodes() throws {
-        let language = SwiftSpeak.Language.spanish
+        let language = Language.spanish
 
         let encoder = JSONEncoder()
         let decoder = JSONDecoder()
 
         let data = try encoder.encode(language)
-        let decoded = try decoder.decode(SwiftSpeak.Language.self, from: data)
+        let decoded = try decoder.decode(Language.self, from: data)
 
         #expect(decoded == language)
     }
 
     @Test func allLanguagesHaveUniqueRawValues() {
-        let rawValues = SwiftSpeak.Language.allCases.map { $0.rawValue }
+        let rawValues = Language.allCases.map { $0.rawValue }
         let uniqueValues = Set(rawValues)
 
         #expect(rawValues.count == uniqueValues.count)
@@ -143,20 +144,20 @@ struct MockTranslationTests {
 struct RecordingStateTranslationTests {
 
     @Test func translatingStateExists() {
-        let state = SwiftSpeak.RecordingState.translating
+        let state = RecordingState.translating
 
         #expect(state == .translating)
     }
 
     @Test func translatingStateHasStatusText() {
-        let state = SwiftSpeak.RecordingState.translating
+        let state = RecordingState.translating
 
         #expect(!state.statusText.isEmpty)
         #expect(state.statusText.lowercased().contains("translat"))
     }
 
     @Test func translatingStateIsNotComplete() {
-        let state = SwiftSpeak.RecordingState.translating
+        let state = RecordingState.translating
 
         if case .complete = state {
             Issue.record("Translating state should not be complete")
@@ -164,7 +165,7 @@ struct RecordingStateTranslationTests {
     }
 
     @Test func translatingStateIsNotError() {
-        let state = SwiftSpeak.RecordingState.translating
+        let state = RecordingState.translating
 
         if case .error = state {
             Issue.record("Translating state should not be error")

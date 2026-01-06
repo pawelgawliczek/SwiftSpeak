@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct WhisperKitSetupView: View {
     @EnvironmentObject var settings: SharedSettings

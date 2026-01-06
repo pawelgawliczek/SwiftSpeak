@@ -605,7 +605,11 @@ struct ContentView: View {
         }
 
         // Build prompt using PromptContext for consistent formatting
-        let promptContext = PromptContext.from(settings: settings, context: context)
+        let promptContext = PromptContext.from(
+            context: context,
+            globalMemory: settings.globalMemory,
+            vocabularyEntries: settings.vocabularyEntries
+        )
         let systemPrompt = promptContext.buildFormattingPrompt()
 
         // Use the formatting service with custom mode and system prompt

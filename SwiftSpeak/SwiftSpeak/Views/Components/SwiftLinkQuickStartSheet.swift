@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 /// Quick-start sheet for SwiftLink - minimal clicks to start a session
 struct SwiftLinkQuickStartSheet: View {
