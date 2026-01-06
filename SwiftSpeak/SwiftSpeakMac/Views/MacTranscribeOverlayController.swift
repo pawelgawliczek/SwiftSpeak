@@ -101,6 +101,12 @@ final class MacTranscribeOverlayController {
         vm.setPreCapturedContext(context)
         viewModel = vm
 
+        // Set callback to hide overlay before text insertion
+        vm.onWillInsertText = { [weak self] in
+            macLog("Hiding overlay before text insertion", category: "Transcribe")
+            self?.overlayWindow?.orderOut(nil)
+        }
+
         // Observe shouldAutoClose to automatically close overlay after insertion
         autoCloseCancellable = vm.$shouldAutoClose
             .dropFirst()

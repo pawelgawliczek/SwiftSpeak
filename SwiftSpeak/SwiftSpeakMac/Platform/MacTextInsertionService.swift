@@ -214,6 +214,26 @@ final class MacTextInsertionService: TextInsertionProtocol {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+
+        // Simulate Cmd+V to paste
+        simulatePaste()
+
         return .clipboardFallback
+    }
+
+    /// Simulate Cmd+V keystroke to paste from clipboard
+    private func simulatePaste() {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        // V key = 0x09
+        let vKeyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: true)
+        let vKeyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x09, keyDown: false)
+
+        // Add Command modifier
+        vKeyDown?.flags = .maskCommand
+        vKeyUp?.flags = .maskCommand
+
+        vKeyDown?.post(tap: .cghidEventTap)
+        vKeyUp?.post(tap: .cghidEventTap)
     }
 }

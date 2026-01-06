@@ -101,6 +101,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private var providerFactory: ProviderFactory?
     private var textInsertion: MacTextInsertionService?
 
+    /// Callback to hide overlay before text insertion (set by controller)
+    var onWillInsertText: (() -> Void)?
+
     // MARK: - Internal State
 
     private var cancellables = Set<AnyCancellable>()
@@ -156,6 +159,12 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         self.preCapturedContext = context
         self.sourceAppName = context.frontmostAppName
         self.sourceAppBundleId = context.frontmostAppBundleId
+
+        // Store the previous app for focus restoration
+        if context.frontmostAppPid > 0 {
+            self.previousApp = NSRunningApplication(processIdentifier: context.frontmostAppPid)
+            macLog("Stored previous app: \(context.frontmostAppName) (pid: \(context.frontmostAppPid))", category: "Transcribe")
+        }
 
         // Auto-detect context based on app bundle ID
         autoSelectContext(for: context.frontmostAppBundleId)
@@ -436,24 +445,30 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     // MARK: - Enter Key Behavior Execution
 
     private func executeEnterKeyBehavior() async {
-        // Default to .justSend when no context is selected (auto-insert and send)
-        let behavior = activeContext?.enterKeyBehavior ?? .justSend
+        // Default to .defaultNewLine when no context is selected (just insert, no send)
+        let behavior = activeContext?.enterKeyBehavior ?? .defaultNewLine
+
+        macLog("Executing enter behavior: \(behavior.displayName) (context: \(activeContext?.name ?? "none"))", category: "Transcribe")
 
         switch behavior {
         case .defaultNewLine:
-            // Just insert the text
+            // Just insert the text (no send)
+            macLog("Behavior: Insert only (no send)", category: "Transcribe")
             await insertText()
 
         case .formatThenInsert:
-            // Already formatted above, just insert
+            // Already formatted above, just insert (no send)
+            macLog("Behavior: Format + Insert (no send)", category: "Transcribe")
             await insertText()
 
         case .justSend:
             // Insert text and send (simulate Enter key)
+            macLog("Behavior: Insert + Send", category: "Transcribe")
             await insertTextAndSend()
 
         case .formatAndSend:
             // Already formatted, insert and send
+            macLog("Behavior: Format + Insert + Send", category: "Transcribe")
             await insertTextAndSend()
         }
 
@@ -463,8 +478,28 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     // MARK: - Text Insertion
 
+    /// Restore focus to the previous app before text insertion
+    private func restoreFocusToPreviousApp() async {
+        guard let app = previousApp else {
+            macLog("No previous app to restore focus to", category: "Transcribe", level: .warning)
+            return
+        }
+
+        macLog("Restoring focus to: \(app.localizedName ?? "unknown")", category: "Transcribe")
+        app.activate()
+
+        // Wait for app to become frontmost
+        try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+    }
+
     func insertText() async {
         guard !transcribedText.isEmpty else { return }
+
+        // Hide overlay before restoring focus (prevents focus stealing)
+        onWillInsertText?()
+
+        // Restore focus to previous app before inserting
+        await restoreFocusToPreviousApp()
 
         if let textService = textInsertion {
             let result = await textService.insertText(transcribedText, replaceSelection: true)
@@ -481,15 +516,23 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private func insertTextAndSend() async {
         await insertText()
 
-        // Simulate Enter key press
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            let source = CGEventSource(stateID: .hidSystemState)
-            let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)  // Return key
-            let enterUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
+        // Wait for paste to complete, then simulate Enter key press
+        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
 
-            enterDown?.post(tap: .cghidEventTap)
-            enterUp?.post(tap: .cghidEventTap)
-        }
+        macLog("Sending Enter key to target app...", category: "Transcribe")
+
+        let source = CGEventSource(stateID: .hidSystemState)
+        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)  // Return key
+        let enterUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
+
+        // Clear all modifier flags to ensure plain Enter (not Cmd+Enter, etc.)
+        enterDown?.flags = []
+        enterUp?.flags = []
+
+        enterDown?.post(tap: .cghidEventTap)
+        enterUp?.post(tap: .cghidEventTap)
+
+        macLog("Sent Enter key after text insertion", category: "Transcribe")
     }
 
     func copyToClipboard() {
