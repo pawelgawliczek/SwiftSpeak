@@ -127,17 +127,19 @@ struct MacHistoryView: View {
                 if settings.transcriptionHistory.isEmpty {
                     MacEmptyHistoryView()
                 } else {
-                    List(filteredRecords, selection: $selectedRecord) { record in
+                    List(filteredRecords) { record in
                         HStack(spacing: 12) {
-                            // Selection checkbox
+                            // Selection checkbox for multi-select mode
                             if isSelecting {
                                 Image(systemName: selectedRecords.contains(record.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedRecords.contains(record.id) ? .blue : .secondary)
                             }
 
                             MacHistoryRowView(record: record)
-                                .tag(record)
                         }
+                        .padding(.vertical, 4)
+                        .background(selectedRecord?.id == record.id ? Color.accentColor.opacity(0.15) : Color.clear)
+                        .cornerRadius(6)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if isSelecting {
@@ -243,14 +245,16 @@ struct MacHistoryView: View {
     }
 
     private func deleteRecord(_ record: TranscriptionRecord) {
-        settings.transcriptionHistory.removeAll { $0.id == record.id }
+        settings.deleteFromHistory(id: record.id)
         if selectedRecord?.id == record.id {
             selectedRecord = nil
         }
     }
 
     private func deleteSelectedRecords() {
-        settings.transcriptionHistory.removeAll { selectedRecords.contains($0.id) }
+        for id in selectedRecords {
+            settings.deleteFromHistory(id: id)
+        }
         if let selected = selectedRecord, selectedRecords.contains(selected.id) {
             selectedRecord = nil
         }

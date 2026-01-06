@@ -263,16 +263,12 @@ class MacSettings: ObservableObject {
         }
     }
 
-    // MARK: - History
-    // TODO: Add CoreDataManager to SwiftSpeakMac target for CloudKit sync
-    // Follow SHARED_FILES_GUIDE.md to add:
-    //   - SwiftSpeak/Services/Persistence/PersistenceController.swift
-    //   - SwiftSpeak/Services/Persistence/CoreDataManager.swift
-    //   - SwiftSpeak/Services/Persistence/CoreDataEntityExtensions.swift
-    //   - SwiftSpeak.xcdatamodeld
-    // Once added, history will sync via CloudKit (unlimited records)
+    // MARK: - History (via CoreDataManager with CloudKit sync)
 
-    @Published var transcriptionHistory: [TranscriptionRecord] = []
+    /// Transcription history is managed by CoreDataManager and syncs via CloudKit
+    var transcriptionHistory: [TranscriptionRecord] {
+        CoreDataManager.shared.transcriptionHistory
+    }
 
     // MARK: - Behavior Settings
 
@@ -712,14 +708,15 @@ class MacSettings: ObservableObject {
             cloudLogSyncEnabled = defaults?.bool(forKey: "cloudLogSyncEnabled") ?? true
         }
 
-        loadHistory()
+        // History is now loaded from CoreDataManager (CloudKit synced)
+        // Migrate any existing UserDefaults history on first launch
+        DataMigrationManager.shared.migrateIfNeeded()
     }
 
     // MARK: - History Management
 
     func clearTranscriptionHistory() {
-        transcriptionHistory.removeAll()
-        defaults?.removeObject(forKey: "transcriptionHistory")
+        CoreDataManager.shared.clearTranscriptionHistory()
     }
 
     // MARK: - AI Provider Management
@@ -1137,31 +1134,18 @@ class MacSettings: ObservableObject {
         customTemplates.removeAll { $0.id == id }
     }
 
-    // MARK: - History
+    // MARK: - History (CoreDataManager with CloudKit sync)
 
     func addToHistory(_ record: TranscriptionRecord) {
-        // TODO: Use CoreDataManager once added to target for CloudKit sync
-        transcriptionHistory.insert(record, at: 0)
-        saveHistory()
+        CoreDataManager.shared.addTranscription(record)
     }
 
-    private func saveHistory() {
-        if let encoded = try? JSONEncoder().encode(transcriptionHistory) {
-            defaults?.set(encoded, forKey: "transcriptionHistory")
-        }
-    }
-
-    private func loadHistory() {
-        if let data = defaults?.data(forKey: "transcriptionHistory"),
-           let decoded = try? JSONDecoder().decode([TranscriptionRecord].self, from: data) {
-            transcriptionHistory = decoded
-        }
+    func deleteFromHistory(id: UUID) {
+        CoreDataManager.shared.deleteTranscription(id: id)
     }
 
     func clearHistory() {
-        // TODO: Use CoreDataManager once added to target for CloudKit sync
-        transcriptionHistory = []
-        defaults?.removeObject(forKey: "transcriptionHistory")
+        CoreDataManager.shared.clearTranscriptionHistory()
     }
 
     // MARK: - Reset
@@ -1172,7 +1156,7 @@ class MacSettings: ObservableObject {
         selectedMode = .raw
         selectedTargetLanguage = .spanish
         isTranslationEnabled = false
-        transcriptionHistory = []
+        clearHistory() // Uses CoreDataManager
         vocabulary = []
         customTemplates = []
         contexts = []
