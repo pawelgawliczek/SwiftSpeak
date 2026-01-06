@@ -53,6 +53,7 @@ struct PowerModeEditorView: View {
     @State private var includeWindowContext: Bool = false
     @State private var maxObsidianChunks: Int = 3
     @State private var obsidianAction: ObsidianActionConfig? = nil
+    @State private var defaultObsidianSearchQuery: String = ""
 
     // Phase 16: Input/Output Configuration
     @State private var inputConfig: PowerModeInputConfig = .default
@@ -89,7 +90,8 @@ struct PowerModeEditorView: View {
             obsidianVaultIds: obsidianVaultIds,
             includeWindowContext: includeWindowContext,
             maxObsidianChunks: maxObsidianChunks,
-            obsidianAction: obsidianAction
+            obsidianAction: obsidianAction,
+            defaultObsidianSearchQuery: defaultObsidianSearchQuery
         )
     }
 
@@ -119,6 +121,7 @@ struct PowerModeEditorView: View {
             _includeWindowContext = State(initialValue: mode.includeWindowContext)
             _maxObsidianChunks = State(initialValue: mode.maxObsidianChunks)
             _obsidianAction = State(initialValue: mode.obsidianAction)
+            _defaultObsidianSearchQuery = State(initialValue: mode.defaultObsidianSearchQuery)
             _inputConfig = State(initialValue: mode.inputConfig)
             _outputConfig = State(initialValue: mode.outputConfig)
         }
@@ -209,13 +212,20 @@ struct PowerModeEditorView: View {
             }
 
             // Name field
-            TextField("Mode Name", text: $name)
-                .font(.title3.weight(.semibold))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(Color.primary.opacity(0.08))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            VStack(spacing: 8) {
+                TextField("Mode Name", text: $name)
+                    .font(.title3.weight(.semibold))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                Text("The name defines the AI's role (e.g., \"Email Writer\" → AI becomes an Email Writer assistant)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
         }
         .padding(20)
         .background(Color.primary.opacity(0.03))
@@ -434,34 +444,24 @@ struct PowerModeEditorView: View {
                 .padding(.vertical, 12)
             }
 
-            // Max chunks slider
+            // Default search query field
             if !obsidianVaultIds.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Max Context Chunks")
-                            .font(.caption.weight(.medium))
-                        Spacer()
-                        Text("\(maxObsidianChunks)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Default Search Query")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
 
-                    Slider(
-                        value: Binding(
-                            get: { Double(maxObsidianChunks) },
-                            set: { maxObsidianChunks = Int($0) }
-                        ),
-                        in: 1...10,
-                        step: 1
-                    )
-                    .tint(.purple)
+                    TextField("Leave empty to show all notes", text: $defaultObsidianSearchQuery)
+                        .textFieldStyle(.roundedBorder)
+                        .font(.subheadline)
+
+                    Text("Pre-fills the search field when using this Power Mode")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.primary.opacity(0.03))
-                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                .padding(.top, 8)
             }
+
         }
         .padding(.leading, 52)
     }
@@ -1587,6 +1587,7 @@ struct PowerModeEditorView: View {
             includeWindowContext: inputConfig.includeActiveAppText,
             maxObsidianChunks: maxObsidianChunks,
             obsidianAction: effectiveObsidianAction,
+            defaultObsidianSearchQuery: defaultObsidianSearchQuery,
             inputConfig: inputConfig,
             outputConfig: outputConfig
         )

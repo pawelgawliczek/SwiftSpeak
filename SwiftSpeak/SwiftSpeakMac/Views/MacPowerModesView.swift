@@ -269,22 +269,49 @@ private struct PowerModeCard: View {
 
                     Spacer()
 
-                    // Feature badges
+                    // Feature badges - show what inputs/outputs are enabled
                     HStack(spacing: 6) {
-                        if powerMode.memoryEnabled {
+                        // Memory (Power Mode or Global)
+                        if powerMode.inputConfig.includePowerModeMemory || powerMode.inputConfig.includeGlobalMemory {
                             Image(systemName: "brain")
                                 .font(.caption)
                                 .foregroundStyle(.purple)
                         }
-                        if !powerMode.knowledgeDocumentIds.isEmpty {
-                            Image(systemName: "doc.text")
+                        // RAG Documents (enabled AND has documents)
+                        if powerMode.inputConfig.includeRAGDocuments && !powerMode.knowledgeDocumentIds.isEmpty {
+                            Image(systemName: "doc.text.magnifyingglass")
                                 .font(.caption)
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(.green)
                         }
-                        if !powerMode.enabledWebhookIds.isEmpty {
+                        // Obsidian Vaults (enabled AND has vaults selected)
+                        if powerMode.inputConfig.includeObsidianVaults && !powerMode.obsidianVaultIds.isEmpty {
+                            Image(systemName: "folder.fill")
+                                .font(.caption)
+                                .foregroundStyle(.purple)
+                        }
+                        // Selected Text (macOS only, requires accessibility)
+                        if powerMode.inputConfig.includeSelectedText {
+                            Image(systemName: "text.cursor")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                        // Clipboard
+                        if powerMode.inputConfig.includeClipboard {
+                            Image(systemName: "doc.on.clipboard")
+                                .font(.caption)
+                                .foregroundStyle(.indigo)
+                        }
+                        // Webhooks (enabled AND has webhooks selected)
+                        if powerMode.outputConfig.webhookEnabled && !powerMode.outputConfig.webhookIds.isEmpty {
                             Image(systemName: "link")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
+                        }
+                        // Obsidian Output Action
+                        if powerMode.outputConfig.obsidianAction != nil {
+                            Image(systemName: "square.and.arrow.down.on.square")
+                                .font(.caption)
+                                .foregroundStyle(.purple)
                         }
                     }
 
@@ -520,8 +547,12 @@ struct MacPowerModeEditorSheet: View {
             // Form
             Form {
                 // Basic Info
-                Section("Basic Information") {
+                Section("Identity") {
                     TextField("Name", text: $powerMode.name)
+
+                    Text("The name defines the AI's role (e.g., \"Email Writer\" → AI becomes an Email Writer assistant)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     Picker("Icon", selection: $powerMode.icon) {
                         ForEach(iconOptions, id: \.self) { icon in
@@ -618,11 +649,22 @@ struct MacPowerModeEditorSheet: View {
                                 .frame(width: 16, height: 16)
                             VStack(alignment: .leading) {
                                 Text("Obsidian Vaults")
-                                let count = powerMode.obsidianVaultIds.count
+                                // Count only vault IDs that actually exist in vaultManager
+                                let validVaultIds = powerMode.obsidianVaultIds.filter { vaultId in
+                                    vaultManager.vaults.contains { $0.id == vaultId }
+                                }
+                                let count = validVaultIds.count
                                 Text(count == 0 ? "No vaults selected" : "\(count) vault\(count == 1 ? "" : "s") selected")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                        }
+                    }
+                    .onChange(of: powerMode.inputConfig.includeObsidianVaults) { isEnabled in
+                        // Clean up stale vault IDs when toggling
+                        if isEnabled {
+                            let validVaultIds = vaultManager.vaults.map { $0.id }
+                            powerMode.obsidianVaultIds = powerMode.obsidianVaultIds.filter { validVaultIds.contains($0) }
                         }
                     }
 
@@ -663,10 +705,62 @@ struct MacPowerModeEditorSheet: View {
                                 .padding(.leading, 20)
                             }
 
-                            Stepper("Max Context Chunks: \(powerMode.maxObsidianChunks)",
-                                    value: $powerMode.maxObsidianChunks,
-                                    in: 1...10)
+                            // Default search query field - show when at least one valid vault is selected
+                            let hasValidVaults = powerMode.obsidianVaultIds.contains { vaultId in
+                                vaultManager.vaults.contains { $0.id == vaultId }
+                            }
+                            if hasValidVaults {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Default Search Query")
+                                        .font(.subheadline.weight(.medium))
+
+                                    TextField("Leave empty to show all notes", text: $powerMode.defaultObsidianSearchQuery)
+                                        .textFieldStyle(.roundedBorder)
+
+                                    Text("Pre-fills the search field when using this Power Mode")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
                                 .padding(.leading, 20)
+                                .padding(.top, 8)
+
+                                // Similarity Thresholds
+                                VStack(alignment: .leading, spacing: 12) {
+                                    // Min Similarity (for showing results)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("Minimum Similarity")
+                                                .font(.subheadline.weight(.medium))
+                                            Spacer()
+                                            Text("\(Int(powerMode.obsidianMinSimilarity * 100))%")
+                                                .font(.subheadline.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Slider(value: $powerMode.obsidianMinSimilarity, in: 0.1...0.9, step: 0.05)
+                                        Text("Notes below this similarity won't appear in search results")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+
+                                    // Auto-Select Threshold
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        HStack {
+                                            Text("Auto-Select Threshold")
+                                                .font(.subheadline.weight(.medium))
+                                            Spacer()
+                                            Text("\(Int(powerMode.obsidianAutoSelectThreshold * 100))%")
+                                                .font(.subheadline.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Slider(value: $powerMode.obsidianAutoSelectThreshold, in: 0.1...0.95, step: 0.05)
+                                        Text("Notes above this similarity are automatically selected")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.leading, 20)
+                                .padding(.top, 8)
+                            }
                         }
                     }
 
@@ -688,29 +782,6 @@ struct MacPowerModeEditorSheet: View {
                                 VStack(alignment: .leading) {
                                     Text("Selected Text")
                                     Text("Include currently selected text from active app")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-
-                    // macOS-specific: Active App Text (requires accessibility/non-sandboxed)
-                    if SandboxDetector.isSandboxed {
-                        disabledAccessibilityRow(
-                            icon: "macwindow",
-                            iconColor: .cyan,
-                            title: "Active App Text",
-                            subtitle: "Include text visible in the active application window"
-                        )
-                    } else {
-                        Toggle(isOn: $powerMode.inputConfig.includeActiveAppText) {
-                            HStack {
-                                Image(systemName: "macwindow")
-                                    .foregroundStyle(.cyan)
-                                VStack(alignment: .leading) {
-                                    Text("Active App Text")
-                                    Text("Include text visible in the active application window")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }

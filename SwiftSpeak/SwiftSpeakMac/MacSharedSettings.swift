@@ -217,7 +217,7 @@ class MacSettings: ObservableObject {
                 return (uuid, value)
             })
         } catch {
-            print("Failed to load power mode hotkeys: \(error)")
+            macLog("Failed to load power mode hotkeys: \(error)", category: "Settings", level: .error)
         }
     }
 
@@ -335,7 +335,7 @@ class MacSettings: ObservableObject {
 
         // Mark initialization complete - now syncToiCloud() will work
         isInitializing = false
-        print("[iCloud] Initialization complete, sync now enabled")
+        macLog("Initialization complete, sync now enabled", category: "iCloud")
     }
 
     deinit {
@@ -349,24 +349,24 @@ class MacSettings: ObservableObject {
     private func setupiCloudSync() {
         // Skip if iCloud is disabled
         guard iCloud != nil else {
-            print("[iCloud] iCloud KVS disabled, skipping sync setup")
+            macLog("iCloud KVS disabled, skipping sync setup", category: "iCloud")
             return
         }
 
-        print("[iCloud] Setting up iCloud KVS sync...")
+        macLog("Setting up iCloud KVS sync...", category: "iCloud")
 
         // Check if iCloud is available
         let testKey = "icloud_test_\(Date().timeIntervalSince1970)"
         iCloud?.set("test", forKey: testKey)
         let syncResult = iCloud?.synchronize()
-        print("[iCloud] KVS sync test: synchronize() returned \(syncResult)")
+        macLog("KVS sync test: synchronize() returned \(String(describing: syncResult))", category: "iCloud")
         iCloud?.removeObject(forKey: testKey)
 
         // Log current iCloud state
         if let keys = iCloud?.dictionaryRepresentation.keys {
-            print("[iCloud] KVS current keys: \(Array(keys).joined(separator: ", "))")
+            macLog("KVS current keys: \(Array(keys).joined(separator: ", "))", category: "iCloud")
         } else {
-            print("[iCloud] KVS not available")
+            macLog("KVS not available", category: "iCloud", level: .warning)
         }
 
         // Listen for iCloud changes from other devices
@@ -377,11 +377,11 @@ class MacSettings: ObservableObject {
         ) { [weak self] notification in
             guard let self = self else { return }
 
-            print("[iCloud] Received external change notification!")
+            macLog("Received external change notification!", category: "iCloud")
 
             guard let userInfo = notification.userInfo,
                   let reasonNumber = userInfo[NSUbiquitousKeyValueStoreChangeReasonKey] as? NSNumber else {
-                print("[iCloud] No reason in notification userInfo")
+                macLog("No reason in notification userInfo", category: "iCloud", level: .warning)
                 return
             }
 
@@ -394,10 +394,10 @@ class MacSettings: ObservableObject {
             case NSUbiquitousKeyValueStoreQuotaViolationChange: reasonName = "QuotaViolation"
             default: reasonName = "Unknown(\(reason))"
             }
-            print("[iCloud] Change reason: \(reasonName)")
+            macLog("Change reason: \(reasonName)", category: "iCloud")
 
             if let changedKeys = userInfo[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String] {
-                print("[iCloud] Changed keys: \(changedKeys.joined(separator: ", "))")
+                macLog("Changed keys: \(changedKeys.joined(separator: ", "))", category: "iCloud")
             }
 
             switch reason {
@@ -411,7 +411,7 @@ class MacSettings: ObservableObject {
                     self?.isSyncing = false
                 }
             case NSUbiquitousKeyValueStoreQuotaViolationChange:
-                print("[iCloud] ⚠️ iCloud storage quota exceeded")
+                macLog("iCloud storage quota exceeded", category: "iCloud", level: .error)
             default:
                 break
             }
@@ -419,35 +419,35 @@ class MacSettings: ObservableObject {
 
         // Synchronize to get latest changes
         let initialSync = iCloud?.synchronize()
-        print("[iCloud] Sync initialized, initial synchronize() returned \(initialSync)")
+        macLog("Sync initialized, initial synchronize() returned \(String(describing: initialSync))", category: "iCloud")
 
         // Try to load any existing data
         loadFromiCloud()
     }
 
     private func loadFromiCloud() {
-        print("[iCloud] loadFromiCloud: Starting to load from iCloud KVS...")
+        macLog("loadFromiCloud: Starting to load from iCloud KVS...", category: "iCloud")
 
         // Load providers
         if let data = iCloud?.data(forKey: iCloudKeys.configuredAIProviders) {
-            print("[iCloud] loadFromiCloud: Found providers data (\(data.count) bytes)")
+            macLog("loadFromiCloud: Found providers data (\(data.count) bytes)", category: "iCloud")
             if let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
                 configuredAIProviders = providers
-                print("[iCloud] loadFromiCloud: Loaded \(providers.count) providers: \(providers.map { $0.provider.displayName }.joined(separator: ", "))")
+                macLog("loadFromiCloud: Loaded \(providers.count) providers: \(providers.map { $0.provider.displayName }.joined(separator: ", "))", category: "iCloud")
             } else {
-                print("[iCloud] loadFromiCloud: Failed to decode providers data")
+                macLog("loadFromiCloud: Failed to decode providers data", category: "iCloud", level: .error)
             }
         } else {
-            print("[iCloud] loadFromiCloud: No providers data in iCloud KVS")
+            macLog("loadFromiCloud: No providers data in iCloud KVS", category: "iCloud")
         }
 
         // Load contexts
         if let data = iCloud?.data(forKey: iCloudKeys.contexts),
            let loadedContexts = try? JSONDecoder().decode([ConversationContext].self, from: data) {
             contexts = loadedContexts
-            print("[iCloud] loadFromiCloud: Loaded \(loadedContexts.count) contexts")
+            macLog("loadFromiCloud: Loaded \(loadedContexts.count) contexts", category: "iCloud")
         } else {
-            print("[iCloud] loadFromiCloud: No contexts data in iCloud KVS")
+            macLog("loadFromiCloud: No contexts data in iCloud KVS", category: "iCloud")
         }
 
         // Load power modes
@@ -514,7 +514,7 @@ class MacSettings: ObservableObject {
             // Use iCloud version if newer or local is nil
             if historyMemory == nil || memory.lastUpdated > (historyMemory?.lastUpdated ?? .distantPast) {
                 historyMemory = memory
-                print("[iCloud] loadFromiCloud: Loaded history memory from iCloud")
+                macLog("loadFromiCloud: Loaded history memory from iCloud", category: "iCloud")
             }
         }
     }
@@ -525,16 +525,16 @@ class MacSettings: ObservableObject {
             return
         }
         guard !isSyncing else {
-            print("[iCloud] syncToiCloud: Skipped (already syncing)")
+            macLog("syncToiCloud: Skipped (already syncing)", category: "iCloud")
             return
         }
 
-        print("[iCloud] syncToiCloud: Starting sync to iCloud KVS...")
+        macLog("syncToiCloud: Starting sync to iCloud KVS...", category: "iCloud")
 
         // Sync providers
         if let data = try? JSONEncoder().encode(configuredAIProviders) {
             iCloud?.set(data, forKey: iCloudKeys.configuredAIProviders)
-            print("[iCloud] syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)")
+            macLog("syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)", category: "iCloud")
         }
 
         // Sync contexts
@@ -589,7 +589,7 @@ class MacSettings: ObservableObject {
 
         // Trigger synchronization
         let syncResult = iCloud?.synchronize()
-        print("[iCloud] syncToiCloud: synchronize() returned \(syncResult)")
+        macLog("syncToiCloud: synchronize() returned \(String(describing: syncResult))", category: "iCloud")
     }
 
     /// Force sync settings to iCloud (call after making changes)
@@ -658,6 +658,7 @@ class MacSettings: ObservableObject {
         loadCustomTemplates()
         loadVocabulary()
         loadObsidianVaults()
+        loadObsidianAPIConfig()
 
         // Load active context
         if let contextIdString = defaults?.string(forKey: "activeContextId"),
@@ -880,6 +881,14 @@ class MacSettings: ObservableObject {
         }
     }
 
+    /// Obsidian Local REST API configuration (macOS only)
+    /// When enabled, uses direct API calls instead of embeddings for search
+    @Published var obsidianAPIConfig: ObsidianAPIConfig = ObsidianAPIConfig() {
+        didSet {
+            saveObsidianAPIConfig()
+        }
+    }
+
     private func loadObsidianVaults() {
         if let data = defaults?.data(forKey: "obsidianVaults"),
            let vaults = try? JSONDecoder().decode([ObsidianVault].self, from: data) {
@@ -890,6 +899,19 @@ class MacSettings: ObservableObject {
     private func saveObsidianVaults() {
         if let data = try? JSONEncoder().encode(obsidianVaults) {
             defaults?.set(data, forKey: "obsidianVaults")
+        }
+    }
+
+    private func loadObsidianAPIConfig() {
+        if let data = defaults?.data(forKey: "obsidianAPIConfig"),
+           let config = try? JSONDecoder().decode(ObsidianAPIConfig.self, from: data) {
+            obsidianAPIConfig = config
+        }
+    }
+
+    private func saveObsidianAPIConfig() {
+        if let data = try? JSONEncoder().encode(obsidianAPIConfig) {
+            defaults?.set(data, forKey: "obsidianAPIConfig")
         }
     }
 

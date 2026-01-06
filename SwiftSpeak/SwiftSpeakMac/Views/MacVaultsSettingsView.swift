@@ -53,6 +53,12 @@ struct MacVaultsSettingsView: View {
                 }
                 .padding(.bottom, 8)
 
+                // Obsidian Local REST API Section (macOS only)
+                ObsidianAPIConfigSection(settings: settings)
+
+                Divider()
+                    .padding(.vertical, 8)
+
                 // Vaults List
                 if vaultManager.vaults.isEmpty {
                     emptyState
@@ -530,29 +536,44 @@ private struct VaultCard: View {
     }
 
     private var actionButtons: some View {
-        HStack(spacing: 12) {
-            Button(action: onRefresh) {
-                Label("Refresh", systemImage: "arrow.clockwise")
+        VStack(alignment: .leading, spacing: 10) {
+            // Info about optional nature of embeddings
+            HStack(spacing: 6) {
+                Image(systemName: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Refresh & iCloud sync are optional — only needed if you want to search this vault from iOS. On macOS, search uses Obsidian's Local REST API directly.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(vault.status == .indexing || vault.status == .syncing)
+            .padding(8)
+            .background(Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
 
-            Button(action: onSyncToCloud) {
-                Label("Sync to iCloud", systemImage: "icloud.and.arrow.up")
-            }
-            .buttonStyle(.bordered)
-            .disabled(vault.status != .synced)
+            HStack(spacing: 12) {
+                Button(action: onRefresh) {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(vault.status == .indexing || vault.status == .syncing)
 
-            Button("Edit", action: onEdit)
+                Button(action: onSyncToCloud) {
+                    Label("Sync to iCloud", systemImage: "icloud.and.arrow.up")
+                }
                 .buttonStyle(.bordered)
+                .disabled(vault.status != .synced)
 
-            Spacer()
+                Button("Edit", action: onEdit)
+                    .buttonStyle(.bordered)
 
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
+                Spacer()
+
+                Button(role: .destructive, action: onDelete) {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.red)
             }
-            .buttonStyle(.borderless)
-            .foregroundStyle(.red)
         }
     }
 
@@ -704,6 +725,249 @@ class ObsidianVaultManager: ObservableObject {
     private func restoreBookmarks() {
         let vaultIds = vaults.map { $0.id }
         bookmarkManager.restoreAllBookmarks(for: vaultIds)
+    }
+}
+
+// MARK: - Obsidian API Configuration Section
+
+private struct ObsidianAPIConfigSection: View {
+    @ObservedObject var settings: MacSettings
+    @State private var isTestingConnection = false
+    @State private var connectionStatus: ConnectionStatus = .unknown
+    @State private var showAPIKey = false
+    @State private var showSetupInstructions = false
+
+    enum ConnectionStatus {
+        case unknown, connected, failed(String)
+
+        var icon: String {
+            switch self {
+            case .unknown: return "questionmark.circle"
+            case .connected: return "checkmark.circle.fill"
+            case .failed: return "xmark.circle.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .unknown: return .secondary
+            case .connected: return .green
+            case .failed: return .red
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header with toggle
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "network")
+                            .foregroundStyle(.blue)
+                        Text("Local REST API")
+                            .font(.headline)
+
+                        if settings.obsidianAPIConfig.isEnabled {
+                            HStack(spacing: 4) {
+                                Image(systemName: connectionStatus.icon)
+                                    .font(.caption)
+                                switch connectionStatus {
+                                case .connected:
+                                    Text("Connected")
+                                        .font(.caption)
+                                case .failed(let message):
+                                    Text(message)
+                                        .font(.caption)
+                                        .lineLimit(1)
+                                case .unknown:
+                                    Text("Not tested")
+                                        .font(.caption)
+                                }
+                            }
+                            .foregroundStyle(connectionStatus.color)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(connectionStatus.color.opacity(0.1))
+                            .clipShape(Capsule())
+                        }
+                    }
+
+                    Text("Search and create notes directly in Obsidian (fastest, requires plugin)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $settings.obsidianAPIConfig.isEnabled)
+                    .labelsHidden()
+            }
+
+            // Configuration (when enabled)
+            if settings.obsidianAPIConfig.isEnabled {
+                VStack(spacing: 12) {
+                    // Setup Instructions (collapsible)
+                    DisclosureGroup(isExpanded: $showSetupInstructions) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            setupStep(number: 1, text: "Open Obsidian → Settings → Community plugins")
+                            setupStep(number: 2, text: "Click \"Browse\" and search for \"Local REST API\"")
+                            setupStep(number: 3, text: "Install and enable the plugin")
+                            setupStep(number: 4, text: "Click the gear icon next to the plugin")
+                            setupStep(number: 5, text: "Copy the API Key and paste it below")
+
+                            Link(destination: URL(string: "https://github.com/coddingtonbear/obsidian-local-rest-api")!) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "arrow.up.right.square")
+                                    Text("View plugin on GitHub")
+                                }
+                                .font(.caption)
+                            }
+                            .padding(.top, 4)
+                        }
+                        .padding(.top, 8)
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "questionmark.circle")
+                            Text("How to get the API Key")
+                                .font(.subheadline.weight(.medium))
+                        }
+                        .foregroundStyle(.blue)
+                    }
+                    .padding(10)
+                    .background(Color.blue.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                    // Port
+                    HStack {
+                        Text("Port")
+                            .font(.subheadline)
+                            .frame(width: 80, alignment: .leading)
+
+                        TextField("27123", value: $settings.obsidianAPIConfig.port, formatter: NumberFormatter())
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+
+                        Text("Default: 27123")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+
+                        Spacer()
+                    }
+
+                    // API Key
+                    HStack {
+                        Text("API Key")
+                            .font(.subheadline)
+                            .frame(width: 80, alignment: .leading)
+
+                        if showAPIKey {
+                            TextField("Paste from Obsidian plugin settings", text: $settings.obsidianAPIConfig.apiKey)
+                                .textFieldStyle(.roundedBorder)
+                        } else {
+                            SecureField("Paste from Obsidian plugin settings", text: $settings.obsidianAPIConfig.apiKey)
+                                .textFieldStyle(.roundedBorder)
+                        }
+
+                        Button(action: { showAPIKey.toggle() }) {
+                            Image(systemName: showAPIKey ? "eye.slash" : "eye")
+                        }
+                        .buttonStyle(.borderless)
+                    }
+
+                    // HTTPS toggle
+                    HStack {
+                        Text("HTTPS")
+                            .font(.subheadline)
+                            .frame(width: 80, alignment: .leading)
+
+                        Toggle("", isOn: $settings.obsidianAPIConfig.useHTTPS)
+                            .labelsHidden()
+
+                        Text("Must match plugin setting")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+
+                        Spacer()
+                    }
+
+                    // Test connection button
+                    HStack {
+                        Button(action: testConnection) {
+                            if isTestingConnection {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Label("Test Connection", systemImage: "bolt.fill")
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isTestingConnection || settings.obsidianAPIConfig.apiKey.isEmpty)
+
+                        if settings.obsidianAPIConfig.apiKey.isEmpty {
+                            Text("Enter API key to test")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+
+                // Info about API vs Embeddings
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.blue)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("How Search Works")
+                            .font(.caption.weight(.medium))
+                        Text("With API enabled, macOS searches Obsidian directly (instant, requires Obsidian running). Embeddings are optional — only generate them if you want to search vaults from iOS.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(10)
+                .background(Color.blue.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.02))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func setupStep(number: Int, text: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text("\(number).")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.blue)
+                .frame(width: 16)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.primary)
+        }
+    }
+
+    private func testConnection() {
+        isTestingConnection = true
+        connectionStatus = .unknown
+
+        Task {
+            let service = MacObsidianQueryService(settings: settings)
+            do {
+                let success = try await service.testAPIConnection()
+                connectionStatus = success ? .connected : .failed("Connection failed")
+            } catch let error as ObsidianAPIError {
+                connectionStatus = .failed(error.localizedDescription ?? "Unknown error")
+            } catch {
+                connectionStatus = .failed(error.localizedDescription)
+            }
+            isTestingConnection = false
+        }
     }
 }
 
