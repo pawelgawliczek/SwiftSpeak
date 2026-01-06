@@ -133,18 +133,18 @@ struct MacHistoryView: View {
                             if isSelecting {
                                 Image(systemName: selectedRecords.contains(record.id) ? "checkmark.circle.fill" : "circle")
                                     .foregroundStyle(selectedRecords.contains(record.id) ? .blue : .secondary)
-                                    .onTapGesture {
-                                        toggleSelection(record.id)
-                                    }
                             }
 
                             MacHistoryRowView(record: record)
                                 .tag(record)
-                                .onTapGesture {
-                                    if isSelecting {
-                                        toggleSelection(record.id)
-                                    }
-                                }
+                        }
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if isSelecting {
+                                toggleSelection(record.id)
+                            } else {
+                                selectedRecord = record
+                            }
                         }
                         .contextMenu {
                             Button(action: { copyToClipboard(record.text) }) {
@@ -1039,8 +1039,7 @@ private struct MacSettingsRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: icon)
-                .foregroundStyle(iconColor)
+            MacIconView(icon: icon, color: iconColor)
                 .frame(width: 20)
             Text(label)
                 .foregroundStyle(.secondary)
@@ -1061,8 +1060,7 @@ private struct MacPromptConfigRow: View {
 
     var body: some View {
         HStack {
-            Image(systemName: icon)
-                .foregroundStyle(iconColor)
+            MacIconView(icon: icon, color: iconColor)
                 .frame(width: 20)
             Text(label)
                 .foregroundStyle(.secondary)
@@ -1072,6 +1070,43 @@ private struct MacPromptConfigRow: View {
         }
         .font(.subheadline)
         .padding(.vertical, 4)
+    }
+}
+
+/// Helper view that auto-detects emoji vs SF Symbol
+private struct MacIconView: View {
+    let icon: String
+    let color: Color
+
+    private var isEmoji: Bool {
+        guard let first = icon.unicodeScalars.first else { return false }
+        // Check if it's an emoji (not ASCII and not a typical SF Symbol name character)
+        return !first.isASCII || icon.unicodeScalars.contains { scalar in
+            // Emoji ranges
+            (0x1F600...0x1F64F).contains(scalar.value) || // Emoticons
+            (0x1F300...0x1F5FF).contains(scalar.value) || // Misc Symbols and Pictographs
+            (0x1F680...0x1F6FF).contains(scalar.value) || // Transport and Map
+            (0x1F1E0...0x1F1FF).contains(scalar.value) || // Flags
+            (0x2600...0x26FF).contains(scalar.value) ||   // Misc symbols
+            (0x2700...0x27BF).contains(scalar.value) ||   // Dingbats
+            (0xFE00...0xFE0F).contains(scalar.value) ||   // Variation Selectors
+            (0x1F900...0x1F9FF).contains(scalar.value) || // Supplemental Symbols
+            (0x1FA00...0x1FA6F).contains(scalar.value) || // Chess Symbols
+            (0x1FA70...0x1FAFF).contains(scalar.value) || // Symbols and Pictographs Extended-A
+            (0x231A...0x231B).contains(scalar.value) ||   // Watch, Hourglass
+            (0x23E9...0x23F3).contains(scalar.value) ||   // Media control symbols
+            (0x23F8...0x23FA).contains(scalar.value)      // More media controls
+        }
+    }
+
+    var body: some View {
+        if isEmoji {
+            Text(icon)
+                .font(.subheadline)
+        } else {
+            Image(systemName: icon)
+                .foregroundStyle(color)
+        }
     }
 }
 

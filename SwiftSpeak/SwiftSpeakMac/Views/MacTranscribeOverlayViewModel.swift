@@ -573,23 +573,41 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     // MARK: - History
 
     private func saveToHistory(rawText: String, finalText: String, wasTranslated: Bool) {
+        // Calculate cost breakdown using shared BaseCostCalculator
+        let costCalculator = BaseCostCalculator()
+        let transcriptionProvider = settings.selectedTranscriptionProvider
+        let translationProvider = wasTranslated ? settings.selectedTranslationProvider : nil
+
+        let costBreakdown = costCalculator.calculateCostBreakdown(
+            transcriptionProvider: transcriptionProvider,
+            transcriptionModel: transcriptionProvider.defaultTranscriptionModel,
+            formattingProvider: activeContext?.hasFormatting == true ? settings.selectedPowerModeProvider : nil,
+            formattingModel: activeContext?.hasFormatting == true ? settings.selectedPowerModeProvider.defaultLLMModel : nil,
+            translationProvider: translationProvider,
+            translationModel: translationProvider?.defaultLLMModel,
+            durationSeconds: recordingDuration,
+            textLength: finalText.count,
+            text: finalText
+        )
+
         let record = TranscriptionRecord(
             rawTranscribedText: rawText,
             text: finalText,
             mode: FormattingMode.raw,
-            provider: settings.selectedTranscriptionProvider,
+            provider: transcriptionProvider,
             duration: recordingDuration,
             translated: wasTranslated,
             targetLanguage: wasTranslated ? targetLanguage : nil,
             contextId: activeContext?.id,
             contextName: activeContext?.name,
             contextIcon: activeContext?.icon,
+            costBreakdown: costBreakdown,
             source: .app,
             globalMemoryEnabled: settings.globalMemoryEnabled,
             contextMemoryEnabled: activeContext?.useContextMemory ?? false
         )
         settings.addToHistory(record)
-        macLog("Saved transcription to history", category: "Transcribe")
+        macLog("Saved transcription to history with cost: $\(String(format: "%.6f", costBreakdown.total))", category: "Transcribe")
     }
 
     // MARK: - Reset
