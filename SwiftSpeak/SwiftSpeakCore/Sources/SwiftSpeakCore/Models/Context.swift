@@ -283,6 +283,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     public var autoSendAfterInsert: Bool           // Auto-tap send after voice input
     public var enterKeyBehavior: EnterKeyBehavior  // What Enter key does
 
+    // MARK: - Language Settings
+    public var defaultInputLanguage: Language?     // Override system dictation language (nil = auto)
+
     // MARK: - System
     public var isActive: Bool                      // Currently selected context
     public var appAssignment: AppAssignment        // Apps that auto-enable this context
@@ -309,6 +312,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         lastMemoryUpdate: Date? = nil,
         autoSendAfterInsert: Bool = false,
         enterKeyBehavior: EnterKeyBehavior = .defaultNewLine,
+        defaultInputLanguage: Language? = nil,
         isActive: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
         isPreset: Bool = false,
@@ -331,6 +335,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.lastMemoryUpdate = lastMemoryUpdate
         self.autoSendAfterInsert = autoSendAfterInsert
         self.enterKeyBehavior = enterKeyBehavior
+        self.defaultInputLanguage = defaultInputLanguage
         self.isActive = isActive
         self.appAssignment = appAssignment
         self.isPreset = isPreset
@@ -443,7 +448,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         case id, name, icon, color, description
         case domainJargon, examples, selectedInstructions, customInstructions
         case useGlobalMemory, useContextMemory, contextMemory, memoryLimit, lastMemoryUpdate
-        case autoSendAfterInsert, enterKeyBehavior
+        case autoSendAfterInsert, enterKeyBehavior, defaultInputLanguage
         case isActive, appAssignment, isPreset, createdAt, updatedAt
         // Legacy
         case systemPrompt  // Migrate to customInstructions
@@ -477,6 +482,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
 
         autoSendAfterInsert = try container.decodeIfPresent(Bool.self, forKey: .autoSendAfterInsert) ?? false
         enterKeyBehavior = try container.decodeIfPresent(EnterKeyBehavior.self, forKey: .enterKeyBehavior) ?? .defaultNewLine
+        defaultInputLanguage = try container.decodeIfPresent(Language.self, forKey: .defaultInputLanguage)
         isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
         appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
         isPreset = try container.decodeIfPresent(Bool.self, forKey: .isPreset) ?? false
@@ -503,6 +509,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         try container.encodeIfPresent(lastMemoryUpdate, forKey: .lastMemoryUpdate)
         try container.encode(autoSendAfterInsert, forKey: .autoSendAfterInsert)
         try container.encode(enterKeyBehavior, forKey: .enterKeyBehavior)
+        try container.encodeIfPresent(defaultInputLanguage, forKey: .defaultInputLanguage)
         try container.encode(isActive, forKey: .isActive)
         try container.encode(appAssignment, forKey: .appAssignment)
         try container.encode(isPreset, forKey: .isPreset)

@@ -5,6 +5,8 @@
 //  Local vector store for Obsidian embeddings on macOS
 //  Saves embeddings to Application Support, syncs to iCloud Drive
 //
+//  NOTE: Uses shared RAG infrastructure from SwiftSpeakCore
+//
 
 import Foundation
 import SwiftSpeakCore
@@ -193,7 +195,7 @@ final class MacObsidianVectorStore {
 
             for chunk in chunks {
                 guard let chunkEmbedding = chunk.embedding else { continue }
-                var similarity = cosineSimilarity(embedding, chunkEmbedding)
+                var similarity = VectorMath.cosineSimilarity(embedding, chunkEmbedding)
 
                 // Keyword boosting: boost score if query terms appear in title or content
                 if !queryTerms.isEmpty {
@@ -315,27 +317,6 @@ final class MacObsidianVectorStore {
         return Array(allResults.prefix(limit))
     }
 
-    // MARK: - Helpers
-
-    /// Cosine similarity between two vectors
-    private func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
-        guard a.count == b.count, !a.isEmpty else { return 0 }
-
-        var dotProduct: Float = 0
-        var normA: Float = 0
-        var normB: Float = 0
-
-        for i in 0..<a.count {
-            dotProduct += a[i] * b[i]
-            normA += a[i] * a[i]
-            normB += b[i] * b[i]
-        }
-
-        let denominator = sqrt(normA) * sqrt(normB)
-        guard denominator > 0 else { return 0 }
-
-        return dotProduct / denominator
-    }
 }
 
 // MARK: - Supporting Types

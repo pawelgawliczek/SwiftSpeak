@@ -162,18 +162,25 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private func autoSelectContext(for bundleId: String) {
         guard !bundleId.isEmpty else { return }
 
+        macLog("Auto-detecting context for bundleId: '\(bundleId)'", category: "Transcribe")
+        macLog("Available contexts: \(settings.contexts.map { "\($0.name) (apps: \($0.appAssignment.assignedAppIds))" })", category: "Transcribe")
+
         // Find a context that includes this app
         // Check all contexts for app assignment match
         for context in settings.contexts {
-            if context.appAssignment.includes(
+            let hasAssignments = context.appAssignment.hasAssignments
+            let matches = context.appAssignment.includes(
                 bundleId: bundleId,
                 userOverrides: [:],  // TODO: Load user category overrides
                 appLookup: { _ in nil }  // TODO: Implement app library lookup
-            ) {
+            )
+            macLog("Context '\(context.name)': hasAssignments=\(hasAssignments), matches=\(matches), assignedApps=\(context.appAssignment.assignedAppIds)", category: "Transcribe", level: .debug)
+
+            if matches {
                 activeContext = context
                 macLog("Auto-selected context '\(context.name)' for app '\(bundleId)'", category: "Transcribe")
 
-                // Apply context's default input language
+                // Apply context's default input language (only if context has one)
                 if let contextLanguage = context.defaultInputLanguage {
                     inputLanguage = contextLanguage
                 }
@@ -181,11 +188,11 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             }
         }
 
-        // Fallback to active context from settings if no match
+        // No app-specific match - use global active context from settings (if any)
+        // But DON'T override inputLanguage - keep the global dictation language
+        // The user's global dictation language takes precedence unless a context explicitly sets one
         activeContext = settings.activeContext
-        if let ctx = activeContext, let contextLanguage = ctx.defaultInputLanguage {
-            inputLanguage = contextLanguage
-        }
+        macLog("No app-specific context match, using activeContext: \(activeContext?.name ?? "none"), keeping inputLanguage: \(inputLanguage?.displayName ?? "auto")", category: "Transcribe")
     }
 
     // MARK: - Recording Control
@@ -255,6 +262,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         macLog("Recording cancelled", category: "Transcribe")
     }
 
+    /// Clean up all resources - call before deallocation
+    func cleanup() {
+        recordingTimer?.invalidate()
+        recordingTimer = nil
+        cancellables.removeAll()
+        macLog("Transcribe viewModel cleanup", category: "Transcribe")
+    }
+
     // MARK: - Processing
 
     private func processRecording(audioURL: URL) async {
@@ -268,10 +283,20 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
         do {
             // Get transcription provider
+            let selectedProvider = settings.selectedTranscriptionProvider
+            macLog("Using transcription provider: \(selectedProvider.displayName)", category: "Transcribe")
+
             guard let transcriptionProvider = factory.createTranscriptionProvider(
-                for: settings.selectedTranscriptionProvider
+                for: selectedProvider
             ) else {
+                macLog("Failed to create provider \(selectedProvider.displayName) - API key missing?", category: "Transcribe", level: .error)
                 throw TranscriptionError.apiKeyMissing
+            }
+
+            // Log audio file info
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: audioURL.path),
+               let fileSize = attrs[.size] as? Int64 {
+                macLog("Audio file size: \(fileSize) bytes", category: "Transcribe")
             }
 
             // Build prompt context with global memory and vocabulary
@@ -283,6 +308,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             )
 
             // Transcribe audio with language and vocabulary hints
+            macLog("Transcribing with language: \(inputLanguage?.displayName ?? "auto-detect")", category: "Transcribe")
+
             var transcribedText = try await transcriptionProvider.transcribe(
                 audioURL: audioURL,
                 language: inputLanguage,

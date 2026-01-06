@@ -478,7 +478,8 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         hotkeyManager.setHandler { [weak self] action, context in
             switch action {
             case .toggleRecording:
-                self?.toggleRecording()
+                // Pass the captured context to the transcribe overlay
+                self?.openTranscribeOverlay(mode: .toggle, context: context)
             case .cancelRecording:
                 self?.cancelRecording()
             case .quickPaste:

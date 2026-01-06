@@ -99,6 +99,11 @@ public struct PromptContext: Sendable {
     ///   - globalMemory: Global memory string (if enabled)
     ///   - vocabularyEntries: Vocabulary entries for transcription hints
     /// - Returns: Configured PromptContext
+    ///
+    /// Note: Context memory is NOT included here - this is intentional.
+    /// For transcription, only global memory is used to keep prompts simple.
+    /// For Power Mode execution, use PowerModePromptBuilder which handles
+    /// all memory tiers (global, context, power mode) appropriately.
     public static func from(
         context: ConversationContext?,
         powerMode: PowerMode? = nil,
@@ -114,12 +119,12 @@ public struct PromptContext: Sendable {
         let includeGlobalMemory = context?.useGlobalMemory ?? true
         let globalMem = includeGlobalMemory ? globalMemory : nil
 
-        // Only include context memory if enabled
-        let contextMem = context?.useContextMemory == true ? context?.contextMemory : nil
+        // Note: Context memory intentionally NOT included here
+        // Power Mode uses PowerModePromptBuilder which handles all memory tiers
 
         return PromptContext(
             globalMemory: globalMem,
-            contextMemory: contextMem,
+            contextMemory: nil,  // Simplified: context memory removed
             contextName: context?.name,
             powerModeMemory: powerMode?.memoryEnabled == true ? powerMode?.memory : nil,
             powerModeName: powerMode?.name,

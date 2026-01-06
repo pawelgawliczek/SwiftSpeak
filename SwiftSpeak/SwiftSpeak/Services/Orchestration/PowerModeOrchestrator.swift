@@ -628,16 +628,24 @@ final class PowerModeOrchestrator: ObservableObject {
             throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
         }
 
-        // Build the full prompt with context and memory injection
-        let systemPrompt = buildSystemPrompt(isRegeneration: isRegeneration, isRefinement: isRefinement)
+        // Build prompts using shared PowerModePromptBuilder
+        let promptInput = buildPromptInput(userInput: userInput)
+        var (systemPrompt, userMessage) = PowerModePromptBuilder.buildPrompt(for: promptInput)
 
-        // Use format method with custom prompt (system prompt)
-        // The userInput becomes the "text" to format
+        // Add regeneration/refinement notes if applicable
+        if isRegeneration {
+            systemPrompt += "\n\nNote: This is a regeneration request. Provide a fresh perspective while maintaining quality."
+        }
+        if isRefinement {
+            systemPrompt += "\n\nNote: This is a refinement request. Focus on the specific refinement requested while preserving the good parts of the original output."
+        }
+
+        // Use format method with structured prompt
         return try await provider.format(
-            text: userInput,
+            text: userMessage,
             mode: .raw,
             customPrompt: systemPrompt,
-            context: buildPromptContext()
+            context: nil  // Context is now embedded in userMessage
         )
     }
 
@@ -663,8 +671,17 @@ final class PowerModeOrchestrator: ObservableObject {
             throw TranscriptionError.privacyModeBlocksCloudProvider(provider.providerId.displayName)
         }
 
-        // Build system prompt
-        let systemPrompt = buildSystemPrompt(isRegeneration: isRegeneration, isRefinement: isRefinement)
+        // Build prompts using shared PowerModePromptBuilder
+        let promptInput = buildPromptInput(userInput: userInput)
+        var (systemPrompt, userMessage) = PowerModePromptBuilder.buildPrompt(for: promptInput)
+
+        // Add regeneration/refinement notes if applicable
+        if isRegeneration {
+            systemPrompt += "\n\nNote: This is a regeneration request. Provide a fresh perspective while maintaining quality."
+        }
+        if isRefinement {
+            systemPrompt += "\n\nNote: This is a refinement request. Focus on the specific refinement requested while preserving the good parts of the original output."
+        }
 
         // Start streaming
         var accumulatedText = ""
@@ -674,10 +691,10 @@ final class PowerModeOrchestrator: ObservableObject {
 
         do {
             for try await chunk in streamingProvider.formatStreaming(
-                text: userInput,
+                text: userMessage,
                 mode: .raw,
                 customPrompt: systemPrompt,
-                context: buildPromptContext()
+                context: nil  // Context is now embedded in userMessage
             ) {
                 // Check for cancellation
                 try Task.checkCancellation()
@@ -705,115 +722,67 @@ final class PowerModeOrchestrator: ObservableObject {
         }
     }
 
-    /// Build system prompt with all injections
-    private func buildSystemPrompt(isRegeneration: Bool, isRefinement: Bool) -> String {
-        var parts: [String] = []
+    /// Build PowerModePromptInput from current orchestrator state
+    private func buildPromptInput(userInput: String) -> PowerModePromptInput {
+        // Build RAG chunks from lastCombinedRAGResult or lastRAGResult
+        var ragChunks: [RAGChunkInfo] = []
+        var obsidianChunks: [ObsidianChunkInfo] = []
 
-        // 1. Power Mode instruction
-        parts.append("## Role and Task")
-        parts.append(powerMode.instruction)
-
-        // 2. Output format
-        if !powerMode.outputFormat.isEmpty {
-            parts.append("\n## Output Format")
-            parts.append(powerMode.outputFormat)
-        }
-
-        // 3. Active Context (if any)
-        if let context = activeContext {
-            parts.append("\n## Active Context: \(context.name)")
-
-            // Add formatting style based on selected instructions
-            let styleChips = context.selectedInstructions.intersection(["formal", "casual", "concise"])
-            if !styleChips.isEmpty {
-                parts.append("Style: \(styleChips.joined(separator: ", "))")
+        if let combined = lastCombinedRAGResult {
+            // Use combined result (RAG + Obsidian)
+            for result in combined.documentResults.prefix(5) {
+                ragChunks.append(RAGChunkInfo(
+                    documentName: result.documentName,
+                    content: result.chunk.content,
+                    similarity: result.score
+                ))
             }
-
-            if let instructions = context.customInstructions, !instructions.isEmpty {
-                parts.append("Instructions: \(instructions)")
+            for result in combined.obsidianResults.prefix(5) {
+                obsidianChunks.append(ObsidianChunkInfo(
+                    noteTitle: result.noteTitle,
+                    vaultName: result.vaultName,
+                    content: result.chunkContent,
+                    similarity: result.similarity
+                ))
             }
-        }
-
-        // 4. Memory injection
-        let memorySection = buildMemorySection()
-        if !memorySection.isEmpty {
-            parts.append("\n## Relevant Memory")
-            parts.append(memorySection)
-        }
-
-        // 5. RAG context injection (Phase 4e + Phase 3 - Obsidian)
-        if let combined = lastCombinedRAGResult, combined.hasResults {
-            // Use formatted combined context from CombinedRAGResult
-            parts.append("\n" + combined.combinedContext)
-            parts.append("Use this information to inform your response when relevant.")
-        } else if let ragResult = lastRAGResult, !ragResult.chunks.isEmpty {
-            // Fallback to legacy RAG-only context
-            parts.append("\n## Knowledge Base Context")
-            parts.append("The following relevant information was retrieved from attached documents:")
-            parts.append("Sources: \(ragResult.documentNames.joined(separator: ", "))")
-            parts.append("")
-            for (index, result) in ragResult.chunks.prefix(5).enumerated() {
-                parts.append("### Excerpt \(index + 1) (from \(result.documentName))")
-                parts.append(result.chunk.content)
-                parts.append("")
-            }
-            parts.append("Use this information to inform your response when relevant.")
-        }
-
-        // 6. Webhook context injection (Phase 4f)
-        let successfulWebhookContexts = webhookContextResults.filter { $0.error == nil && $0.content != nil }
-        if !successfulWebhookContexts.isEmpty {
-            parts.append("\n## External Context (from webhooks)")
-            for result in successfulWebhookContexts {
-                parts.append("### \(result.webhookName)")
-                if let content = result.content {
-                    // Truncate very long responses
-                    let truncated = content.count > 2000 ? String(content.prefix(2000)) + "..." : content
-                    parts.append(truncated)
-                }
-                parts.append("")
+        } else if let ragResult = lastRAGResult {
+            // Legacy RAG-only result
+            for result in ragResult.chunks.prefix(5) {
+                ragChunks.append(RAGChunkInfo(
+                    documentName: result.documentName,
+                    content: result.chunk.content,
+                    similarity: result.score
+                ))
             }
         }
 
-        // 7. Special instructions for regeneration/refinement
-        if isRegeneration {
-            parts.append("\n## Note")
-            parts.append("This is a regeneration request. Provide a fresh perspective while maintaining quality.")
-        }
+        // Build webhook contexts
+        let webhookContexts = webhookContextResults
+            .filter { $0.error == nil && $0.content != nil }
+            .map { WebhookContextInfo(webhookName: $0.webhookName, content: $0.content!) }
 
-        if isRefinement {
-            parts.append("\n## Note")
-            parts.append("This is a refinement request. Focus on the specific refinement requested while preserving the good parts of the original output.")
-        }
-
-        return parts.joined(separator: "\n")
+        return PowerModePromptInput(
+            powerMode: powerMode,
+            userInput: userInput,
+            // Memory (combined into single block)
+            globalMemory: settings.globalMemoryEnabled ? settings.globalMemory : nil,
+            contextMemory: activeContext?.useContextMemory == true ? activeContext?.contextMemory : nil,
+            powerModeMemory: powerMode.memoryEnabled ? powerMode.memory : nil,
+            // Knowledge base
+            ragChunks: ragChunks,
+            obsidianChunks: obsidianChunks,
+            // Platform-specific (iOS omits these)
+            selectedText: nil,
+            selectedTextSource: nil,
+            clipboardText: nil,
+            // Webhooks
+            webhookContexts: webhookContexts
+        )
     }
 
-    /// Build memory section based on enabled settings
-    private func buildMemorySection() -> String {
-        var memories: [String] = []
-
-        // 1. Global memory (if enabled)
-        if settings.globalMemoryEnabled, let globalMem = settings.globalMemory, !globalMem.isEmpty {
-            memories.append("Global context: \(globalMem)")
-        }
-
-        // 2. Context memory (if context active and memory enabled)
-        if let context = activeContext, context.useContextMemory,
-           let contextMem = context.contextMemory, !contextMem.isEmpty {
-            memories.append("Context (\(context.name)): \(contextMem)")
-        }
-
-        // 3. Power Mode memory (if enabled)
-        if powerMode.memoryEnabled, let pmMem = powerMode.memory, !pmMem.isEmpty {
-            memories.append("Workflow (\(powerMode.name)): \(pmMem)")
-        }
-
-        return memories.joined(separator: "\n")
-    }
-
-    /// Build PromptContext for provider
-    private func buildPromptContext() -> PromptContext {
+    /// Build PromptContext for transcription hints
+    /// Note: This still uses PromptContext for transcription, not Power Mode execution
+    private func buildTranscriptionPromptContext() -> PromptContext {
         return PromptContext.from(
             context: activeContext,
             powerMode: powerMode,

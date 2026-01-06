@@ -5,6 +5,8 @@
 //  Separate SQLite database for Obsidian vault embeddings
 //  Does not mix with Power Mode documents - dedicated to Obsidian notes
 //
+//  NOTE: Uses shared RAG infrastructure from SwiftSpeakCore
+//
 
 import Foundation
 import SQLite3
@@ -431,8 +433,8 @@ final class ObsidianVectorStore {
                 count: floatCount
             ))
 
-            // Calculate cosine similarity
-            let similarity = cosineSimilarity(queryEmbedding, embedding)
+            // Calculate cosine similarity (using shared VectorMath)
+            let similarity = VectorMath.cosineSimilarity(queryEmbedding, embedding)
 
             if similarity >= minSimilarity {
                 let chunk = DocumentChunk(
@@ -568,26 +570,6 @@ final class ObsidianVectorStore {
             return String(cString: errorPointer)
         }
         return "Unknown database error"
-    }
-
-    /// Calculate cosine similarity between two vectors
-    private func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
-        guard a.count == b.count, !a.isEmpty else { return 0 }
-
-        var dotProduct: Float = 0
-        var normA: Float = 0
-        var normB: Float = 0
-
-        for i in 0..<a.count {
-            dotProduct += a[i] * b[i]
-            normA += a[i] * a[i]
-            normB += b[i] * b[i]
-        }
-
-        let denominator = sqrt(normA) * sqrt(normB)
-        guard denominator > 0 else { return 0 }
-
-        return dotProduct / denominator
     }
 }
 

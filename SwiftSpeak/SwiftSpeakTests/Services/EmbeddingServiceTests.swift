@@ -133,8 +133,9 @@ struct EmbeddingServiceAPITests {
         defer { MockEmbeddingURLProtocol.handlers.removeValue(forKey: url) }
 
         let session = createTestSession()
-        // Create service to verify initialization works with our test session
-        _ = EmbeddingService(apiKey: "test-key", session: session)
+        let httpClient = HTTPClient(session: session)
+        // Create service to verify initialization works with our test HTTP client
+        _ = EmbeddingService(apiKey: "test-key", httpClient: httpClient)
 
         // Use a modified embed that uses our test URL (we'll need to test via batch)
         // Since we can't modify the base URL, let's test the validation only
@@ -153,8 +154,7 @@ struct EmbeddingServiceAPITests {
     @Test("Handles network error")
     @MainActor
     func handlesNetworkError() async throws {
-        let underlyingError = URLError(.notConnectedToInternet)
-        let error = EmbeddingError.networkError(underlyingError)
+        let error = EmbeddingError.networkError("Not connected to internet")
         #expect(error.errorDescription?.contains("Network") == true)
     }
 }
@@ -297,11 +297,11 @@ struct EmbeddingServiceErrorTests {
         #expect(error.errorDescription?.contains("Invalid") == true)
     }
 
-    @Test("Network error preserves underlying error")
-    func networkErrorPreservesUnderlying() {
-        let underlying = URLError(.timedOut)
-        let error = EmbeddingError.networkError(underlying)
+    @Test("Network error preserves message")
+    func networkErrorPreservesMessage() {
+        let error = EmbeddingError.networkError("Connection timed out")
         #expect(error.errorDescription?.contains("Network") == true)
+        #expect(error.errorDescription?.contains("timed out") == true)
     }
 
     @Test("API error includes message")

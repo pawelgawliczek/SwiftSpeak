@@ -60,6 +60,7 @@ struct RecordingOverlayView: View {
     @State private var logoScale: CGFloat = 1.0
     @State private var logoGlow: Double = 0.3
     @State private var processingElapsed: TimeInterval = 0
+    @State private var isViewActive = false
 
     private let processingTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -78,14 +79,22 @@ struct RecordingOverlayView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.35), radius: 20, x: 0, y: 8)
         .onAppear {
+            isViewActive = true
             startLogoAnimation()
         }
+        .onDisappear {
+            isViewActive = false
+            stopLogoAnimation()
+        }
         .onReceive(processingTimer) { _ in
+            // Guard: Don't update state after view disappears
+            guard isViewActive else { return }
             if viewModel.isProcessing {
                 processingElapsed = Date().timeIntervalSince(viewModel.processingStartTime)
             }
         }
         .onChange(of: viewModel.isProcessing) { isProcessing in
+            guard isViewActive else { return }
             if isProcessing {
                 processingElapsed = 0
             }
@@ -356,6 +365,14 @@ struct RecordingOverlayView: View {
         withAnimation(Animation.easeInOut(duration: 1.2).repeatForever(autoreverses: true)) {
             logoScale = 1.1
             logoGlow = 0.6
+        }
+    }
+
+    private func stopLogoAnimation() {
+        // Stop animation by setting values without animation
+        withAnimation(nil) {
+            logoScale = 1.0
+            logoGlow = 0.3
         }
     }
 
@@ -809,6 +826,7 @@ struct VisualEffectView: NSViewRepresentable {
 
 struct ProcessingAnimationView: View {
     @State private var animationPhase: Double = 0
+    @State private var isActive = false
 
     private let barCount = 8
     private let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
@@ -819,7 +837,10 @@ struct ProcessingAnimationView: View {
                 ProcessingBar(index: index, phase: animationPhase)
             }
         }
+        .onAppear { isActive = true }
+        .onDisappear { isActive = false }
         .onReceive(timer) { _ in
+            guard isActive else { return }
             animationPhase += 0.15
         }
     }

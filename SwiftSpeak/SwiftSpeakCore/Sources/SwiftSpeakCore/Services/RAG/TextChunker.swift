@@ -1,16 +1,17 @@
 //
 //  TextChunker.swift
-//  SwiftSpeak
+//  SwiftSpeakCore
 //
 //  Splits document content into overlapping chunks for embedding
 //
+//  SHARED: Used by iOS RAG, iOS Obsidian, and macOS Obsidian
+//
 
 import Foundation
-import SwiftSpeakCore
 
 // MARK: - Text Chunker
 
-final class TextChunker: Sendable {
+public final class TextChunker: Sendable {
 
     // MARK: - Properties
 
@@ -21,19 +22,19 @@ final class TextChunker: Sendable {
 
     // MARK: - Initialization
 
-    init(config: RAGConfiguration = .default) {
+    public init(config: RAGConfiguration = .default) {
         self.config = config
     }
 
     /// Create chunker from Power Mode's RAG configuration
-    convenience init(powerMode: PowerMode) {
+    public convenience init(powerMode: PowerMode) {
         self.init(config: powerMode.ragConfiguration)
     }
 
     // MARK: - Public API
 
     /// Split parsed document into chunks
-    func chunk(
+    public func chunk(
         document: ParsedDocument,
         documentId: UUID
     ) -> [DocumentChunk] {
@@ -48,7 +49,7 @@ final class TextChunker: Sendable {
     }
 
     /// Split raw text into chunks
-    func chunk(
+    public func chunk(
         text: String,
         documentId: UUID,
         metadata: ChunkMetadata = ChunkMetadata()

@@ -77,13 +77,19 @@ public final class AssemblyAITranscriptionService: TranscriptionProvider, Diariz
         }
 
         // Step 1: Upload audio file
+        print("[AssemblyAI] Uploading audio file: \(audioURL.lastPathComponent)")
         let uploadURL = try await uploadAudio(fileURL: audioURL)
+        print("[AssemblyAI] Upload complete, URL: \(uploadURL.prefix(50))...")
 
         // Step 2: Create transcript job with vocabulary hints
+        print("[AssemblyAI] Creating transcript job with language: \(language?.rawValue ?? "auto")")
         let transcriptID = try await createTranscript(audioURL: uploadURL, language: language, promptHint: promptHint)
+        print("[AssemblyAI] Transcript job created, ID: \(transcriptID)")
 
         // Step 3: Poll for completion
+        print("[AssemblyAI] Polling for completion...")
         let text = try await pollForCompletion(transcriptID: transcriptID)
+        print("[AssemblyAI] Transcription complete, text length: \(text.count)")
 
         // Verify we got a result
         guard !text.isEmpty else {
@@ -472,12 +478,17 @@ public final class AssemblyAITranscriptionService: TranscriptionProvider, Diariz
             switch transcriptResponse.status {
             case "completed":
                 guard let text = transcriptResponse.text, !text.isEmpty else {
+                    // Log raw response for debugging
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        print("[AssemblyAI] Completed but empty text. Raw response: \(responseString.prefix(500))")
+                    }
                     throw TranscriptionError.emptyResponse
                 }
                 return text
 
             case "error":
                 let errorMessage = transcriptResponse.error ?? "Unknown error"
+                print("[AssemblyAI] Transcription error: \(errorMessage)")
                 throw TranscriptionError.serverError(
                     statusCode: 500,
                     message: "Transcription failed: \(errorMessage)"

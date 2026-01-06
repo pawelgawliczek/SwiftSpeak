@@ -19,10 +19,12 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
     @Published private(set) var registeredHotkeys: [HotkeyAction: HotkeyCombination] = [:]
 
     private var eventHandler: ((HotkeyAction, HotkeyContext) -> Void)?
+    private var keyUpHandler: ((HotkeyAction) -> Void)?  // Handler for key release events
     private var hotkeyRefs: [UInt32: EventHotKeyRef] = [:]
     private var hotkeyActions: [UInt32: HotkeyAction] = [:]
     private var nextHotkeyId: UInt32 = 1
     private var eventHandlerRef: EventHandlerRef?
+    private var keyUpEventHandlerRef: EventHandlerRef?  // Separate handler for key up
     private var hotkeyIdToPowerModeId: [UInt32: UUID] = [:]
     private var powerModeHotkeys: [UUID: HotkeyCombination] = [:]
 
@@ -37,9 +39,12 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
         for ref in hotkeyRefs.values {
             UnregisterEventHotKey(ref)
         }
-        // Remove event handler
+        // Remove event handlers
         if let handlerRef = eventHandlerRef {
             RemoveEventHandler(handlerRef)
+        }
+        if let keyUpHandlerRef = keyUpEventHandlerRef {
+            RemoveEventHandler(keyUpHandlerRef)
         }
     }
 
@@ -94,6 +99,12 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
 
     func setHandler(_ handler: @escaping (HotkeyAction, HotkeyContext) -> Void) {
         self.eventHandler = handler
+    }
+
+    /// Set handler for key up (release) events
+    /// Used for push-to-talk functionality
+    func setKeyUpHandler(_ handler: @escaping (HotkeyAction) -> Void) {
+        self.keyUpHandler = handler
     }
 
     // MARK: - Default Hotkeys
@@ -260,9 +271,16 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
     // MARK: - Private Methods
 
     private func installEventHandler() {
-        var eventType = EventTypeSpec(
+        // Install key down handler
+        var keyDownEventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
+        )
+
+        // Install key up handler for push-to-talk
+        var keyUpEventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyReleased)
         )
 
         // Store self pointer for callback
@@ -372,12 +390,53 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
             GetEventDispatcherTarget(),
             callback,
             1,
-            &eventType,
+            &keyDownEventType,
             selfPtr,
             &handlerRef
         )
 
         self.eventHandlerRef = handlerRef
+
+        // Key up callback (for push-to-talk)
+        let keyUpCallback: EventHandlerUPP = { _, event, userData -> OSStatus in
+            guard let event = event, let userData = userData else { return OSStatus(eventNotHandledErr) }
+
+            var hotKeyID = EventHotKeyID()
+            let status = GetEventParameter(
+                event,
+                EventParamName(kEventParamDirectObject),
+                EventParamType(typeEventHotKeyID),
+                nil,
+                MemoryLayout<EventHotKeyID>.size,
+                nil,
+                &hotKeyID
+            )
+
+            guard status == noErr else { return status }
+
+            let manager = Unmanaged<MacHotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+
+            Task { @MainActor in
+                // Check standard hotkey actions
+                if let action = manager.hotkeyActions[hotKeyID.id] {
+                    manager.keyUpHandler?(action)
+                }
+            }
+
+            return noErr
+        }
+
+        var keyUpHandlerRef: EventHandlerRef?
+        InstallEventHandler(
+            GetEventDispatcherTarget(),
+            keyUpCallback,
+            1,
+            &keyUpEventType,
+            selfPtr,
+            &keyUpHandlerRef
+        )
+
+        self.keyUpEventHandlerRef = keyUpHandlerRef
     }
 
     private func carbonModifiers(from modifiers: UInt) -> UInt32 {

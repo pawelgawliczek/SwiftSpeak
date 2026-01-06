@@ -21,6 +21,7 @@ struct MacTranscribeOverlayView: View {
     @State private var logoGlow: Double = 0.3
     @State private var processingElapsed: TimeInterval = 0
     @State private var processingStartTime: Date = Date()
+    @State private var isViewActive = false
 
     private let processingTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
 
@@ -39,17 +40,22 @@ struct MacTranscribeOverlayView: View {
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .shadow(color: .black.opacity(0.35), radius: 20, x: 0, y: 8)
         .onAppear {
+            isViewActive = true
             startLogoAnimation()
         }
         .onDisappear {
+            isViewActive = false
             stopLogoAnimation()
         }
         .onReceive(processingTimer) { _ in
+            // Guard: Don't update state after view disappears
+            guard isViewActive else { return }
             if viewModel.state.isProcessing {
                 processingElapsed = Date().timeIntervalSince(processingStartTime)
             }
         }
         .onChange(of: viewModel.state) { newState in
+            guard isViewActive else { return }
             if newState.isProcessing {
                 processingStartTime = Date()
                 processingElapsed = 0
@@ -673,6 +679,7 @@ struct TranscribeWaveformBar: View {
 
 struct TranscribeProcessingAnimationView: View {
     @State private var animationPhase: Double = 0
+    @State private var isActive = false
 
     private let barCount = 8
     private let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
@@ -683,7 +690,10 @@ struct TranscribeProcessingAnimationView: View {
                 TranscribeProcessingBar(index: index, phase: animationPhase)
             }
         }
+        .onAppear { isActive = true }
+        .onDisappear { isActive = false }
         .onReceive(timer) { _ in
+            guard isActive else { return }
             animationPhase += 0.15
         }
     }

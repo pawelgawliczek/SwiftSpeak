@@ -11,7 +11,7 @@ import Combine
 import SwiftSpeakCore
 
 /// macOS audio recorder using AVAudioEngine
-/// Outputs 16kHz mono AAC optimized for Whisper API
+/// Outputs 16kHz mono AAC optimized for transcription APIs
 @MainActor
 final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject {
 
@@ -26,6 +26,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
 
     private var audioEngine: AVAudioEngine?
     private var audioFile: AVAudioFile?
+    private var formatConverter: AVAudioConverter?
     private(set) var recordingURL: URL?
     private var durationTimer: Timer?
     private var startTime: Date?
@@ -51,7 +52,20 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Recording settings (16kHz mono for Whisper)
+        // Log input format for debugging
+        print("[MacAudioRecorder] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+
+        // Target format: 16kHz mono PCM (will be encoded to AAC by AVAudioFile)
+        guard let targetFormat = AVAudioFormat(
+            commonFormat: .pcmFormatFloat32,
+            sampleRate: 16000,
+            channels: 1,
+            interleaved: false
+        ) else {
+            throw TranscriptionError.recordingFailed("Failed to create target audio format")
+        }
+
+        // Recording settings (AAC for smaller file size, compatible with all providers)
         let settings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
             AVSampleRateKey: 16000,
@@ -62,14 +76,22 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         // Create output file
         do {
             audioFile = try AVAudioFile(forWriting: url, settings: settings)
+            print("[MacAudioRecorder] Output file processing format: \(audioFile!.processingFormat)")
         } catch {
             throw TranscriptionError.recordingFailed(error.localizedDescription)
         }
 
+        // Create format converter (input format -> target format)
+        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+            throw TranscriptionError.recordingFailed("Failed to create audio format converter")
+        }
+        self.formatConverter = converter
+        print("[MacAudioRecorder] Format converter created: \(inputFormat.sampleRate)Hz -> \(targetFormat.sampleRate)Hz")
+
         // Install tap for audio data
-        let bufferSize: AVAudioFrameCount = 1024
+        let bufferSize: AVAudioFrameCount = 4096
         inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
-            self?.processAudioBuffer(buffer)
+            self?.processAudioBuffer(buffer, targetFormat: targetFormat)
         }
 
         // Start engine
@@ -89,6 +111,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
 
         // Start duration timer
         startDurationTimer()
+        print("[MacAudioRecorder] Recording started")
     }
 
     @discardableResult
@@ -99,6 +122,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         audioEngine?.inputNode.removeTap(onBus: 0)
         audioEngine?.stop()
         audioEngine = nil
+        formatConverter = nil
 
         // Close audio file
         audioFile = nil
@@ -115,6 +139,8 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         // Check file size
         let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
         let fileSize = attributes[.size] as? Int64 ?? 0
+        print("[MacAudioRecorder] Recording stopped, file size: \(fileSize) bytes")
+
         if fileSize < 1000 {
             throw TranscriptionError.audioTooShort(duration: duration, minDuration: 0.5)
         }
@@ -133,6 +159,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         audioEngine?.stop()
         audioEngine = nil
         audioFile = nil
+        formatConverter = nil
 
         if let url = recordingURL {
             try? FileManager.default.removeItem(at: url)
@@ -166,8 +193,8 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         }
     }
 
-    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        // Calculate audio level for waveform
+    private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, targetFormat: AVAudioFormat) {
+        // Calculate audio level for waveform visualization
         guard let channelData = buffer.floatChannelData?[0] else { return }
         let frameLength = Int(buffer.frameLength)
 
@@ -182,12 +209,44 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             self.currentLevel = min(1.0, average * 10)
         }
 
-        // Write to file (format conversion happens automatically)
-        if let file = audioFile {
+        // Convert and write to file
+        guard let converter = formatConverter,
+              let file = audioFile else { return }
+
+        // Calculate output frame count based on sample rate ratio
+        let ratio = targetFormat.sampleRate / buffer.format.sampleRate
+        let outputFrameCapacity = AVAudioFrameCount(Double(buffer.frameLength) * ratio) + 1
+
+        guard let convertedBuffer = AVAudioPCMBuffer(
+            pcmFormat: targetFormat,
+            frameCapacity: outputFrameCapacity
+        ) else { return }
+
+        var error: NSError?
+        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+            outStatus.pointee = .haveData
+            return buffer
+        }
+
+        let status = converter.convert(to: convertedBuffer, error: &error, withInputFrom: inputBlock)
+
+        if status == .error {
+            Task { @MainActor in
+                if let err = error {
+                    print("[MacAudioRecorder] Conversion error: \(err)")
+                    self.error = .recordingFailed(err.localizedDescription)
+                }
+            }
+            return
+        }
+
+        // Write converted buffer to file
+        if convertedBuffer.frameLength > 0 {
             do {
-                try file.write(from: buffer)
+                try file.write(from: convertedBuffer)
             } catch {
                 Task { @MainActor in
+                    print("[MacAudioRecorder] Write error: \(error)")
                     self.error = .recordingFailed(error.localizedDescription)
                 }
             }

@@ -192,6 +192,14 @@ public final class HTTPClient: @unchecked Sendable {
         }
     }
 
+    // MARK: - Raw Request
+
+    /// Execute a raw request and return data and response
+    /// Use this when you need full control over the request/response
+    public func data(for request: URLRequest) async throws -> (Data, URLResponse) {
+        return try await executeRequest(request)
+    }
+
     // MARK: - Private Helpers
 
     private func executeRequest(_ request: URLRequest) async throws -> (Data, URLResponse) {

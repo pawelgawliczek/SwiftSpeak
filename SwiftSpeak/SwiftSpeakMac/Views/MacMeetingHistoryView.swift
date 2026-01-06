@@ -196,22 +196,14 @@ struct MeetingRowView: View {
 
             Spacer()
 
-            // Status badge with animation for active processing
-            HStack(spacing: 6) {
-                if isActivelyProcessing {
-                    Circle()
-                        .fill(statusColor)
-                        .frame(width: 6, height: 6)
-                        .modifier(PulseAnimation())
-                }
-                Text(meeting.status.displayName)
-                    .font(.caption)
-            }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(statusColor.opacity(0.15))
-            .foregroundStyle(statusColor)
-            .clipShape(Capsule())
+            // Status badge
+            Text(meeting.status.displayName)
+                .font(.caption)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(statusColor.opacity(0.15))
+                .foregroundStyle(statusColor)
+                .clipShape(Capsule())
         }
         .padding(.vertical, 4)
     }
@@ -229,19 +221,6 @@ struct MeetingRowView: View {
         case .cancelled:
             return .gray
         }
-    }
-}
-
-// MARK: - Pulse Animation Modifier
-
-private struct PulseAnimation: ViewModifier {
-    @State private var isPulsing = false
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(isPulsing ? 0.4 : 1.0)
-            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
     }
 }
 

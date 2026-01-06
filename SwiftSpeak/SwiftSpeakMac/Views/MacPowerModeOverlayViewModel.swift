@@ -410,8 +410,9 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            // Build prompt with context
-            let prompt = buildPrompt()
+            // Build prompts using shared PowerModePromptBuilder
+            let promptInput = buildPromptInput()
+            let (systemPrompt, userMessage) = PowerModePromptBuilder.buildPrompt(for: promptInput)
 
             // Get LLM provider
             guard let provider = providerFactory,
@@ -419,8 +420,13 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
                 throw NSError(domain: "PowerMode", code: 2, userInfo: [NSLocalizedDescriptionKey: "LLM provider not configured"])
             }
 
-            // Call LLM (using format method as proxy for general LLM call)
-            aiResponse = try await llmService.format(text: prompt, mode: .raw, customPrompt: nil)
+            // Call LLM with system prompt and user message
+            aiResponse = try await llmService.format(
+                text: userMessage,
+                mode: .raw,
+                customPrompt: systemPrompt,
+                context: nil  // Context is now embedded in userMessage
+            )
 
             // Check if AI is asking a question
             if aiResponse.lowercased().contains("question:") || aiResponse.hasSuffix("?") {
@@ -435,6 +441,48 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             state = .contextPreview
         }
+    }
+
+    /// Build PowerModePromptInput from current view model state
+    private func buildPromptInput() -> PowerModePromptInput {
+        let inputConfig = currentPowerMode.inputConfig
+
+        // Build Obsidian chunks from search results
+        var obsidianChunks: [ObsidianChunkInfo] = []
+        if inputConfig.includeObsidianVaults {
+            for result in obsidianResults.prefix(currentPowerMode.maxObsidianChunks) {
+                obsidianChunks.append(ObsidianChunkInfo(
+                    noteTitle: result.noteTitle,
+                    vaultName: result.vaultName,
+                    content: result.content,
+                    similarity: result.similarity
+                ))
+            }
+        }
+
+        // Get memory values based on inputConfig
+        let globalMemory: String? = inputConfig.includeGlobalMemory ? settings.globalMemory : nil
+        let contextMemory: String? = inputConfig.includeGlobalMemory ? settings.activeContext?.contextMemory : nil
+        let powerModeMemory: String? = inputConfig.includePowerModeMemory ? currentPowerMode.memory : nil
+
+        // Get window context if enabled
+        let selectedText: String? = inputConfig.includeSelectedText ? windowContext?.selectedText : nil
+        let selectedTextSource: String? = inputConfig.includeSelectedText ? windowContext?.appName : nil
+        let clipboard: String? = inputConfig.includeClipboard ? clipboardContent : nil
+
+        return PowerModePromptInput(
+            powerMode: currentPowerMode,
+            userInput: userInput,
+            globalMemory: globalMemory,
+            contextMemory: contextMemory,
+            powerModeMemory: powerModeMemory,
+            ragChunks: [],  // macOS doesn't have RAG documents yet
+            obsidianChunks: obsidianChunks,
+            selectedText: selectedText,
+            selectedTextSource: selectedTextSource,
+            clipboardText: clipboard,
+            webhookContexts: []  // macOS doesn't have webhooks yet
+        )
     }
 
     // MARK: - Power Mode Cycling
@@ -473,85 +521,8 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         }
     }
 
-    /// Build the system prompt that explains the structure to the LLM
-    private func buildSystemPrompt() -> String {
-        var systemPrompt = """
-        You are a "\(currentPowerMode.name)" assistant. You will receive structured input with the following components:
-
-        1. [INSTRUCTION] - A predefined task description that defines what this assistant does. This sets the context for your role.
-
-        2. [CONTEXT] - Optional supporting information from various sources (notes, clipboard, selected text, memory). Use this information to inform your response.
-
-        3. [USER_INPUT] - The user's spoken request. This is the MOST IMPORTANT part - it contains the specific action the user wants you to perform right now.
-
-        Your job is to:
-        - Understand the task from [INSTRUCTION]
-        - Use relevant information from [CONTEXT] to support your response
-        - Execute the specific request in [USER_INPUT]
-        - The user's spoken input takes priority and drives what you actually do
-        """
-
-        // Add output format guidance if specified
-        if !currentPowerMode.outputFormat.isEmpty {
-            systemPrompt += "\n\n[OUTPUT_FORMAT]\nFormat your response as follows:\n\(currentPowerMode.outputFormat)"
-        }
-
-        return systemPrompt
-    }
-
-    /// Build the user message with instruction, context, and user input
-    private func buildUserMessage() -> String {
-        let inputConfig = currentPowerMode.inputConfig
-        var parts: [String] = []
-
-        // Instruction block (predefined task from Power Mode settings)
-        parts.append("[INSTRUCTION]\n\(currentPowerMode.instruction)\n[/INSTRUCTION]")
-
-        // Context block (all supporting information)
-        var contextParts: [String] = []
-
-        // Selected text
-        if inputConfig.includeSelectedText,
-           let window = windowContext,
-           let selectedText = window.selectedText,
-           !selectedText.isEmpty {
-            contextParts.append("[SELECTED_TEXT from=\"\(window.appName)\"]\n\(selectedText)\n[/SELECTED_TEXT]")
-        }
-
-        // Clipboard
-        if inputConfig.includeClipboard, !clipboardContent.isEmpty {
-            contextParts.append("[CLIPBOARD]\n\(clipboardContent)\n[/CLIPBOARD]")
-        }
-
-        // Obsidian notes
-        if inputConfig.includeObsidianVaults, !obsidianResults.isEmpty {
-            var noteParts: [String] = []
-            for result in obsidianResults.prefix(currentPowerMode.maxObsidianChunks) {
-                noteParts.append("[NOTE title=\"\(result.noteTitle)\"]\n\(result.content)\n[/NOTE]")
-            }
-            contextParts.append("[KNOWLEDGE_BASE]\n\(noteParts.joined(separator: "\n\n"))\n[/KNOWLEDGE_BASE]")
-        }
-
-        // Memory
-        if !memoryContext.isEmpty {
-            contextParts.append("[MEMORY]\n\(memoryContext)\n[/MEMORY]")
-        }
-
-        // Add context block if we have any context
-        if !contextParts.isEmpty {
-            parts.append("[CONTEXT]\n\(contextParts.joined(separator: "\n\n"))\n[/CONTEXT]")
-        }
-
-        // User input block (the spoken instruction - most important)
-        parts.append("[USER_INPUT]\n\(userInput)\n[/USER_INPUT]")
-
-        return parts.joined(separator: "\n\n")
-    }
-
-    /// Build the complete prompt (system + user message combined for providers that don't support separate system prompts)
-    private func buildPrompt() -> String {
-        return buildSystemPrompt() + "\n\n---\n\n" + buildUserMessage()
-    }
+    // NOTE: Old buildSystemPrompt, buildUserMessage, buildPrompt methods removed
+    // Now using shared PowerModePromptBuilder from SwiftSpeakCore
 
     /// Extract question from AI response
     private func extractQuestion(from response: String) -> String {

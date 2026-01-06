@@ -2,41 +2,15 @@
 //  VectorStore.swift
 //  SwiftSpeak
 //
-//  SQLite-based vector store for document chunk embeddings
+//  SQLite-based vector store for Power Mode document embeddings
 //  Supports cosine similarity search for RAG retrieval
+//
+//  NOTE: Uses shared RAG infrastructure from SwiftSpeakCore
 //
 
 import Foundation
 import SwiftSpeakCore
 import SQLite3
-
-// MARK: - Vector Store Errors
-
-enum VectorStoreError: Error, LocalizedError {
-    case databaseNotOpen
-    case databaseError(String)
-    case documentNotFound(UUID)
-    case chunkNotFound(UUID)
-    case embeddingDimensionMismatch(expected: Int, got: Int)
-    case serializationError
-
-    var errorDescription: String? {
-        switch self {
-        case .databaseNotOpen:
-            return "Vector store database is not open."
-        case .databaseError(let message):
-            return "Database error: \(message)"
-        case .documentNotFound(let id):
-            return "Document not found: \(id)"
-        case .chunkNotFound(let id):
-            return "Chunk not found: \(id)"
-        case .embeddingDimensionMismatch(let expected, let got):
-            return "Embedding dimension mismatch: expected \(expected), got \(got)"
-        case .serializationError:
-            return "Failed to serialize/deserialize data."
-        }
-    }
-}
 
 // MARK: - Vector Store
 
@@ -346,8 +320,8 @@ final class VectorStore {
                 count: floatCount
             ))
 
-            // Calculate cosine similarity
-            let similarity = cosineSimilarity(queryEmbedding, embedding)
+            // Calculate cosine similarity (using shared VectorMath)
+            let similarity = VectorMath.cosineSimilarity(queryEmbedding, embedding)
 
             if similarity >= minSimilarity {
                 let chunk = DocumentChunk(
@@ -444,25 +418,6 @@ final class VectorStore {
         return "Unknown database error"
     }
 
-    /// Calculate cosine similarity between two vectors
-    private func cosineSimilarity(_ a: [Float], _ b: [Float]) -> Float {
-        guard a.count == b.count, !a.isEmpty else { return 0 }
-
-        var dotProduct: Float = 0
-        var normA: Float = 0
-        var normB: Float = 0
-
-        for i in 0..<a.count {
-            dotProduct += a[i] * b[i]
-            normA += a[i] * a[i]
-            normB += b[i] * b[i]
-        }
-
-        let denominator = sqrt(normA) * sqrt(normB)
-        guard denominator > 0 else { return 0 }
-
-        return dotProduct / denominator
-    }
 }
 
 // MARK: - SQLite Constants

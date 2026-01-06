@@ -1,40 +1,13 @@
 //
 //  EmbeddingService.swift
-//  SwiftSpeak
+//  SwiftSpeakCore
 //
 //  Generates embeddings for document chunks using OpenAI API
 //
+//  SHARED: Used by iOS RAG, iOS Obsidian, and macOS Obsidian
+//
 
 import Foundation
-import SwiftSpeakCore
-
-// MARK: - Embedding Errors
-
-enum EmbeddingError: Error, LocalizedError {
-    case apiKeyMissing
-    case invalidResponse
-    case networkError(Error)
-    case apiError(String)
-    case batchTooLarge(Int, maxAllowed: Int)
-    case emptyInput
-
-    var errorDescription: String? {
-        switch self {
-        case .apiKeyMissing:
-            return "OpenAI API key is not configured."
-        case .invalidResponse:
-            return "Invalid response from embedding API."
-        case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
-        case .apiError(let message):
-            return "API error: \(message)"
-        case .batchTooLarge(let count, let max):
-            return "Batch size (\(count)) exceeds maximum (\(max))."
-        case .emptyInput:
-            return "Cannot generate embeddings for empty input."
-        }
-    }
-}
 
 // MARK: - Embedding Response Models
 
@@ -86,7 +59,7 @@ private struct EmbeddingErrorResponse: Decodable {
 // MARK: - Embedding Service
 
 @MainActor
-final class EmbeddingService {
+public final class EmbeddingService {
 
     // MARK: - Constants
 
@@ -98,29 +71,21 @@ final class EmbeddingService {
 
     private let apiKey: String
     private let model: RAGEmbeddingModel
-    private let session: URLSession
+    private let httpClient: HTTPClient
 
     /// Total tokens used in current session (for cost tracking)
-    private(set) var totalTokensUsed: Int = 0
+    public private(set) var totalTokensUsed: Int = 0
 
     // MARK: - Initialization
 
-    init(apiKey: String, model: RAGEmbeddingModel = .openAISmall, session: URLSession? = nil) {
+    public init(apiKey: String, model: RAGEmbeddingModel = .openAISmall, httpClient: HTTPClient = .shared) {
         self.apiKey = apiKey
         self.model = model
-
-        if let session = session {
-            self.session = session
-        } else {
-            let config = URLSessionConfiguration.default
-            config.timeoutIntervalForRequest = 60
-            config.timeoutIntervalForResource = 120
-            self.session = URLSession(configuration: config)
-        }
+        self.httpClient = httpClient
     }
 
     /// Create from provider config
-    convenience init?(config: AIProviderConfig) {
+    public convenience init?(config: AIProviderConfig) {
         guard config.provider == .openAI, !config.apiKey.isEmpty else {
             return nil
         }
@@ -130,7 +95,7 @@ final class EmbeddingService {
     // MARK: - Public API
 
     /// Generate embedding for a single text
-    func embed(text: String) async throws -> [Float] {
+    public func embed(text: String) async throws -> [Float] {
         guard !text.isEmpty else {
             throw EmbeddingError.emptyInput
         }
@@ -146,7 +111,7 @@ final class EmbeddingService {
     }
 
     /// Generate embeddings for multiple texts (batched for efficiency)
-    func embedBatch(texts: [String]) async throws -> [[Float]] {
+    public func embedBatch(texts: [String]) async throws -> [[Float]] {
         guard !texts.isEmpty else {
             throw EmbeddingError.emptyInput
         }
@@ -173,7 +138,7 @@ final class EmbeddingService {
 
     /// Generate embeddings for document chunks
     /// Includes section/heading in the text for better search (so searching for a title finds the note)
-    func embedChunks(_ chunks: [DocumentChunk]) async throws -> [DocumentChunk] {
+    public func embedChunks(_ chunks: [DocumentChunk]) async throws -> [DocumentChunk] {
         let texts = chunks.map { chunk -> String in
             if let section = chunk.metadata.section, !section.isEmpty {
                 return "Title: \(section)\n\n\(chunk.content)"
@@ -192,8 +157,12 @@ final class EmbeddingService {
     // MARK: - Private Methods
 
     private func performEmbeddingRequest(texts: [String]) async throws -> [[Float]] {
+        guard let url = URL(string: Self.baseURL) else {
+            throw EmbeddingError.invalidResponse
+        }
+
         // Prepare request
-        var request = URLRequest(url: URL(string: Self.baseURL)!)
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.addValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -207,7 +176,7 @@ final class EmbeddingService {
         request.httpBody = try JSONEncoder().encode(body)
 
         // Make request
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await httpClient.data(for: request)
 
         // Check HTTP status
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -236,24 +205,24 @@ final class EmbeddingService {
     // MARK: - Utility
 
     /// Estimated cost for embedding a text
-    func estimateCost(text: String) -> Double {
+    public func estimateCost(text: String) -> Double {
         let tokens = text.count / 4  // Rough estimate
         return Double(tokens) * model.costPer1MTokens / 1_000_000
     }
 
     /// Estimated cost for embedding multiple texts
-    func estimateCost(texts: [String]) -> Double {
+    public func estimateCost(texts: [String]) -> Double {
         let totalTokens = texts.reduce(0) { $0 + $1.count / 4 }
         return Double(totalTokens) * model.costPer1MTokens / 1_000_000
     }
 
     /// Current session cost
-    var sessionCost: Double {
+    public var sessionCost: Double {
         Double(totalTokensUsed) * model.costPer1MTokens / 1_000_000
     }
 
     /// Reset token counter
-    func resetTokenCounter() {
+    public func resetTokenCounter() {
         totalTokensUsed = 0
     }
 }

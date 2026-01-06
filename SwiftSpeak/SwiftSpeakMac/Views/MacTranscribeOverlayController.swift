@@ -75,8 +75,8 @@ final class MacTranscribeOverlayController {
     ///   - mode: Toggle or push-to-talk mode
     ///   - context: Pre-captured context from hotkey callback
     func show(mode: TranscribeMode, context: HotkeyContext) {
-        guard overlayWindow == nil else {
-            // Already showing, just update
+        // If already visible, just update context
+        if isVisible {
             viewModel?.setPreCapturedContext(context)
             return
         }
@@ -108,11 +108,16 @@ final class MacTranscribeOverlayController {
             }
         )
 
-        // Create window
-        let window = createOverlayWindow()
-        overlayWindow = window
+        // Create or reuse window
+        let window: NSWindow
+        if let existingWindow = overlayWindow {
+            window = existingWindow
+        } else {
+            window = createOverlayWindow()
+            overlayWindow = window
+        }
 
-        // Create hosting view
+        // Create new hosting view (always fresh to avoid stale SwiftUI state)
         let hosting = NSHostingView(rootView: AnyView(overlayView))
         hosting.translatesAutoresizingMaskIntoConstraints = false
         hostingView = hosting
@@ -159,7 +164,7 @@ final class MacTranscribeOverlayController {
     }
 
     private func cleanupAndClose() {
-        // Remove keyboard monitors
+        // Remove keyboard monitors first
         if let monitor = localMonitor {
             NSEvent.removeMonitor(monitor)
             localMonitor = nil
@@ -169,14 +174,27 @@ final class MacTranscribeOverlayController {
             globalMonitor = nil
         }
 
-        // Close window
-        overlayWindow?.close()
-        overlayWindow = nil
-        hostingView = nil
-        viewModel = nil
+        // Clean up viewModel subscriptions immediately
+        viewModel?.cleanup()
 
-        onClose?()
-        macLog("Transcribe overlay closed", category: "Transcribe")
+        // Hide window (keep it around for reuse)
+        overlayWindow?.orderOut(nil)
+
+        // Capture callback to call after cleanup
+        let closeCallback = onClose
+
+        // Delay cleanup to allow SwiftUI to finish any pending updates
+        // This prevents EXC_BAD_ACCESS from "entangle context after pre-commit"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            // DON'T close the window - just clear SwiftUI state
+            // The window will be reused next time (isReleasedWhenClosed = false)
+            self?.hostingView = nil
+            self?.viewModel = nil
+
+            // Call close callback after all cleanup is done
+            closeCallback?()
+            macLog("Transcribe overlay closed", category: "Transcribe")
+        }
     }
 
     // MARK: - Push-to-Talk Release
@@ -215,6 +233,9 @@ final class MacTranscribeOverlayController {
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         window.ignoresMouseEvents = false
         window.acceptsMouseMovedEvents = true
+
+        // CRITICAL: Don't release window on close to prevent double-release crashes
+        window.isReleasedWhenClosed = false
 
         return window
     }

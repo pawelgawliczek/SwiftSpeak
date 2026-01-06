@@ -4,14 +4,16 @@
 //
 //  Parses PDF, TXT, and MD documents into text content
 //
+//  NOTE: Uses shared RAG models from SwiftSpeakCore (ParsedDocument, etc.)
+//
 
 import Foundation
 import SwiftSpeakCore
 import PDFKit
 
-// MARK: - Parser Errors
+// MARK: - Parser Errors (iOS-specific with RAGSecurityError)
 
-enum DocumentParserError: Error, LocalizedError {
+enum LocalDocumentParserError: Error, LocalizedError {
     case fileNotFound
     case unsupportedFormat(String)
     case parsingFailed(String)
@@ -32,64 +34,6 @@ enum DocumentParserError: Error, LocalizedError {
             return error.errorDescription
         }
     }
-}
-
-// MARK: - Parsed Document
-
-/// Result of parsing a document
-struct ParsedDocument {
-    let content: String
-    let metadata: ParsedDocumentMetadata
-    let pages: [ParsedPage]?
-
-    /// Total character count
-    var characterCount: Int {
-        content.count
-    }
-
-    /// Estimated token count
-    var estimatedTokens: Int {
-        content.count / 4
-    }
-}
-
-/// Metadata extracted from parsed document
-struct ParsedDocumentMetadata {
-    var title: String?
-    var author: String?
-    var subject: String?
-    var keywords: [String]
-    var creationDate: Date?
-    var modificationDate: Date?
-    var pageCount: Int?
-    var fileType: KnowledgeDocumentType
-
-    init(
-        title: String? = nil,
-        author: String? = nil,
-        subject: String? = nil,
-        keywords: [String] = [],
-        creationDate: Date? = nil,
-        modificationDate: Date? = nil,
-        pageCount: Int? = nil,
-        fileType: KnowledgeDocumentType = .text
-    ) {
-        self.title = title
-        self.author = author
-        self.subject = subject
-        self.keywords = keywords
-        self.creationDate = creationDate
-        self.modificationDate = modificationDate
-        self.pageCount = pageCount
-        self.fileType = fileType
-    }
-}
-
-/// A single page from a multi-page document
-struct ParsedPage {
-    let pageNumber: Int
-    let content: String
-    let bounds: CGRect?
 }
 
 // MARK: - Document Parser
@@ -114,7 +58,7 @@ final class DocumentParser {
 
         // Check file exists
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            throw DocumentParserError.fileNotFound
+            throw LocalDocumentParserError.fileNotFound
         }
 
         // Parse based on file type
@@ -127,7 +71,7 @@ final class DocumentParser {
         case "md", "markdown":
             return try await parseText(at: fileURL, type: .markdown)
         default:
-            throw DocumentParserError.unsupportedFormat(ext)
+            throw LocalDocumentParserError.unsupportedFormat(ext)
         }
     }
 
@@ -143,7 +87,7 @@ final class DocumentParser {
         case "md", "markdown":
             return try parseTextData(data, type: .markdown)
         default:
-            throw DocumentParserError.unsupportedFormat(ext)
+            throw LocalDocumentParserError.unsupportedFormat(ext)
         }
     }
 
@@ -156,7 +100,7 @@ final class DocumentParser {
         )
 
         guard !sanitized.isEmpty else {
-            throw DocumentParserError.emptyContent
+            throw LocalDocumentParserError.emptyContent
         }
 
         // Determine type from URL path
@@ -179,7 +123,7 @@ final class DocumentParser {
 
     private func parsePDF(at url: URL) async throws -> ParsedDocument {
         guard let document = PDFDocument(url: url) else {
-            throw DocumentParserError.parsingFailed("Could not open PDF document")
+            throw LocalDocumentParserError.parsingFailed("Could not open PDF document")
         }
 
         return try await parsePDFDocument(document, filename: url.lastPathComponent)
@@ -187,7 +131,7 @@ final class DocumentParser {
 
     private func parsePDFData(_ data: Data) async throws -> ParsedDocument {
         guard let document = PDFDocument(data: data) else {
-            throw DocumentParserError.parsingFailed("Could not parse PDF data")
+            throw LocalDocumentParserError.parsingFailed("Could not parse PDF data")
         }
 
         return try await parsePDFDocument(document, filename: nil)
@@ -197,7 +141,7 @@ final class DocumentParser {
         let pageCount = document.pageCount
 
         guard pageCount > 0 else {
-            throw DocumentParserError.emptyContent
+            throw LocalDocumentParserError.emptyContent
         }
 
         var allContent = ""
@@ -225,7 +169,7 @@ final class DocumentParser {
         let sanitized = try securityManager.validateContent(allContent)
 
         guard !sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DocumentParserError.emptyContent
+            throw LocalDocumentParserError.emptyContent
         }
 
         // Extract PDF metadata
@@ -265,7 +209,7 @@ final class DocumentParser {
         let sanitized = try securityManager.validateContent(content)
 
         guard !sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DocumentParserError.emptyContent
+            throw LocalDocumentParserError.emptyContent
         }
 
         // Extract title from first line if markdown
@@ -288,14 +232,14 @@ final class DocumentParser {
 
     private func parseTextData(_ data: Data, type: KnowledgeDocumentType) throws -> ParsedDocument {
         guard let content = String(data: data, encoding: .utf8) else {
-            throw DocumentParserError.parsingFailed("Could not decode text content")
+            throw LocalDocumentParserError.parsingFailed("Could not decode text content")
         }
 
         // Sanitize content
         let sanitized = try securityManager.validateContent(content)
 
         guard !sanitized.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw DocumentParserError.emptyContent
+            throw LocalDocumentParserError.emptyContent
         }
 
         // Extract title from first line if markdown
