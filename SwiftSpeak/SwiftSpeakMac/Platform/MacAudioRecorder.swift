@@ -38,32 +38,72 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
 
     // MARK: - Public Methods
 
+    /// Pre-warm the audio engine to avoid delay on first recording
+    /// Call this on app launch to initialize the audio subsystem early
+    func prewarm() {
+        Task.detached(priority: .background) {
+            // Creating an AVAudioEngine triggers audio subsystem initialization
+            let engine = AVAudioEngine()
+            _ = engine.inputNode.outputFormat(forBus: 0)
+            // Don't start the engine, just warm up the subsystem
+            macLog("Audio engine pre-warmed", category: "Audio")
+        }
+    }
+
+    /// Async version of prewarm that can be awaited
+    /// Use this when you want to show a loading indicator during initialization
+    func prewarmAsync() async {
+        await Task.detached(priority: .userInitiated) {
+            let startTime = Date()
+            // Creating an AVAudioEngine triggers audio subsystem initialization
+            let engine = AVAudioEngine()
+            _ = engine.inputNode.outputFormat(forBus: 0)
+            // Don't start the engine, just warm up the subsystem
+            let elapsed = Date().timeIntervalSince(startTime)
+            macLog("Audio engine pre-warmed in \(String(format: "%.2f", elapsed))s", category: "Audio")
+        }.value
+    }
+
     func startRecording() async throws {
         // Check microphone permission
         guard await checkMicrophonePermission() else {
             throw TranscriptionError.microphonePermissionDenied
         }
 
+        // Capture start time IMMEDIATELY before any heavy work
+        // This ensures duration tracking starts from when user triggered recording
+        let recordingStartTime = Date()
+
         // Create temporary file URL
         let url = createTemporaryURL()
 
-        // Setup audio engine
-        let engine = AVAudioEngine()
-        let inputNode = engine.inputNode
-        let inputFormat = inputNode.outputFormat(forBus: 0)
+        // Move heavy audio engine setup off main thread
+        // AVAudioEngine initialization can take 2-5 seconds on first use
+        let (engine, inputFormat, targetFormat, converter) = try await Task.detached(priority: .userInitiated) {
+            // Setup audio engine (HEAVY - can block for seconds on first call)
+            let engine = AVAudioEngine()
+            let inputNode = engine.inputNode
+            let inputFormat = inputNode.outputFormat(forBus: 0)
 
-        // Log input format for debugging
-        print("[MacAudioRecorder] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+            print("[MacAudioRecorder] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
-        // Target format: 16kHz mono PCM (will be encoded to AAC by AVAudioFile)
-        guard let targetFormat = AVAudioFormat(
-            commonFormat: .pcmFormatFloat32,
-            sampleRate: 16000,
-            channels: 1,
-            interleaved: false
-        ) else {
-            throw TranscriptionError.recordingFailed("Failed to create target audio format")
-        }
+            // Target format: 16kHz mono PCM (will be encoded to AAC by AVAudioFile)
+            guard let targetFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: 16000,
+                channels: 1,
+                interleaved: false
+            ) else {
+                throw TranscriptionError.recordingFailed("Failed to create target audio format")
+            }
+
+            // Create format converter (input format -> target format)
+            guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                throw TranscriptionError.recordingFailed("Failed to create audio format converter")
+            }
+
+            return (engine, inputFormat, targetFormat, converter)
+        }.value
 
         // Recording settings (AAC for smaller file size, compatible with all providers)
         let settings: [String: Any] = [
@@ -73,7 +113,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
-        // Create output file
+        // Create output file (must be on main thread for file coordination)
         do {
             audioFile = try AVAudioFile(forWriting: url, settings: settings)
             print("[MacAudioRecorder] Output file processing format: \(audioFile!.processingFormat)")
@@ -81,16 +121,12 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             throw TranscriptionError.recordingFailed(error.localizedDescription)
         }
 
-        // Create format converter (input format -> target format)
-        guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-            throw TranscriptionError.recordingFailed("Failed to create audio format converter")
-        }
         self.formatConverter = converter
         print("[MacAudioRecorder] Format converter created: \(inputFormat.sampleRate)Hz -> \(targetFormat.sampleRate)Hz")
 
         // Install tap for audio data
         let bufferSize: AVAudioFrameCount = 4096
-        inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
+        engine.inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
             self?.processAudioBuffer(buffer, targetFormat: targetFormat)
         }
 
@@ -98,20 +134,20 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         do {
             try engine.start()
         } catch {
-            inputNode.removeTap(onBus: 0)
+            engine.inputNode.removeTap(onBus: 0)
             throw TranscriptionError.recordingFailed(error.localizedDescription)
         }
 
-        // Update state
+        // Update state - use the captured start time from BEFORE heavy work
         self.audioEngine = engine
         self.recordingURL = url
         self.isRecording = true
-        self.startTime = Date()
+        self.startTime = recordingStartTime  // Use early captured time
         self.error = nil
 
         // Start duration timer
         startDurationTimer()
-        print("[MacAudioRecorder] Recording started")
+        print("[MacAudioRecorder] Recording started (setup took \(String(format: "%.2f", Date().timeIntervalSince(recordingStartTime)))s)")
     }
 
     @discardableResult

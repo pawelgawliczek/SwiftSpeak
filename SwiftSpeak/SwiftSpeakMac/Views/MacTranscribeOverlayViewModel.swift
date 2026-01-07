@@ -221,15 +221,25 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 NSSound(named: "Tink")?.play()
             }
 
-            // Start audio recording
-            try await audioRecorder.startRecording()
-
-            // Start timer to update duration
+            // Start timer IMMEDIATELY to show responsive UI
+            // The timer reads from audioRecorder.duration which starts counting
+            // from when startRecording() was called (even during setup)
+            let timerStartTime = Date()
             recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 Task { @MainActor in
-                    self?.recordingDuration = self?.audioRecorder.duration ?? 0
+                    guard let self = self else { return }
+                    // Use audioRecorder.duration if available, otherwise calculate from timer start
+                    if self.audioRecorder.isRecording {
+                        self.recordingDuration = self.audioRecorder.duration
+                    } else {
+                        // During setup, show elapsed time since we started
+                        self.recordingDuration = Date().timeIntervalSince(timerStartTime)
+                    }
                 }
             }
+
+            // Start audio recording (may take time on first call due to audio engine init)
+            try await audioRecorder.startRecording()
 
             macLog("Recording started", category: "Transcribe")
         } catch {

@@ -15,6 +15,7 @@ import ApplicationServices
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var menuBarController: MenuBarController?
+    private var splashController: MacSplashController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Request accessibility permission (required for window context capture)
@@ -25,8 +26,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Initialize components on main actor
         Task { @MainActor in
+            // Show splash screen during initialization
+            let splash = MacSplashController()
+            self.splashController = splash
+            splash.show()
+
             // Initialize components
             let audioRecorder = MacAudioRecorder()
+
+            // Pre-warm audio engine (this is the heavy operation)
+            // We await it to ensure splash shows during the actual initialization
+            await audioRecorder.prewarmAsync()
+
             let textInsertion = MacTextInsertionService()
             let settings = MacSettings.shared
             let hotkeyManager = MacHotkeyManager.shared
@@ -42,6 +53,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
             // Start monitoring for pending Obsidian notes from iOS
             MacPendingNotesProcessor.shared.startMonitoring()
+
+            // Dismiss splash screen - initialization complete
+            splash.dismiss()
+            self.splashController = nil
         }
 
         // Request notification permission
