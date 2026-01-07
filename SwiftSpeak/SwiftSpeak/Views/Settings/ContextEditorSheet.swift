@@ -26,6 +26,9 @@ struct ContextEditorSheet: View {
 
     // MARK: - Transcription State
     @State private var domainJargon: DomainJargon = .none
+    @State private var customJargon: [String] = []
+    @State private var showingAddJargon = false
+    @State private var newJargonText: String = ""
 
     // MARK: - Formatting State
     @State private var examples: [String] = []
@@ -67,6 +70,7 @@ struct ContextEditorSheet: View {
         _color = State(initialValue: context.color)
         _description = State(initialValue: context.description)
         _domainJargon = State(initialValue: context.domainJargon)
+        _customJargon = State(initialValue: context.customJargon)
         _examples = State(initialValue: context.examples)
         _selectedInstructions = State(initialValue: context.selectedInstructions)
         _customInstructions = State(initialValue: context.customInstructions ?? "")
@@ -89,6 +93,7 @@ struct ContextEditorSheet: View {
 
                     sectionHeader("TRANSCRIPTION")
                     domainJargonSection
+                    customJargonSection
 
                     sectionHeader("EXAMPLES")
                     examplesSection
@@ -135,6 +140,9 @@ struct ContextEditorSheet: View {
             }
             .sheet(isPresented: $showingAddExample) {
                 addExampleSheet
+            }
+            .sheet(isPresented: $showingAddJargon) {
+                addJargonSheet
             }
             .confirmationDialog("Delete Context", isPresented: $showingDeleteConfirmation, titleVisibility: .visible) {
                 Button("Delete", role: .destructive) {
@@ -284,6 +292,7 @@ struct ContextEditorSheet: View {
                         Text("Helps recognize: \(hint.replacingOccurrences(of: "\(domainJargon.displayName) terminology: ", with: ""))")
                             .font(.caption)
                             .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
                 } else {
                     // Empty placeholder with same height
@@ -297,6 +306,123 @@ struct ContextEditorSheet: View {
         .padding(16)
         .background(Color.primary.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    // MARK: - Custom Jargon Section
+
+    private var customJargonSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Custom jargon")
+                    .font(.subheadline.weight(.medium))
+                Spacer()
+                Text("\(customJargon.count) words")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Add specific terms, acronyms, names, or technical words that may be misrecognized")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            // Display existing jargon words as chips
+            if !customJargon.isEmpty {
+                FlowLayout(spacing: 8) {
+                    ForEach(customJargon.indices, id: \.self) { index in
+                        HStack(spacing: 4) {
+                            Text(customJargon[index])
+                                .font(.subheadline)
+
+                            Button(action: {
+                                HapticManager.lightTap()
+                                customJargon.remove(at: index)
+                            }) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(color.color.opacity(0.15))
+                        .foregroundStyle(color.color)
+                        .clipShape(Capsule())
+                    }
+                }
+            }
+
+            Button(action: {
+                HapticManager.selection()
+                newJargonText = ""
+                showingAddJargon = true
+            }) {
+                HStack {
+                    Image(systemName: "plus")
+                    Text("Add jargon")
+                }
+                .font(.subheadline.weight(.medium))
+                .foregroundStyle(color.color)
+                .frame(maxWidth: .infinity)
+                .padding(12)
+                .background(color.color.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous)
+                        .strokeBorder(color.color.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [5]))
+                )
+            }
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    // MARK: - Add Jargon Sheet
+
+    private var addJargonSheet: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Text("Add terms, acronyms, names, or technical words that might be misrecognized during transcription")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+
+                TextField("Enter jargon (comma-separated for multiple)", text: $newJargonText, axis: .vertical)
+                    .font(.body)
+                    .lineLimit(3...6)
+                    .padding(12)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+                Text("Examples: API, OAuth, Kubernetes, Dr. Smith, HIPAA")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+
+                Spacer()
+            }
+            .padding(16)
+            .background(AppTheme.darkBase.ignoresSafeArea())
+            .navigationTitle("Add Jargon")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { showingAddJargon = false }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        // Split by comma and add each word
+                        let words = newJargonText
+                            .components(separatedBy: ",")
+                            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                            .filter { !$0.isEmpty && !customJargon.contains($0) }
+                        customJargon.append(contentsOf: words)
+                        showingAddJargon = false
+                    }
+                    .disabled(newJargonText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 
     // MARK: - Examples Section
@@ -786,6 +912,7 @@ struct ContextEditorSheet: View {
             color: color,
             description: description.trimmingCharacters(in: .whitespaces),
             domainJargon: domainJargon,
+            customJargon: customJargon,
             examples: examples,
             selectedInstructions: selectedInstructions,
             customInstructions: customInstructions.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : customInstructions.trimmingCharacters(in: .whitespacesAndNewlines),

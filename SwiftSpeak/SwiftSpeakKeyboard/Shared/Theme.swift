@@ -198,6 +198,13 @@ enum HapticManager {
 // MARK: - Keyboard Haptics
 /// Keyboard-specific haptics that respect the haptic feedback setting
 enum KeyboardHaptics {
+    // Pre-initialized generators for better performance and reliability
+    private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
+    private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
+    private static let heavyGenerator = UIImpactFeedbackGenerator(style: .heavy)
+    private static let notificationGenerator = UINotificationFeedbackGenerator()
+    private static let selectionGenerator = UISelectionFeedbackGenerator()
+
     /// Check if haptic feedback is enabled in keyboard settings
     private static var isEnabled: Bool {
         let defaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
@@ -205,46 +212,62 @@ enum KeyboardHaptics {
         return (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
     }
 
+    /// Prepare all generators (call on keyboard appear)
+    static func prepare() {
+        lightGenerator.prepare()
+        mediumGenerator.prepare()
+        heavyGenerator.prepare()
+        notificationGenerator.prepare()
+        selectionGenerator.prepare()
+    }
+
     /// Light tap for minor interactions (key press)
     static func lightTap() {
         guard isEnabled else { return }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        lightGenerator.impactOccurred()
+        lightGenerator.prepare()  // Prepare for next use
     }
 
     /// Medium tap for primary actions (start/stop recording)
     static func mediumTap() {
         guard isEnabled else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        mediumGenerator.impactOccurred()
+        mediumGenerator.prepare()
     }
 
     /// Heavy tap for significant actions
     static func heavyTap() {
         guard isEnabled else { return }
-        UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+        heavyGenerator.impactOccurred()
+        heavyGenerator.prepare()
     }
 
     /// Success notification (task complete)
     static func success() {
         guard isEnabled else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        notificationGenerator.notificationOccurred(.success)
+        notificationGenerator.prepare()
     }
 
     /// Warning notification
     static func warning() {
         guard isEnabled else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        notificationGenerator.notificationOccurred(.warning)
+        notificationGenerator.prepare()
     }
 
     /// Error notification
     static func error() {
         guard isEnabled else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        notificationGenerator.notificationOccurred(.error)
+        notificationGenerator.prepare()
     }
 
     /// Selection changed (mode switch, picker)
     static func selection() {
         guard isEnabled else { return }
-        UISelectionFeedbackGenerator().selectionChanged()
+        selectionGenerator.selectionChanged()
+        selectionGenerator.prepare()
     }
 }
 

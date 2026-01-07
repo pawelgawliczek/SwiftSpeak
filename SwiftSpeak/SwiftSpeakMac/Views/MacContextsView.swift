@@ -306,6 +306,7 @@ private struct ContextCard: View {
         LazyVGrid(columns: [
             GridItem(.flexible()),
             GridItem(.flexible()),
+            GridItem(.flexible()),
             GridItem(.flexible())
         ], spacing: 12) {
             settingBadge(
@@ -313,6 +314,13 @@ private struct ContextCard: View {
                 value: context.domainJargon.displayName,
                 icon: context.domainJargon.icon,
                 color: .blue
+            )
+
+            settingBadge(
+                title: "Custom Jargon",
+                value: "\(context.customJargon.count) words",
+                icon: "text.word.spacing",
+                color: .orange
             )
 
             settingBadge(
@@ -370,6 +378,32 @@ private struct ContextCard: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(Color.primary.opacity(0.03))
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+        }
+
+        if !context.customJargon.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Custom Jargon")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                FlowLayout(spacing: 6) {
+                    ForEach(context.customJargon.prefix(15), id: \.self) { word in
+                        Text(word)
+                            .font(.caption)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.orange.opacity(0.1))
+                            .clipShape(Capsule())
+                    }
+                    if context.customJargon.count > 15 {
+                        Text("+\(context.customJargon.count - 15) more")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                    }
+                }
             }
         }
 
@@ -458,6 +492,16 @@ struct MacContextEditorSheet: View {
     let onCancel: () -> Void
 
     @State private var showingIconPicker = false
+    @State private var newJargonInput: String = ""
+
+    private func addJargonWords() {
+        let words = newJargonInput
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !context.customJargon.contains($0) }
+        context.customJargon.append(contentsOf: words)
+        newJargonInput = ""
+    }
 
     private func appName(for bundleId: String) -> String {
         if let app = NSWorkspace.shared.runningApplications.first(where: { $0.bundleIdentifier == bundleId }) {
@@ -487,6 +531,7 @@ struct MacContextEditorSheet: View {
                             color: context.color,
                             description: context.description,
                             domainJargon: context.domainJargon,
+                            customJargon: context.customJargon,
                             examples: context.examples,
                             selectedInstructions: context.selectedInstructions,
                             customInstructions: context.customInstructions,
@@ -572,7 +617,7 @@ struct MacContextEditorSheet: View {
                 }
 
                 // Transcription Settings
-                Section("Transcription") {
+                Section {
                     Picker("Domain Jargon", selection: $context.domainJargon) {
                         ForEach(DomainJargon.allCases) { jargon in
                             HStack {
@@ -581,6 +626,65 @@ struct MacContextEditorSheet: View {
                             }
                             .tag(jargon)
                         }
+                    }
+
+                    // Custom Jargon
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Custom Jargon")
+                                .font(.callout)
+                            Spacer()
+                            Text("\(context.customJargon.count) words")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text("Add specific terms, acronyms, or names that may be misrecognized")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        // Display existing jargon
+                        if !context.customJargon.isEmpty {
+                            FlowLayout(spacing: 6) {
+                                ForEach(context.customJargon.indices, id: \.self) { index in
+                                    HStack(spacing: 4) {
+                                        Text(context.customJargon[index])
+                                            .font(.caption)
+                                        Button(action: {
+                                            context.customJargon.remove(at: index)
+                                        }) {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .font(.caption2)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(context.color.color.opacity(0.15))
+                                    .foregroundStyle(context.color.color)
+                                    .clipShape(Capsule())
+                                }
+                            }
+                        }
+
+                        // Add jargon text field
+                        HStack {
+                            TextField("Add jargon (comma-separated)", text: $newJargonInput)
+                                .textFieldStyle(.roundedBorder)
+                                .onSubmit {
+                                    addJargonWords()
+                                }
+                            Button("Add") {
+                                addJargonWords()
+                            }
+                            .disabled(newJargonInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                        }
+                    }
+                } header: {
+                    Text("Transcription")
+                } footer: {
+                    if context.domainJargon != .none {
+                        Text("Domain jargon helps recognize industry-specific terminology.")
                     }
                 }
 
