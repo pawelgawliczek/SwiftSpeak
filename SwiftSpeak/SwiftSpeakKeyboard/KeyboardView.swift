@@ -239,6 +239,9 @@ struct KeyboardView: View {
             // Save mode preference
             let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
             defaults?.set(newMode.rawValue, forKey: "lastKeyboardMode")
+
+            // Notify parent to update keyboard height
+            onModeChange?(newMode)
         }
     }
 

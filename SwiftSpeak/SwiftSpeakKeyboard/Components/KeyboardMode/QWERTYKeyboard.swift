@@ -13,6 +13,8 @@ struct QWERTYKeyboard: View {
     let textDocumentProxy: UITextDocumentProxy?
     let onNextKeyboard: () -> Void
     var viewModel: KeyboardViewModel?  // Phase 13.6: For predictions
+    var showProgrammableNextToReturn: Bool = false  // Phase 16: Programmable button next to Return
+    var returnProgrammableAction: ProgrammableButtonAction = .transcribe  // Phase 16: Action for that button
 
     @State private var shiftState: ShiftState = .lowercase
     @State private var layoutState: KeyboardLayoutState = .letters
@@ -264,7 +266,17 @@ struct QWERTYKeyboard: View {
                 textDocumentProxy: textDocumentProxy
             )
 
+            // Phase 16: Programmable button next to Return (optional)
+            if showProgrammableNextToReturn, let vm = viewModel {
+                ReturnProgrammableButton(
+                    action: returnProgrammableAction,
+                    viewModel: vm
+                )
+                .frame(width: 35)
+            }
+
             // Return key - Phase 13.11: Check for context processing
+            // Shrink if programmable button is shown
             ActionKey(text: "return") {
                 // Check if context wants to process on Enter
                 if viewModel?.handleReturnKey() == true {
@@ -276,7 +288,7 @@ struct QWERTYKeyboard: View {
                     KeyboardHaptics.mediumTap()
                 }
             }
-            .frame(width: 95)
+            .frame(width: showProgrammableNextToReturn ? 55 : 95)
         }
     }
 
@@ -653,6 +665,53 @@ struct QWERTYKeyboard: View {
         }
     }
 
+}
+
+// MARK: - Return Programmable Button (Phase 16)
+
+/// Programmable button that appears next to the Return key
+private struct ReturnProgrammableButton: View {
+    let action: ProgrammableButtonAction
+    @ObservedObject var viewModel: KeyboardViewModel
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.lightTap()
+            executeAction()
+        }) {
+            Image(systemName: action.iconName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(KeyboardTheme.keyBackground)
+                .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .frame(height: KeyboardTheme.keyHeight)
+    }
+
+    private var iconColor: Color {
+        switch action {
+        case .aiSparkles: return .purple
+        case .transcribe: return .red
+        case .translate: return .green
+        case .aiFormat: return .orange
+        }
+    }
+
+    private func executeAction() {
+        switch action {
+        case .aiSparkles:
+            viewModel.triggerAISentencePrediction()
+        case .transcribe:
+            viewModel.startTranscription()
+        case .translate:
+            viewModel.startTranslation()
+            viewModel.startTranscription()
+        case .aiFormat:
+            viewModel.processTextWithAI()
+        }
+    }
 }
 
 // MARK: - Preview

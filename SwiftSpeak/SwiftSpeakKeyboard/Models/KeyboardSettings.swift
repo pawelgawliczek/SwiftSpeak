@@ -7,8 +7,63 @@
 
 import Foundation
 
+/// Programmable button actions for the keyboard PredictionRow
+/// The last button in PredictionRow can be assigned any of these actions
+enum ProgrammableButtonAction: String, Codable, CaseIterable, Identifiable {
+    case aiSparkles = "ai_sparkles"
+    case transcribe = "transcribe"
+    case translate = "translate"
+    case aiFormat = "ai_format"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .aiSparkles: return "AI Sparkles"
+        case .transcribe: return "Transcribe"
+        case .translate: return "Translate"
+        case .aiFormat: return "AI Format"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .aiSparkles: return "Show AI sentence predictions"
+        case .transcribe: return "Start voice transcription"
+        case .translate: return "Translate selected text"
+        case .aiFormat: return "Apply context/Power Mode formatting"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .aiSparkles: return "sparkles"
+        case .transcribe: return "mic.fill"
+        case .translate: return "globe"
+        case .aiFormat: return "wand.and.stars"
+        }
+    }
+}
+
 /// Keyboard-specific settings (separate from main app settings)
 struct KeyboardSettings {
+    // MARK: - Keyboard Layout (Phase 16)
+
+    /// Show SwiftSpeakBar in typing mode
+    var showSwiftSpeakBar: Bool = true
+
+    /// Show PredictionRow in typing mode
+    var showPredictionRow: Bool = true
+
+    /// Action for programmable button in PredictionRow
+    var programmableAction: ProgrammableButtonAction = .aiSparkles
+
+    /// Show programmable button next to Return key
+    var showProgrammableNextToReturn: Bool = false
+
+    /// Action for programmable button next to Return
+    var returnProgrammableAction: ProgrammableButtonAction = .transcribe
+
     // MARK: - Keyboard Behavior
 
     /// Enable/disable haptic feedback on key presses
@@ -78,6 +133,19 @@ struct KeyboardSettings {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
         var settings = KeyboardSettings()
 
+        // Phase 16: Keyboard Layout Settings
+        settings.showSwiftSpeakBar = (defaults?.object(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) as? Bool) ?? true
+        settings.showPredictionRow = (defaults?.object(forKey: Constants.Keys.keyboardShowPredictionRow) as? Bool) ?? true
+        if let actionRaw = defaults?.string(forKey: Constants.Keys.keyboardProgrammableAction),
+           let action = ProgrammableButtonAction(rawValue: actionRaw) {
+            settings.programmableAction = action
+        }
+        settings.showProgrammableNextToReturn = (defaults?.object(forKey: Constants.Keys.keyboardShowProgrammableNextToReturn) as? Bool) ?? false
+        if let returnActionRaw = defaults?.string(forKey: Constants.Keys.keyboardReturnProgrammableAction),
+           let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw) {
+            settings.returnProgrammableAction = returnAction
+        }
+
         // Keyboard behavior - use object(forKey:) to properly detect missing keys
         // bool(forKey:) returns false for missing keys, so ?? defaultValue never works
         settings.hapticFeedback = (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
@@ -121,6 +189,13 @@ struct KeyboardSettings {
     /// Save settings to App Groups
     func save() {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Phase 16: Keyboard Layout Settings
+        defaults?.set(showSwiftSpeakBar, forKey: Constants.Keys.keyboardShowSwiftSpeakBar)
+        defaults?.set(showPredictionRow, forKey: Constants.Keys.keyboardShowPredictionRow)
+        defaults?.set(programmableAction.rawValue, forKey: Constants.Keys.keyboardProgrammableAction)
+        defaults?.set(showProgrammableNextToReturn, forKey: Constants.Keys.keyboardShowProgrammableNextToReturn)
+        defaults?.set(returnProgrammableAction.rawValue, forKey: Constants.Keys.keyboardReturnProgrammableAction)
 
         // Keyboard behavior
         defaults?.set(hapticFeedback, forKey: "keyboardHapticFeedback")

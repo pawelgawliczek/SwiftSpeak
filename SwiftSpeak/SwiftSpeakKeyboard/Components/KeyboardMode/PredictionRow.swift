@@ -11,6 +11,7 @@ import SwiftUI
 
 struct PredictionRow: View {
     @ObservedObject var viewModel: KeyboardViewModel
+    var settings: KeyboardSettings = KeyboardSettings()  // Phase 16: For programmable button
     @State private var predictions: [String] = []
     @State private var lastShownPredictions: [String] = []  // For feedback tracking
     @State private var previousWord: String? = nil  // For contextual feedback
@@ -89,25 +90,11 @@ struct PredictionRow: View {
             Divider()
                 .background(Color.white.opacity(0.1))
 
-            // AI Sentence Prediction button on the right
-            Button(action: {
-                keyboardLog("AI sparkles button tapped", category: "AI")
-                KeyboardHaptics.lightTap()
-                viewModel.triggerAISentencePrediction()
-            }) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.purple, .blue],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            // Phase 16: Programmable button on the right
+            ProgrammableButton(
+                action: settings.programmableAction,
+                viewModel: viewModel
+            )
         }
         .frame(height: 36)
         .background(Color(white: 0.08))
@@ -400,6 +387,76 @@ private struct AutocorrectUndoSlot: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Programmable Button (Phase 16)
+
+/// Programmable button that can be assigned different actions
+private struct ProgrammableButton: View {
+    let action: ProgrammableButtonAction
+    @ObservedObject var viewModel: KeyboardViewModel
+
+    var body: some View {
+        Button(action: {
+            KeyboardHaptics.lightTap()
+            executeAction()
+        }) {
+            Image(systemName: action.iconName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(iconGradient)
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var iconGradient: some ShapeStyle {
+        switch action {
+        case .aiSparkles:
+            return AnyShapeStyle(LinearGradient(
+                colors: [.purple, .blue],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        case .transcribe:
+            return AnyShapeStyle(LinearGradient(
+                colors: [.red, .orange],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        case .translate:
+            return AnyShapeStyle(LinearGradient(
+                colors: [.green, .teal],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        case .aiFormat:
+            return AnyShapeStyle(LinearGradient(
+                colors: [.orange, .yellow],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            ))
+        }
+    }
+
+    private func executeAction() {
+        switch action {
+        case .aiSparkles:
+            keyboardLog("Programmable button: AI sparkles", category: "AI")
+            viewModel.triggerAISentencePrediction()
+        case .transcribe:
+            keyboardLog("Programmable button: Transcribe", category: "Transcription")
+            viewModel.startTranscription()
+        case .translate:
+            keyboardLog("Programmable button: Translate", category: "Translation")
+            // Enable translation and start transcription
+            viewModel.startTranslation()
+            viewModel.startTranscription()
+        case .aiFormat:
+            keyboardLog("Programmable button: AI Format", category: "AI")
+            viewModel.processTextWithAI()
+        }
     }
 }
 

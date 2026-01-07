@@ -111,7 +111,61 @@ struct QuickSettingsPopover: View {
                         }
                     }
 
-                    // SECTION 3: System Info
+                    // SECTION 3: Keyboard Layout (Phase 16)
+                    SettingsSection(title: "Layout") {
+                        ToggleRow(title: "SwiftSpeak Bar", isOn: $settings.showSwiftSpeakBar) {
+                            settings.save()
+                            KeyboardHaptics.lightTap()
+                            // Notify height change
+                            (viewModel.hostViewController as? KeyboardViewController)?.refreshHeight()
+                        }
+
+                        ToggleRow(title: "Prediction Row", isOn: $settings.showPredictionRow) {
+                            settings.save()
+                            KeyboardHaptics.lightTap()
+                            (viewModel.hostViewController as? KeyboardViewController)?.refreshHeight()
+                        }
+
+                        // Programmable button action picker
+                        PickerRow(
+                            title: "Quick Action Button",
+                            selection: Binding(
+                                get: { settings.programmableAction.rawValue },
+                                set: { newValue in
+                                    if let action = ProgrammableButtonAction(rawValue: newValue) {
+                                        settings.programmableAction = action
+                                        settings.save()
+                                        KeyboardHaptics.selection()
+                                    }
+                                }
+                            ),
+                            options: ProgrammableButtonAction.allCases.map { ($0.rawValue, $0.displayName) }
+                        )
+
+                        ToggleRow(title: "Button Next to Return", isOn: $settings.showProgrammableNextToReturn) {
+                            settings.save()
+                            KeyboardHaptics.lightTap()
+                        }
+
+                        if settings.showProgrammableNextToReturn {
+                            PickerRow(
+                                title: "Return Button Action",
+                                selection: Binding(
+                                    get: { settings.returnProgrammableAction.rawValue },
+                                    set: { newValue in
+                                        if let action = ProgrammableButtonAction(rawValue: newValue) {
+                                            settings.returnProgrammableAction = action
+                                            settings.save()
+                                            KeyboardHaptics.selection()
+                                        }
+                                    }
+                                ),
+                                options: ProgrammableButtonAction.allCases.map { ($0.rawValue, $0.displayName) }
+                            )
+                        }
+                    }
+
+                    // SECTION 4: System Info
                     SettingsSection(title: "System") {
                         InfoRow(
                             title: "Subscription",

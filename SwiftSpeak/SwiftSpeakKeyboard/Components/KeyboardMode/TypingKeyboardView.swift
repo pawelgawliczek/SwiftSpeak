@@ -60,31 +60,37 @@ struct TypingKeyboardView: View {
                 )
                 .transition(.opacity)
             } else {
-                // SwiftSpeak bar with voice controls
+                // SwiftSpeak bar with voice controls (Phase 16: conditionally shown)
                 // NOTE: Recording UI is now handled by SwiftLinkStreamingOverlay in KeyboardView.swift
-                SwiftSpeakBar(
-                    viewModel: viewModel,
-                    onTranslationTap: onTranslationTap,
-                    onContextTap: onContextTap,
-                    onModeTap: onModeTap,
-                    onSwiftLinkTap: onSwiftLinkTap,
-                    onTranscribeTap: {
-                        viewModel.startTranscription()
-                    },
-                    onAIProcessTap: {
-                        viewModel.processTextWithAI()
-                    }
-                )
-                .transition(.opacity)
+                if keyboardSettings.showSwiftSpeakBar {
+                    SwiftSpeakBar(
+                        viewModel: viewModel,
+                        onTranslationTap: onTranslationTap,
+                        onContextTap: onContextTap,
+                        onModeTap: onModeTap,
+                        onSwiftLinkTap: onSwiftLinkTap,
+                        onTranscribeTap: {
+                            viewModel.startTranscription()
+                        },
+                        onAIProcessTap: {
+                            viewModel.processTextWithAI()
+                        }
+                    )
+                    .transition(.opacity)
+                }
 
-                // Always show prediction row (local predictions)
-                PredictionRow(viewModel: viewModel)
+                // Prediction row (Phase 16: conditionally shown)
+                if keyboardSettings.showPredictionRow {
+                    PredictionRow(viewModel: viewModel, settings: keyboardSettings)
+                }
 
                 // Main QWERTY keyboard - fills remaining space
                 QWERTYKeyboard(
                     textDocumentProxy: viewModel.textDocumentProxy,
                     onNextKeyboard: onNextKeyboard,
-                    viewModel: viewModel  // Phase 13.6: Pass viewModel for predictions
+                    viewModel: viewModel,  // Phase 13.6: Pass viewModel for predictions
+                    showProgrammableNextToReturn: keyboardSettings.showProgrammableNextToReturn,
+                    returnProgrammableAction: keyboardSettings.returnProgrammableAction
                 )
             }
         }
