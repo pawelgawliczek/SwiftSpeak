@@ -28,15 +28,21 @@ enum KeyboardDisplayMode: String {
 struct KeyboardView: View {
     @ObservedObject var viewModel: KeyboardViewModel
     let onNextKeyboard: () -> Void
+    let onModeChange: ((KeyboardDisplayMode) -> Void)?
 
     @State private var activePicker: KeyboardPickerMode = .none
     @State private var displayMode: KeyboardDisplayMode = .voice
     @State private var dragOffset: CGFloat = 0
 
     // Load last keyboard mode from UserDefaults
-    init(viewModel: KeyboardViewModel, onNextKeyboard: @escaping () -> Void) {
+    init(
+        viewModel: KeyboardViewModel,
+        onNextKeyboard: @escaping () -> Void,
+        onModeChange: ((KeyboardDisplayMode) -> Void)? = nil
+    ) {
         self.viewModel = viewModel
         self.onNextKeyboard = onNextKeyboard
+        self.onModeChange = onModeChange
 
         // Load saved mode
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)

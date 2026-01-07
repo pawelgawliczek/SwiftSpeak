@@ -84,6 +84,13 @@ enum Constants {
         // Phase 13.8: Swipe Typing
         static let swipeTypingEnabled = "swipeTypingEnabled"
 
+        // Phase 16: Keyboard Layout Settings
+        static let keyboardShowSwiftSpeakBar = "keyboardShowSwiftSpeakBar"
+        static let keyboardShowPredictionRow = "keyboardShowPredictionRow"
+        static let keyboardProgrammableAction = "keyboardProgrammableAction"
+        static let keyboardShowProgrammableNextToReturn = "keyboardShowProgrammableNextToReturn"
+        static let keyboardReturnProgrammableAction = "keyboardReturnProgrammableAction"
+
         // SwiftLink: Background Dictation Sessions
         static let swiftLinkApps = "swiftLinkApps"
         static let swiftLinkSessionDuration = "swiftLinkSessionDuration"

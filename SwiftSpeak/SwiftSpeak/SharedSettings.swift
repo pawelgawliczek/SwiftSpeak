@@ -47,6 +47,12 @@ class SharedSettings: ObservableObject {
         static let transcriptionHistory = "icloud_transcriptionHistory"
         static let historyMemory = "icloud_historyMemory"
         static let lastSyncTimestamp = "icloud_lastSyncTimestamp"
+        // Keyboard Layout Settings (Phase 16)
+        static let keyboardShowSwiftSpeakBar = "icloud_keyboard_showSwiftSpeakBar"
+        static let keyboardShowPredictionRow = "icloud_keyboard_showPredictionRow"
+        static let keyboardProgrammableAction = "icloud_keyboard_programmableAction"
+        static let keyboardShowProgrammableNextToReturn = "icloud_keyboard_showProgrammableNextToReturn"
+        static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
     }
 
     // MARK: - Published Properties
@@ -342,6 +348,48 @@ class SharedSettings: ObservableObject {
     @Published var swipeTypingEnabled: Bool = true {
         didSet {
             defaults?.set(swipeTypingEnabled, forKey: Constants.Keys.swipeTypingEnabled)
+        }
+    }
+
+    // MARK: - Phase 16: Keyboard Layout Settings
+
+    /// Whether to show the SwiftSpeakBar in typing mode (saves ~50pt height when hidden)
+    @Published var keyboardShowSwiftSpeakBar: Bool = true {
+        didSet {
+            defaults?.set(keyboardShowSwiftSpeakBar, forKey: Constants.Keys.keyboardShowSwiftSpeakBar)
+            syncToiCloud()
+        }
+    }
+
+    /// Whether to show the PredictionRow in typing mode (saves ~36pt height when hidden)
+    @Published var keyboardShowPredictionRow: Bool = true {
+        didSet {
+            defaults?.set(keyboardShowPredictionRow, forKey: Constants.Keys.keyboardShowPredictionRow)
+            syncToiCloud()
+        }
+    }
+
+    /// The action assigned to the programmable button in PredictionRow
+    @Published var keyboardProgrammableAction: ProgrammableButtonAction = .aiSparkles {
+        didSet {
+            defaults?.set(keyboardProgrammableAction.rawValue, forKey: Constants.Keys.keyboardProgrammableAction)
+            syncToiCloud()
+        }
+    }
+
+    /// Whether to show a programmable button next to the Return key (shrinks Return slightly)
+    @Published var keyboardShowProgrammableNextToReturn: Bool = false {
+        didSet {
+            defaults?.set(keyboardShowProgrammableNextToReturn, forKey: Constants.Keys.keyboardShowProgrammableNextToReturn)
+            syncToiCloud()
+        }
+    }
+
+    /// The action assigned to the programmable button next to Return key
+    @Published var keyboardReturnProgrammableAction: ProgrammableButtonAction = .transcribe {
+        didSet {
+            defaults?.set(keyboardReturnProgrammableAction.rawValue, forKey: Constants.Keys.keyboardReturnProgrammableAction)
+            syncToiCloud()
         }
     }
 
@@ -740,6 +788,25 @@ class SharedSettings: ObservableObject {
             globalMemoryLimit = Int(limit)
         }
 
+        // Load keyboard layout settings
+        if let showBar = iCloud?.object(forKey: iCloudKeys.keyboardShowSwiftSpeakBar) as? Bool {
+            keyboardShowSwiftSpeakBar = showBar
+        }
+        if let showPrediction = iCloud?.object(forKey: iCloudKeys.keyboardShowPredictionRow) as? Bool {
+            keyboardShowPredictionRow = showPrediction
+        }
+        if let actionRaw = iCloud?.string(forKey: iCloudKeys.keyboardProgrammableAction),
+           let action = ProgrammableButtonAction(rawValue: actionRaw) {
+            keyboardProgrammableAction = action
+        }
+        if let showNextToReturn = iCloud?.object(forKey: iCloudKeys.keyboardShowProgrammableNextToReturn) as? Bool {
+            keyboardShowProgrammableNextToReturn = showNextToReturn
+        }
+        if let returnActionRaw = iCloud?.string(forKey: iCloudKeys.keyboardReturnProgrammableAction),
+           let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw) {
+            keyboardReturnProgrammableAction = returnAction
+        }
+
         // Transcription history is now synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
 
@@ -809,6 +876,13 @@ class SharedSettings: ObservableObject {
         }
         iCloud?.set(globalMemoryEnabled, forKey: iCloudKeys.globalMemoryEnabled)
         iCloud?.set(Int64(globalMemoryLimit), forKey: iCloudKeys.globalMemoryLimit)
+
+        // Sync keyboard layout settings
+        iCloud?.set(keyboardShowSwiftSpeakBar, forKey: iCloudKeys.keyboardShowSwiftSpeakBar)
+        iCloud?.set(keyboardShowPredictionRow, forKey: iCloudKeys.keyboardShowPredictionRow)
+        iCloud?.set(keyboardProgrammableAction.rawValue, forKey: iCloudKeys.keyboardProgrammableAction)
+        iCloud?.set(keyboardShowProgrammableNextToReturn, forKey: iCloudKeys.keyboardShowProgrammableNextToReturn)
+        iCloud?.set(keyboardReturnProgrammableAction.rawValue, forKey: iCloudKeys.keyboardReturnProgrammableAction)
 
         // Transcription history is synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
@@ -968,6 +1042,25 @@ class SharedSettings: ObservableObject {
         // Load Phase 13.8: Swipe typing
         if defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) != nil {
             swipeTypingEnabled = defaults?.bool(forKey: Constants.Keys.swipeTypingEnabled) ?? true
+        }
+
+        // Load Phase 16: Keyboard Layout Settings
+        if defaults?.object(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) != nil {
+            keyboardShowSwiftSpeakBar = defaults?.bool(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) ?? true
+        }
+        if defaults?.object(forKey: Constants.Keys.keyboardShowPredictionRow) != nil {
+            keyboardShowPredictionRow = defaults?.bool(forKey: Constants.Keys.keyboardShowPredictionRow) ?? true
+        }
+        if let actionRaw = defaults?.string(forKey: Constants.Keys.keyboardProgrammableAction),
+           let action = ProgrammableButtonAction(rawValue: actionRaw) {
+            keyboardProgrammableAction = action
+        }
+        if defaults?.object(forKey: Constants.Keys.keyboardShowProgrammableNextToReturn) != nil {
+            keyboardShowProgrammableNextToReturn = defaults?.bool(forKey: Constants.Keys.keyboardShowProgrammableNextToReturn) ?? false
+        }
+        if let returnActionRaw = defaults?.string(forKey: Constants.Keys.keyboardReturnProgrammableAction),
+           let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw) {
+            keyboardReturnProgrammableAction = returnAction
         }
 
         // Load security settings (Phase 6)
@@ -2308,4 +2401,42 @@ enum MemoryTier {
     case global
     case context
     case powerMode
+}
+
+/// Programmable button actions for the keyboard PredictionRow
+/// The last button in PredictionRow can be assigned any of these actions
+enum ProgrammableButtonAction: String, Codable, CaseIterable, Identifiable {
+    case aiSparkles = "ai_sparkles"
+    case transcribe = "transcribe"
+    case translate = "translate"
+    case aiFormat = "ai_format"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .aiSparkles: return "AI Sparkles"
+        case .transcribe: return "Transcribe"
+        case .translate: return "Translate"
+        case .aiFormat: return "AI Format"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .aiSparkles: return "Show AI sentence predictions"
+        case .transcribe: return "Start voice transcription"
+        case .translate: return "Translate selected text"
+        case .aiFormat: return "Apply context/Power Mode formatting"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .aiSparkles: return "sparkles"
+        case .transcribe: return "mic.fill"
+        case .translate: return "globe"
+        case .aiFormat: return "wand.and.stars"
+        }
+    }
 }
