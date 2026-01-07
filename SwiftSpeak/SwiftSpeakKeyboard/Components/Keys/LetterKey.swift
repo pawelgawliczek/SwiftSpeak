@@ -15,8 +15,8 @@ struct LetterKey: View {
     let onShowAccentPopup: ((String, CGRect) -> Void)?
 
     @State private var keyFrame: CGRect = .zero
+    @State private var isPressed = false
     @State private var pressStartTime: Date?
-    @State private var didTriggerHaptic = false
 
     private var hasPopup: Bool {
         AccentMappings.hasPopup(letter)
@@ -27,9 +27,8 @@ struct LetterKey: View {
 
     var body: some View {
         GeometryReader { geometry in
-            Button(action: {
-                // Action handled by gesture for long-press detection
-            }) {
+            // Use Button like ActionKey does - this ensures proper gesture handling
+            Button(action: {}) {
                 Text(letter)
                     .font(.system(size: 22, weight: .regular))
                     .foregroundStyle(KeyboardTheme.keyText)
@@ -49,35 +48,30 @@ struct LetterKey: View {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
-                        // First touch - record time and haptic
-                        if pressStartTime == nil {
+                        if !isPressed {
+                            isPressed = true
                             pressStartTime = Date()
-                            didTriggerHaptic = false
-                        }
-                        // Trigger haptic immediately on touch
-                        if !didTriggerHaptic {
-                            didTriggerHaptic = true
                             KeyboardHaptics.lightTap()
                         }
                     }
                     .onEnded { _ in
-                        guard let startTime = pressStartTime else { return }
-                        let pressDuration = Date().timeIntervalSince(startTime)
-                        pressStartTime = nil
-                        didTriggerHaptic = false
+                        defer {
+                            isPressed = false
+                            pressStartTime = nil
+                        }
 
-                        if pressDuration >= longPressDuration {
-                            // Long press - show accent popup if available
+                        // Check if long press
+                        if let start = pressStartTime,
+                           Date().timeIntervalSince(start) >= longPressDuration {
                             if hasPopup, let onShowAccentPopup = onShowAccentPopup {
                                 let frame = geometry.frame(in: .global)
                                 KeyboardHaptics.mediumTap()
                                 onShowAccentPopup(letter, frame)
                             } else {
-                                // No popup, just insert the letter
                                 action()
                             }
                         } else {
-                            // Quick tap - insert letter
+                            // Quick tap
                             action()
                         }
                     }

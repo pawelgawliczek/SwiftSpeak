@@ -29,6 +29,7 @@ struct KeyboardView: View {
     @ObservedObject var viewModel: KeyboardViewModel
     let onNextKeyboard: () -> Void
     let onModeChange: ((KeyboardDisplayMode) -> Void)?
+    let onRefreshHeight: (() -> Void)?
 
     @State private var activePicker: KeyboardPickerMode = .none
     @State private var displayMode: KeyboardDisplayMode = .voice
@@ -38,11 +39,13 @@ struct KeyboardView: View {
     init(
         viewModel: KeyboardViewModel,
         onNextKeyboard: @escaping () -> Void,
-        onModeChange: ((KeyboardDisplayMode) -> Void)? = nil
+        onModeChange: ((KeyboardDisplayMode) -> Void)? = nil,
+        onRefreshHeight: (() -> Void)? = nil
     ) {
         self.viewModel = viewModel
         self.onNextKeyboard = onNextKeyboard
         self.onModeChange = onModeChange
+        self.onRefreshHeight = onRefreshHeight
 
         // Load saved mode
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
@@ -94,7 +97,8 @@ struct KeyboardView: View {
                     withAnimation(.spring(response: 0.3)) {
                         activePicker = .swiftLink
                     }
-                }
+                },
+                onRefreshHeight: onRefreshHeight
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .opacity(displayMode == .typing ? 1 : 0)
@@ -297,7 +301,7 @@ struct KeyboardView: View {
                     }
                 }
                 .padding(.horizontal, 12)
-                .padding(.top, shouldShowStatusBanner ? 48 : 12)
+                .padding(.top, shouldShowStatusBanner ? 40 : 6)
 
                 Spacer()
 
@@ -332,17 +336,18 @@ struct KeyboardView: View {
                     Spacer()
 
                     // Right corner: Empty or future use
-                    Color.clear.frame(width: 60, height: 30)
+                    Color.clear.frame(width: 60, height: 26)
                 }
                 .padding(.horizontal, 12)
-                .padding(.bottom, 8)
+                .padding(.bottom, 4)
             }
 
             // Center: Main record button with arch mode buttons
             VStack(spacing: 0) {
                 Spacer()
+                    .frame(minHeight: 10, maxHeight: 30)
 
-                // Arch layout container
+                // Arch layout container - balanced layout for 260pt height
                 ZStack {
                     // Power Mode button - directly above (12 o'clock)
                     ArchModeButton(
@@ -358,7 +363,7 @@ struct KeyboardView: View {
                             }
                         }
                     }
-                    .offset(y: -85)
+                    .offset(y: -75)
 
                     // Translate button - 45° lower-left (10:30 position)
                     ArchModeButton(
@@ -375,7 +380,7 @@ struct KeyboardView: View {
                             }
                         }
                     }
-                    .offset(x: -85, y: -42)
+                    .offset(x: -80, y: -38)
 
                     // Context button - 45° lower-right (1:30 position)
                     ArchModeButton(
@@ -389,7 +394,7 @@ struct KeyboardView: View {
                             activePicker = .context
                         }
                     }
-                    .offset(x: 85, y: -42)
+                    .offset(x: 80, y: -38)
 
                     // Clear button - only visible when there's text (left side)
                     if viewModel.hasTextInField {
@@ -423,7 +428,7 @@ struct KeyboardView: View {
                 }
 
                 Spacer()
-                    .frame(height: 25)
+                    .frame(minHeight: 10, maxHeight: 20)
             }
         }
     }

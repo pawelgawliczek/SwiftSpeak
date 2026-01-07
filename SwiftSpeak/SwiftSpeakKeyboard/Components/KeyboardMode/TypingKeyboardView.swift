@@ -16,6 +16,7 @@ struct TypingKeyboardView: View {
     let onContextTap: () -> Void
     let onModeTap: () -> Void
     let onSwiftLinkTap: () -> Void
+    let onRefreshHeight: (() -> Void)?
 
     @State private var keyboardSettings: KeyboardSettings = .load()
 
@@ -104,6 +105,8 @@ struct TypingKeyboardView: View {
         .onChange(of: viewModel.showQuickSettings) { _, isShowing in
             if !isShowing {
                 keyboardSettings = .load()
+                // Notify parent to refresh keyboard height
+                onRefreshHeight?()
             }
         }
     }
@@ -117,7 +120,8 @@ struct TypingKeyboardView: View {
         onTranslationTap: { },
         onContextTap: { },
         onModeTap: { },
-        onSwiftLinkTap: { }
+        onSwiftLinkTap: { },
+        onRefreshHeight: nil
     )
     .preferredColorScheme(.dark)
 }

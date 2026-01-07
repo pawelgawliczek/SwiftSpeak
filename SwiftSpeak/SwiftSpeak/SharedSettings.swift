@@ -393,6 +393,32 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Reload keyboard settings from App Groups (call when view appears to pick up keyboard changes)
+    func reloadKeyboardSettings() {
+        if let showBar = defaults?.object(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) as? Bool,
+           showBar != keyboardShowSwiftSpeakBar {
+            keyboardShowSwiftSpeakBar = showBar
+        }
+        if let showPrediction = defaults?.object(forKey: Constants.Keys.keyboardShowPredictionRow) as? Bool,
+           showPrediction != keyboardShowPredictionRow {
+            keyboardShowPredictionRow = showPrediction
+        }
+        if let actionRaw = defaults?.string(forKey: Constants.Keys.keyboardProgrammableAction),
+           let action = ProgrammableButtonAction(rawValue: actionRaw),
+           action != keyboardProgrammableAction {
+            keyboardProgrammableAction = action
+        }
+        if let showNextToReturn = defaults?.object(forKey: Constants.Keys.keyboardShowProgrammableNextToReturn) as? Bool,
+           showNextToReturn != keyboardShowProgrammableNextToReturn {
+            keyboardShowProgrammableNextToReturn = showNextToReturn
+        }
+        if let returnActionRaw = defaults?.string(forKey: Constants.Keys.keyboardReturnProgrammableAction),
+           let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw),
+           returnAction != keyboardReturnProgrammableAction {
+            keyboardReturnProgrammableAction = returnAction
+        }
+    }
+
     // MARK: - SwiftLink: Background Dictation Sessions
 
     /// Apps configured for SwiftLink

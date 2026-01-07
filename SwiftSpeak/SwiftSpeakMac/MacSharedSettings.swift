@@ -41,6 +41,12 @@ class MacSettings: ObservableObject {
         static let transcriptionHistory = "icloud_transcriptionHistory"
         static let historyMemory = "icloud_historyMemory"
         static let lastSyncTimestamp = "icloud_lastSyncTimestamp"
+        // Phase 16: Keyboard layout settings
+        static let keyboardShowSwiftSpeakBar = "icloud_keyboard_showSwiftSpeakBar"
+        static let keyboardShowPredictionRow = "icloud_keyboard_showPredictionRow"
+        static let keyboardProgrammableAction = "icloud_keyboard_programmableAction"
+        static let keyboardShowProgrammableNextToReturn = "icloud_keyboard_showProgrammableNextToReturn"
+        static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
     }
 
     // MARK: - Published Properties
@@ -218,6 +224,43 @@ class MacSettings: ObservableObject {
             })
         } catch {
             macLog("Failed to load power mode hotkeys: \(error)", category: "Settings", level: .error)
+        }
+    }
+
+    // MARK: - Phase 16: Keyboard Layout Settings (syncs to iOS)
+
+    @Published var keyboardShowSwiftSpeakBar: Bool = true {
+        didSet {
+            defaults?.set(keyboardShowSwiftSpeakBar, forKey: "keyboardShowSwiftSpeakBar")
+            syncToiCloud()
+        }
+    }
+
+    @Published var keyboardShowPredictionRow: Bool = true {
+        didSet {
+            defaults?.set(keyboardShowPredictionRow, forKey: "keyboardShowPredictionRow")
+            syncToiCloud()
+        }
+    }
+
+    @Published var keyboardProgrammableAction: MacProgrammableButtonAction = .aiSparkles {
+        didSet {
+            defaults?.set(keyboardProgrammableAction.rawValue, forKey: "keyboardProgrammableAction")
+            syncToiCloud()
+        }
+    }
+
+    @Published var keyboardShowProgrammableNextToReturn: Bool = false {
+        didSet {
+            defaults?.set(keyboardShowProgrammableNextToReturn, forKey: "keyboardShowProgrammableNextToReturn")
+            syncToiCloud()
+        }
+    }
+
+    @Published var keyboardReturnProgrammableAction: MacProgrammableButtonAction = .transcribe {
+        didSet {
+            defaults?.set(keyboardReturnProgrammableAction.rawValue, forKey: "keyboardReturnProgrammableAction")
+            syncToiCloud()
         }
     }
 
@@ -513,6 +556,25 @@ class MacSettings: ObservableObject {
                 macLog("loadFromiCloud: Loaded history memory from iCloud", category: "iCloud")
             }
         }
+
+        // Load keyboard settings (Phase 16)
+        if let showBar = iCloud?.object(forKey: iCloudKeys.keyboardShowSwiftSpeakBar) as? Bool {
+            keyboardShowSwiftSpeakBar = showBar
+        }
+        if let showPrediction = iCloud?.object(forKey: iCloudKeys.keyboardShowPredictionRow) as? Bool {
+            keyboardShowPredictionRow = showPrediction
+        }
+        if let actionRaw = iCloud?.string(forKey: iCloudKeys.keyboardProgrammableAction),
+           let action = MacProgrammableButtonAction(rawValue: actionRaw) {
+            keyboardProgrammableAction = action
+        }
+        if let showNextToReturn = iCloud?.object(forKey: iCloudKeys.keyboardShowProgrammableNextToReturn) as? Bool {
+            keyboardShowProgrammableNextToReturn = showNextToReturn
+        }
+        if let returnActionRaw = iCloud?.string(forKey: iCloudKeys.keyboardReturnProgrammableAction),
+           let returnAction = MacProgrammableButtonAction(rawValue: returnActionRaw) {
+            keyboardReturnProgrammableAction = returnAction
+        }
     }
 
     private func syncToiCloud() {
@@ -579,6 +641,13 @@ class MacSettings: ObservableObject {
         } else {
             iCloud?.removeObject(forKey: iCloudKeys.historyMemory)
         }
+
+        // Sync keyboard settings (Phase 16)
+        iCloud?.set(keyboardShowSwiftSpeakBar, forKey: iCloudKeys.keyboardShowSwiftSpeakBar)
+        iCloud?.set(keyboardShowPredictionRow, forKey: iCloudKeys.keyboardShowPredictionRow)
+        iCloud?.set(keyboardProgrammableAction.rawValue, forKey: iCloudKeys.keyboardProgrammableAction)
+        iCloud?.set(keyboardShowProgrammableNextToReturn, forKey: iCloudKeys.keyboardShowProgrammableNextToReturn)
+        iCloud?.set(keyboardReturnProgrammableAction.rawValue, forKey: iCloudKeys.keyboardReturnProgrammableAction)
 
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
@@ -706,6 +775,25 @@ class MacSettings: ObservableObject {
         }
         if defaults?.object(forKey: "cloudLogSyncEnabled") != nil {
             cloudLogSyncEnabled = defaults?.bool(forKey: "cloudLogSyncEnabled") ?? true
+        }
+
+        // Load keyboard settings (Phase 16)
+        if defaults?.object(forKey: "keyboardShowSwiftSpeakBar") != nil {
+            keyboardShowSwiftSpeakBar = defaults?.bool(forKey: "keyboardShowSwiftSpeakBar") ?? true
+        }
+        if defaults?.object(forKey: "keyboardShowPredictionRow") != nil {
+            keyboardShowPredictionRow = defaults?.bool(forKey: "keyboardShowPredictionRow") ?? true
+        }
+        if let actionRaw = defaults?.string(forKey: "keyboardProgrammableAction"),
+           let action = MacProgrammableButtonAction(rawValue: actionRaw) {
+            keyboardProgrammableAction = action
+        }
+        if defaults?.object(forKey: "keyboardShowProgrammableNextToReturn") != nil {
+            keyboardShowProgrammableNextToReturn = defaults?.bool(forKey: "keyboardShowProgrammableNextToReturn") ?? false
+        }
+        if let returnActionRaw = defaults?.string(forKey: "keyboardReturnProgrammableAction"),
+           let returnAction = MacProgrammableButtonAction(rawValue: returnActionRaw) {
+            keyboardReturnProgrammableAction = returnAction
         }
 
         // History is now loaded from CoreDataManager (CloudKit synced)
@@ -1168,6 +1256,37 @@ class MacSettings: ObservableObject {
         // Clear UserDefaults
         if let bundleId = Bundle.main.bundleIdentifier {
             defaults?.removePersistentDomain(forName: bundleId)
+        }
+    }
+}
+
+// MARK: - Programmable Button Action (Phase 16)
+
+/// Programmable button actions for the iOS keyboard PredictionRow
+/// Syncs via iCloud to iOS devices
+enum MacProgrammableButtonAction: String, Codable, CaseIterable, Identifiable {
+    case aiSparkles = "ai_sparkles"
+    case transcribe = "transcribe"
+    case translate = "translate"
+    case aiFormat = "ai_format"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .aiSparkles: return "AI Sparkles"
+        case .transcribe: return "Transcribe"
+        case .translate: return "Translate"
+        case .aiFormat: return "AI Format"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .aiSparkles: return "sparkles"
+        case .transcribe: return "mic.fill"
+        case .translate: return "globe"
+        case .aiFormat: return "wand.and.stars"
         }
     }
 }

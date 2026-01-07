@@ -18,7 +18,7 @@ class KeyboardViewController: UIInputViewController {
 
     /// Base heights for different keyboard modes
     private enum HeightConfig {
-        static let voiceMode: CGFloat = 220          // Compact voice-only mode
+        static let voiceMode: CGFloat = 260          // Voice mode with corner buttons
         static let typingModeFull: CGFloat = 350     // Full QWERTY + all bars
         static let swiftSpeakBarHeight: CGFloat = 50 // SwiftSpeakBar contribution
         static let predictionRowHeight: CGFloat = 36 // PredictionRow contribution
@@ -48,6 +48,9 @@ class KeyboardViewController: UIInputViewController {
             },
             onModeChange: { [weak self] mode in
                 self?.updateHeight(for: mode)
+            },
+            onRefreshHeight: { [weak self] in
+                self?.refreshHeight()
             }
         )
 

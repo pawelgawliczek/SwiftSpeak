@@ -10,6 +10,7 @@
 
 import SwiftUI
 import UIKit
+import AudioToolbox
 
 // MARK: - App Theme
 /// Centralized theme configuration following branding guidelines
@@ -196,78 +197,65 @@ enum HapticManager {
 }
 
 // MARK: - Keyboard Haptics
-/// Keyboard-specific haptics that respect the haptic feedback setting
+/// Keyboard-specific haptics using AudioServicesPlaySystemSound
+/// Note: UIImpactFeedbackGenerator doesn't work reliably in keyboard extensions
 enum KeyboardHaptics {
-    // Pre-initialized generators for better performance and reliability
-    private static let lightGenerator = UIImpactFeedbackGenerator(style: .light)
-    private static let mediumGenerator = UIImpactFeedbackGenerator(style: .medium)
-    private static let heavyGenerator = UIImpactFeedbackGenerator(style: .heavy)
-    private static let notificationGenerator = UINotificationFeedbackGenerator()
-    private static let selectionGenerator = UISelectionFeedbackGenerator()
+    // System sound IDs for haptic feedback
+    private static let peekHaptic: SystemSoundID = 1519      // Light tap
+    private static let popHaptic: SystemSoundID = 1520       // Medium tap
+    private static let tryAgainHaptic: SystemSoundID = 1102  // Subtle tick
+    private static let successHaptic: SystemSoundID = 1519   // Success feel
+    private static let errorHaptic: SystemSoundID = 1521     // Error/cancelled
 
     /// Check if haptic feedback is enabled in keyboard settings
     private static var isEnabled: Bool {
         let defaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
-        // Use object(forKey:) because bool(forKey:) returns false for missing keys
         return (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
     }
 
-    /// Prepare all generators (call on keyboard appear)
-    static func prepare() {
-        lightGenerator.prepare()
-        mediumGenerator.prepare()
-        heavyGenerator.prepare()
-        notificationGenerator.prepare()
-        selectionGenerator.prepare()
-    }
+    /// Prepare - no-op for AudioServices (kept for API compatibility)
+    static func prepare() {}
 
     /// Light tap for minor interactions (key press)
     static func lightTap() {
         guard isEnabled else { return }
-        lightGenerator.impactOccurred()
-        lightGenerator.prepare()  // Prepare for next use
+        AudioServicesPlaySystemSound(peekHaptic)
     }
 
     /// Medium tap for primary actions (start/stop recording)
     static func mediumTap() {
         guard isEnabled else { return }
-        mediumGenerator.impactOccurred()
-        mediumGenerator.prepare()
+        AudioServicesPlaySystemSound(popHaptic)
     }
 
     /// Heavy tap for significant actions
     static func heavyTap() {
         guard isEnabled else { return }
-        heavyGenerator.impactOccurred()
-        heavyGenerator.prepare()
+        AudioServicesPlaySystemSound(popHaptic)
     }
 
     /// Success notification (task complete)
     static func success() {
         guard isEnabled else { return }
-        notificationGenerator.notificationOccurred(.success)
-        notificationGenerator.prepare()
+        AudioServicesPlaySystemSound(successHaptic)
     }
 
     /// Warning notification
     static func warning() {
         guard isEnabled else { return }
-        notificationGenerator.notificationOccurred(.warning)
-        notificationGenerator.prepare()
+        AudioServicesPlaySystemSound(tryAgainHaptic)
     }
 
     /// Error notification
     static func error() {
         guard isEnabled else { return }
-        notificationGenerator.notificationOccurred(.error)
-        notificationGenerator.prepare()
+        AudioServicesPlaySystemSound(errorHaptic)
     }
 
     /// Selection changed (mode switch, picker)
     static func selection() {
         guard isEnabled else { return }
-        selectionGenerator.selectionChanged()
-        selectionGenerator.prepare()
+        AudioServicesPlaySystemSound(tryAgainHaptic)
     }
 }
 

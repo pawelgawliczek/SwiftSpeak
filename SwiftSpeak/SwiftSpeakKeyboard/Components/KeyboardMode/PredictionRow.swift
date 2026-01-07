@@ -402,13 +402,26 @@ private struct ProgrammableButton: View {
             KeyboardHaptics.lightTap()
             executeAction()
         }) {
-            Image(systemName: action.iconName)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(iconGradient)
+            buttonContent
                 .frame(width: 36, height: 36)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var buttonContent: some View {
+        switch action {
+        case .transcribe:
+            // Use SwiftSpeak logo for transcribe
+            SwiftSpeakLogoView()
+                .frame(width: 20, height: 20)
+                .foregroundStyle(iconGradient)
+        default:
+            Image(systemName: action.iconName)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(iconGradient)
+        }
     }
 
     private var iconGradient: some ShapeStyle {
@@ -421,7 +434,7 @@ private struct ProgrammableButton: View {
             ))
         case .transcribe:
             return AnyShapeStyle(LinearGradient(
-                colors: [.red, .orange],
+                colors: [KeyboardTheme.accent, KeyboardTheme.accent.opacity(0.7)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ))

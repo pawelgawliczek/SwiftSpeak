@@ -93,6 +93,20 @@ struct SettingsView: View {
         return "\(count) vault\(count == 1 ? "" : "s") configured"
     }
 
+    private var keyboardSubtitle: String {
+        var parts: [String] = []
+        if !settings.keyboardShowSwiftSpeakBar {
+            parts.append("Bar hidden")
+        }
+        if !settings.keyboardShowPredictionRow {
+            parts.append("Predictions hidden")
+        }
+        if parts.isEmpty {
+            return "Layout and quick actions"
+        }
+        return parts.joined(separator: ", ")
+    }
+
     #if DEBUG
     private var microphonePermissionStatus: String {
         switch AVAudioApplication.shared.recordPermission {
@@ -148,6 +162,10 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
+            }
+            .onAppear {
+                // Reload keyboard settings from App Groups to pick up changes from keyboard extension
+                settings.reloadKeyboardSettings()
             }
         }
     }
@@ -249,6 +267,19 @@ struct SettingsView: View {
                     iconColor: .yellow,
                     title: "Behavior",
                     subtitle: behaviorSubtitle
+                )
+            }
+            .listRowBackground(rowBackground)
+
+            // Keyboard
+            NavigationLink {
+                KeyboardSettingsView()
+            } label: {
+                SettingsRow(
+                    icon: "keyboard",
+                    iconColor: .indigo,
+                    title: "Keyboard",
+                    subtitle: keyboardSubtitle
                 )
             }
             .listRowBackground(rowBackground)

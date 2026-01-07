@@ -1313,6 +1313,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case transcription = "Transcription & AI"
     case personalization = "Personalization"
     case behavior = "Behavior"
+    case iOSKeyboard = "iOS Keyboard"
     case security = "Security & Privacy"
     case usage = "Usage & Costs"
     case vaults = "Vaults"
@@ -1329,6 +1330,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .transcription: return "cpu"
         case .personalization: return "person.fill"
         case .behavior: return "bolt.fill"
+        case .iOSKeyboard: return "keyboard.fill"
         case .security: return "lock.shield.fill"
         case .usage: return "chart.pie.fill"
         case .vaults: return "seal.fill"
@@ -1344,6 +1346,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .transcription: return .purple
         case .personalization: return .orange
         case .behavior: return .yellow
+        case .iOSKeyboard: return .indigo
         case .security: return .green
         case .usage: return .mint
         case .vaults: return .purple
@@ -1423,6 +1426,8 @@ struct MacSettingsView: View {
                     MacPersonalizationView(settings: settings)
                 case .behavior:
                     MacBehaviorView(settings: settings)
+                case .iOSKeyboard:
+                    MacKeyboardSettingsView(settings: settings)
                 case .security:
                     MacSecurityPrivacyView(settings: settings)
                 case .usage:
@@ -1490,6 +1495,11 @@ struct SidebarRow: View {
         case .behavior:
             let powerModeCount = settings.activePowerModes.count
             return powerModeCount > 0 ? "\(powerModeCount) Power Mode\(powerModeCount == 1 ? "" : "s") active" : "Power Modes, streaming"
+        case .iOSKeyboard:
+            var parts: [String] = []
+            if !settings.keyboardShowSwiftSpeakBar { parts.append("Bar hidden") }
+            if !settings.keyboardShowPredictionRow { parts.append("Predictions hidden") }
+            return parts.isEmpty ? "Layout and quick actions" : parts.joined(separator: ", ")
         case .security:
             return "Biometrics, data retention"
         case .usage:

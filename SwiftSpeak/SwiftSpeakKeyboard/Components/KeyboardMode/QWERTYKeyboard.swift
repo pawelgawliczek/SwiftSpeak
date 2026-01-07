@@ -679,9 +679,7 @@ private struct ReturnProgrammableButton: View {
             KeyboardHaptics.lightTap()
             executeAction()
         }) {
-            Image(systemName: action.iconName)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(iconColor)
+            buttonContent
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(KeyboardTheme.keyBackground)
                 .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
@@ -690,10 +688,25 @@ private struct ReturnProgrammableButton: View {
         .frame(height: KeyboardTheme.keyHeight)
     }
 
+    @ViewBuilder
+    private var buttonContent: some View {
+        switch action {
+        case .transcribe:
+            // Use SwiftSpeak logo for transcribe
+            SwiftSpeakLogoView()
+                .frame(width: 18, height: 18)
+                .foregroundStyle(iconColor)
+        default:
+            Image(systemName: action.iconName)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(iconColor)
+        }
+    }
+
     private var iconColor: Color {
         switch action {
         case .aiSparkles: return .purple
-        case .transcribe: return .red
+        case .transcribe: return KeyboardTheme.accent
         case .translate: return .green
         case .aiFormat: return .orange
         }
