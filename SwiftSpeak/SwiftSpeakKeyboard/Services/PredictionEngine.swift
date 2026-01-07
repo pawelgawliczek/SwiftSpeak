@@ -218,8 +218,28 @@ actor PredictionEngine {
 
         } else {
             // Prefix-based predictions
+            let lang = language ?? "en"
 
-            // 1. N-gram completions (context-aware prefix matching)
+            // 0. Spelling corrections (highest priority - if user typed "teh", suggest "the")
+            let spellingCorrections = TextCheckerCompletions.getSpellingSuggestions(
+                for: searchTerm,
+                language: lang,
+                maxResults: 2
+            )
+            for (index, correction) in spellingCorrections.enumerated() {
+                // Very high score for spelling corrections
+                let score = 120.0 - Double(index * 5)
+                predictions.append((correction, score))
+            }
+
+            // 1. Recently typed words (recency boost)
+            let recentWords = await SessionRecencyTracker.shared.getRecentWordsWithPrefix(searchTerm, maxResults: 3)
+            for (index, word) in recentWords.enumerated() {
+                let score = 110.0 - Double(index * 5)
+                predictions.append((word.capitalized, score))
+            }
+
+            // 2. N-gram completions (context-aware prefix matching)
             let ngramCompletions = await NGramPredictor.shared.predictCompletion(
                 prefix: searchTerm,
                 previousWords: previousWords,
@@ -231,7 +251,18 @@ actor PredictionEngine {
                 predictions.append((word, score))
             }
 
-            // 2. Personal dictionary matches
+            // 3. UITextChecker completions (Apple's dictionary)
+            let textCheckerCompletions = TextCheckerCompletions.getCompletions(
+                for: searchTerm,
+                language: lang,
+                maxResults: 5
+            )
+            for (index, word) in textCheckerCompletions.enumerated() {
+                let score = 85.0 - Double(index * 5)
+                predictions.append((word, score))
+            }
+
+            // 4. Personal dictionary matches
             let personalWords = await PersonalDictionary.shared.wordsWithPrefix(searchTerm, maxResults: 5)
             for word in personalWords {
                 let freq = await PersonalDictionary.shared.frequency(of: word)
@@ -239,14 +270,14 @@ actor PredictionEngine {
                 predictions.append((word.capitalized, score))
             }
 
-            // 3. Search custom vocabulary for prefix matches
+            // 5. Search custom vocabulary for prefix matches
             for word in vocabulary {
                 if word.lowercased().hasPrefix(searchTerm) && word.lowercased() != searchTerm {
                     predictions.append((word, 70.0))
                 }
             }
 
-            // 4. Search frequent words for prefix matches
+            // 6. Search frequent words for prefix matches
             for (word, count) in frequentWords {
                 if word.hasPrefix(searchTerm) && word != searchTerm {
                     let score = 60.0 + min(Double(count), 20.0)
@@ -254,7 +285,7 @@ actor PredictionEngine {
                 }
             }
 
-            // 5. Context-specific vocabulary
+            // 7. Context-specific vocabulary
             let contextWords = await ContextAwarePredictions.shared.getPredictions(
                 for: searchTerm,
                 context: typingContext,
@@ -265,18 +296,21 @@ actor PredictionEngine {
             }
         }
 
-        // Apply feedback boosts
+        // Apply feedback boosts and recency boost
         var boostedPredictions: [(String, Double)] = []
         for (text, baseScore) in predictions {
-            let boost = await PredictionFeedback.shared.getBoost(for: text)
+            let feedbackBoost = await PredictionFeedback.shared.getBoost(for: text)
 
-            // Also apply contextual boost if we have previous word
+            // Apply contextual boost if we have previous word
             var contextBoost = 1.0
             if let lastWord = previousWords.last {
                 contextBoost = await PredictionFeedback.shared.getContextualBoost(for: text, after: lastWord)
             }
 
-            let finalScore = baseScore * boost * contextBoost
+            // Apply recency boost for recently typed words
+            let recencyBoost = await SessionRecencyTracker.shared.getRecencyBoost(for: text)
+
+            let finalScore = baseScore * feedbackBoost * contextBoost * recencyBoost
             boostedPredictions.append((text, finalScore))
         }
 
@@ -442,10 +476,16 @@ actor PredictionEngine {
     /// Record that user accepted a prediction
     func recordPredictionAccepted(_ prediction: String, previousWord: String?) async {
         await PredictionFeedback.shared.recordAccepted(prediction: prediction, previousWord: previousWord)
+
+        // Also record to session recency tracker
+        await SessionRecencyTracker.shared.recordWord(prediction)
     }
 
     /// Record that user rejected predictions and typed something else
     func recordPredictionsRejected(_ predictions: [String], actuallyTyped: String, previousWord: String?) async {
+        // Record the actually typed word to recency tracker
+        await SessionRecencyTracker.shared.recordWord(actuallyTyped)
+
         await PredictionFeedback.shared.recordRejected(
             predictions: predictions,
             actuallyTyped: actuallyTyped,

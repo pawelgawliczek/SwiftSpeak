@@ -532,6 +532,42 @@ actor NGramPredictor {
             ("please", "let", 180), ("let", "me", 220), ("let", "us", 180),
             ("could", "you", 200), ("would", "you", 190), ("can", "you", 250),
             ("if", "you", 220), ("as", "soon", 150),
+
+            // Common responses and reactions
+            ("sounds", "good", 280), ("sounds", "great", 250), ("sounds", "like", 220),
+            ("no", "problem", 260), ("no", "worries", 240), ("no", "way", 180),
+            ("of", "course", 280), ("all", "right", 220), ("all", "good", 200),
+            ("got", "it", 250), ("makes", "sense", 220), ("fair", "enough", 180),
+            ("same", "here", 160), ("me", "too", 200), ("me", "neither", 140),
+
+            // More casual phrases
+            ("right", "now", 220), ("just", "now", 180), ("for", "now", 200),
+            ("so", "far", 180), ("so", "much", 200), ("so", "good", 170),
+            ("too", "much", 180), ("too", "bad", 150), ("too", "late", 140),
+            ("not", "sure", 250), ("not", "yet", 220), ("not", "really", 200),
+            ("kind", "of", 220), ("sort", "of", 180), ("a", "bit", 200),
+
+            // Action phrases
+            ("talk", "to", 180), ("talk", "about", 160), ("talk", "later", 200),
+            ("see", "you", 250), ("catch", "up", 180), ("hang", "out", 160),
+            ("work", "on", 180), ("work", "out", 160), ("figure", "out", 180),
+            ("find", "out", 170), ("check", "out", 180), ("come", "back", 200),
+            ("get", "back", 220), ("get", "home", 180), ("get", "there", 160),
+
+            // Feeling expressions
+            ("feel", "like", 220), ("feel", "better", 180), ("feel", "good", 160),
+            ("look", "like", 200), ("look", "good", 170), ("look", "forward", 180),
+            ("really", "good", 180), ("really", "nice", 160), ("really", "appreciate", 200),
+
+            // Time casual
+            ("in", "a", 300), ("a", "minute", 180), ("a", "second", 160),
+            ("a", "while", 180), ("a", "few", 200), ("few", "minutes", 180),
+            ("couple", "of", 180), ("of", "days", 160), ("of", "weeks", 140),
+
+            // Messaging common
+            ("on", "my", 200), ("my", "way", 220), ("be", "there", 200),
+            ("be", "back", 180), ("be", "right", 160), ("running", "late", 180),
+            ("almost", "there", 160), ("just", "got", 180), ("just", "finished", 160),
         ]
 
         keyboardLog("loadEnglishNGrams: commonBigrams created, processing \(commonBigrams.count) entries", category: "Prediction")
@@ -576,6 +612,38 @@ actor NGramPredictor {
             ("it", "would", "be", 200), ("it", "will", "be", 220),
             ("there", "is", "a", 200), ("there", "are", "many", 150),
             ("this", "is", "a", 250), ("this", "is", "the", 220),
+
+            // Common responses
+            ("sounds", "good", "to", 180), ("sounds", "like", "a", 160),
+            ("no", "problem", "at", 140), ("of", "course", "i", 160),
+            ("i", "got", "it", 180), ("makes", "sense", "to", 140),
+
+            // Casual messaging
+            ("on", "my", "way", 280), ("be", "there", "soon", 200),
+            ("be", "right", "back", 180), ("see", "you", "soon", 220),
+            ("see", "you", "later", 200), ("see", "you", "there", 180),
+            ("talk", "to", "you", 200), ("catch", "up", "later", 160),
+
+            // Time expressions
+            ("in", "a", "minute", 180), ("in", "a", "bit", 200),
+            ("in", "a", "few", 160), ("a", "few", "minutes", 180),
+            ("a", "couple", "of", 170), ("couple", "of", "days", 150),
+
+            // Feelings/reactions
+            ("i", "feel", "like", 180), ("i", "really", "appreciate", 200),
+            ("that", "sounds", "good", 180), ("that", "makes", "sense", 160),
+            ("i", "really", "like", 160), ("i", "really", "think", 140),
+
+            // Questions extended
+            ("do", "you", "want", 220), ("do", "you", "have", 250),
+            ("do", "you", "know", 230), ("do", "you", "think", 200),
+            ("can", "you", "please", 180), ("could", "you", "please", 170),
+            ("are", "you", "going", 180), ("are", "you", "sure", 200),
+
+            // More business
+            ("i", "look", "forward", 180), ("look", "forward", "to", 220),
+            ("please", "let", "me", 200), ("get", "back", "to", 180),
+            ("as", "soon", "as", 200), ("reach", "out", "to", 150),
         ]
 
         for (word1, word2, word3, count) in commonTrigrams {
