@@ -19,16 +19,8 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     // MARK: - Published State
 
     @Published var isRecording = false
-    @Published var isOverlayVisible = false
-    @Published var isProcessing = false {
-        didSet { overlayViewModel.isProcessing = isProcessing }
-    }
-    @Published var isTranslationEnabled = false {
-        didSet { overlayViewModel.isTranslationEnabled = isTranslationEnabled }
-    }
-    @Published var targetLanguage: Language = .spanish {
-        didSet { overlayViewModel.targetLanguage = targetLanguage }
-    }
+    @Published var isTranslationEnabled = false
+    @Published var targetLanguage: Language = .spanish
     @Published var lastResult: String?
     @Published var lastError: String?
 
@@ -36,18 +28,14 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
 
     private var statusItem: NSStatusItem?
     private var menu: NSMenu?
-    private var floatingWindow: NSPanel?
-    private var hostingView: NSHostingView<OverlayWrapperView>?
     private var cancellables = Set<AnyCancellable>()
     private var settingsWindow: NSWindow?
     private var transcriptionHistoryWindow: NSWindow?
     private var meetingHistoryWindow: NSWindow?
     private var meetingRecordingWindow: NSWindow?
     private var meetingResultWindow: NSWindow?
-    private let overlayViewModel = OverlayViewModel()
     private var frontmostAppObserver: NSObjectProtocol?
     private var lastFrontmostBundleId: String?
-    private var localKeyboardMonitor: Any?
     private var powerModeOverlayController: MacPowerModeOverlayController?
     private var transcribeOverlayController: MacTranscribeOverlayController?
 
@@ -81,7 +69,6 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     public func setup() {
         createStatusItem()
         createMenu()
-        createFloatingWindow()
         setupBindings()
         setupHotkeys()
         setupFrontmostAppMonitor()
@@ -416,40 +403,6 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         menu?.addItem(quitItem)
     }
 
-    private func createFloatingWindow() {
-        let window = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 400, height: 280),
-            styleMask: [.nonactivatingPanel, .borderless],
-            backing: .buffered,
-            defer: false
-        )
-
-        window.level = .floating
-        window.isOpaque = false
-        window.backgroundColor = .clear
-        window.hasShadow = true
-        window.isMovableByWindowBackground = true
-        window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.animationBehavior = .none  // Disable animations to prevent crashes
-
-        // Create wrapper view that observes the view model
-        let wrapperView = OverlayWrapperView(
-            audioRecorder: audioRecorder,
-            viewModel: overlayViewModel,
-            settings: settings,
-            onStop: { [weak self] in
-                Task { await self?.stopRecordingAndProcess() }
-            },
-            onCancel: { [weak self] in
-                self?.cancelRecording()
-            }
-        )
-        hostingView = NSHostingView(rootView: wrapperView)
-        window.contentView = hostingView
-
-        floatingWindow = window
-    }
-
     private func setupBindings() {
         // Update menu bar icon based on recording state
         audioRecorder.$isRecording
@@ -510,7 +463,12 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
                 // Pass the captured context to the transcribe overlay
                 self?.openTranscribeOverlay(mode: .toggle, context: context)
             case .cancelRecording:
-                self?.cancelRecording()
+                // Cancel via transcribe overlay if visible, otherwise cancel audio recorder directly
+                if self?.transcribeOverlayController?.isVisible == true {
+                    self?.transcribeOverlayController?.hide()
+                } else {
+                    self?.audioRecorder.cancelRecording()
+                }
             case .quickPaste:
                 // Quick paste from clipboard
                 break
@@ -556,18 +514,6 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     @objc public func toggleRecording() {
         // Use the new Transcribe overlay instead of old Power Mode overlay
         openTranscribeOverlay(mode: .toggle, context: nil)
-    }
-
-    // MARK: - OBSOLETE Recording Methods (kept for reference)
-    // TODO: Remove these after Transcribe overlay is fully verified
-
-    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
-    private func _obsolete_toggleRecording() {
-        if audioRecorder.isRecording {
-            Task { await stopRecordingAndProcess() }
-        } else {
-            Task { await startRecording() }
-        }
     }
 
     @objc private func toggleTranslation() {
@@ -893,72 +839,6 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         NSApp.terminate(nil)
     }
 
-    // MARK: - OBSOLETE Recording Flow (replaced by Transcribe overlay)
-    // TODO: Remove after Transcribe overlay is fully verified
-
-    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
-    public func startRecording() async {
-        showOverlay()
-
-        do {
-            try await audioRecorder.startRecording()
-            lastError = nil
-        } catch {
-            hideOverlay()
-            lastError = error.localizedDescription
-            showNotification(title: "Recording Failed", body: error.localizedDescription)
-        }
-    }
-
-    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
-    public func stopRecordingAndProcess() async {
-        isProcessing = true
-        updateOverlayContent()
-
-        do {
-            let audioURL = try audioRecorder.stopRecording()
-
-            // Get transcription via provider factory
-            let transcriptionResult = try await transcribe(audioURL: audioURL)
-
-            // Translate if enabled
-            var finalResult = transcriptionResult
-            if isTranslationEnabled {
-                finalResult = try await translate(text: transcriptionResult, to: targetLanguage)
-            }
-
-            lastResult = finalResult
-
-            // Insert text
-            let insertResult = await textInsertion.insertText(finalResult, replaceSelection: true)
-
-            switch insertResult {
-            case .accessibilitySuccess:
-                showNotification(title: "Text Inserted", body: "")
-            case .clipboardFallback:
-                showNotification(title: "Copied to Clipboard", body: "Press Cmd+V to paste")
-            case .failed(let error):
-                showNotification(title: "Insertion Failed", body: error.localizedDescription)
-            }
-
-            // Save to history
-            saveToHistory(transcription: transcriptionResult, finalText: finalResult, wasTranslated: isTranslationEnabled)
-
-        } catch {
-            lastError = error.localizedDescription
-            showNotification(title: "Transcription Failed", body: error.localizedDescription)
-        }
-
-        isProcessing = false
-        hideOverlay()
-    }
-
-    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
-    public func cancelRecording() {
-        audioRecorder.cancelRecording()
-        hideOverlay()
-    }
-
     /// Open the power mode overlay with selector to cycle through modes
     public func openPowerModeOverlay(context: HotkeyContext? = nil) {
         // Get first active power mode, or return if none
@@ -1205,130 +1085,6 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             targetLanguage: wasTranslated ? settings.selectedTargetLanguage : nil
         )
         settings.addToHistory(record)
-    }
-
-    // MARK: - OBSOLETE UI Helpers (Power Mode overlay - replaced by Transcribe overlay)
-    // TODO: Remove after Transcribe overlay is fully verified
-
-    @available(*, deprecated, message: "Use openTranscribeOverlay instead")
-    public func showOverlay() {
-        guard let window = floatingWindow else { return }
-
-        // Position near mouse or center of screen
-        if let screen = NSScreen.main {
-            let screenFrame = screen.visibleFrame
-            let windowFrame = window.frame
-
-            // Center on screen
-            let x = screenFrame.midX - windowFrame.width / 2
-            let y = screenFrame.midY - windowFrame.height / 2
-            window.setFrameOrigin(NSPoint(x: x, y: y))
-        }
-
-        // Show toggle circles when overlay appears
-        overlayViewModel.showToggleCircles = true
-
-        updateOverlayContent()
-        window.makeKeyAndOrderFront(nil)
-        isOverlayVisible = true
-
-        // Start keyboard monitoring
-        startLocalKeyboardMonitor()
-    }
-
-    public func hideOverlay() {
-        // Stop keyboard monitoring
-        stopLocalKeyboardMonitor()
-
-        overlayViewModel.showToggleCircles = false
-        floatingWindow?.orderOut(nil)
-        isOverlayVisible = false
-    }
-
-    // MARK: - Local Keyboard Monitoring
-
-    private func startLocalKeyboardMonitor() {
-        // Monitor keyboard events while recording
-        localKeyboardMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, self.isOverlayVisible else { return event }
-
-            switch event.keyCode {
-            case 17: // T key - Toggle translation
-                self.overlayViewModel.isTranslationEnabled.toggle()
-                self.isTranslationEnabled = self.overlayViewModel.isTranslationEnabled
-                return nil
-
-            case 8: // C key - Cycle context
-                self.cycleContext()
-                return nil
-
-            case 35: // P key - Cycle power mode
-                self.cyclePowerMode()
-                return nil
-
-            case 49: // Space - Finish recording
-                if self.audioRecorder.isRecording && !self.isProcessing {
-                    Task { await self.stopRecordingAndProcess() }
-                }
-                return nil
-
-            case 36: // Return/Enter - Finish recording
-                if self.audioRecorder.isRecording && !self.isProcessing {
-                    Task { await self.stopRecordingAndProcess() }
-                }
-                return nil
-
-            case 53: // Escape - Cancel recording
-                if self.audioRecorder.isRecording {
-                    self.cancelRecording()
-                }
-                return nil
-
-            default:
-                return event
-            }
-        }
-    }
-
-    private func stopLocalKeyboardMonitor() {
-        if let monitor = localKeyboardMonitor {
-            NSEvent.removeMonitor(monitor)
-            localKeyboardMonitor = nil
-        }
-    }
-
-    private func cycleContext() {
-        let contexts = settings.contexts
-        if let current = settings.activeContext,
-           let index = contexts.firstIndex(where: { $0.id == current.id }) {
-            let nextIndex = (index + 1) % (contexts.count + 1) // +1 to include "none"
-            if nextIndex < contexts.count {
-                settings.setActiveContext(contexts[nextIndex])
-            } else {
-                settings.setActiveContext(nil) // Back to none
-            }
-        } else if let first = contexts.first {
-            settings.setActiveContext(first)
-        }
-    }
-
-    private func cyclePowerMode() {
-        let modes = settings.activePowerModes
-        if let current = settings.activePowerMode,
-           let index = modes.firstIndex(where: { $0.id == current.id }) {
-            if index + 1 < modes.count {
-                settings.setActivePowerMode(modes[index + 1])
-            } else {
-                settings.setActivePowerMode(nil) // Turn off
-            }
-        } else if let first = modes.first {
-            settings.setActivePowerMode(first)
-        }
-    }
-
-    private func updateOverlayContent() {
-        // No longer recreates view - OverlayViewModel updates trigger SwiftUI reactivity
-        // This method is kept for compatibility but view updates happen automatically
     }
 
     private func updateStatusIcon(isRecording: Bool) {

@@ -61,8 +61,10 @@ struct RecordingOverlayView: View {
     @State private var logoGlow: Double = 0.3
     @State private var processingElapsed: TimeInterval = 0
     @State private var isViewActive = false
+    @State private var processingTimerCancellable: AnyCancellable?
 
-    private let processingTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Timer that doesn't autoconnect - controlled via state
+    private let processingTimer = Timer.publish(every: 1, on: .main, in: .common)
 
     var body: some View {
         VStack(spacing: 16) {
@@ -81,14 +83,17 @@ struct RecordingOverlayView: View {
         .onAppear {
             isViewActive = true
             startLogoAnimation()
+            // Connect timer only when view appears
+            processingTimerCancellable = processingTimer.connect() as? AnyCancellable
         }
         .onDisappear {
             isViewActive = false
             stopLogoAnimation()
+            // Disconnect timer when view disappears
+            processingTimerCancellable?.cancel()
+            processingTimerCancellable = nil
         }
         .onReceive(processingTimer) { _ in
-            // Guard: Don't update state after view disappears
-            guard isViewActive else { return }
             if viewModel.isProcessing {
                 processingElapsed = Date().timeIntervalSince(viewModel.processingStartTime)
             }
@@ -825,23 +830,17 @@ struct VisualEffectView: NSViewRepresentable {
 // MARK: - Processing Animation View
 
 struct ProcessingAnimationView: View {
-    @State private var animationPhase: Double = 0
-    @State private var isActive = false
-
     private let barCount = 8
-    private let timer = Timer.publish(every: 0.08, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(spacing: 3) {
-            ForEach(0..<barCount, id: \.self) { index in
-                ProcessingBar(index: index, phase: animationPhase)
+        // Use TimelineView for efficient animation that only runs when visible
+        TimelineView(.animation(minimumInterval: 0.08, paused: false)) { timeline in
+            let phase = timeline.date.timeIntervalSinceReferenceDate * 1.875 // ~0.15 per 0.08s
+            HStack(spacing: 3) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    ProcessingBar(index: index, phase: phase)
+                }
             }
-        }
-        .onAppear { isActive = true }
-        .onDisappear { isActive = false }
-        .onReceive(timer) { _ in
-            guard isActive else { return }
-            animationPhase += 0.15
         }
     }
 }
