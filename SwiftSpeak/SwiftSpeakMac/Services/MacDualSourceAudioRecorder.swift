@@ -67,6 +67,15 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     /// Last flush timestamp
     private var lastFlushTime: Date?
 
+    // MARK: - Auto-Save (Backup)
+
+    /// Auto-save interval in seconds (5 minutes)
+    private let autoSaveInterval: TimeInterval = 300
+    /// Last auto-save timestamp
+    private var lastAutoSaveTime: Date?
+    /// Backup file URL
+    private var backupURL: URL?
+
     // MARK: - Device Selection
 
     /// Set the selected audio input device ID
@@ -176,6 +185,18 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         self._isPaused = false
         self.startTime = Date()
         self.pausedDuration = 0
+
+        // Reset recording health tracking
+        buffersWritten = 0
+        writeErrors = 0
+        lastSuccessfulWrite = nil
+        lastFlushTime = nil
+
+        // Reset auto-save state
+        lastAutoSaveTime = nil
+        backupURL = nil
+
+        macLog("Single-source recording started", category: "DualAudioRecorder", level: .info)
     }
 
     public func pauseRecording() async {
@@ -254,6 +275,17 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         _microphoneLevel = 0
         _systemAudioLevel = 0
         singleSourceMode = false
+
+        // Log recording summary
+        let sizeMB = Double(fileSize) / (1024 * 1024)
+        macLog("Recording stopped: \(buffersWritten) buffers written, \(writeErrors) errors, \(String(format: "%.2f", sizeMB)) MB", category: "DualAudioRecorder", level: .info)
+
+        if writeErrors > 0 {
+            macLog("WARNING: Recording had \(writeErrors) write errors - audio may be incomplete", category: "DualAudioRecorder", level: .warning)
+        }
+
+        // Clean up auto-save backups (recording succeeded)
+        cleanupBackups()
 
         return url
     }
@@ -388,6 +420,10 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         lastSuccessfulWrite = nil
         lastFlushTime = nil
 
+        // Reset auto-save state
+        lastAutoSaveTime = nil
+        backupURL = nil
+
         macLog("Dual-source recording started", category: "DualAudioRecorder", level: .info)
     }
 
@@ -443,6 +479,9 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
             macLog("WARNING: Recording had \(writeErrors) write errors - audio may be incomplete", category: "DualAudioRecorder", level: .warning)
         }
 
+        // Clean up auto-save backups (recording succeeded)
+        cleanupBackups()
+
         return DualSourceRecordingResult(
             microphoneURL: micURL,
             systemAudioURL: FileManager.default.fileExists(atPath: sysURL.path) ? sysURL : nil,
@@ -468,6 +507,63 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
             fileSize = 0
         }
         return (buffersWritten, writeErrors, fileSize)
+    }
+
+    // MARK: - Auto-Save Methods
+
+    /// Perform auto-save backup of current recording
+    /// Called periodically during long recordings to prevent data loss
+    private func performAutoSaveIfNeeded() {
+        guard _isRecording else { return }
+
+        // Check if enough time has passed since last auto-save
+        let now = Date()
+        if let lastSave = lastAutoSaveTime {
+            guard now.timeIntervalSince(lastSave) >= autoSaveInterval else { return }
+        } else {
+            // First auto-save after 5 minutes of recording
+            guard let start = startTime, now.timeIntervalSince(start) >= autoSaveInterval else { return }
+        }
+
+        // Get the source file URL
+        guard let sourceURL = combinedURL ?? singleSourceURL else { return }
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return }
+
+        // Create backup directory if needed
+        let backupDir = FileManager.default.temporaryDirectory.appendingPathComponent("SwiftSpeakBackups", isDirectory: true)
+        try? FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
+
+        // Delete old backup if exists
+        if let oldBackup = backupURL {
+            try? FileManager.default.removeItem(at: oldBackup)
+        }
+
+        // Create new backup with timestamp
+        let timestamp = Int(now.timeIntervalSince1970)
+        let backupName = "recording_backup_\(timestamp).m4a"
+        let newBackupURL = backupDir.appendingPathComponent(backupName)
+
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: newBackupURL)
+            backupURL = newBackupURL
+            lastAutoSaveTime = now
+
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: newBackupURL.path)[.size] as? Int64) ?? 0
+            let sizeMB = Double(fileSize) / (1024 * 1024)
+            macLog("Auto-save backup created: \(String(format: "%.1f", sizeMB)) MB", category: "DualAudioRecorder", level: .info)
+        } catch {
+            macLog("Auto-save backup failed: \(error.localizedDescription)", category: "DualAudioRecorder", level: .warning)
+        }
+    }
+
+    /// Clean up backup files after successful recording
+    private func cleanupBackups() {
+        if let backup = backupURL {
+            try? FileManager.default.removeItem(at: backup)
+            backupURL = nil
+            macLog("Auto-save backup cleaned up", category: "DualAudioRecorder", level: .debug)
+        }
+        lastAutoSaveTime = nil
     }
 
     // MARK: - Private Methods
@@ -654,6 +750,9 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
                         let sizeMB = Double(fileSize) / (1024 * 1024)
                         macLog("Recording progress: \(buffersWritten) buffers, \(String(format: "%.2f", sizeMB)) MB", category: "DualAudioRecorder", level: .debug)
                     }
+
+                    // Check if auto-save backup is needed (every 5 minutes)
+                    performAutoSaveIfNeeded()
                 }
             } else {
                 lastFlushTime = Date()

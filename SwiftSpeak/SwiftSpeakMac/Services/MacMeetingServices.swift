@@ -38,6 +38,17 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
     private var writeErrors: Int = 0
     /// Last successful write timestamp
     private var lastSuccessfulWrite: Date?
+    /// Last progress log time
+    private var lastProgressLogTime: Date?
+
+    // MARK: - Auto-Save (Backup)
+
+    /// Auto-save interval in seconds (5 minutes)
+    private let autoSaveInterval: TimeInterval = 300
+    /// Last auto-save timestamp
+    private var lastAutoSaveTime: Date?
+    /// Backup file URL
+    private var backupURL: URL?
 
     // MARK: - Initialization
 
@@ -116,6 +127,11 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
         buffersWritten = 0
         writeErrors = 0
         lastSuccessfulWrite = nil
+        lastProgressLogTime = nil
+
+        // Reset auto-save state
+        lastAutoSaveTime = nil
+        backupURL = nil
 
         macLog("Meeting recording started", category: "MeetingRecorder", level: .info)
     }
@@ -181,6 +197,9 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
         if writeErrors > 0 {
             macLog("WARNING: Recording had \(writeErrors) write errors - audio may be incomplete", category: "MeetingRecorder", level: .warning)
         }
+
+        // Clean up auto-save backups (recording succeeded)
+        cleanupBackups()
 
         return url
     }
@@ -251,11 +270,21 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
             buffersWritten += 1
             lastSuccessfulWrite = Date()
 
-            // Log progress periodically
-            if buffersWritten % 500 == 0 {
-                let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioFile.url.path)[.size] as? Int64) ?? 0
-                let sizeMB = Double(fileSize) / (1024 * 1024)
-                macLog("Recording progress: \(buffersWritten) buffers, \(String(format: "%.2f", sizeMB)) MB", category: "MeetingRecorder", level: .debug)
+            // Log progress periodically and check auto-save
+            let now = Date()
+            if let lastLog = lastProgressLogTime {
+                if now.timeIntervalSince(lastLog) >= 5.0 {
+                    lastProgressLogTime = now
+                    if buffersWritten % 500 == 0 {
+                        let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioFile.url.path)[.size] as? Int64) ?? 0
+                        let sizeMB = Double(fileSize) / (1024 * 1024)
+                        macLog("Recording progress: \(buffersWritten) buffers, \(String(format: "%.2f", sizeMB)) MB", category: "MeetingRecorder", level: .debug)
+                    }
+                    // Check if auto-save backup is needed (every 5 minutes)
+                    performAutoSaveIfNeeded()
+                }
+            } else {
+                lastProgressLogTime = now
             }
         } catch {
             writeErrors += 1
@@ -300,5 +329,62 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
         }
 
         return error == nil ? outputBuffer : nil
+    }
+
+    // MARK: - Auto-Save Methods
+
+    /// Perform auto-save backup of current recording
+    /// Called periodically during long recordings to prevent data loss
+    private func performAutoSaveIfNeeded() {
+        guard _isRecording else { return }
+
+        // Check if enough time has passed since last auto-save
+        let now = Date()
+        if let lastSave = lastAutoSaveTime {
+            guard now.timeIntervalSince(lastSave) >= autoSaveInterval else { return }
+        } else {
+            // First auto-save after 5 minutes of recording
+            guard let start = startTime, now.timeIntervalSince(start) >= autoSaveInterval else { return }
+        }
+
+        // Get the source file URL
+        guard let sourceURL = recordingURL else { return }
+        guard FileManager.default.fileExists(atPath: sourceURL.path) else { return }
+
+        // Create backup directory if needed
+        let backupDir = FileManager.default.temporaryDirectory.appendingPathComponent("SwiftSpeakBackups", isDirectory: true)
+        try? FileManager.default.createDirectory(at: backupDir, withIntermediateDirectories: true)
+
+        // Delete old backup if exists
+        if let oldBackup = backupURL {
+            try? FileManager.default.removeItem(at: oldBackup)
+        }
+
+        // Create new backup with timestamp
+        let timestamp = Int(now.timeIntervalSince1970)
+        let backupName = "recording_backup_\(timestamp).m4a"
+        let newBackupURL = backupDir.appendingPathComponent(backupName)
+
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: newBackupURL)
+            backupURL = newBackupURL
+            lastAutoSaveTime = now
+
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: newBackupURL.path)[.size] as? Int64) ?? 0
+            let sizeMB = Double(fileSize) / (1024 * 1024)
+            macLog("Auto-save backup created: \(String(format: "%.1f", sizeMB)) MB", category: "MeetingRecorder", level: .info)
+        } catch {
+            macLog("Auto-save backup failed: \(error.localizedDescription)", category: "MeetingRecorder", level: .warning)
+        }
+    }
+
+    /// Clean up backup files after successful recording
+    private func cleanupBackups() {
+        if let backup = backupURL {
+            try? FileManager.default.removeItem(at: backup)
+            backupURL = nil
+            macLog("Auto-save backup cleaned up", category: "MeetingRecorder", level: .debug)
+        }
+        lastAutoSaveTime = nil
     }
 }
