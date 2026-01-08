@@ -324,36 +324,121 @@ struct MeetingRecordingView: View {
         let recorder = MeetingAudioRecorderImpl()
         self.audioRecorder = recorder
 
-        // AssemblyAI is required for meeting recording (best diarization support)
-        guard let assemblyConfig = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
-              let transcriptionService = AssemblyAIMeetingService(config: assemblyConfig) else {
-            configurationError = "AssemblyAI not configured. Please add your AssemblyAI API key in Settings → Providers."
-            appLog("Meeting recording: AssemblyAI not configured", category: "Meeting", level: .error)
+        // Determine which provider to use based on context override
+        let providerFactory = ProviderFactory(settings: settings)
+        var transcriptionService: MeetingTranscriptionService?
+        var providerName = "Default"
+        var hasDiarization = false
+
+        // Check if context has a transcription provider override
+        if let contextId = selectedContextId ?? orchestrator.settings.contextId,
+           let context = settings.contexts.first(where: { $0.id == contextId }),
+           let override = context.transcriptionProviderOverride {
+
+            switch override.providerType {
+            case .cloud(let provider):
+                providerName = provider.displayName
+
+                // AssemblyAI has dedicated meeting service with diarization
+                if provider == .assemblyAI {
+                    if let config = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
+                       let service = AssemblyAIMeetingService(config: config) {
+                        transcriptionService = service
+                        hasDiarization = true
+                    }
+                } else {
+                    // Use adapter for other providers (no diarization)
+                    if let underlyingProvider = providerFactory.createTranscriptionProvider(for: provider) {
+                        transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
+                        hasDiarization = false
+                    }
+                }
+
+                // Apply context settings (language, vocabulary)
+                applyContextSettings(context)
+
+            case .local(let localProvider):
+                providerName = localProvider.displayName
+
+                // Use adapter for local providers (no diarization)
+                if let underlyingProvider = providerFactory.createTranscriptionProvider(for: override) {
+                    transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
+                    hasDiarization = false
+                }
+
+                // Apply context settings (language, vocabulary)
+                applyContextSettings(context)
+            }
+        }
+
+        // Fallback to AssemblyAI if no context override or override provider not configured
+        if transcriptionService == nil {
+            if let assemblyConfig = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
+               let service = AssemblyAIMeetingService(config: assemblyConfig) {
+                transcriptionService = service
+                providerName = "AssemblyAI"
+                hasDiarization = true
+            } else {
+                // Try any configured transcription provider as last resort
+                for config in settings.configuredAIProviders where config.isConfiguredForTranscription {
+                    if let underlyingProvider = providerFactory.createTranscriptionProvider(for: config.provider) {
+                        transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
+                        providerName = config.provider.displayName
+                        hasDiarization = false
+                        break
+                    }
+                }
+            }
+        }
+
+        // Check if we have a transcription service
+        guard let service = transcriptionService else {
+            configurationError = "No transcription provider configured. Please add an API key in Settings → Providers."
+            appLog("Meeting recording: No transcription provider available", category: "Meeting", level: .error)
             return
         }
 
-        // Configure orchestrator with AssemblyAI
+        // Configure orchestrator
         orchestrator.configure(
             audioRecorder: recorder,
-            transcriptionService: transcriptionService,
+            transcriptionService: service,
             notesGenerator: nil
         )
 
         // iOS always uses microphone-only (no system audio capture)
         orchestrator.settings.audioSource = .microphoneOnly
 
-        // Apply context settings if selected
-        if let contextId = selectedContextId,
-           let context = settings.contexts.first(where: { $0.id == contextId }) {
-            // Set language from context
-            if let language = context.defaultInputLanguage {
-                orchestrator.settings.language = language.rawValue
-            }
-            // Context vocabulary is already applied via setContext()
-            appLog("Meeting recording configured with context: \(context.name)", category: "Meeting")
+        // Disable diarization if provider doesn't support it
+        if !hasDiarization {
+            orchestrator.settings.requireDiarization = false
         }
 
-        appLog("Meeting recording configured with AssemblyAI", category: "Meeting")
+        let diarizationStatus = hasDiarization ? "with diarization" : "without diarization"
+        appLog("Meeting recording configured with \(providerName) (\(diarizationStatus))", category: "Meeting")
+    }
+
+    /// Apply context settings to the meeting orchestrator
+    /// Includes language, vocabulary, jargon, and other context-specific settings
+    private func applyContextSettings(_ context: ConversationContext) {
+        // Set language from context
+        if let language = context.defaultInputLanguage {
+            orchestrator.settings.language = language.rawValue
+        }
+
+        // Apply vocabulary/jargon from context
+        // This includes custom jargon, domain jargon terms, and context name
+        let vocabulary = context.transcriptionVocabulary
+        if !vocabulary.isEmpty {
+            // Merge with existing word boost, avoiding duplicates
+            var wordBoost = Set(orchestrator.settings.wordBoost)
+            wordBoost.formUnion(vocabulary)
+            orchestrator.settings.wordBoost = Array(wordBoost)
+        }
+
+        // Set context ID for the meeting
+        orchestrator.settings.contextId = context.id
+
+        appLog("Applied context settings: language=\(context.defaultInputLanguage?.rawValue ?? "auto"), vocabulary=\(vocabulary.count) words", category: "Meeting")
     }
 
     // MARK: - Recording Stats Timer
