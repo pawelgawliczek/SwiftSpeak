@@ -151,19 +151,7 @@ extension AIProvider {
         }
     }
 
-    var capabilities: [String] {
-        switch self {
-        case .openAI: return ["Transcription", "Translation", "Power Mode"]
-        case .anthropic: return ["Power Mode"]
-        case .google: return ["Power Mode"]
-        case .deepgram: return ["Transcription"]
-        case .deepL: return ["Translation"]
-        case .azure: return ["Transcription", "Translation"]
-        case .elevenLabs: return ["Voice Synthesis"]
-        case .assemblyAI: return ["Transcription"]
-        case .local: return ["Transcription", "Power Mode"]
-        }
-    }
+    // capabilities is defined in SwiftSpeakCore/Models/AIProvider.swift
 
     var pricingInfo: String {
         switch self {

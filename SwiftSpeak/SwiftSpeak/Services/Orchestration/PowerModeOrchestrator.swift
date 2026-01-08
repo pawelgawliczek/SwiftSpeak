@@ -619,7 +619,8 @@ final class PowerModeOrchestrator: ObservableObject {
         isRegeneration: Bool = false,
         isRefinement: Bool = false
     ) async throws -> String {
-        guard let provider = providerFactory.createSelectedTextFormattingProvider() else {
+        // Use effective provider to respect context-specific AI provider overrides
+        guard let provider = providerFactory.createEffectiveFormattingProvider() else {
             throw TranscriptionError.providerNotConfigured
         }
 
@@ -659,8 +660,8 @@ final class PowerModeOrchestrator: ObservableObject {
         // Check if streaming is enabled in settings
         guard settings.powerModeStreamingEnabled else { return nil }
 
-        // Get provider and check if it supports streaming
-        guard let provider = providerFactory.createSelectedTextFormattingProvider(),
+        // Get provider (respects context-specific AI provider overrides) and check streaming support
+        guard let provider = providerFactory.createEffectiveFormattingProvider(),
               let streamingProvider = provider as? StreamingFormattingProvider,
               streamingProvider.supportsStreaming else {
             return nil

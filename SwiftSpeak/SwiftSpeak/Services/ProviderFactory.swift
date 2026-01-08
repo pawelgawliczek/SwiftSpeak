@@ -69,6 +69,29 @@ struct ProviderFactory {
         createTranscriptionProvider(for: settings.selectedTranscriptionProvider)
     }
 
+    /// Create transcription provider from ProviderSelection (supports context overrides)
+    func createTranscriptionProvider(for selection: ProviderSelection) -> TranscriptionProvider? {
+        switch selection.providerType {
+        case .cloud(let provider):
+            return createTranscriptionProvider(for: provider)
+        case .local(let localType):
+            switch localType {
+            case .whisperKit:
+                return createWhisperKitProvider()
+            case .ollama, .lmStudio:
+                // TODO: Implement self-hosted transcription providers
+                return nil
+            case .appleTranslation, .appleIntelligence:
+                return nil // These don't support transcription
+            }
+        }
+    }
+
+    /// Create transcription provider using effective provider (respects context overrides)
+    func createEffectiveTranscriptionProvider() -> TranscriptionProvider? {
+        createTranscriptionProvider(for: settings.effectiveTranscriptionProvider)
+    }
+
     // MARK: - Translation Providers
 
     /// Create a translation provider for the specified AI provider
@@ -123,6 +146,29 @@ struct ProviderFactory {
         createTranslationProvider(for: settings.selectedTranslationProvider)
     }
 
+    /// Create translation provider from ProviderSelection (supports context overrides)
+    func createTranslationProvider(for selection: ProviderSelection) -> TranslationProvider? {
+        switch selection.providerType {
+        case .cloud(let provider):
+            return createTranslationProvider(for: provider)
+        case .local(let localType):
+            switch localType {
+            case .appleTranslation:
+                return createAppleTranslationProvider()
+            case .ollama, .lmStudio:
+                // TODO: Implement self-hosted translation providers
+                return nil
+            case .whisperKit, .appleIntelligence:
+                return nil // These don't support translation
+            }
+        }
+    }
+
+    /// Create translation provider using effective provider (respects context overrides)
+    func createEffectiveTranslationProvider() -> TranslationProvider? {
+        createTranslationProvider(for: settings.effectiveTranslationProvider)
+    }
+
     // MARK: - Formatting Providers (Power Mode)
 
     /// Create a formatting provider for the specified AI provider
@@ -165,6 +211,29 @@ struct ProviderFactory {
     /// Create the currently selected formatting/power mode provider
     func createSelectedFormattingProvider() -> FormattingProvider? {
         createFormattingProvider(for: settings.selectedPowerModeProvider)
+    }
+
+    /// Create formatting provider from ProviderSelection (supports context overrides)
+    func createFormattingProvider(for selection: ProviderSelection) -> FormattingProvider? {
+        switch selection.providerType {
+        case .cloud(let provider):
+            return createFormattingProvider(for: provider)
+        case .local(let localType):
+            switch localType {
+            case .appleIntelligence:
+                return createAppleIntelligenceProvider()
+            case .ollama, .lmStudio:
+                // TODO: Implement self-hosted formatting providers
+                return nil
+            case .whisperKit, .appleTranslation:
+                return nil // These don't support formatting/power mode
+            }
+        }
+    }
+
+    /// Create formatting provider using effective provider (respects context overrides)
+    func createEffectiveFormattingProvider() -> FormattingProvider? {
+        createFormattingProvider(for: settings.effectiveAIProvider)
     }
 
     /// Create a formatting provider for text formatting (uses translation provider setting)

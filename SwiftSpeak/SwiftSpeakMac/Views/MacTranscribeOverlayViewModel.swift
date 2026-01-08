@@ -716,8 +716,20 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         macLog("Restoring focus to: \(app.localizedName ?? "unknown")", category: "Transcribe")
         app.activate()
 
-        // Wait for app to become frontmost
-        try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+        // Poll for app to become active (max 100ms) instead of fixed sleep
+        let startTime = CFAbsoluteTimeGetCurrent()
+        let maxWaitTime: Double = 0.1 // 100ms max
+        let pollInterval: UInt64 = 10_000_000 // 10ms
+
+        while CFAbsoluteTimeGetCurrent() - startTime < maxWaitTime {
+            if app.isActive {
+                macLog("App became active in \(Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms", category: "Transcribe")
+                return
+            }
+            try? await Task.sleep(nanoseconds: pollInterval)
+        }
+
+        macLog("App activation timed out, proceeding anyway", category: "Transcribe", level: .warning)
     }
 
     func insertText() async {
@@ -744,8 +756,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private func insertTextAndSend() async {
         await insertText()
 
-        // Wait for paste to complete, then simulate Enter key press
-        try? await Task.sleep(nanoseconds: 300_000_000) // 300ms
+        // Brief wait for text insertion to complete before sending Enter
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
 
         macLog("Sending Enter key to target app...", category: "Transcribe")
 

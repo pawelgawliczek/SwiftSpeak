@@ -86,6 +86,15 @@ class MacSettings: ObservableObject {
         }
     }
 
+    /// Whether transcription streaming is enabled (live text as you speak)
+    /// When true, context-specific provider overrides for transcription are ignored
+    @Published var transcriptionStreamingEnabled: Bool = false {
+        didSet {
+            defaults?.set(transcriptionStreamingEnabled, forKey: "transcriptionStreamingEnabled")
+            syncToiCloud()
+        }
+    }
+
     @Published var selectedMode: FormattingMode = .raw {
         didSet {
             defaults?.set(selectedMode.rawValue, forKey: "selectedMode")
@@ -1274,6 +1283,24 @@ class MacSettings: ObservableObject {
             defaults?.removePersistentDomain(forName: bundleId)
         }
     }
+}
+
+// MARK: - ContextProviderManager Conformance
+
+extension MacSettings: ContextProviderManager {
+    // Protocol requirements are already implemented in MacSettings:
+    // - contexts: [ConversationContext]
+    // - activeContextId: UUID?
+    // - transcriptionStreamingEnabled: Bool
+    // - selectedTranscriptionProvider: AIProvider
+    // - selectedTranslationProvider: AIProvider
+    // - selectedPowerModeProvider: AIProvider
+    //
+    // Default implementations from protocol extension provide:
+    // - activeContext: ConversationContext?
+    // - effectiveTranscriptionProvider: ProviderSelection
+    // - effectiveTranslationProvider: ProviderSelection
+    // - effectiveAIProvider: ProviderSelection
 }
 
 // MARK: - Programmable Button Action (Phase 16)

@@ -2433,6 +2433,24 @@ class SharedSettings: ObservableObject {
     }
 }
 
+// MARK: - ContextProviderManager Conformance
+
+extension SharedSettings: ContextProviderManager {
+    // Protocol requirements are already implemented in SharedSettings:
+    // - contexts: [ConversationContext]
+    // - activeContextId: UUID?
+    // - transcriptionStreamingEnabled: Bool
+    // - selectedTranscriptionProvider: AIProvider
+    // - selectedTranslationProvider: AIProvider
+    // - selectedPowerModeProvider: AIProvider
+    //
+    // Default implementations from protocol extension provide:
+    // - activeContext: ConversationContext?
+    // - effectiveTranscriptionProvider: ProviderSelection
+    // - effectiveTranslationProvider: ProviderSelection
+    // - effectiveAIProvider: ProviderSelection
+}
+
 /// Memory tier for update tracking
 enum MemoryTier {
     case global

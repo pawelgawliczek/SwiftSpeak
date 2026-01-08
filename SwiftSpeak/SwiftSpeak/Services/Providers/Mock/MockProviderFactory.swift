@@ -51,6 +51,23 @@ final class MockProviderFactory: ProviderFactoryProtocol {
         return mockFormattingProvider
     }
 
+    // MARK: - Effective Provider Methods (Context-Aware)
+
+    func createEffectiveTranscriptionProvider() -> TranscriptionProvider? {
+        // In tests, effective provider is the same as selected
+        createSelectedTranscriptionProvider()
+    }
+
+    func createEffectiveTranslationProvider() -> TranslationProvider? {
+        // Mock doesn't have translation provider, return nil
+        nil
+    }
+
+    func createEffectiveFormattingProvider() -> FormattingProvider? {
+        // In tests, effective provider is the same as selected
+        createSelectedTextFormattingProvider()
+    }
+
     // MARK: - Test Helpers
 
     func reset() {

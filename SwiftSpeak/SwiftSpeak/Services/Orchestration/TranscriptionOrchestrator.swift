@@ -330,8 +330,8 @@ final class TranscriptionOrchestrator: ObservableObject {
     private func transcribe(audioURL: URL) async throws -> String {
         let stepStart = Date()
 
-        // Get transcription provider via factory
-        guard let provider = providerFactory.createSelectedTranscriptionProvider() else {
+        // Get transcription provider via factory (respects context-specific overrides)
+        guard let provider = providerFactory.createEffectiveTranscriptionProvider() else {
             throw TranscriptionError.providerNotConfigured
         }
 
@@ -444,8 +444,8 @@ final class TranscriptionOrchestrator: ObservableObject {
     private func translate(text: String) async throws -> String {
         let stepStart = Date()
 
-        // Get translation provider via factory
-        guard let provider = providerFactory.createSelectedTranslationProvider() else {
+        // Get translation provider via factory (respects context-specific overrides)
+        guard let provider = providerFactory.createEffectiveTranslationProvider() else {
             throw TranscriptionError.providerNotConfigured
         }
 

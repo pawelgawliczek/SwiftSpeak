@@ -47,6 +47,11 @@ struct ContextEditorSheet: View {
     @State private var autoSendAfterInsert: Bool = false
     @State private var enterKeyBehavior: EnterKeyBehavior = .defaultNewLine
 
+    // MARK: - Provider Overrides State
+    @State private var transcriptionProviderOverride: ProviderSelection? = nil
+    @State private var translationProviderOverride: ProviderSelection? = nil
+    @State private var aiProviderOverride: ProviderSelection? = nil
+
     // MARK: - System State
     @State private var appAssignment: AppAssignment = AppAssignment()
 
@@ -84,6 +89,9 @@ struct ContextEditorSheet: View {
         _memoryLimit = State(initialValue: context.memoryLimit)
         _autoSendAfterInsert = State(initialValue: context.autoSendAfterInsert)
         _enterKeyBehavior = State(initialValue: context.enterKeyBehavior)
+        _transcriptionProviderOverride = State(initialValue: context.transcriptionProviderOverride)
+        _translationProviderOverride = State(initialValue: context.translationProviderOverride)
+        _aiProviderOverride = State(initialValue: context.aiProviderOverride)
         _appAssignment = State(initialValue: context.appAssignment)
     }
 
@@ -111,6 +119,9 @@ struct ContextEditorSheet: View {
 
                     sectionHeader("KEYBOARD BEHAVIOR")
                     keyboardBehaviorSection
+
+                    sectionHeader("PROVIDER OVERRIDES")
+                    providerOverridesSection
 
                     sectionHeader("APP ASSIGNMENT")
                     appAssignmentSection
@@ -945,6 +956,39 @@ struct ContextEditorSheet: View {
         }
     }
 
+    // MARK: - Provider Overrides Section
+
+    /// Get list of configured providers from settings
+    private var configuredTranscriptionProviders: [AIProvider] {
+        settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranscription }
+    }
+
+    private var configuredTranslationProviders: [AIProvider] {
+        settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranslation }
+    }
+
+    private var configuredPowerModeProviders: [AIProvider] {
+        settings.configuredAIProviders.map(\.provider).filter { $0.supportsPowerMode }
+    }
+
+    private var providerOverridesSection: some View {
+        ProviderOverridesSection(
+            transcriptionOverride: $transcriptionProviderOverride,
+            translationOverride: $translationProviderOverride,
+            aiOverride: $aiProviderOverride,
+            transcriptionProviders: configuredTranscriptionProviders,
+            translationProviders: configuredTranslationProviders,
+            aiProviders: configuredPowerModeProviders,
+            globalTranscription: settings.selectedTranscriptionProvider,
+            globalTranslation: settings.selectedTranslationProvider,
+            globalAI: settings.selectedPowerModeProvider,
+            isStreamingEnabled: settings.transcriptionStreamingEnabled
+        )
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
     // MARK: - App Assignment Section
 
     private var appAssignmentSection: some View {
@@ -1000,6 +1044,9 @@ struct ContextEditorSheet: View {
             autoSendAfterInsert: autoSendAfterInsert,
             enterKeyBehavior: enterKeyBehavior,
             defaultInputLanguage: useCustomInputLanguage ? inputLanguage : nil,
+            transcriptionProviderOverride: transcriptionProviderOverride,
+            translationProviderOverride: translationProviderOverride,
+            aiProviderOverride: aiProviderOverride,
             isActive: context.isActive,
             appAssignment: appAssignment,
             isPreset: context.isPreset,

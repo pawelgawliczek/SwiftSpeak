@@ -541,6 +541,9 @@ struct MacContextEditorSheet: View {
                             autoSendAfterInsert: context.autoSendAfterInsert,
                             enterKeyBehavior: context.enterKeyBehavior,
                             defaultInputLanguage: context.defaultInputLanguage,
+                            transcriptionProviderOverride: context.transcriptionProviderOverride,
+                            translationProviderOverride: context.translationProviderOverride,
+                            aiProviderOverride: context.aiProviderOverride,
                             appAssignment: context.appAssignment,
                             isPreset: false
                         )
@@ -789,6 +792,24 @@ struct MacContextEditorSheet: View {
                             .tag(behavior)
                         }
                     }
+                }
+
+                // Provider Overrides
+                Section {
+                    ProviderOverridesSection(
+                        transcriptionOverride: $context.transcriptionProviderOverride,
+                        translationOverride: $context.translationProviderOverride,
+                        aiOverride: $context.aiProviderOverride,
+                        transcriptionProviders: settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranscription },
+                        translationProviders: settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranslation },
+                        aiProviders: settings.configuredAIProviders.map(\.provider).filter { $0.supportsPowerMode },
+                        globalTranscription: settings.selectedTranscriptionProvider,
+                        globalTranslation: settings.selectedTranslationProvider,
+                        globalAI: settings.selectedPowerModeProvider,
+                        isStreamingEnabled: settings.transcriptionStreamingEnabled
+                    )
+                } header: {
+                    Text("Provider Overrides")
                 }
 
                 // TODO: Text Insertion Method - macOS-specific feature to be added to shared model

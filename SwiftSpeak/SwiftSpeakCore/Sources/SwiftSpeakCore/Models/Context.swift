@@ -336,6 +336,11 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     // MARK: - Language Settings
     public var defaultInputLanguage: Language?     // Override system dictation language (nil = auto)
 
+    // MARK: - Provider Overrides (nil = use global default)
+    public var transcriptionProviderOverride: ProviderSelection?
+    public var translationProviderOverride: ProviderSelection?
+    public var aiProviderOverride: ProviderSelection?
+
     // MARK: - System
     public var isActive: Bool                      // Currently selected context
     public var appAssignment: AppAssignment        // Apps that auto-enable this context
@@ -364,6 +369,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         autoSendAfterInsert: Bool = false,
         enterKeyBehavior: EnterKeyBehavior = .defaultNewLine,
         defaultInputLanguage: Language? = nil,
+        transcriptionProviderOverride: ProviderSelection? = nil,
+        translationProviderOverride: ProviderSelection? = nil,
+        aiProviderOverride: ProviderSelection? = nil,
         isActive: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
         isPreset: Bool = false,
@@ -388,6 +396,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.autoSendAfterInsert = autoSendAfterInsert
         self.enterKeyBehavior = enterKeyBehavior
         self.defaultInputLanguage = defaultInputLanguage
+        self.transcriptionProviderOverride = transcriptionProviderOverride
+        self.translationProviderOverride = translationProviderOverride
+        self.aiProviderOverride = aiProviderOverride
         self.isActive = isActive
         self.appAssignment = appAssignment
         self.isPreset = isPreset
@@ -504,6 +515,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         case domainJargon, customJargon, examples, selectedInstructions, customInstructions
         case useGlobalMemory, useContextMemory, contextMemory, memoryLimit, lastMemoryUpdate
         case autoSendAfterInsert, enterKeyBehavior, defaultInputLanguage
+        case transcriptionProviderOverride, translationProviderOverride, aiProviderOverride
         case isActive, appAssignment, isPreset, createdAt, updatedAt
         // Legacy
         case systemPrompt  // Migrate to customInstructions
@@ -539,6 +551,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         autoSendAfterInsert = try container.decodeIfPresent(Bool.self, forKey: .autoSendAfterInsert) ?? false
         enterKeyBehavior = try container.decodeIfPresent(EnterKeyBehavior.self, forKey: .enterKeyBehavior) ?? .defaultNewLine
         defaultInputLanguage = try container.decodeIfPresent(Language.self, forKey: .defaultInputLanguage)
+        transcriptionProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .transcriptionProviderOverride)
+        translationProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .translationProviderOverride)
+        aiProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .aiProviderOverride)
         isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
         appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
         isPreset = try container.decodeIfPresent(Bool.self, forKey: .isPreset) ?? false
@@ -567,6 +582,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         try container.encode(autoSendAfterInsert, forKey: .autoSendAfterInsert)
         try container.encode(enterKeyBehavior, forKey: .enterKeyBehavior)
         try container.encodeIfPresent(defaultInputLanguage, forKey: .defaultInputLanguage)
+        try container.encodeIfPresent(transcriptionProviderOverride, forKey: .transcriptionProviderOverride)
+        try container.encodeIfPresent(translationProviderOverride, forKey: .translationProviderOverride)
+        try container.encodeIfPresent(aiProviderOverride, forKey: .aiProviderOverride)
         try container.encode(isActive, forKey: .isActive)
         try container.encode(appAssignment, forKey: .appAssignment)
         try container.encode(isPreset, forKey: .isPreset)
