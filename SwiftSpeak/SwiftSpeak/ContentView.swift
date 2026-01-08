@@ -337,6 +337,13 @@ struct ContentView: View {
             return
         }
 
+        // Handle SwiftLink end request from keyboard (toggle off)
+        if url.host == Constants.URLHosts.swiftlinkEnd {
+            appLog("SwiftLink end requested from keyboard", category: "SwiftLink")
+            SwiftLinkSessionManager.shared.endSession()
+            return
+        }
+
         // Phase 12: Handle Edit Text request from keyboard
         if url.host == Constants.URLHosts.edit {
             let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
@@ -766,6 +773,7 @@ struct HomeView: View {
     @Binding var showRecording: Bool
     @Binding var translateOnRecord: Bool
     @Environment(\.colorScheme) var colorScheme
+    @ObservedObject private var swiftLinkManager = SwiftLinkSessionManager.shared
 
     @State private var showContextPicker = false
     @State private var showDefaultsSettings = false
@@ -773,6 +781,7 @@ struct HomeView: View {
     @State private var providerToSetup: AIProvider? = nil
     @State private var showTranslationPicker = false
     @State private var isTranslationEnabled = false
+    @State private var showSwiftLinkQuickStart = false
 
     /// Whether the user has access to Pro features (contexts, modes, translation)
     private var hasProAccess: Bool {
@@ -908,9 +917,17 @@ struct HomeView: View {
 
                     Spacer()
 
+                    // SwiftLink status/control card
+                    SwiftLinkHomeCard(
+                        sessionManager: swiftLinkManager,
+                        onStartTap: { showSwiftLinkQuickStart = true }
+                    )
+                    .padding(.horizontal, 24)
+
                     // Quick stats
                     QuickStatsCard()
                         .padding(.horizontal, 24)
+                        .padding(.top, 8)
 
                     Spacer()
                         .frame(height: 24)
@@ -954,7 +971,106 @@ struct HomeView: View {
             .sheet(isPresented: $showPaywall) {
                 PaywallView()
             }
+            .sheet(isPresented: $showSwiftLinkQuickStart) {
+                SwiftLinkQuickStartSheet()
+                    .presentationDetents([.medium, .large])
+            }
         }
+    }
+}
+
+// MARK: - SwiftLink Home Card
+
+struct SwiftLinkHomeCard: View {
+    @ObservedObject var sessionManager: SwiftLinkSessionManager
+    let onStartTap: () -> Void
+    @Environment(\.colorScheme) var colorScheme
+
+    private var targetAppName: String {
+        sessionManager.getLastUsedApp()?.name ?? "Unknown App"
+    }
+
+    private var timeRemainingText: String {
+        guard let remaining = sessionManager.sessionTimeRemaining else {
+            return "Active"
+        }
+        let minutes = Int(remaining) / 60
+        let seconds = Int(remaining) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var cardBackground: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.04)
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            Image(systemName: sessionManager.isSessionActive ? "link.circle.fill" : "link.circle")
+                .font(.title2)
+                .foregroundStyle(sessionManager.isSessionActive ? .green : .orange)
+
+            // Content
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text("SwiftLink")
+                        .font(.subheadline.weight(.semibold))
+
+                    if sessionManager.isSessionActive {
+                        Text("Active")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .clipShape(Capsule())
+                    }
+                }
+
+                if sessionManager.isSessionActive {
+                    HStack(spacing: 4) {
+                        Text(targetAppName)
+                        Text("•")
+                        Text(timeRemainingText)
+                        if sessionManager.isRecording {
+                            Text("•")
+                            Circle()
+                                .fill(Color.red)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text("Tap Start to enable background dictation")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Action button
+            Button(action: {
+                HapticManager.mediumTap()
+                if sessionManager.isSessionActive {
+                    sessionManager.endSession()
+                } else {
+                    onStartTap()
+                }
+            }) {
+                Text(sessionManager.isSessionActive ? "Stop" : "Start")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(sessionManager.isSessionActive ? Color.red : Color.orange)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(12)
+        .background(cardBackground, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

@@ -3446,6 +3446,37 @@ struct MacBehaviorView: View {
                 .padding(8)
             }
 
+            // Audio Quality (Network Optimization)
+            GroupBox("Audio Quality") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Recording Quality", selection: $settings.audioQuality) {
+                        ForEach(AudioQualityMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 250)
+
+                    Text(settings.audioQuality.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    // Show current network status when auto is selected
+                    if settings.audioQuality == .auto {
+                        HStack(spacing: 6) {
+                            let recommended = NetworkQualityMonitor.shared.recommendedQuality
+                            Image(systemName: recommended == .high ? "wifi" : recommended == .standard ? "wifi" : "wifi.exclamationmark")
+                                .foregroundStyle(recommended == .high ? .green : recommended == .standard ? .yellow : .orange)
+                            Text("Current: \(recommended.displayName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(8)
+            }
+
             Spacer()
         }
     }

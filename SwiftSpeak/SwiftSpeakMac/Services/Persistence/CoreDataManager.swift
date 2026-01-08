@@ -64,7 +64,6 @@ final class CoreDataManager: ObservableObject {
     @Published private(set) var webhooks: [Webhook] = []
     @Published private(set) var knowledgeDocuments: [KnowledgeDocument] = []
     @Published private(set) var aiProviderConfigs: [AIProviderConfig] = []
-    @Published private(set) var meetingRecords: [MeetingRecord] = []
 
     // MARK: - Initialization
 
@@ -136,7 +135,6 @@ final class CoreDataManager: ObservableObject {
         loadWebhooks()
         loadKnowledgeDocuments()
         loadAIProviderConfigs()
-        loadMeetingRecords()
     }
 
     // MARK: - TranscriptionRecord CRUD
@@ -598,83 +596,10 @@ final class CoreDataManager: ObservableObject {
         persistence.save()
     }
 
-    // MARK: - MeetingRecord CRUD
-
-    private func loadMeetingRecords() {
-        let request = MeetingRecordEntity.fetchRequest()
-        request.sortDescriptors = [NSSortDescriptor(keyPath: \MeetingRecordEntity.recordedAt, ascending: false)]
-
-        do {
-            let entities = try viewContext.fetch(request)
-            meetingRecords = entities.compactMap { $0.toModel() }
-        } catch {
-            coreDataLog("Failed to load meeting records: \(error)", level: .error)
-        }
-    }
-
-    func addMeetingRecord(_ record: MeetingRecord) {
-        beginLocalSave()
-        let entity = MeetingRecordEntity(context: viewContext)
-        entity.update(from: record)
-        persistence.save()
-        loadMeetingRecords()
-        endLocalSave()
-    }
+    // MARK: - MeetingRecord (Stub - TODO: Implement properly)
 
     func updateMeetingRecord(_ record: MeetingRecord) {
-        let request = MeetingRecordEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
-
-        do {
-            if let entity = try viewContext.fetch(request).first {
-                entity.update(from: record)
-                persistence.save()
-                loadMeetingRecords()
-            } else {
-                // Record doesn't exist, create it
-                addMeetingRecord(record)
-            }
-        } catch {
-            coreDataLog("Failed to update meeting record: \(error)", level: .error)
-        }
-    }
-
-    func deleteMeetingRecord(id: UUID) {
-        let request = MeetingRecordEntity.fetchRequest()
-        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
-
-        do {
-            if let entity = try viewContext.fetch(request).first {
-                viewContext.delete(entity)
-                persistence.save()
-                loadMeetingRecords()
-            }
-        } catch {
-            coreDataLog("Failed to delete meeting record: \(error)", level: .error)
-        }
-    }
-
-    func getMeetingRecord(id: UUID) -> MeetingRecord? {
-        meetingRecords.first { $0.id == id }
-    }
-
-    /// Get meetings that need transcription (pending or failed)
-    var pendingMeetingRecords: [MeetingRecord] {
-        meetingRecords.filter { $0.status.canRetry }
-    }
-
-    /// Get completed meetings count
-    var completedMeetingRecordsCount: Int {
-        meetingRecords.filter { $0.status == .completed }.count
-    }
-
-    /// Get total meeting duration
-    var totalMeetingDuration: TimeInterval {
-        meetingRecords.reduce(0) { $0 + $1.duration }
-    }
-
-    /// Get total estimated cost from all meetings
-    var totalMeetingCost: Double {
-        meetingRecords.compactMap { $0.estimatedCost }.reduce(0, +)
+        // TODO: Implement MeetingRecord Core Data persistence
+        coreDataLog("MeetingRecord persistence not yet implemented", level: .warning)
     }
 }

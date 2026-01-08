@@ -258,6 +258,7 @@ final class SwiftLinkSessionManager: ObservableObject {
         // Store in App Groups for keyboard to read
         sharedDefaults?.set(Date().timeIntervalSince1970, forKey: Constants.Keys.swiftLinkDictationStartTime)
         sharedDefaults?.set("recording", forKey: Constants.Keys.swiftLinkProcessingStatus)
+        updateWidgetRecordingState(true)
         sharedDefaults?.synchronize()
 
         // Ensure audio engine is running (may have been suspended in background)
@@ -315,6 +316,7 @@ final class SwiftLinkSessionManager: ObservableObject {
         sharedDefaults?.set(Date().timeIntervalSince1970, forKey: Constants.Keys.swiftLinkDictationStartTime)
         sharedDefaults?.set("streaming", forKey: Constants.Keys.swiftLinkProcessingStatus)
         sharedDefaults?.set("", forKey: Constants.Keys.swiftLinkStreamingTranscript)
+        updateWidgetRecordingState(true)
         sharedDefaults?.synchronize()
 
         // Ensure audio engine is running (may have been suspended in background)
@@ -629,6 +631,7 @@ final class SwiftLinkSessionManager: ObservableObject {
             stopStreamingDictation()
         } else {
             isRecording = false
+            updateWidgetRecordingState(false)
             stopBatchDictation()
         }
     }
@@ -724,6 +727,7 @@ final class SwiftLinkSessionManager: ObservableObject {
 
             // NOW we can stop recording - we've captured all the audio
             isRecording = false
+            updateWidgetRecordingState(false)
 
             // Stop audio level sharing
             stopAudioLevelSharing()
@@ -2272,6 +2276,7 @@ final class SwiftLinkSessionManager: ObservableObject {
         // Store in App Groups for keyboard to read
         sharedDefaults?.set(Date().timeIntervalSince1970, forKey: Constants.Keys.swiftLinkDictationStartTime)
         sharedDefaults?.set("recording", forKey: Constants.Keys.swiftLinkProcessingStatus)
+        updateWidgetRecordingState(true)
 
         // Start dictation duration timer
         startDictationTimer()
@@ -2286,14 +2291,30 @@ final class SwiftLinkSessionManager: ObservableObject {
         sharedDefaults?.set(active, forKey: Constants.Keys.swiftLinkSessionActive)
         if active {
             sharedDefaults?.set(Date().timeIntervalSince1970, forKey: Constants.Keys.swiftLinkSessionStartTime)
+
+            // Widget state: calculate session end time
+            let endTime = Date().addingTimeInterval(TimeInterval(sessionDuration.rawValue))
+            sharedDefaults?.set(endTime.timeIntervalSince1970, forKey: Constants.Keys.swiftLinkWidgetSessionEndTime)
         } else {
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkSessionStartTime)
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkDictationStartTime)
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkDictationEndTime)
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
             sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
+
+            // Clear widget state
+            sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkWidgetSessionEndTime)
+            sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkWidgetIsRecording)
+            sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkWidgetTargetAppName)
+            sharedDefaults?.removeObject(forKey: Constants.Keys.swiftLinkWidgetTargetAppIcon)
         }
-        // Force flush to ensure keyboard extension sees the updated state immediately
+        // Force flush to ensure keyboard extension and widgets see the updated state immediately
+        sharedDefaults?.synchronize()
+    }
+
+    /// Update widget recording state
+    private func updateWidgetRecordingState(_ recording: Bool) {
+        sharedDefaults?.set(recording, forKey: Constants.Keys.swiftLinkWidgetIsRecording)
         sharedDefaults?.synchronize()
     }
 
@@ -2316,6 +2337,12 @@ final class SwiftLinkSessionManager: ObservableObject {
         if let encoded = try? JSONEncoder().encode(app) {
             sharedDefaults?.set(encoded, forKey: Constants.Keys.swiftLinkLastUsedApp)
         }
+
+        // Save widget-friendly app info
+        sharedDefaults?.set(app.name, forKey: Constants.Keys.swiftLinkWidgetTargetAppName)
+        // Use a generic messaging icon for widgets (SF Symbol)
+        sharedDefaults?.set("message.fill", forKey: Constants.Keys.swiftLinkWidgetTargetAppIcon)
+        sharedDefaults?.synchronize()
     }
 
     func getLastUsedApp() -> SwiftLinkApp? {

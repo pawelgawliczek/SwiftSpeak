@@ -15,9 +15,11 @@ import SwiftSpeakCore
 enum TranscribeOverlayState: Equatable {
     case idle              // Overlay not visible
     case ready             // Overlay visible, waiting to record
+    case initializing      // Audio engine starting up (new state)
     case recording         // Recording audio
     case transcribing      // Transcribing audio
     case formatting        // Formatting transcription
+    case inserting         // Inserting text into target app (new state)
     case complete          // Transcription complete
     case error(String)     // Error state
 
@@ -25,9 +27,11 @@ enum TranscribeOverlayState: Equatable {
         switch self {
         case .idle: return ""
         case .ready: return "Ready"
+        case .initializing: return "Preparing..."
         case .recording: return "Recording"
         case .transcribing: return "Transcribing..."
         case .formatting: return "Formatting..."
+        case .inserting: return "Inserting..."
         case .complete: return "Complete"
         case .error: return "Error"
         }
@@ -35,11 +39,16 @@ enum TranscribeOverlayState: Equatable {
 
     var isProcessing: Bool {
         switch self {
-        case .transcribing, .formatting:
+        case .transcribing, .formatting, .inserting:
             return true
         default:
             return false
         }
+    }
+
+    /// Whether audio is being actively captured (for waveform display)
+    var isActivelyRecording: Bool {
+        self == .recording
     }
 }
 
@@ -71,6 +80,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     /// Effective input language (from context or system default)
     @Published var inputLanguage: Language?
+
+    /// Effective audio quality being used (resolved from auto)
+    @Published private(set) var effectiveAudioQuality: AudioQualityMode = .high
 
     /// Live transcript during recording (if streaming available)
     @Published var liveTranscript: String = ""
@@ -112,6 +124,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     /// Pre-captured context from hotkey callback
     private var preCapturedContext: HotkeyContext?
+
+    /// Last recorded audio URL - stored for retry functionality
+    private var lastRecordingURL: URL?
 
     // MARK: - Initialization
 
@@ -211,40 +226,44 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     func startRecording() async {
         do {
-            state = .recording
+            // Show initializing state while audio engine starts up
+            // This prevents user from thinking they're recording when audio isn't captured yet
+            state = .initializing
             recordingDuration = 0
             liveTranscript = ""
             errorMessage = nil
 
-            // Play start sound if enabled
+            // Set recording format based on transcription provider
+            // Google STT requires WAV (LINEAR16), other providers work with AAC (smaller files)
+            audioRecorder.recordingFormat = RecordingFormat.forProvider(settings.selectedTranscriptionProvider)
+            audioRecorder.audioQuality = settings.audioQuality
+
+            // Resolve effective quality for UI display
+            effectiveAudioQuality = settings.audioQuality == .auto
+                ? NetworkQualityMonitor.shared.recommendedQuality
+                : settings.audioQuality
+
+            macLog("Using recording format: \(audioRecorder.recordingFormat), quality: \(effectiveAudioQuality.displayName)", category: "Transcribe")
+
+            // Start audio recording (may take time on first call due to audio engine init)
+            // We wait for this to complete BEFORE showing "Recording" state
+            try await audioRecorder.startRecording()
+
+            // NOW audio is actually being captured - switch to recording state
+            state = .recording
+
+            // Play start sound AFTER audio engine is ready (user can now speak)
             if settings.playSoundOnRecordStart {
                 NSSound(named: "Tink")?.play()
             }
 
-            // Start timer IMMEDIATELY to show responsive UI
-            // The timer reads from audioRecorder.duration which starts counting
-            // from when startRecording() was called (even during setup)
-            let timerStartTime = Date()
+            // Start timer only after recording has actually begun
             recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
                 Task { @MainActor in
                     guard let self = self else { return }
-                    // Use audioRecorder.duration if available, otherwise calculate from timer start
-                    if self.audioRecorder.isRecording {
-                        self.recordingDuration = self.audioRecorder.duration
-                    } else {
-                        // During setup, show elapsed time since we started
-                        self.recordingDuration = Date().timeIntervalSince(timerStartTime)
-                    }
+                    self.recordingDuration = self.audioRecorder.duration
                 }
             }
-
-            // Set recording format based on transcription provider
-            // Google STT requires WAV (LINEAR16), other providers work with AAC (smaller files)
-            audioRecorder.recordingFormat = RecordingFormat.forProvider(settings.selectedTranscriptionProvider)
-            macLog("Using recording format: \(audioRecorder.recordingFormat) for provider: \(settings.selectedTranscriptionProvider.displayName)", category: "Transcribe")
-
-            // Start audio recording (may take time on first call due to audio engine init)
-            try await audioRecorder.startRecording()
 
             macLog("Recording started", category: "Transcribe")
         } catch {
@@ -269,6 +288,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             let audioURL = try audioRecorder.stopRecording()
             macLog("Recording stopped, audio file: \(audioURL)", category: "Transcribe")
 
+            // Store URL for potential retry
+            lastRecordingURL = audioURL
+
             // Process the recording
             await processRecording(audioURL: audioURL)
         } catch {
@@ -276,6 +298,29 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             errorMessage = "Failed to stop recording: \(error.localizedDescription)"
             state = .error(error.localizedDescription)
         }
+    }
+
+    /// Retry processing the last recording (used when transcription/formatting fails)
+    func retryProcessing() async {
+        guard let audioURL = lastRecordingURL else {
+            macLog("No recording to retry - starting new recording", category: "Transcribe", level: .warning)
+            await startRecording()
+            return
+        }
+
+        // Verify file still exists
+        guard FileManager.default.fileExists(atPath: audioURL.path) else {
+            macLog("Recording file no longer exists - starting new recording", category: "Transcribe", level: .warning)
+            lastRecordingURL = nil
+            await startRecording()
+            return
+        }
+
+        macLog("Retrying processing for: \(audioURL)", category: "Transcribe")
+        errorMessage = nil
+
+        // Process the existing recording again
+        await processRecording(audioURL: audioURL)
     }
 
     func cancelRecording() {
@@ -707,44 +752,113 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     // MARK: - Text Insertion
 
     /// Restore focus to the previous app before text insertion
-    private func restoreFocusToPreviousApp() {
+    /// Returns true if focus was successfully restored (or if no previous app)
+    private func restoreFocusToPreviousApp() -> Bool {
+        let startTime = CFAbsoluteTimeGetCurrent()
+
         guard let app = previousApp else {
-            macLog("No previous app to restore focus to", category: "Transcribe", level: .warning)
-            return
+            macLog("⏱️ [TIMING] No previous app to restore focus to", category: "Transcribe", level: .warning)
+            return true  // No app to restore, proceed anyway
         }
 
-        macLog("Restoring focus to: \(app.localizedName ?? "unknown")", category: "Transcribe")
+        macLog("⏱️ [TIMING] Restoring focus to: \(app.localizedName ?? "unknown")", category: "Transcribe")
         app.activate()
-        // No delay - proceed immediately after activation request
+
+        // Use Thread.sleep for precise timing - Task.sleep can be delayed by MainActor congestion
+        // 50ms is usually enough for focus to transfer
+        Thread.sleep(forTimeInterval: 0.05)  // 50ms - synchronous, not affected by actor congestion
+
+        let elapsed = (CFAbsoluteTimeGetCurrent() - startTime) * 1000
+
+        // Verify the app is now frontmost
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier {
+            macLog("⏱️ [TIMING] Focus restored successfully in \(String(format: "%.1f", elapsed))ms", category: "Transcribe")
+            return true
+        } else {
+            macLog("⏱️ [TIMING] Focus may not have been fully restored after \(String(format: "%.1f", elapsed))ms, proceeding anyway", category: "Transcribe", level: .warning)
+            return true
+        }
     }
 
     func insertText() async {
+        let totalStartTime = CFAbsoluteTimeGetCurrent()
         guard !transcribedText.isEmpty else { return }
 
-        // Hide overlay before restoring focus (prevents focus stealing)
-        onWillInsertText?()
+        macLog("⏱️ [TIMING] ========== INSERT TEXT START ==========", category: "Transcribe")
 
-        // Restore focus to previous app before inserting
-        restoreFocusToPreviousApp()
+        // Show inserting state to keep user informed
+        state = .inserting
+
+        // Hide overlay before restoring focus (prevents focus stealing)
+        let hideStartTime = CFAbsoluteTimeGetCurrent()
+        onWillInsertText?()
+        macLog("⏱️ [TIMING] Overlay hide callback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - hideStartTime) * 1000))ms", category: "Transcribe")
+
+        // Restore focus to previous app and wait for it to be ready
+        let focusStartTime = CFAbsoluteTimeGetCurrent()
+        _ = restoreFocusToPreviousApp()
+        macLog("⏱️ [TIMING] Focus restoration: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - focusStartTime) * 1000))ms", category: "Transcribe")
 
         if let textService = textInsertion {
+            let insertStartTime = CFAbsoluteTimeGetCurrent()
             let result = await textService.insertText(transcribedText, replaceSelection: true)
+            let insertElapsed = (CFAbsoluteTimeGetCurrent() - insertStartTime) * 1000
 
             switch result {
-            case .accessibilitySuccess, .clipboardFallback:
-                macLog("Text inserted successfully", category: "Transcribe")
+            case .accessibilitySuccess:
+                macLog("⏱️ [TIMING] Text inserted (accessibility) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
+            case .clipboardFallback:
+                macLog("⏱️ [TIMING] Text inserted (clipboard) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
             case .failed(let error):
-                macLog("Text insertion failed: \(error)", category: "Transcribe", level: .error)
+                macLog("⏱️ [TIMING] Text insertion FAILED after \(String(format: "%.1f", insertElapsed))ms: \(error)", category: "Transcribe", level: .error)
             }
         }
+
+        state = .complete
+        let totalElapsed = (CFAbsoluteTimeGetCurrent() - totalStartTime) * 1000
+        macLog("⏱️ [TIMING] ========== INSERT TEXT TOTAL: \(String(format: "%.1f", totalElapsed))ms ==========", category: "Transcribe")
     }
 
     private func insertTextAndSend() async {
-        await insertText()
+        let totalStartTime = CFAbsoluteTimeGetCurrent()
+        guard !transcribedText.isEmpty else { return }
 
-        // No delay - send Enter immediately after text insertion
-        macLog("Sending Enter key to target app...", category: "Transcribe")
+        macLog("⏱️ [TIMING] ========== INSERT TEXT AND SEND START ==========", category: "Transcribe")
 
+        // Show inserting state
+        state = .inserting
+
+        // Hide overlay before restoring focus
+        let hideStartTime = CFAbsoluteTimeGetCurrent()
+        onWillInsertText?()
+        macLog("⏱️ [TIMING] Overlay hide callback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - hideStartTime) * 1000))ms", category: "Transcribe")
+
+        // Restore focus and wait for it to be ready (uses Thread.sleep for precise timing)
+        let focusStartTime = CFAbsoluteTimeGetCurrent()
+        _ = restoreFocusToPreviousApp()
+        macLog("⏱️ [TIMING] Focus restoration: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - focusStartTime) * 1000))ms", category: "Transcribe")
+
+        if let textService = textInsertion {
+            let insertStartTime = CFAbsoluteTimeGetCurrent()
+            let result = await textService.insertText(transcribedText, replaceSelection: true)
+            let insertElapsed = (CFAbsoluteTimeGetCurrent() - insertStartTime) * 1000
+
+            switch result {
+            case .accessibilitySuccess:
+                macLog("⏱️ [TIMING] Text inserted (accessibility) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
+            case .clipboardFallback:
+                macLog("⏱️ [TIMING] Text inserted (clipboard) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
+            case .failed(let error):
+                macLog("⏱️ [TIMING] Text insertion FAILED after \(String(format: "%.1f", insertElapsed))ms: \(error)", category: "Transcribe", level: .error)
+            }
+        }
+
+        // Brief delay before Enter - use Thread.sleep for precise timing
+        let preEnterDelayStart = CFAbsoluteTimeGetCurrent()
+        Thread.sleep(forTimeInterval: 0.05)  // 50ms - enough for clipboard paste to complete
+        macLog("⏱️ [TIMING] Pre-Enter delay: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - preEnterDelayStart) * 1000))ms", category: "Transcribe")
+
+        let enterStartTime = CFAbsoluteTimeGetCurrent()
         let source = CGEventSource(stateID: .hidSystemState)
         let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)  // Return key
         let enterUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
@@ -755,8 +869,11 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
         enterDown?.post(tap: .cghidEventTap)
         enterUp?.post(tap: .cghidEventTap)
+        macLog("⏱️ [TIMING] Enter key sent in \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - enterStartTime) * 1000))ms", category: "Transcribe")
 
-        macLog("Sent Enter key after text insertion", category: "Transcribe")
+        state = .complete
+        let totalElapsed = (CFAbsoluteTimeGetCurrent() - totalStartTime) * 1000
+        macLog("⏱️ [TIMING] ========== INSERT TEXT AND SEND TOTAL: \(String(format: "%.1f", totalElapsed))ms ==========", category: "Transcribe")
     }
 
     func copyToClipboard() {

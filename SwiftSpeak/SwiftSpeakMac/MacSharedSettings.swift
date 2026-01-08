@@ -359,6 +359,15 @@ class MacSettings: ObservableObject {
         }
     }
 
+    // MARK: - Audio Quality (Network Optimization)
+
+    /// Audio quality setting for transcription - affects file size and upload speed
+    @Published var audioQuality: AudioQualityMode = .auto {
+        didSet {
+            defaults?.set(audioQuality.rawValue, forKey: "audioQuality")
+        }
+    }
+
     // MARK: - Security & Privacy
 
     @Published var biometricProtectionEnabled: Bool = false {
@@ -784,6 +793,12 @@ class MacSettings: ObservableObject {
         }
         if defaults?.object(forKey: "playSoundOnRecordEnd") != nil {
             playSoundOnRecordEnd = defaults?.bool(forKey: "playSoundOnRecordEnd") ?? false
+        }
+
+        // Load audio quality setting
+        if let qualityRaw = defaults?.string(forKey: "audioQuality"),
+           let quality = AudioQualityMode(rawValue: qualityRaw) {
+            audioQuality = quality
         }
 
         // Load security & privacy settings

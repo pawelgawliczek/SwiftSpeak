@@ -29,6 +29,11 @@ final class AudioRecorder: NSObject, ObservableObject {
     /// Error if recording failed
     @Published private(set) var error: TranscriptionError?
 
+    // MARK: - Configuration
+
+    /// Audio quality mode - affects file size and upload speed
+    var audioQuality: AudioQualityMode = .auto
+
     // MARK: - Properties
 
     /// URL of the recorded audio file (available after recording stops)
@@ -42,14 +47,21 @@ final class AudioRecorder: NSObject, ObservableObject {
 
     /// Audio format settings optimized for Whisper API
     /// - m4a format (AAC codec)
-    /// - 16kHz sample rate (Whisper's native rate)
+    /// - Sample rate based on quality setting
     /// - Mono channel
-    private let recordingSettings: [String: Any] = [
-        AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-        AVSampleRateKey: 16000,
-        AVNumberOfChannelsKey: 1,
-        AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-    ]
+    private func recordingSettings(for quality: AudioQualityMode) -> [String: Any] {
+        // Resolve auto quality to actual quality based on network
+        let effectiveQuality = quality == .auto
+            ? NetworkQualityMonitor.shared.recommendedQuality
+            : quality
+
+        return [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: effectiveQuality.sampleRate,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderAudioQualityKey: effectiveQuality.encoderQuality.rawValue
+        ]
+    }
 
     // MARK: - Initialization
 
@@ -81,9 +93,18 @@ final class AudioRecorder: NSObject, ObservableObject {
         // Create temporary file URL
         let url = createTemporaryURL()
 
+        // Get settings for current quality mode
+        let settings = recordingSettings(for: audioQuality)
+
+        // Log the effective quality
+        let effectiveQuality = audioQuality == .auto
+            ? NetworkQualityMonitor.shared.recommendedQuality
+            : audioQuality
+        appLog("Recording with quality: \(effectiveQuality.displayName) (\(Int(effectiveQuality.sampleRate))Hz)", category: "Audio")
+
         do {
             // Create and configure recorder
-            let recorder = try AVAudioRecorder(url: url, settings: recordingSettings)
+            let recorder = try AVAudioRecorder(url: url, settings: settings)
             recorder.delegate = self
             recorder.isMeteringEnabled = true
 

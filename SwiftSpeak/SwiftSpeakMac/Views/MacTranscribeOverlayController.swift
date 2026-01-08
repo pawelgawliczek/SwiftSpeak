@@ -324,15 +324,26 @@ final class MacTranscribeOverlayController {
         // Enter (keyCode 36) - Finish and execute enter behavior
         if keyCode == 36 {
             macLog("Enter pressed - state: \(vm.state)", category: "Transcribe")
-            if vm.state == .recording {
+            switch vm.state {
+            case .recording:
                 Task {
                     await vm.stopRecording()
                 }
-            } else if vm.state == .complete {
+            case .complete:
                 Task {
                     await vm.insertText()
                     finishAndClose()
                 }
+            case .error:
+                // Retry processing when Enter is pressed on error screen
+                Task {
+                    await vm.retryProcessing()
+                }
+            case .initializing:
+                // Ignore Enter during initialization - recording hasn't started yet
+                macLog("Ignoring Enter during initialization", category: "Transcribe")
+            default:
+                break
             }
             return nil
         }

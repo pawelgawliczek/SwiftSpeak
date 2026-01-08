@@ -94,8 +94,14 @@ struct KeyboardView: View {
                     KeyboardHaptics.lightTap()
                 },
                 onSwiftLinkTap: {
-                    withAnimation(.spring(response: 0.3)) {
-                        activePicker = .swiftLink
+                    // Toggle: if active, end session; otherwise show picker
+                    if viewModel.isSwiftLinkSessionActive {
+                        KeyboardHaptics.mediumTap()
+                        viewModel.endSwiftLinkSession()
+                    } else {
+                        withAnimation(.spring(response: 0.3)) {
+                            activePicker = .swiftLink
+                        }
                     }
                 },
                 onRefreshHeight: onRefreshHeight
@@ -307,14 +313,12 @@ struct KeyboardView: View {
 
                 // Bottom corners
                 HStack {
-                    // Left corner: SwiftLink
+                    // Left corner: SwiftLink (tap to toggle)
                     if viewModel.isSwiftLinkSessionActive {
-                        // Active: Green icon only
+                        // Active: Green icon - tap to END session
                         Button(action: {
-                            KeyboardHaptics.selection()
-                            withAnimation(.spring(response: 0.3)) {
-                                activePicker = .swiftLink
-                            }
+                            KeyboardHaptics.mediumTap()
+                            viewModel.endSwiftLinkSession()
                         }) {
                             Image(systemName: "link")
                                 .font(.system(size: 14, weight: .semibold))
@@ -324,7 +328,7 @@ struct KeyboardView: View {
                         }
                         .buttonStyle(.plain)
                     } else {
-                        // Inactive: Orange with "Link" text
+                        // Inactive: Orange with "Link" text - tap to show picker
                         SwiftLinkCornerButton {
                             KeyboardHaptics.selection()
                             withAnimation(.spring(response: 0.3)) {
@@ -2767,6 +2771,16 @@ class KeyboardViewModel: ObservableObject {
 
         keyboardLog("SwiftLink URL: \(urlString)", category: "SwiftLink")
         if let url = URL(string: urlString) { openURL(url) }
+    }
+
+    /// End the active SwiftLink session (toggle off)
+    func endSwiftLinkSession() {
+        keyboardLog("Ending SwiftLink session from keyboard", category: "SwiftLink")
+
+        // Open main app with SwiftLink end request
+        if let url = URL(string: "swiftspeak://\(Constants.URLHosts.swiftlinkEnd)") {
+            openURL(url)
+        }
     }
 
     func insertLastTranscription() {

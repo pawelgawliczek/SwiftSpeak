@@ -1126,6 +1126,16 @@ class KeyboardViewModel: ObservableObject {
         if let url = URL(string: urlString) { openURL(url) }
     }
 
+    /// End the active SwiftLink session (toggle off)
+    func endSwiftLinkSession() {
+        keyboardLog("Ending SwiftLink session from keyboard", category: "SwiftLink")
+
+        // Open main app with SwiftLink end request
+        if let url = URL(string: "swiftspeak://\(Constants.URLHosts.swiftlinkEnd)") {
+            openURL(url)
+        }
+    }
+
     func insertLastTranscription() {
         if let text = lastTranscription {
             keyboardLog("Insert last (\(text.count) chars)", category: "Action")

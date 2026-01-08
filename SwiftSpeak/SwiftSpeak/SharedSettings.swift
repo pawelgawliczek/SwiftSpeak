@@ -141,6 +141,13 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Audio quality mode for transcription
+    @Published var audioQuality: AudioQualityMode = .auto {
+        didSet {
+            defaults?.set(audioQuality.rawValue, forKey: "audioQuality")
+        }
+    }
+
     @Published var subscriptionTier: SubscriptionTier = .free {
         didSet {
             defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
@@ -1015,6 +1022,12 @@ class SharedSettings: ObservableObject {
         // Load auto-return enabled (default: true)
         if defaults?.object(forKey: Constants.Keys.autoReturnEnabled) != nil {
             autoReturnEnabled = defaults?.bool(forKey: Constants.Keys.autoReturnEnabled) ?? true
+        }
+
+        // Load audio quality (default: auto)
+        if let qualityRaw = defaults?.string(forKey: "audioQuality"),
+           let quality = AudioQualityMode(rawValue: qualityRaw) {
+            audioQuality = quality
         }
 
         // Load subscription tier

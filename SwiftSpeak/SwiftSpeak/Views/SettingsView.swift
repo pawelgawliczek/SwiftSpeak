@@ -12,6 +12,7 @@ import SwiftSpeakCore
 struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
+    @ObservedObject private var swiftLinkManager = SwiftLinkSessionManager.shared
     @State private var showPaywall = false
     @State private var showResetAllConfirmation = false
 
@@ -212,6 +213,12 @@ struct SettingsView: View {
                 .padding(.vertical, 8)
             }
             .listRowBackground(rowBackground)
+
+            // SwiftLink Status Card (when session is active)
+            if swiftLinkManager.isSessionActive {
+                SwiftLinkStatusCard(sessionManager: swiftLinkManager)
+                    .listRowBackground(rowBackground)
+            }
         }
     }
 
@@ -469,6 +476,90 @@ struct SettingsView: View {
         }
     }
     #endif
+}
+
+// MARK: - SwiftLink Status Card
+
+struct SwiftLinkStatusCard: View {
+    @ObservedObject var sessionManager: SwiftLinkSessionManager
+
+    private var targetAppName: String {
+        sessionManager.getLastUsedApp()?.name ?? "Unknown App"
+    }
+
+    private var timeRemainingText: String {
+        guard let remaining = sessionManager.sessionTimeRemaining else {
+            return "Active"
+        }
+        let minutes = Int(remaining) / 60
+        let seconds = Int(remaining) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Status header
+            HStack {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 8, height: 8)
+
+                Text("SwiftLink Active")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.green)
+
+                Spacer()
+            }
+
+            // Target app
+            HStack(spacing: 8) {
+                Image(systemName: "app.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(targetAppName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Time remaining
+            HStack(spacing: 8) {
+                Image(systemName: "timer")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Time remaining: \(timeRemainingText)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            // Recording indicator
+            if sessionManager.isRecording {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 6, height: 6)
+                    Text("Recording")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.red)
+                }
+            }
+
+            // End Session button
+            Button(action: {
+                HapticManager.mediumTap()
+                sessionManager.endSession()
+            }) {
+                Text("End Session")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 10)
+                    .background(Color.red.opacity(0.8))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 8)
+    }
 }
 
 // MARK: - Preview Helper

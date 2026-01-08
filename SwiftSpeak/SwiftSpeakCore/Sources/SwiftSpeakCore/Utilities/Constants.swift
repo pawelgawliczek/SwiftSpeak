@@ -106,6 +106,12 @@ public enum Constants {
         public static let swiftLinkStreamingTranscript = "swiftLinkStreamingTranscript"
         /// Real-time audio levels for waveform visualization (12 float values 0-1)
         public static let swiftLinkAudioLevels = "swiftLinkAudioLevels"
+
+        // Widget state keys (for Lock Screen and Home Screen widgets)
+        public static let swiftLinkWidgetIsRecording = "swiftLinkWidgetIsRecording"
+        public static let swiftLinkWidgetSessionEndTime = "swiftLinkWidgetSessionEndTime"
+        public static let swiftLinkWidgetTargetAppName = "swiftLinkWidgetTargetAppName"
+        public static let swiftLinkWidgetTargetAppIcon = "swiftLinkWidgetTargetAppIcon"
     }
 
     // MARK: - API Endpoints
@@ -164,6 +170,7 @@ public enum Constants {
         public static let edit = "edit"
         public static let powermode = "powermode"
         public static let swiftlink = "swiftlink"
+        public static let swiftlinkEnd = "swiftlink-end"
         public static let setup = "setup"
         public static let pending = "pending"
     }

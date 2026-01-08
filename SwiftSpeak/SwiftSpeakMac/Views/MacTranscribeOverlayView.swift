@@ -206,10 +206,12 @@ struct MacTranscribeOverlayView: View {
             // Action buttons
             HStack(spacing: 12) {
                 Button(action: {
-                    viewModel.state = .ready
-                    viewModel.errorMessage = nil
+                    // Retry processing the existing recording (not start new recording)
+                    Task {
+                        await viewModel.retryProcessing()
+                    }
                 }) {
-                    Label("Try Again", systemImage: "arrow.clockwise")
+                    Label("Retry", systemImage: "arrow.clockwise")
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.orange)
@@ -249,8 +251,14 @@ struct MacTranscribeOverlayView: View {
 
                         Spacer()
 
-                        TranscribeWaveformView(level: viewModel.audioLevel, isRecording: viewModel.state == .recording)
-                            .frame(width: 100, height: 32)
+                        // Show loading animation during initialization, waveform during recording
+                        if viewModel.state == .initializing {
+                            TranscribeProcessingAnimationView()
+                                .frame(width: 100, height: 32)
+                        } else {
+                            TranscribeWaveformView(level: viewModel.audioLevel, isRecording: viewModel.state == .recording)
+                                .frame(width: 100, height: 32)
+                        }
                     }
 
                     // Active indicators
@@ -332,8 +340,35 @@ struct MacTranscribeOverlayView: View {
                 TranscribeIndicatorPill(icon: "waveform", text: lang.displayName, color: .green)
             }
 
+            // Show audio quality indicator (always show when recording to inform user)
+            if viewModel.state == .recording || viewModel.state == .initializing {
+                audioQualityIndicator
+            }
+
             Spacer()
         }
+    }
+
+    private var audioQualityIndicator: some View {
+        let quality = viewModel.effectiveAudioQuality
+        let (icon, color): (String, Color) = {
+            switch quality {
+            case .high:
+                return ("wifi", .green)
+            case .standard:
+                return ("wifi", .yellow)
+            case .lowBandwidth:
+                return ("wifi.exclamationmark", .orange)
+            case .auto:
+                return ("wifi", .green) // Should be resolved, but fallback
+            }
+        }()
+
+        return TranscribeIndicatorPill(
+            icon: icon,
+            text: quality == .high ? "HQ" : quality.displayName,
+            color: color
+        )
     }
 
     // MARK: - Transcript View
@@ -400,6 +435,7 @@ struct MacTranscribeOverlayView: View {
         switch viewModel.state {
         case .recording: return "RECORDING"
         case .ready: return "READY"
+        case .initializing: return "PREPARING..."
         default: return viewModel.state.statusText.uppercased()
         }
     }
@@ -408,12 +444,17 @@ struct MacTranscribeOverlayView: View {
         switch viewModel.state {
         case .recording: return .red
         case .ready: return .green
+        case .initializing: return .orange
         default: return .orange
         }
     }
 
     private var logoGlowColor: Color {
-        viewModel.state == .recording ? .red : .green
+        switch viewModel.state {
+        case .recording: return .red
+        case .initializing: return .orange
+        default: return .green
+        }
     }
 
     private var formattedDuration: String {

@@ -35,12 +35,18 @@ enum RecordingFormat {
         }
     }
 
-    var audioSettings: [String: Any] {
+    /// Get audio settings for a specific quality mode
+    func audioSettings(quality: AudioQualityMode) -> [String: Any] {
+        // Resolve auto to actual quality
+        let effectiveQuality = quality == .auto
+            ? NetworkQualityMonitor.shared.recommendedQuality
+            : quality
+
         switch self {
         case .wav:
             return [
                 AVFormatIDKey: Int(kAudioFormatLinearPCM),
-                AVSampleRateKey: 16000,
+                AVSampleRateKey: effectiveQuality.sampleRate,
                 AVNumberOfChannelsKey: 1,
                 AVLinearPCMBitDepthKey: 16,
                 AVLinearPCMIsFloatKey: false,
@@ -49,11 +55,16 @@ enum RecordingFormat {
         case .aac:
             return [
                 AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-                AVSampleRateKey: 16000,
+                AVSampleRateKey: effectiveQuality.sampleRate,
                 AVNumberOfChannelsKey: 1,
-                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+                AVEncoderAudioQualityKey: effectiveQuality.encoderQuality.rawValue
             ]
         }
+    }
+
+    /// Legacy: default settings (high quality)
+    var audioSettings: [String: Any] {
+        audioSettings(quality: .high)
     }
 }
 
@@ -73,6 +84,9 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
 
     /// Recording format - set based on target transcription provider
     var recordingFormat: RecordingFormat = .aac
+
+    /// Audio quality mode - affects file size and upload speed
+    var audioQuality: AudioQualityMode = .auto
 
     // MARK: - Device Selection
 
@@ -137,6 +151,15 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         // Capture selected device and format before detached task
         let deviceID = self.selectedDeviceID
         let format = self.recordingFormat
+        let quality = self.audioQuality
+
+        // Resolve auto quality to actual quality based on network
+        let effectiveQuality = quality == .auto
+            ? NetworkQualityMonitor.shared.recommendedQuality
+            : quality
+        let targetSampleRate = effectiveQuality.sampleRate
+
+        macLog("Recording with quality: \(effectiveQuality.displayName) (\(Int(targetSampleRate))Hz)", category: "Audio")
 
         // Move heavy audio engine setup off main thread
         // AVAudioEngine initialization can take 2-5 seconds on first use
@@ -154,16 +177,16 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
 
             print("[MacAudioRecorder] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
-            // Target format: Always Float32 for processing - AVAudioFile handles conversion
+            // Target format: Float32 for processing - sample rate based on quality setting
             guard let targetFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
-                sampleRate: 16000,
+                sampleRate: targetSampleRate,
                 channels: 1,
                 interleaved: false
             ) else {
                 throw TranscriptionError.recordingFailed("Failed to create target audio format")
             }
-            print("[MacAudioRecorder] Target format: 16kHz mono Float32, file format: \(format)")
+            print("[MacAudioRecorder] Target format: \(Int(targetSampleRate))Hz mono Float32, file format: \(format)")
 
             // Create format converter (input format -> target format)
             guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
@@ -173,8 +196,8 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             return (engine, inputFormat, targetFormat, converter)
         }.value
 
-        // Recording settings based on target provider
-        let settings = recordingFormat.audioSettings
+        // Recording settings based on target provider and quality
+        let settings = recordingFormat.audioSettings(quality: effectiveQuality)
 
         // Create output file with explicit processing format
         // File format: WAV (Int16) or AAC - specified by settings

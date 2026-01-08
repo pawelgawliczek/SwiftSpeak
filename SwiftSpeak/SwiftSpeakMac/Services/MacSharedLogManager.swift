@@ -76,6 +76,9 @@ final class MacSharedLogManager: ObservableObject {
     /// Log file name
     private let logFileName = "swiftspeak_mac_logs.jsonl"
 
+    /// Background queue for file I/O to prevent main thread blocking
+    private let fileQueue = DispatchQueue(label: "com.swiftspeak.mac.logfile", qos: .utility)
+
     /// Published logs for UI binding
     @Published private(set) var logs: [MacLogEntry] = []
 
@@ -161,29 +164,32 @@ final class MacSharedLogManager: ObservableObject {
 
     // MARK: - File Operations
 
-    /// Append an entry to the log file
+    /// Append an entry to the log file (runs on background queue to prevent main thread blocking)
     private func appendEntry(_ entry: MacLogEntry) {
         guard let url = logFileURL else { return }
 
-        do {
-            let encoder = JSONEncoder()
-            let data = try encoder.encode(entry)
+        // Dispatch file I/O to background queue to prevent deadlocks
+        fileQueue.async {
+            do {
+                let encoder = JSONEncoder()
+                let data = try encoder.encode(entry)
 
-            // Append as a single JSON line
-            var lineData = data
-            lineData.append(contentsOf: "\n".utf8)
+                // Append as a single JSON line
+                var lineData = data
+                lineData.append(contentsOf: "\n".utf8)
 
-            if FileManager.default.fileExists(atPath: url.path) {
-                let handle = try FileHandle(forWritingTo: url)
-                try handle.seekToEnd()
-                try handle.write(contentsOf: lineData)
-                try handle.close()
-            } else {
-                try lineData.write(to: url)
+                if FileManager.default.fileExists(atPath: url.path) {
+                    let handle = try FileHandle(forWritingTo: url)
+                    try handle.seekToEnd()
+                    try handle.write(contentsOf: lineData)
+                    try handle.close()
+                } else {
+                    try lineData.write(to: url)
+                }
+            } catch {
+                // Can't log the error (would cause infinite recursion)
+                print("[LogManager] Failed to write log: \(error)")
             }
-        } catch {
-            // Can't log the error (would cause infinite recursion)
-            print("[LogManager] Failed to write log: \(error)")
         }
     }
 

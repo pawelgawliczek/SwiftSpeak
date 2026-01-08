@@ -124,16 +124,10 @@ final class PersistenceController: @unchecked Sendable {
     // MARK: - CloudKit Sync
 
     @objc private func handleRemoteChange(_ notification: Notification) {
-        // Post notification for UI to refresh
+        // Post notification for UI to refresh (silently - no logging to avoid spam)
         DispatchQueue.main.async {
             NotificationCenter.default.post(name: .coreDataDidSyncFromCloud, object: nil)
         }
-
-        #if os(iOS)
-        appLog("Received remote CloudKit changes", category: "CoreData", level: .debug)
-        #elseif os(macOS)
-        macLog("Received remote CloudKit changes", category: "CoreData", level: .debug)
-        #endif
     }
 
     // MARK: - Save Helpers
@@ -145,11 +139,7 @@ final class PersistenceController: @unchecked Sendable {
 
         do {
             try context.save()
-            #if os(iOS)
-            appLog("Core Data changes saved", category: "CoreData", level: .debug)
-            #elseif os(macOS)
-            macLog("Core Data changes saved", category: "CoreData", level: .debug)
-            #endif
+            // Success is silent - only log errors
         } catch {
             #if os(iOS)
             appLog("Core Data save error: \(error.localizedDescription)", category: "CoreData", level: .error)
