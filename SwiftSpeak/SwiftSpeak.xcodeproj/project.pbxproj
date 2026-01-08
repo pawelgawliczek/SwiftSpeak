@@ -97,8 +97,6 @@
 		837C18232F07C08A00B09F64 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Shared/Constants.swift,
-				Shared/LogSanitizer.swift,
 				Shared/SharedLogManager.swift,
 			);
 			target = 83ED7A102EFECCE900880604 /* SwiftSpeakTests */;
@@ -115,7 +113,6 @@
 			membershipExceptions = (
 				Assets.xcassets,
 				Shared/Models.swift,
-				Shared/ProviderHelpContent.swift,
 				Shared/ProviderLanguageSupport.swift,
 			);
 			target = 83ED79262EFE4D8F00880604 /* SwiftSpeakKeyboard */;

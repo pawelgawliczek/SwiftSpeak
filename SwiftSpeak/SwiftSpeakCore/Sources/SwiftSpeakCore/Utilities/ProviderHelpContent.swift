@@ -13,14 +13,14 @@ import SwiftUI
 // MARK: - Setup Step
 
 /// A single step in the provider setup process
-struct SetupStep: Identifiable {
-    let id = UUID()
-    let number: Int
-    let title: String
-    let description: String?
-    let actionURL: URL?  // Deep link if applicable
+public struct SetupStep: Identifiable {
+    public let id = UUID()
+    public let number: Int
+    public let title: String
+    public let description: String?
+    public let actionURL: URL?  // Deep link if applicable
 
-    init(
+    public init(
         number: Int,
         title: String,
         description: String? = nil,
@@ -36,19 +36,19 @@ struct SetupStep: Identifiable {
 // MARK: - Provider Setup Guide
 
 /// Complete setup guide for a provider
-struct ProviderSetupGuide {
-    let provider: AIProvider
-    let steps: [SetupStep]
-    let tips: [String]
-    let estimatedCost: String          // e.g., "~$0.006/minute"
-    let freeCredits: String?           // e.g., "$5 for new accounts"
-    let bestFor: [String]              // e.g., ["Transcription", "Translation"]
-    let websiteURL: URL?
-    let apiKeyURL: URL?
-    let pricingURL: URL?
-    let documentationURL: URL?
+public struct ProviderSetupGuide {
+    public let provider: AIProvider
+    public let steps: [SetupStep]
+    public let tips: [String]
+    public let estimatedCost: String          // e.g., "~$0.006/minute"
+    public let freeCredits: String?           // e.g., "$5 for new accounts"
+    public let bestFor: [String]              // e.g., ["Transcription", "Translation"]
+    public let websiteURL: URL?
+    public let apiKeyURL: URL?
+    public let pricingURL: URL?
+    public let documentationURL: URL?
 
-    init(
+    public init(
         provider: AIProvider,
         steps: [SetupStep],
         tips: [String] = [],
@@ -76,10 +76,10 @@ struct ProviderSetupGuide {
 // MARK: - Provider Help Database
 
 /// Static database of setup guides for all providers
-struct ProviderHelpDatabase {
+public struct ProviderHelpDatabase {
 
     /// Get setup guide for a specific provider
-    static func guide(for provider: AIProvider) -> ProviderSetupGuide {
+    public static func guide(for provider: AIProvider) -> ProviderSetupGuide {
         switch provider {
         case .openAI:
             return openAIGuide
@@ -103,13 +103,13 @@ struct ProviderHelpDatabase {
     }
 
     /// Get all available guides
-    static var allGuides: [ProviderSetupGuide] {
+    public static var allGuides: [ProviderSetupGuide] {
         AIProvider.allCases.map { guide(for: $0) }
     }
 
     // MARK: - Individual Provider Guides
 
-    static let openAIGuide = ProviderSetupGuide(
+    public static let openAIGuide = ProviderSetupGuide(
         provider: .openAI,
         steps: [
             SetupStep(
@@ -154,7 +154,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://platform.openai.com/docs")
     )
 
-    static let anthropicGuide = ProviderSetupGuide(
+    public static let anthropicGuide = ProviderSetupGuide(
         provider: .anthropic,
         steps: [
             SetupStep(
@@ -199,7 +199,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://docs.anthropic.com")
     )
 
-    static let googleGuide = ProviderSetupGuide(
+    public static let googleGuide = ProviderSetupGuide(
         provider: .google,
         steps: [
             SetupStep(
@@ -244,7 +244,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://ai.google.dev/docs")
     )
 
-    static let deepgramGuide = ProviderSetupGuide(
+    public static let deepgramGuide = ProviderSetupGuide(
         provider: .deepgram,
         steps: [
             SetupStep(
@@ -289,7 +289,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://developers.deepgram.com/docs")
     )
 
-    static let elevenLabsGuide = ProviderSetupGuide(
+    public static let elevenLabsGuide = ProviderSetupGuide(
         provider: .elevenLabs,
         steps: [
             SetupStep(
@@ -334,7 +334,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://docs.elevenlabs.io")
     )
 
-    static let localGuide = ProviderSetupGuide(
+    public static let localGuide = ProviderSetupGuide(
         provider: .local,
         steps: [
             SetupStep(
@@ -379,7 +379,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://ollama.ai/docs")
     )
 
-    static let assemblyAIGuide = ProviderSetupGuide(
+    public static let assemblyAIGuide = ProviderSetupGuide(
         provider: .assemblyAI,
         steps: [
             SetupStep(
@@ -424,7 +424,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://www.assemblyai.com/docs")
     )
 
-    static let deepLGuide = ProviderSetupGuide(
+    public static let deepLGuide = ProviderSetupGuide(
         provider: .deepL,
         steps: [
             SetupStep(
@@ -469,7 +469,7 @@ struct ProviderHelpDatabase {
         documentationURL: URL(string: "https://www.deepl.com/docs-api")
     )
 
-    static let azureGuide = ProviderSetupGuide(
+    public static let azureGuide = ProviderSetupGuide(
         provider: .azure,
         steps: [
             SetupStep(
@@ -518,20 +518,30 @@ struct ProviderHelpDatabase {
 // MARK: - Provider Recommendation
 
 /// Recommendation for a use case
-struct ProviderRecommendation: Identifiable {
-    let id = UUID()
-    let useCase: String
-    let description: String
-    let icon: String
-    let iconColor: Color
-    let recommendedProvider: AIProvider
-    let alternativeProviders: [AIProvider]
-    let reasoning: String
+public struct ProviderRecommendation: Identifiable {
+    public let id = UUID()
+    public let useCase: String
+    public let description: String
+    public let icon: String
+    public let iconColor: Color
+    public let recommendedProvider: AIProvider
+    public let alternativeProviders: [AIProvider]
+    public let reasoning: String
+
+    public init(useCase: String, description: String, icon: String, iconColor: Color, recommendedProvider: AIProvider, alternativeProviders: [AIProvider], reasoning: String) {
+        self.useCase = useCase
+        self.description = description
+        self.icon = icon
+        self.iconColor = iconColor
+        self.recommendedProvider = recommendedProvider
+        self.alternativeProviders = alternativeProviders
+        self.reasoning = reasoning
+    }
 }
 
 /// Provider recommendations for common use cases
-struct ProviderRecommendations {
-    static let allRecommendations: [ProviderRecommendation] = [
+public struct ProviderRecommendations {
+    public static let allRecommendations: [ProviderRecommendation] = [
         ProviderRecommendation(
             useCase: "Just Transcription",
             description: "Convert speech to text only",

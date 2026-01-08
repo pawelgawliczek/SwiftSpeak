@@ -31,6 +31,11 @@ struct MacMeetingRecordingView: View {
     @State private var isProcessingInBackground = false
     @State private var windowClosed = false
 
+    // Recording health stats
+    @State private var recordingFileSizeMB: Double = 0
+    @State private var recordingWriteErrors: Int = 0
+    @State private var statsTimer: Timer?
+
     // Animation
     @State private var pulseAnimation = false
 
@@ -56,19 +61,36 @@ struct MacMeetingRecordingView: View {
                     .frame(height: 50)
                     .padding(.horizontal, 40)
 
-                // Cost estimate (no dual mode indicator)
+                // Cost estimate and file size
                 if orchestrator.isRecording || orchestrator.duration > 0 {
-                    HStack(spacing: 6) {
-                        Image(systemName: "dollarsign.circle")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(orchestrator.formattedCost)
-                            .font(.callout.monospacedDigit())
-                            .foregroundStyle(.primary)
+                    HStack(spacing: 12) {
+                        // Cost estimate
+                        HStack(spacing: 6) {
+                            Image(systemName: "dollarsign.circle")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Text(orchestrator.formattedCost)
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.quaternary.opacity(0.6), in: Capsule())
+
+                        // File size indicator (shows recording health)
+                        HStack(spacing: 6) {
+                            Image(systemName: recordingWriteErrors > 0 ? "exclamationmark.triangle.fill" : "doc.fill")
+                                .font(.caption)
+                                .foregroundStyle(recordingWriteErrors > 0 ? .orange : .secondary)
+                            Text(String(format: "%.1f MB", recordingFileSizeMB))
+                                .font(.callout.monospacedDigit())
+                                .foregroundStyle(.primary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(.quaternary.opacity(0.6), in: Capsule())
+                        .help(recordingWriteErrors > 0 ? "\(recordingWriteErrors) write error(s) detected" : "Recording file size")
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(.quaternary.opacity(0.6), in: Capsule())
                 }
 
                 Spacer()
@@ -159,6 +181,7 @@ struct MacMeetingRecordingView: View {
         }
         .onDisappear {
             windowClosed = true
+            stopStatsTimer()
             // Clean up audio recorder when view disappears (only if not processing)
             if !orchestrator.isProcessing {
                 Task {
@@ -166,6 +189,24 @@ struct MacMeetingRecordingView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Recording Stats Timer
+
+    private func startStatsTimer() {
+        stopStatsTimer()
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in
+                let stats = await audioRecorder.getRecordingStats()
+                recordingFileSizeMB = Double(stats.fileSize) / (1024 * 1024)
+                recordingWriteErrors = stats.errors
+            }
+        }
+    }
+
+    private func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
     }
 
     // MARK: - Actions
@@ -193,7 +234,14 @@ struct MacMeetingRecordingView: View {
     }
 
     private func handleStateChange(_ newState: MeetingRecordingState) {
-        if case .complete(let record) = newState {
+        // Manage stats timer based on recording state
+        switch newState {
+        case .recording:
+            startStatsTimer()
+        case .stopping, .chunking, .transcribing, .mergingTranscripts, .generatingNotes, .savingToObsidian:
+            stopStatsTimer()
+        case .complete(let record):
+            stopStatsTimer()
             if windowClosed || isProcessingInBackground {
                 // Window was closed - show notification instead
                 notificationManager.notifyMeetingComplete(record: record)
@@ -204,13 +252,18 @@ struct MacMeetingRecordingView: View {
                 // Window is open - show result sheet
                 showingResult = true
             }
-        } else if case .error = newState {
+        case .error:
+            stopStatsTimer()
             if windowClosed || isProcessingInBackground {
                 // Could show error notification here if needed
                 Task {
                     await audioRecorder.cleanup()
                 }
             }
+        case .idle:
+            stopStatsTimer()
+            recordingFileSizeMB = 0
+            recordingWriteErrors = 0
         }
     }
 

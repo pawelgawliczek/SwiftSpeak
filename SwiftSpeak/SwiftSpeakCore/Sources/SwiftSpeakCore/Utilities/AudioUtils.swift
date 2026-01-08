@@ -8,14 +8,14 @@
 import Foundation
 
 /// Utilities for audio data handling
-enum AudioUtils {
+public enum AudioUtils {
 
     /// Create WAV file data from raw PCM16 audio data
     /// - Parameters:
     ///   - pcmData: Raw PCM16 audio data
     ///   - sampleRate: Sample rate in Hz
     /// - Returns: Complete WAV file data with headers
-    static func createWAVData(from pcmData: Data, sampleRate: Int) -> Data {
+    public static func createWAVData(from pcmData: Data, sampleRate: Int) -> Data {
         var wavData = Data()
 
         // WAV header constants
@@ -55,7 +55,7 @@ enum AudioUtils {
     ///   - sampleRate: Sample rate in Hz
     ///   - prefix: Optional filename prefix (default: "audio")
     /// - Returns: URL to the saved WAV file, or nil if save failed
-    static func saveAsWAV(pcmData: Data, sampleRate: Int, prefix: String = "audio") -> URL? {
+    public static func saveAsWAV(pcmData: Data, sampleRate: Int, prefix: String = "audio") -> URL? {
         guard !pcmData.isEmpty else { return nil }
 
         let tempDir = FileManager.default.temporaryDirectory
@@ -77,7 +77,7 @@ enum AudioUtils {
     ///   - dataSize: Size of PCM16 data in bytes
     ///   - sampleRate: Sample rate in Hz
     /// - Returns: Duration in seconds
-    static func duration(dataSize: Int, sampleRate: Int) -> Double {
+    public static func duration(dataSize: Int, sampleRate: Int) -> Double {
         // PCM16 = 2 bytes per sample, mono
         return Double(dataSize) / Double(sampleRate * 2)
     }

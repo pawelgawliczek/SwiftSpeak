@@ -54,6 +54,19 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     // Device selection
     private var _selectedDeviceID: AudioDeviceID?
 
+    // MARK: - Recording Health Tracking
+
+    /// Total number of audio buffers successfully written
+    private var buffersWritten: Int = 0
+    /// Total number of write errors encountered
+    private var writeErrors: Int = 0
+    /// Last successful write timestamp
+    private var lastSuccessfulWrite: Date?
+    /// Periodic flush interval (in seconds)
+    private let flushInterval: TimeInterval = 5.0
+    /// Last flush timestamp
+    private var lastFlushTime: Date?
+
     // MARK: - Device Selection
 
     /// Set the selected audio input device ID
@@ -368,6 +381,14 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         startTime = Date()
         pausedDuration = 0
         lastPauseTime = nil
+
+        // Reset recording health tracking
+        buffersWritten = 0
+        writeErrors = 0
+        lastSuccessfulWrite = nil
+        lastFlushTime = nil
+
+        macLog("Dual-source recording started", category: "DualAudioRecorder", level: .info)
     }
 
     public func stopDualSourceRecording() async throws -> DualSourceRecordingResult {
@@ -413,6 +434,15 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         _microphoneLevel = 0
         _systemAudioLevel = 0
 
+        // Log recording summary
+        let combFileSize = (try? FileManager.default.attributesOfItem(atPath: combURL.path)[.size] as? Int64) ?? 0
+        let sizeMB = Double(combFileSize) / (1024 * 1024)
+        macLog("Recording stopped: \(buffersWritten) buffers written, \(writeErrors) errors, \(String(format: "%.2f", sizeMB)) MB", category: "DualAudioRecorder", level: .info)
+
+        if writeErrors > 0 {
+            macLog("WARNING: Recording had \(writeErrors) write errors - audio may be incomplete", category: "DualAudioRecorder", level: .warning)
+        }
+
         return DualSourceRecordingResult(
             microphoneURL: micURL,
             systemAudioURL: FileManager.default.fileExists(atPath: sysURL.path) ? sysURL : nil,
@@ -426,6 +456,18 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
 
     public func getSystemAudioLevel() async -> Float {
         _systemAudioLevel
+    }
+
+    /// Get current recording statistics for health monitoring
+    /// Returns (buffersWritten, writeErrors, fileSizeBytes)
+    public func getRecordingStats() async -> (buffers: Int, errors: Int, fileSize: Int64) {
+        let fileSize: Int64
+        if let url = combinedURL ?? singleSourceURL {
+            fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+        } else {
+            fileSize = 0
+        }
+        return (buffersWritten, writeErrors, fileSize)
     }
 
     // MARK: - Private Methods
@@ -583,13 +625,48 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     private func writeBuffer(_ buffer: AVAudioPCMBuffer, to file: AVAudioFile?) {
         guard let file = file else { return }
 
-        // Convert format if needed
-        if let converter = createConverter(from: buffer.format, to: file.processingFormat) {
-            if let convertedBuffer = convertBuffer(buffer, using: converter, outputFormat: file.processingFormat) {
-                try? file.write(from: convertedBuffer)
+        do {
+            // Convert format if needed
+            if let converter = createConverter(from: buffer.format, to: file.processingFormat) {
+                if let convertedBuffer = convertBuffer(buffer, using: converter, outputFormat: file.processingFormat) {
+                    try file.write(from: convertedBuffer)
+                } else {
+                    writeErrors += 1
+                    macLog("Audio buffer conversion failed (error #\(writeErrors))", category: "DualAudioRecorder", level: .error)
+                    return
+                }
+            } else {
+                try file.write(from: buffer)
             }
-        } else {
-            try? file.write(from: buffer)
+
+            // Track successful write
+            buffersWritten += 1
+            lastSuccessfulWrite = Date()
+
+            // Periodic flush to ensure data is on disk (every 5 seconds)
+            if let lastFlush = lastFlushTime {
+                if Date().timeIntervalSince(lastFlush) >= flushInterval {
+                    // Force sync file to disk by closing and reopening is not practical
+                    // Instead, we log progress periodically
+                    lastFlushTime = Date()
+                    if buffersWritten % 500 == 0 {
+                        let fileSize = (try? FileManager.default.attributesOfItem(atPath: file.url.path)[.size] as? Int64) ?? 0
+                        let sizeMB = Double(fileSize) / (1024 * 1024)
+                        macLog("Recording progress: \(buffersWritten) buffers, \(String(format: "%.2f", sizeMB)) MB", category: "DualAudioRecorder", level: .debug)
+                    }
+                }
+            } else {
+                lastFlushTime = Date()
+            }
+        } catch {
+            writeErrors += 1
+            let errorDesc = error.localizedDescription
+            macLog("CRITICAL: Audio buffer write failed (error #\(writeErrors)): \(errorDesc)", category: "DualAudioRecorder", level: .error)
+
+            // Log detailed error info for first few errors
+            if writeErrors <= 5 {
+                macLog("Write error details - frameLength: \(buffer.frameLength), format: \(buffer.format)", category: "DualAudioRecorder", level: .error)
+            }
         }
     }
 

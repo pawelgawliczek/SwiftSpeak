@@ -11,6 +11,7 @@
 
 import Foundation
 import os.log
+import SwiftSpeakCore
 
 // MARK: - Log Entry
 

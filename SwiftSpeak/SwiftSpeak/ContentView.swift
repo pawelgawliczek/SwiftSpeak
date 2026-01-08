@@ -25,15 +25,25 @@ struct ContentView: View {
     @State private var showSwiftLinkSetupOverlay = false  // Overlay when setting up SwiftLink for AI (legacy)
     @State private var swiftLinkSetupMessage = ""  // Dynamic message for the overlay (legacy)
 
+    // Keyboard status tracking
+    @State private var keyboardNeedsFullAccess = false
+    @State private var keyboardIsEnabled = false
+
     var body: some View {
-        TabView(selection: $selectedTab) {
-            // Home / Recording
-            HomeView(showRecording: $showRecording, translateOnRecord: $translateOnRecord)
-                .tabItem {
-                    Image(systemName: "mic.fill")
-                    Text("Record")
-                }
-                .tag(0)
+        VStack(spacing: 0) {
+            // Full Access warning banner
+            if keyboardNeedsFullAccess {
+                FullAccessWarningBanner(onOpenSettings: openKeyboardSettings)
+            }
+
+            TabView(selection: $selectedTab) {
+                // Home / Recording
+                HomeView(showRecording: $showRecording, translateOnRecord: $translateOnRecord)
+                    .tabItem {
+                        Image(systemName: "mic.fill")
+                        Text("Record")
+                    }
+                    .tag(0)
 
             // History (Phase 6: Protected by biometric auth)
             BiometricGateView(authReason: "Access transcription history") {
@@ -97,7 +107,12 @@ struct ContentView: View {
             } else if newPhase == .active {
                 // Refresh settings in case keyboard changed them
                 settings.refreshFromDefaults()
+                // Check keyboard Full Access status
+                checkKeyboardStatus()
             }
+        }
+        .onAppear {
+            checkKeyboardStatus()
         }
         // Phase 9: Fetch config on launch and show update sheet if needed
         .task {
@@ -154,6 +169,37 @@ struct ContentView: View {
             withAnimation {
                 showSwiftLinkSetupOverlay = false
             }
+        }
+        } // Close VStack
+    }
+
+    // MARK: - Keyboard Status Check
+
+    /// Check if keyboard is enabled and has Full Access
+    private func checkKeyboardStatus() {
+        let sharedDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        sharedDefaults?.synchronize()
+
+        // Check if keyboard has ever been activated
+        keyboardIsEnabled = sharedDefaults?.bool(forKey: "keyboardIsActive") ?? false
+
+        // Check if Full Access is granted
+        let hasFullAccess = sharedDefaults?.bool(forKey: "keyboardHasFullAccess") ?? false
+
+        // Show warning only if keyboard is enabled but lacks Full Access
+        withAnimation(.easeInOut(duration: 0.3)) {
+            keyboardNeedsFullAccess = keyboardIsEnabled && !hasFullAccess
+        }
+
+        if keyboardNeedsFullAccess {
+            appLog("Keyboard Full Access warning: enabled=\(keyboardIsEnabled), fullAccess=\(hasFullAccess)", category: "Keyboard", level: .warning)
+        }
+    }
+
+    /// Open iOS Settings for SwiftSpeak keyboard
+    private func openKeyboardSettings() {
+        if let url = URL(string: UIApplication.openSettingsURLString) {
+            UIApplication.shared.open(url)
         }
     }
 
@@ -2525,6 +2571,45 @@ struct QuickStatsCard: View {
         } else {
             return "\(minutes / 60)h \(minutes % 60)m"
         }
+    }
+}
+
+// MARK: - Full Access Warning Banner
+
+/// Warning banner shown when keyboard is enabled but Full Access is not granted
+struct FullAccessWarningBanner: View {
+    let onOpenSettings: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
+                .font(.system(size: 20))
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Keyboard Full Access Required")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                Text("Voice dictation won't work without Full Access")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Button(action: onOpenSettings) {
+                Text("Enable")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.orange.gradient)
+                    .clipShape(Capsule())
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.orange.opacity(0.15))
     }
 }
 

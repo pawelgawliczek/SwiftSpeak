@@ -20,244 +20,251 @@ public enum Constants {
     public static let urlScheme = "swiftspeak"
 
     // MARK: - UserDefaults Keys
-    enum Keys {
-        static let hasCompletedOnboarding = "hasCompletedOnboarding"
-        static let configuredAIProviders = "configuredAIProviders"
-        static let selectedTranscriptionProvider = "selectedTranscriptionProvider"
-        static let selectedTranslationProvider = "selectedTranslationProvider"
-        static let selectedPowerModeProvider = "selectedPowerModeProvider"
-        static let openAIAPIKey = "openAIAPIKey"
-        static let anthropicAPIKey = "anthropicAPIKey"
-        static let elevenLabsAPIKey = "elevenLabsAPIKey"
-        static let deepgramAPIKey = "deepgramAPIKey"
-        static let ollamaEndpoint = "ollamaEndpoint"
-        static let selectedMode = "selectedMode"
-        static let selectedTargetLanguage = "selectedTargetLanguage"
-        static let isTranslationEnabled = "isTranslationEnabled"
-        static let selectedDictationLanguage = "selectedDictationLanguage"
-        static let autoReturnEnabled = "autoReturnEnabled"
-        static let lastTranscription = "lastTranscription"
-        static let transcriptionHistory = "transcriptionHistory"
-        static let subscriptionTier = "subscriptionTier"
-        static let vocabulary = "vocabulary"
-        static let customTemplates = "customTemplates"
+    public enum Keys {
+        public static let hasCompletedOnboarding = "hasCompletedOnboarding"
+        public static let configuredAIProviders = "configuredAIProviders"
+        public static let selectedTranscriptionProvider = "selectedTranscriptionProvider"
+        public static let selectedTranslationProvider = "selectedTranslationProvider"
+        public static let selectedPowerModeProvider = "selectedPowerModeProvider"
+        public static let openAIAPIKey = "openAIAPIKey"
+        public static let anthropicAPIKey = "anthropicAPIKey"
+        public static let elevenLabsAPIKey = "elevenLabsAPIKey"
+        public static let deepgramAPIKey = "deepgramAPIKey"
+        public static let ollamaEndpoint = "ollamaEndpoint"
+        public static let selectedMode = "selectedMode"
+        public static let selectedTargetLanguage = "selectedTargetLanguage"
+        public static let isTranslationEnabled = "isTranslationEnabled"
+        public static let selectedDictationLanguage = "selectedDictationLanguage"
+        public static let autoReturnEnabled = "autoReturnEnabled"
+        public static let lastTranscription = "lastTranscription"
+        public static let transcriptionHistory = "transcriptionHistory"
+        public static let subscriptionTier = "subscriptionTier"
+        public static let vocabulary = "vocabulary"
+        public static let customTemplates = "customTemplates"
 
         // Phase 4: Contexts and Power Modes
-        static let contexts = "contexts"
-        static let activeContextId = "activeContextId"
-        static let powerModes = "powerModes"
-        static let historyMemory = "historyMemory"
+        public static let contexts = "contexts"
+        public static let activeContextId = "activeContextId"
+        public static let powerModes = "powerModes"
+        public static let historyMemory = "historyMemory"
 
         // Phase 4a: Global Memory (3-Tier System)
-        static let globalMemory = "globalMemory"
-        static let globalMemoryEnabled = "globalMemoryEnabled"
-        static let globalMemoryLimit = "globalMemoryLimit"  // Character limit (500-2000)
-        static let powerModeStreamingEnabled = "powerModeStreamingEnabled"
-        static let transcriptionStreamingEnabled = "transcriptionStreamingEnabled"
+        public static let globalMemory = "globalMemory"
+        public static let globalMemoryEnabled = "globalMemoryEnabled"
+        public static let globalMemoryLimit = "globalMemoryLimit"  // Character limit (500-2000)
+        public static let powerModeStreamingEnabled = "powerModeStreamingEnabled"
+        public static let transcriptionStreamingEnabled = "transcriptionStreamingEnabled"
 
         // Memory Update Tracking (batch memory updates)
-        static let lastGlobalMemoryUpdate = "lastGlobalMemoryUpdate"
-        static let lastContextMemoryUpdates = "lastContextMemoryUpdates"   // [UUID: Date]
-        static let lastPowerModeMemoryUpdates = "lastPowerModeMemoryUpdates" // [UUID: Date]
+        public static let lastGlobalMemoryUpdate = "lastGlobalMemoryUpdate"
+        public static let lastContextMemoryUpdates = "lastContextMemoryUpdates"   // [UUID: Date]
+        public static let lastPowerModeMemoryUpdates = "lastPowerModeMemoryUpdates" // [UUID: Date]
 
         // App Library: User app category overrides
-        static let userAppCategoryOverrides = "userAppCategoryOverrides"
+        public static let userAppCategoryOverrides = "userAppCategoryOverrides"
 
         // Phase 4e: RAG Knowledge Documents
-        static let knowledgeDocuments = "knowledgeDocuments"
+        public static let knowledgeDocuments = "knowledgeDocuments"
 
         // Phase 4f: Webhooks
-        static let webhooks = "webhooks"
+        public static let webhooks = "webhooks"
 
         // Phase 6: Security & Privacy
-        static let biometricProtectionEnabled = "biometricProtectionEnabled"
-        static let dataRetentionPeriod = "dataRetentionPeriod"
+        public static let biometricProtectionEnabled = "biometricProtectionEnabled"
+        public static let dataRetentionPeriod = "dataRetentionPeriod"
 
         // Phase 10: Local Models & Provider Defaults
-        static let whisperKitConfig = "whisperKitConfig"
-        static let appleIntelligenceConfig = "appleIntelligenceConfig"
-        static let appleTranslationConfig = "appleTranslationConfig"
-        static let providerDefaults = "providerDefaults"
-        static let forcePrivacyMode = "forcePrivacyMode"
+        public static let whisperKitConfig = "whisperKitConfig"
+        public static let appleIntelligenceConfig = "appleIntelligenceConfig"
+        public static let appleTranslationConfig = "appleTranslationConfig"
+        public static let providerDefaults = "providerDefaults"
+        public static let forcePrivacyMode = "forcePrivacyMode"
 
         // Phase 13.8: Swipe Typing
-        static let swipeTypingEnabled = "swipeTypingEnabled"
+        public static let swipeTypingEnabled = "swipeTypingEnabled"
+
+        // Phase 16: Keyboard Layout Settings
+        public static let keyboardShowSwiftSpeakBar = "keyboardShowSwiftSpeakBar"
+        public static let keyboardShowPredictionRow = "keyboardShowPredictionRow"
+        public static let keyboardProgrammableAction = "keyboardProgrammableAction"
+        public static let keyboardShowProgrammableNextToReturn = "keyboardShowProgrammableNextToReturn"
+        public static let keyboardReturnProgrammableAction = "keyboardReturnProgrammableAction"
 
         // SwiftLink: Background Dictation Sessions
-        static let swiftLinkApps = "swiftLinkApps"
-        static let swiftLinkSessionDuration = "swiftLinkSessionDuration"
-        static let swiftLinkLastUsedApp = "swiftLinkLastUsedApp"
-        static let swiftLinkSessionActive = "swiftLinkSessionActive"
+        public static let swiftLinkApps = "swiftLinkApps"
+        public static let swiftLinkSessionDuration = "swiftLinkSessionDuration"
+        public static let swiftLinkLastUsedApp = "swiftLinkLastUsedApp"
+        public static let swiftLinkSessionActive = "swiftLinkSessionActive"
         /// Auto-start SwiftLink when using voice input (enabled by default)
-        static let swiftLinkAutoStart = "swiftLinkAutoStart"
-        static let swiftLinkSessionStartTime = "swiftLinkSessionStartTime"
-        static let swiftLinkDictationStartTime = "swiftLinkDictationStartTime"
-        static let swiftLinkDictationEndTime = "swiftLinkDictationEndTime"
-        static let swiftLinkTranscriptionResult = "swiftLinkTranscriptionResult"
-        static let swiftLinkProcessingStatus = "swiftLinkProcessingStatus"
+        public static let swiftLinkAutoStart = "swiftLinkAutoStart"
+        public static let swiftLinkSessionStartTime = "swiftLinkSessionStartTime"
+        public static let swiftLinkDictationStartTime = "swiftLinkDictationStartTime"
+        public static let swiftLinkDictationEndTime = "swiftLinkDictationEndTime"
+        public static let swiftLinkTranscriptionResult = "swiftLinkTranscriptionResult"
+        public static let swiftLinkProcessingStatus = "swiftLinkProcessingStatus"
         /// Live streaming transcript for real-time display in keyboard
-        static let swiftLinkStreamingTranscript = "swiftLinkStreamingTranscript"
+        public static let swiftLinkStreamingTranscript = "swiftLinkStreamingTranscript"
         /// Real-time audio levels for waveform visualization (12 float values 0-1)
-        static let swiftLinkAudioLevels = "swiftLinkAudioLevels"
+        public static let swiftLinkAudioLevels = "swiftLinkAudioLevels"
     }
 
     // MARK: - API Endpoints
-    enum API {
+    public enum API {
         // OpenAI
-        static let openAIWhisper = "https://api.openai.com/v1/audio/transcriptions"
-        static let openAIChat = "https://api.openai.com/v1/chat/completions"
+        public static let openAIWhisper = "https://api.openai.com/v1/audio/transcriptions"
+        public static let openAIChat = "https://api.openai.com/v1/chat/completions"
 
         // Anthropic
-        static let anthropic = "https://api.anthropic.com/v1/messages"
+        public static let anthropic = "https://api.anthropic.com/v1/messages"
 
         // ElevenLabs
-        static let elevenLabs = "https://api.elevenlabs.io/v1/speech-to-text"
+        public static let elevenLabs = "https://api.elevenlabs.io/v1/speech-to-text"
 
         // Deepgram
-        static let deepgram = "https://api.deepgram.com/v1/listen"
+        public static let deepgram = "https://api.deepgram.com/v1/listen"
 
         // AssemblyAI
-        static let assemblyAIUpload = "https://api.assemblyai.com/v2/upload"
-        static let assemblyAITranscript = "https://api.assemblyai.com/v2/transcript"
+        public static let assemblyAIUpload = "https://api.assemblyai.com/v2/upload"
+        public static let assemblyAITranscript = "https://api.assemblyai.com/v2/transcript"
 
         // Google Cloud
-        static let googleSTT = "https://speech.googleapis.com/v2/projects"
-        static let googleTranslation = "https://translation.googleapis.com/language/translate/v2"
-        static let gemini = "https://generativelanguage.googleapis.com/v1beta/models"
+        public static let googleSTT = "https://speech.googleapis.com/v2/projects"
+        public static let googleTranslation = "https://translation.googleapis.com/language/translate/v2"
+        public static let gemini = "https://generativelanguage.googleapis.com/v1beta/models"
 
         // DeepL
-        static let deepL = "https://api.deepl.com/v2/translate"
-        static let deepLFree = "https://api-free.deepl.com/v2/translate"
+        public static let deepL = "https://api.deepl.com/v2/translate"
+        public static let deepLFree = "https://api-free.deepl.com/v2/translate"
 
         // Azure
-        static let azureTranslator = "https://api.cognitive.microsofttranslator.com/translate"
+        public static let azureTranslator = "https://api.cognitive.microsofttranslator.com/translate"
     }
 
     // MARK: - Subscription Product IDs
-    enum Products {
-        static let proMonthly = "com.swiftspeak.pro.monthly"
-        static let proYearly = "com.swiftspeak.pro.yearly"
-        static let powerMonthly = "com.swiftspeak.power.monthly"
-        static let powerYearly = "com.swiftspeak.power.yearly"
+    public enum Products {
+        public static let proMonthly = "com.swiftspeak.pro.monthly"
+        public static let proYearly = "com.swiftspeak.pro.yearly"
+        public static let powerMonthly = "com.swiftspeak.power.monthly"
+        public static let powerYearly = "com.swiftspeak.power.yearly"
     }
 
     // MARK: - RevenueCat
-    enum RevenueCat {
+    public enum RevenueCat {
         // Test API key - replace with production key before App Store release
-        static let apiKey = "YOUR_REVENUECAT_API_KEY"
+        public static let apiKey = "YOUR_REVENUECAT_API_KEY"
 
         // Entitlement identifiers (configure in RevenueCat dashboard)
-        static let proEntitlement = "pro"
-        static let powerEntitlement = "power"
+        public static let proEntitlement = "pro"
+        public static let powerEntitlement = "power"
     }
 
     // MARK: - URL Scheme Hosts (Phase 12)
-    enum URLHosts {
-        static let record = "record"
-        static let edit = "edit"
-        static let powermode = "powermode"
-        static let swiftlink = "swiftlink"
-        static let setup = "setup"
-        static let pending = "pending"
+    public enum URLHosts {
+        public static let record = "record"
+        public static let edit = "edit"
+        public static let powermode = "powermode"
+        public static let swiftlink = "swiftlink"
+        public static let setup = "setup"
+        public static let pending = "pending"
     }
 
     // MARK: - SwiftLink Darwin Notifications
-    enum SwiftLinkNotifications {
-        static let prefix = "com.swiftspeak.swiftlink."
-        static let startDictation = prefix + "startDictation"
-        static let stopDictation = prefix + "stopDictation"
-        static let resultReady = prefix + "resultReady"
-        static let sessionStarted = prefix + "sessionStarted"
-        static let sessionEnded = prefix + "sessionEnded"
+    public enum SwiftLinkNotifications {
+        public static let prefix = "com.swiftspeak.swiftlink."
+        public static let startDictation = prefix + "startDictation"
+        public static let stopDictation = prefix + "stopDictation"
+        public static let resultReady = prefix + "resultReady"
+        public static let sessionStarted = prefix + "sessionStarted"
+        public static let sessionEnded = prefix + "sessionEnded"
 
         // Phase 12: Edit Text via SwiftLink
-        static let startEdit = prefix + "startEdit"
-        static let editResultReady = prefix + "editResultReady"
+        public static let startEdit = prefix + "startEdit"
+        public static let editResultReady = prefix + "editResultReady"
 
         // Streaming transcription updates
-        static let streamingUpdate = prefix + "streamingUpdate"
+        public static let streamingUpdate = prefix + "streamingUpdate"
 
         // Phase 13.12: AI Sentence Prediction
-        static let requestSentencePrediction = prefix + "requestSentencePrediction"
-        static let sentencePredictionReady = prefix + "sentencePredictionReady"
+        public static let requestSentencePrediction = prefix + "requestSentencePrediction"
+        public static let sentencePredictionReady = prefix + "sentencePredictionReady"
     }
 
     // MARK: - AI Sentence Prediction (Phase 13.12)
-    enum SentencePrediction {
+    public enum SentencePrediction {
         /// Key for storing typing context for prediction
-        static let context = "sentencePredictionContext"
+        public static let context = "sentencePredictionContext"
         /// Key for storing active context name
-        static let activeContextName = "sentencePredictionActiveContextName"
+        public static let activeContextName = "sentencePredictionActiveContextName"
         /// Key for storing active context ID
-        static let activeContextId = "sentencePredictionActiveContextId"
+        public static let activeContextId = "sentencePredictionActiveContextId"
         /// Key for storing prediction results (JSON array of 4 sentences)
-        static let results = "sentencePredictionResults"
+        public static let results = "sentencePredictionResults"
         /// Key for storing error message if prediction fails
-        static let error = "sentencePredictionError"
+        public static let error = "sentencePredictionError"
         /// Key for tracking if prediction is in progress
-        static let isProcessing = "sentencePredictionIsProcessing"
+        public static let isProcessing = "sentencePredictionIsProcessing"
         /// Key for storing source app URL scheme for auto-return
-        static let sourceAppURLScheme = "sentencePredictionSourceAppURLScheme"
+        public static let sourceAppURLScheme = "sentencePredictionSourceAppURLScheme"
         /// Key for requesting auto-return after prediction
-        static let autoReturnRequested = "sentencePredictionAutoReturnRequested"
+        public static let autoReturnRequested = "sentencePredictionAutoReturnRequested"
     }
 
     // MARK: - App Groups Keys for Edit Mode (Phase 12)
-    enum EditMode {
+    public enum EditMode {
         /// Key for storing original text to edit (in App Groups UserDefaults)
-        static let pendingEditText = "pendingEditText"
+        public static let pendingEditText = "pendingEditText"
         /// Key for storing original text during SwiftLink edit
-        static let swiftLinkEditOriginalText = "swiftLinkEditOriginalText"
+        public static let swiftLinkEditOriginalText = "swiftLinkEditOriginalText"
         /// Key for tracking if last result was an edit (for keyboard to know to clear field first)
-        static let lastResultWasEdit = "lastResultWasEdit"
+        public static let lastResultWasEdit = "lastResultWasEdit"
     }
 
     // MARK: - Record Flow (SwiftLink Auto-Start)
-    enum Record {
+    public enum Record {
         /// Key for storing source app URL scheme for auto-return after SwiftLink setup
-        static let sourceAppURLScheme = "recordSourceAppURLScheme"
+        public static let sourceAppURLScheme = "recordSourceAppURLScheme"
         /// Key for storing source app name for logging
-        static let sourceAppName = "recordSourceAppName"
+        public static let sourceAppName = "recordSourceAppName"
         /// Key for storing source app bundle ID
-        static let sourceAppBundleId = "recordSourceAppBundleId"
+        public static let sourceAppBundleId = "recordSourceAppBundleId"
     }
 
     // MARK: - AI Context Processing (Phase 13.11)
-    enum AIProcess {
+    public enum AIProcess {
         /// Key for storing text to process
-        static let pendingText = "aiProcessPendingText"
+        public static let pendingText = "aiProcessPendingText"
         /// Key for storing context ID
-        static let contextId = "aiProcessContextId"
+        public static let contextId = "aiProcessContextId"
         /// Key for storing power mode ID (alternative to context)
-        static let powerModeId = "aiProcessPowerModeId"
+        public static let powerModeId = "aiProcessPowerModeId"
         /// Key for storing result
-        static let result = "aiProcessResult"
+        public static let result = "aiProcessResult"
         /// Key for storing status ("processing", "complete", "error")
-        static let status = "aiProcessStatus"
+        public static let status = "aiProcessStatus"
         /// Key for storing source app URL scheme for auto-return
-        static let sourceAppURLScheme = "aiProcessSourceAppURLScheme"
+        public static let sourceAppURLScheme = "aiProcessSourceAppURLScheme"
         /// Key for requesting auto-return after processing
-        static let autoReturnRequested = "aiProcessAutoReturnRequested"
+        public static let autoReturnRequested = "aiProcessAutoReturnRequested"
         /// Key for requesting SwiftLink to be started along with AI process
-        static let startSwiftLinkWithProcess = "aiProcessStartSwiftLink"
+        public static let startSwiftLinkWithProcess = "aiProcessStartSwiftLink"
         /// Key for requesting translation (when no context, just translate)
-        static let translateEnabled = "aiProcessTranslateEnabled"
+        public static let translateEnabled = "aiProcessTranslateEnabled"
         /// Key for storing target language for translation
-        static let targetLanguage = "aiProcessTargetLanguage"
+        public static let targetLanguage = "aiProcessTargetLanguage"
         /// Darwin notification name for starting AI process (keyboard -> app)
-        static let startProcess = "swiftspeak.aiprocess.startProcess"
+        public static let startProcess = "swiftspeak.aiprocess.startProcess"
         /// Darwin notification name for result ready (app -> keyboard)
-        static let resultReady = "swiftspeak.aiprocess.resultReady"
+        public static let resultReady = "swiftspeak.aiprocess.resultReady"
     }
 
     // MARK: - SwiftLink Session Duration
-    enum SwiftLinkSessionDuration: Int, CaseIterable, Codable {
+    public enum SwiftLinkSessionDuration: Int, CaseIterable, Codable {
         case fiveMinutes = 300
         case fifteenMinutes = 900
         case oneHour = 3600
         case never = 0  // 0 means never auto-end
 
-        var displayName: String {
+        public var displayName: String {
             switch self {
             case .fiveMinutes: return "5 minutes"
             case .fifteenMinutes: return "15 minutes"
@@ -266,65 +273,65 @@ public enum Constants {
             }
         }
 
-        var timeInterval: TimeInterval? {
+        public var timeInterval: TimeInterval? {
             self == .never ? nil : TimeInterval(rawValue)
         }
     }
 
     // MARK: - Unified Keyboard Action (Phase 13 Refactor)
     /// Unified system for all keyboard-to-app actions
-    enum KeyboardActionKeys {
+    public enum KeyboardActionKeys {
         /// Current action being processed (JSON-encoded KeyboardAction)
-        static let currentAction = "keyboardCurrentAction"
+        public static let currentAction = "keyboardCurrentAction"
         /// Status of the current action (KeyboardActionStatus rawValue)
-        static let status = "keyboardActionStatus"
+        public static let status = "keyboardActionStatus"
         /// Result of the action (KeyboardActionResult JSON)
-        static let result = "keyboardActionResult"
+        public static let result = "keyboardActionResult"
         /// Error message if action failed
-        static let error = "keyboardActionError"
+        public static let error = "keyboardActionError"
         /// Timestamp when the action was last updated
-        static let lastUpdate = "keyboardActionLastUpdate"
+        public static let lastUpdate = "keyboardActionLastUpdate"
     }
 
     /// Unified Darwin notifications for keyboard actions
-    enum KeyboardActionNotifications {
-        static let prefix = "swiftspeak.action."
+    public enum KeyboardActionNotifications {
+        public static let prefix = "swiftspeak.action."
         /// Keyboard requests an action to be processed
-        static let requestAction = prefix + "request"
+        public static let requestAction = prefix + "request"
         /// Main app acknowledges action received
-        static let actionAcknowledged = prefix + "acknowledged"
+        public static let actionAcknowledged = prefix + "acknowledged"
         /// Action status changed (processing, streaming, etc.)
-        static let statusChanged = prefix + "statusChanged"
+        public static let statusChanged = prefix + "statusChanged"
         /// Action completed (success or error)
-        static let actionComplete = prefix + "complete"
+        public static let actionComplete = prefix + "complete"
         /// Streaming update available (for live transcription)
-        static let streamingUpdate = prefix + "streaming"
+        public static let streamingUpdate = prefix + "streaming"
     }
 
     /// URL scheme for unified action entry point
-    enum UnifiedURL {
+    public enum UnifiedURL {
         /// Single entry point: swiftspeak://action
-        static let host = "action"
+        public static let host = "action"
         /// Full URL (action details come from App Groups)
-        static var url: URL? { URL(string: "swiftspeak://action") }
+        public static var url: URL? { URL(string: "swiftspeak://action") }
     }
 
     // MARK: - Phase 11j: Audio Validation
-    enum AudioValidation {
+    public enum AudioValidation {
         /// Minimum recording duration (seconds) - below this produces garbage
-        static let minDuration: TimeInterval = 0.5
+        public static let minDuration: TimeInterval = 0.5
 
         /// Maximum recording duration (seconds) - providers may timeout
-        static let maxDuration: TimeInterval = 600  // 10 minutes
+        public static let maxDuration: TimeInterval = 600  // 10 minutes
 
         /// Warning threshold for long recordings (seconds)
-        static let warnDuration: TimeInterval = 300  // 5 minutes
+        public static let warnDuration: TimeInterval = 300  // 5 minutes
 
         /// Maximum file size (bytes) for upload
-        static let maxFileSize: Int64 = 25 * 1024 * 1024  // 25 MB
+        public static let maxFileSize: Int64 = 25 * 1024 * 1024  // 25 MB
 
         /// Validation result - simple type usable by both app and keyboard extension
-        enum ValidationResult: Equatable {
+        public enum ValidationResult: Equatable {
             case valid
             case tooShort(duration: TimeInterval)
             case tooLong(duration: TimeInterval)
@@ -332,7 +339,7 @@ public enum Constants {
         }
 
         /// Validate duration is within acceptable range
-        static func validateDuration(_ duration: TimeInterval) -> ValidationResult {
+        public static func validateDuration(_ duration: TimeInterval) -> ValidationResult {
             if duration < minDuration {
                 return .tooShort(duration: duration)
             }
@@ -343,7 +350,7 @@ public enum Constants {
         }
 
         /// Validate file size
-        static func validateFileSize(_ bytes: Int64) -> ValidationResult {
+        public static func validateFileSize(_ bytes: Int64) -> ValidationResult {
             if bytes > maxFileSize {
                 let sizeMB = Double(bytes) / (1024 * 1024)
                 let maxMB = Double(maxFileSize) / (1024 * 1024)
@@ -353,7 +360,7 @@ public enum Constants {
         }
 
         /// Check if duration warrants a warning (long but not error)
-        static func shouldWarnDuration(_ duration: TimeInterval) -> Bool {
+        public static func shouldWarnDuration(_ duration: TimeInterval) -> Bool {
             duration > warnDuration && duration <= maxDuration
         }
     }

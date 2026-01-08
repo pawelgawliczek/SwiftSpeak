@@ -30,6 +30,15 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
     private var pausedDuration: TimeInterval = 0
     private var lastPauseTime: Date?
 
+    // MARK: - Recording Health Tracking
+
+    /// Total number of audio buffers successfully written
+    private var buffersWritten: Int = 0
+    /// Total number of write errors encountered
+    private var writeErrors: Int = 0
+    /// Last successful write timestamp
+    private var lastSuccessfulWrite: Date?
+
     // MARK: - Initialization
 
     public init() {}
@@ -102,6 +111,13 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
         self.startTime = Date()
         self.pausedDuration = 0
         self.lastPauseTime = nil
+
+        // Reset recording health tracking
+        buffersWritten = 0
+        writeErrors = 0
+        lastSuccessfulWrite = nil
+
+        macLog("Meeting recording started", category: "MeetingRecorder", level: .info)
     }
 
     public func pauseRecording() async {
@@ -158,11 +174,31 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
         _isPaused = false
         _currentLevel = 0
 
+        // Log recording summary
+        let sizeMB = Double(fileSize) / (1024 * 1024)
+        macLog("Recording stopped: \(buffersWritten) buffers written, \(writeErrors) errors, \(String(format: "%.2f", sizeMB)) MB", category: "MeetingRecorder", level: .info)
+
+        if writeErrors > 0 {
+            macLog("WARNING: Recording had \(writeErrors) write errors - audio may be incomplete", category: "MeetingRecorder", level: .warning)
+        }
+
         return url
     }
 
     public func getCurrentLevel() async -> Float {
         _currentLevel
+    }
+
+    /// Get current recording statistics for health monitoring
+    /// Returns (buffersWritten, writeErrors, fileSizeBytes)
+    public func getRecordingStats() async -> (buffers: Int, errors: Int, fileSize: Int64) {
+        let fileSize: Int64
+        if let url = recordingURL {
+            fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+        } else {
+            fileSize = 0
+        }
+        return (buffersWritten, writeErrors, fileSize)
     }
 
     // MARK: - Private Methods
@@ -197,13 +233,39 @@ public actor MacMeetingAudioRecorder: MeetingAudioRecorder {
         // Write to file
         guard let audioFile = audioFile else { return }
 
-        // Convert buffer format if needed
-        if let converter = createConverter(from: buffer.format, to: audioFile.processingFormat) {
-            if let convertedBuffer = convertBuffer(buffer, using: converter, outputFormat: audioFile.processingFormat) {
-                try? audioFile.write(from: convertedBuffer)
+        do {
+            // Convert buffer format if needed
+            if let converter = createConverter(from: buffer.format, to: audioFile.processingFormat) {
+                if let convertedBuffer = convertBuffer(buffer, using: converter, outputFormat: audioFile.processingFormat) {
+                    try audioFile.write(from: convertedBuffer)
+                } else {
+                    writeErrors += 1
+                    macLog("Audio buffer conversion failed (error #\(writeErrors))", category: "MeetingRecorder", level: .error)
+                    return
+                }
+            } else {
+                try audioFile.write(from: buffer)
             }
-        } else {
-            try? audioFile.write(from: buffer)
+
+            // Track successful write
+            buffersWritten += 1
+            lastSuccessfulWrite = Date()
+
+            // Log progress periodically
+            if buffersWritten % 500 == 0 {
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: audioFile.url.path)[.size] as? Int64) ?? 0
+                let sizeMB = Double(fileSize) / (1024 * 1024)
+                macLog("Recording progress: \(buffersWritten) buffers, \(String(format: "%.2f", sizeMB)) MB", category: "MeetingRecorder", level: .debug)
+            }
+        } catch {
+            writeErrors += 1
+            let errorDesc = error.localizedDescription
+            macLog("CRITICAL: Audio buffer write failed (error #\(writeErrors)): \(errorDesc)", category: "MeetingRecorder", level: .error)
+
+            // Log detailed error info for first few errors
+            if writeErrors <= 5 {
+                macLog("Write error details - frameLength: \(buffer.frameLength), format: \(buffer.format)", category: "MeetingRecorder", level: .error)
+            }
         }
     }
 
