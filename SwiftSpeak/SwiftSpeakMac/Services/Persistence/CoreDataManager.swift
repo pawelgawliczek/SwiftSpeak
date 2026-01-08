@@ -42,6 +42,18 @@ final class CoreDataManager: ObservableObject {
         persistence.viewContext
     }
 
+    /// Debounce timer for CloudKit sync notifications
+    private var cloudSyncDebounceTask: Task<Void, Never>?
+
+    /// Flag to prevent reloading while we just saved
+    private var isLocalSaveInProgress = false
+
+    /// Last time we reloaded data (for throttling)
+    private var lastReloadTime: Date = .distantPast
+
+    /// Minimum interval between reloads (seconds)
+    private let minimumReloadInterval: TimeInterval = 5.0
+
     // MARK: - Published Properties for UI Binding
 
     @Published private(set) var transcriptionHistory: [TranscriptionRecord] = []
@@ -52,6 +64,7 @@ final class CoreDataManager: ObservableObject {
     @Published private(set) var webhooks: [Webhook] = []
     @Published private(set) var knowledgeDocuments: [KnowledgeDocument] = []
     @Published private(set) var aiProviderConfigs: [AIProviderConfig] = []
+    @Published private(set) var meetingRecords: [MeetingRecord] = []
 
     // MARK: - Initialization
 
@@ -69,8 +82,47 @@ final class CoreDataManager: ObservableObject {
     }
 
     @objc private func handleCloudSync() {
-        loadAllData()
-        coreDataLog("Reloaded data after iCloud sync")
+        // Skip if we just saved locally (our own changes echoing back)
+        guard !isLocalSaveInProgress else {
+            return  // Silent skip - don't log every notification
+        }
+
+        // Throttle: Skip if we reloaded recently
+        let timeSinceLastReload = Date().timeIntervalSince(lastReloadTime)
+        guard timeSinceLastReload >= minimumReloadInterval else {
+            return  // Silent skip - don't log throttled notifications
+        }
+
+        // Debounce: Cancel any pending reload and schedule a new one
+        cloudSyncDebounceTask?.cancel()
+        cloudSyncDebounceTask = Task { @MainActor in
+            // Wait 500ms for notifications to settle
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
+            guard !Task.isCancelled else { return }
+
+            // Double-check throttle after debounce wait
+            let timeSinceLastReload = Date().timeIntervalSince(self.lastReloadTime)
+            guard timeSinceLastReload >= self.minimumReloadInterval else { return }
+
+            self.lastReloadTime = Date()
+            loadAllData()
+            coreDataLog("Reloaded data after iCloud sync")
+        }
+    }
+
+    /// Mark that we're about to save locally (to prevent reload echo)
+    func beginLocalSave() {
+        isLocalSaveInProgress = true
+    }
+
+    /// Mark that local save is complete
+    func endLocalSave() {
+        // Delay clearing the flag to let CloudKit notifications pass
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 3_000_000_000) // 3 seconds - CloudKit can be slow
+            isLocalSaveInProgress = false
+        }
     }
 
     // MARK: - Load All Data
@@ -84,6 +136,7 @@ final class CoreDataManager: ObservableObject {
         loadWebhooks()
         loadKnowledgeDocuments()
         loadAIProviderConfigs()
+        loadMeetingRecords()
     }
 
     // MARK: - TranscriptionRecord CRUD
@@ -101,10 +154,12 @@ final class CoreDataManager: ObservableObject {
     }
 
     func addTranscription(_ record: TranscriptionRecord) {
+        beginLocalSave()
         let entity = TranscriptionRecordEntity(context: viewContext)
         entity.update(from: record)
         persistence.save()
         loadTranscriptionHistory()
+        endLocalSave()
     }
 
     func updateTranscription(_ record: TranscriptionRecord) {
@@ -541,5 +596,85 @@ final class CoreDataManager: ObservableObject {
     func setGlobalSetting(key: String, value: String?) {
         GlobalSettingsEntity.set(key: key, value: value, in: viewContext)
         persistence.save()
+    }
+
+    // MARK: - MeetingRecord CRUD
+
+    private func loadMeetingRecords() {
+        let request = MeetingRecordEntity.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \MeetingRecordEntity.recordedAt, ascending: false)]
+
+        do {
+            let entities = try viewContext.fetch(request)
+            meetingRecords = entities.compactMap { $0.toModel() }
+        } catch {
+            coreDataLog("Failed to load meeting records: \(error)", level: .error)
+        }
+    }
+
+    func addMeetingRecord(_ record: MeetingRecord) {
+        beginLocalSave()
+        let entity = MeetingRecordEntity(context: viewContext)
+        entity.update(from: record)
+        persistence.save()
+        loadMeetingRecords()
+        endLocalSave()
+    }
+
+    func updateMeetingRecord(_ record: MeetingRecord) {
+        let request = MeetingRecordEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", record.id as CVarArg)
+
+        do {
+            if let entity = try viewContext.fetch(request).first {
+                entity.update(from: record)
+                persistence.save()
+                loadMeetingRecords()
+            } else {
+                // Record doesn't exist, create it
+                addMeetingRecord(record)
+            }
+        } catch {
+            coreDataLog("Failed to update meeting record: \(error)", level: .error)
+        }
+    }
+
+    func deleteMeetingRecord(id: UUID) {
+        let request = MeetingRecordEntity.fetchRequest()
+        request.predicate = NSPredicate(format: "id == %@", id as CVarArg)
+
+        do {
+            if let entity = try viewContext.fetch(request).first {
+                viewContext.delete(entity)
+                persistence.save()
+                loadMeetingRecords()
+            }
+        } catch {
+            coreDataLog("Failed to delete meeting record: \(error)", level: .error)
+        }
+    }
+
+    func getMeetingRecord(id: UUID) -> MeetingRecord? {
+        meetingRecords.first { $0.id == id }
+    }
+
+    /// Get meetings that need transcription (pending or failed)
+    var pendingMeetingRecords: [MeetingRecord] {
+        meetingRecords.filter { $0.status.canRetry }
+    }
+
+    /// Get completed meetings count
+    var completedMeetingRecordsCount: Int {
+        meetingRecords.filter { $0.status == .completed }.count
+    }
+
+    /// Get total meeting duration
+    var totalMeetingDuration: TimeInterval {
+        meetingRecords.reduce(0) { $0 + $1.duration }
+    }
+
+    /// Get total estimated cost from all meetings
+    var totalMeetingCost: Double {
+        meetingRecords.compactMap { $0.estimatedCost }.reduce(0, +)
     }
 }

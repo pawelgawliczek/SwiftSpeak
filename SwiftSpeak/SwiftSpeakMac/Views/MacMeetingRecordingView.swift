@@ -242,6 +242,8 @@ struct MacMeetingRecordingView: View {
             stopStatsTimer()
         case .complete(let record):
             stopStatsTimer()
+            // Save to Core Data for iCloud sync
+            saveMeetingToCoreData(record)
             if windowClosed || isProcessingInBackground {
                 // Window was closed - show notification instead
                 notificationManager.notifyMeetingComplete(record: record)
@@ -265,6 +267,12 @@ struct MacMeetingRecordingView: View {
             recordingFileSizeMB = 0
             recordingWriteErrors = 0
         }
+    }
+
+    /// Save completed meeting to Core Data for iCloud sync across devices
+    private func saveMeetingToCoreData(_ record: MeetingRecord) {
+        CoreDataManager.shared.updateMeetingRecord(record)
+        macLog("Meeting saved to Core Data for iCloud sync: \(record.title)", category: "Meeting")
     }
 
     // MARK: - Subviews

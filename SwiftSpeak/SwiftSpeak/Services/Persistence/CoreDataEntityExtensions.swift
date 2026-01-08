@@ -153,6 +153,24 @@ extension AIProviderConfigEntity {
     }
 }
 
+// MARK: - MeetingRecordEntity Extensions
+
+extension MeetingRecordEntity {
+
+    func toModel() -> MeetingRecord? {
+        guard let jsonData = jsonData else { return nil }
+        return try? JSONDecoder().decode(MeetingRecord.self, from: jsonData)
+    }
+
+    func update(from model: MeetingRecord) {
+        id = model.id
+        title = model.title
+        recordedAt = model.recordedAt
+        updatedAt = Date()
+        jsonData = try? JSONEncoder().encode(model)
+    }
+}
+
 // MARK: - GlobalSettingsEntity Extensions
 
 extension GlobalSettingsEntity {

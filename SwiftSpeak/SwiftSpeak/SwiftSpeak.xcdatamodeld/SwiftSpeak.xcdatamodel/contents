@@ -74,4 +74,11 @@
         <attribute name="status" optional="YES" attributeType="String"/>
         <attribute name="embeddingModel" optional="YES" attributeType="String"/>
     </entity>
+    <entity name="MeetingRecordEntity" representedClassName="MeetingRecordEntity" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="YES" attributeType="UUID" usesScalarValueType="NO"/>
+        <attribute name="title" optional="YES" attributeType="String"/>
+        <attribute name="recordedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="updatedAt" optional="YES" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="jsonData" optional="YES" attributeType="Binary"/>
+    </entity>
 </model>

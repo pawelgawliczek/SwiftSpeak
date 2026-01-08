@@ -466,10 +466,12 @@ struct MeetingRecordingView: View {
             startStatsTimer()
         case .stopping, .chunking, .transcribing, .mergingTranscripts, .generatingNotes, .savingToObsidian:
             stopStatsTimer()
-        case .complete:
+        case .complete(let record):
             stopStatsTimer()
             HapticManager.success()
             showingResult = true
+            // Save to Core Data for iCloud sync
+            saveMeetingToCoreData(record)
         case .error:
             stopStatsTimer()
             HapticManager.error()
@@ -478,6 +480,12 @@ struct MeetingRecordingView: View {
             recordingFileSizeMB = 0
             recordingWriteErrors = 0
         }
+    }
+
+    /// Save completed meeting to Core Data for iCloud sync across devices
+    private func saveMeetingToCoreData(_ record: MeetingRecord) {
+        CoreDataManager.shared.updateMeetingRecord(record)
+        appLog("Meeting saved to Core Data for iCloud sync: \(record.title)", category: "Meeting")
     }
 
     private func audioLevelForBar(_ index: Int) -> CGFloat {
