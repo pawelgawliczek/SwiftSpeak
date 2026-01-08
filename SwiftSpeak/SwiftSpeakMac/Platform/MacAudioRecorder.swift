@@ -7,11 +7,58 @@
 //
 
 import AVFoundation
+import AudioToolbox
 import Combine
 import SwiftSpeakCore
 
+// MARK: - Recording Format
+
+/// Audio format for recording - provider-specific
+enum RecordingFormat {
+    case wav      // Linear PCM WAV - universal, works with ALL providers including Google STT
+    case aac      // AAC in M4A container - smaller files, NOT supported by Google STT
+
+    /// Get the best format for a transcription provider
+    static func forProvider(_ provider: AIProvider) -> RecordingFormat {
+        switch provider {
+        case .google:
+            return .wav  // Google STT doesn't support AAC/M4A
+        default:
+            return .aac  // Smaller files, works with OpenAI, AssemblyAI, Deepgram, etc.
+        }
+    }
+
+    var fileExtension: String {
+        switch self {
+        case .wav: return "wav"
+        case .aac: return "m4a"
+        }
+    }
+
+    var audioSettings: [String: Any] {
+        switch self {
+        case .wav:
+            return [
+                AVFormatIDKey: Int(kAudioFormatLinearPCM),
+                AVSampleRateKey: 16000,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
+        case .aac:
+            return [
+                AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey: 16000,
+                AVNumberOfChannelsKey: 1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+            ]
+        }
+    }
+}
+
 /// macOS audio recorder using AVAudioEngine
-/// Outputs 16kHz mono AAC optimized for transcription APIs
+/// Outputs 16kHz mono audio optimized for transcription APIs
 @MainActor
 final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject {
 
@@ -21,6 +68,16 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     @Published private(set) var currentLevel: Float = 0.0
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var error: TranscriptionError?
+
+    // MARK: - Configuration
+
+    /// Recording format - set based on target transcription provider
+    var recordingFormat: RecordingFormat = .aac
+
+    // MARK: - Device Selection
+
+    /// Selected audio input device ID (nil = system default)
+    var selectedDeviceID: AudioDeviceID?
 
     // MARK: - Private Properties
 
@@ -77,17 +134,27 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         // Create temporary file URL
         let url = createTemporaryURL()
 
+        // Capture selected device and format before detached task
+        let deviceID = self.selectedDeviceID
+        let format = self.recordingFormat
+
         // Move heavy audio engine setup off main thread
         // AVAudioEngine initialization can take 2-5 seconds on first use
         let (engine, inputFormat, targetFormat, converter) = try await Task.detached(priority: .userInitiated) {
             // Setup audio engine (HEAVY - can block for seconds on first call)
             let engine = AVAudioEngine()
+
+            // Set input device if specified (must be done before accessing inputNode format)
+            if let deviceID = deviceID {
+                try Self.setInputDevice(deviceID, on: engine)
+            }
+
             let inputNode = engine.inputNode
             let inputFormat = inputNode.outputFormat(forBus: 0)
 
             print("[MacAudioRecorder] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
 
-            // Target format: 16kHz mono PCM (will be encoded to AAC by AVAudioFile)
+            // Target format: Always Float32 for processing - AVAudioFile handles conversion
             guard let targetFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
                 sampleRate: 16000,
@@ -96,6 +163,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             ) else {
                 throw TranscriptionError.recordingFailed("Failed to create target audio format")
             }
+            print("[MacAudioRecorder] Target format: 16kHz mono Float32, file format: \(format)")
 
             // Create format converter (input format -> target format)
             guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
@@ -105,18 +173,20 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             return (engine, inputFormat, targetFormat, converter)
         }.value
 
-        // Recording settings (AAC for smaller file size, compatible with all providers)
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 16000,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
+        // Recording settings based on target provider
+        let settings = recordingFormat.audioSettings
 
-        // Create output file (must be on main thread for file coordination)
+        // Create output file with explicit processing format
+        // File format: WAV (Int16) or AAC - specified by settings
+        // Processing format: Float32 - used for write operations
         do {
-            audioFile = try AVAudioFile(forWriting: url, settings: settings)
-            print("[MacAudioRecorder] Output file processing format: \(audioFile!.processingFormat)")
+            audioFile = try AVAudioFile(
+                forWriting: url,
+                settings: settings,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            print("[MacAudioRecorder] Output file created: \(recordingFormat), processing: \(audioFile!.processingFormat)")
         } catch {
             throw TranscriptionError.recordingFailed(error.localizedDescription)
         }
@@ -230,19 +300,23 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     }
 
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer, targetFormat: AVAudioFormat) {
-        // Calculate audio level for waveform visualization
+        // Calculate audio level using RMS for better visualization
         guard let channelData = buffer.floatChannelData?[0] else { return }
         let frameLength = Int(buffer.frameLength)
 
         var sum: Float = 0
         for i in 0..<frameLength {
-            sum += abs(channelData[i])
+            sum += channelData[i] * channelData[i]
         }
-        let average = sum / Float(max(frameLength, 1))
+        let rms = sqrt(sum / Float(max(frameLength, 1)))
+
+        // Convert to dB and normalize to 0-1 range (-60dB to 0dB)
+        let db = 20 * log10(max(rms, 0.000001))
+        let normalized = Float(max(0, min(1, (db + 60) / 60)))
 
         // Update level on main thread
         Task { @MainActor in
-            self.currentLevel = min(1.0, average * 10)
+            self.currentLevel = normalized
         }
 
         // Convert and write to file
@@ -291,7 +365,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
 
     private func createTemporaryURL() -> URL {
         let tempDir = FileManager.default.temporaryDirectory
-        let filename = "swiftspeak_mac_\(UUID().uuidString).m4a"
+        let filename = "swiftspeak_mac_\(UUID().uuidString).\(recordingFormat.fileExtension)"
         return tempDir.appendingPathComponent(filename)
     }
 
@@ -307,5 +381,38 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     private func stopDurationTimer() {
         durationTimer?.invalidate()
         durationTimer = nil
+    }
+
+    // MARK: - Device Selection
+
+    /// Set the input device for an AVAudioEngine
+    /// - Parameters:
+    ///   - deviceID: The Core Audio device ID to use
+    ///   - engine: The AVAudioEngine to configure
+    /// - Throws: TranscriptionError if device selection fails
+    private static func setInputDevice(_ deviceID: AudioDeviceID, on engine: AVAudioEngine) throws {
+        let inputNode = engine.inputNode
+
+        // Get the underlying AudioUnit from the input node
+        guard let audioUnit = inputNode.audioUnit else {
+            throw TranscriptionError.recordingFailed("Failed to get audio unit from input node")
+        }
+
+        // Set the current device on the audio unit
+        var deviceID = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        guard status == noErr else {
+            throw TranscriptionError.recordingFailed("Failed to set input device (error: \(status))")
+        }
+
+        print("[MacAudioRecorder] Set input device ID: \(deviceID)")
     }
 }

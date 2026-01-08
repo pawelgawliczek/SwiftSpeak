@@ -111,6 +111,17 @@ class MacSettings: ObservableObject {
         }
     }
 
+    /// Effective transcription language: context override > global setting > auto-detect
+    /// Use this for all transcription requests to respect per-context language settings
+    var effectiveTranscriptionLanguage: Language? {
+        // Check if active context has a custom input language
+        if let contextLanguage = activeContext?.defaultInputLanguage {
+            return contextLanguage
+        }
+        // Fall back to global setting (nil = auto-detect)
+        return selectedDictationLanguage
+    }
+
     @Published var isTranslationEnabled: Bool = false {
         didSet {
             defaults?.set(isTranslationEnabled, forKey: "isTranslationEnabled")
@@ -472,7 +483,10 @@ class MacSettings: ObservableObject {
             macLog("loadFromiCloud: Found providers data (\(data.count) bytes)", category: "iCloud")
             if let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
                 configuredAIProviders = providers
-                macLog("loadFromiCloud: Loaded \(providers.count) providers: \(providers.map { $0.provider.displayName }.joined(separator: ", "))", category: "iCloud")
+                macLog("loadFromiCloud: Loaded \(providers.count) providers:", category: "iCloud")
+                for p in providers {
+                    macLog("  - \(p.provider.displayName): apiKey=\(!p.apiKey.isEmpty), projectId=\(p.googleProjectId ?? "nil")", category: "iCloud")
+                }
             } else {
                 macLog("loadFromiCloud: Failed to decode providers data", category: "iCloud", level: .error)
             }
@@ -813,9 +827,11 @@ class MacSettings: ObservableObject {
         if let data = defaults?.data(forKey: "configuredAIProviders"),
            let providers = try? JSONDecoder().decode([AIProviderConfig].self, from: data) {
             configuredAIProviders = providers
+            macLog("Loaded \(providers.count) providers from UserDefaults: \(providers.map { "\($0.provider.displayName)(key:\(!$0.apiKey.isEmpty), projectId:\($0.googleProjectId ?? "nil"))" })", category: "Settings")
         } else {
             // Default to empty - user adds providers in settings
             configuredAIProviders = []
+            macLog("No providers in UserDefaults, starting empty", category: "Settings")
         }
     }
 

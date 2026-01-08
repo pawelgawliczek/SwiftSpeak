@@ -664,9 +664,10 @@ struct ContentView: View {
             throw TranscriptionError.providerNotConfigured
         }
 
+        // Use effectiveTranscriptionLanguage for source language hint (context override > global)
         return try await translationProvider.translate(
             text: text,
-            from: settings.selectedDictationLanguage,
+            from: settings.effectiveTranscriptionLanguage,
             to: targetLanguage
         )
     }

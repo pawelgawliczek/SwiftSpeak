@@ -29,6 +29,8 @@ struct ContextEditorSheet: View {
     @State private var customJargon: [String] = []
     @State private var showingAddJargon = false
     @State private var newJargonText: String = ""
+    @State private var inputLanguage: Language? = nil
+    @State private var useCustomInputLanguage: Bool = false
 
     // MARK: - Formatting State
     @State private var examples: [String] = []
@@ -71,6 +73,8 @@ struct ContextEditorSheet: View {
         _description = State(initialValue: context.description)
         _domainJargon = State(initialValue: context.domainJargon)
         _customJargon = State(initialValue: context.customJargon)
+        _inputLanguage = State(initialValue: context.defaultInputLanguage)
+        _useCustomInputLanguage = State(initialValue: context.defaultInputLanguage != nil)
         _examples = State(initialValue: context.examples)
         _selectedInstructions = State(initialValue: context.selectedInstructions)
         _customInstructions = State(initialValue: context.customInstructions ?? "")
@@ -92,6 +96,7 @@ struct ContextEditorSheet: View {
                     descriptionSection
 
                     sectionHeader("TRANSCRIPTION")
+                    inputLanguageSection
                     domainJargonSection
                     customJargonSection
 
@@ -254,6 +259,77 @@ struct ContextEditorSheet: View {
                 .background(Color.primary.opacity(0.08))
                 .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
         }
+    }
+
+    // MARK: - Input Language Section
+
+    private var inputLanguageSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: "globe")
+                    .font(.title2)
+                    .foregroundStyle(useCustomInputLanguage ? color.color : .secondary)
+                    .frame(width: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Custom input language")
+                        .font(.subheadline.weight(.medium))
+                    Text("Override the default transcription language")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $useCustomInputLanguage)
+                    .labelsHidden()
+                    .tint(color.color)
+                    .onChange(of: useCustomInputLanguage) { _, enabled in
+                        if enabled && inputLanguage == nil {
+                            inputLanguage = .english
+                        }
+                    }
+            }
+
+            if useCustomInputLanguage {
+                HStack {
+                    Text("Language")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Picker("", selection: Binding(
+                        get: { inputLanguage ?? .english },
+                        set: { inputLanguage = $0 }
+                    )) {
+                        ForEach(Language.allCases) { lang in
+                            HStack {
+                                Text(lang.flag)
+                                Text(lang.displayName)
+                            }
+                            .tag(lang)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(color.color)
+                }
+                .padding(.leading, 52)
+
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(color.color)
+                        .font(.caption)
+                    Text("This language will be sent to transcription services when this context is active. Leave off to use the global setting or auto-detect.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 52)
+            }
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
     }
 
     // MARK: - Domain Jargon Section
@@ -923,6 +999,7 @@ struct ContextEditorSheet: View {
             lastMemoryUpdate: context.lastMemoryUpdate,
             autoSendAfterInsert: autoSendAfterInsert,
             enterKeyBehavior: enterKeyBehavior,
+            defaultInputLanguage: useCustomInputLanguage ? inputLanguage : nil,
             isActive: context.isActive,
             appAssignment: appAssignment,
             isPreset: context.isPreset,

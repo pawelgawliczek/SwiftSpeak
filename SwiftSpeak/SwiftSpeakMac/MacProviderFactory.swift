@@ -21,8 +21,15 @@ struct ProviderFactory {
     // MARK: - Transcription Providers
 
     func createTranscriptionProvider(for provider: AIProvider) -> TranscriptionProvider? {
-        guard let config = settings.getAIProviderConfig(for: provider),
-              !config.apiKey.isEmpty else { return nil }
+        guard let config = settings.getAIProviderConfig(for: provider) else {
+            macLog("Provider \(provider.displayName) not configured", category: "ProviderFactory", level: .error)
+            return nil
+        }
+
+        guard !config.apiKey.isEmpty else {
+            macLog("Provider \(provider.displayName) has empty API key", category: "ProviderFactory", level: .error)
+            return nil
+        }
 
         switch provider {
         case .openAI:
@@ -35,10 +42,14 @@ struct ProviderFactory {
             return SwiftSpeakCore.DeepgramTranscriptionService(config: config)
 
         case .google:
-            guard let projectId = config.googleProjectId, !projectId.isEmpty else { return nil }
+            guard let projectId = config.googleProjectId, !projectId.isEmpty else {
+                macLog("Google Cloud STT requires Project ID - currently empty or nil", category: "ProviderFactory", level: .error)
+                return nil
+            }
             return SwiftSpeakCore.GoogleSTTService(config: config)
 
         default:
+            macLog("Provider \(provider.displayName) does not support transcription", category: "ProviderFactory", level: .error)
             return nil
         }
     }

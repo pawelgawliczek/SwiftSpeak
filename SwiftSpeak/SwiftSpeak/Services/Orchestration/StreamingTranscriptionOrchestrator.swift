@@ -130,9 +130,10 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
         }
 
         // Connect to streaming service with domain hints
+        // Use effectiveTranscriptionLanguage to respect per-context language settings
         do {
             try await provider.connect(
-                language: settings.selectedDictationLanguage,
+                language: settings.effectiveTranscriptionLanguage,
                 sampleRate: sampleRate,
                 transcriptionPrompt: transcriptionPrompt
             )
@@ -262,10 +263,10 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
 
         appLog("Calling Whisper API with audio file: \(audioURL.lastPathComponent)", category: "StreamingOrch")
 
-        // Use the standard transcription method
+        // Use the standard transcription method with effective language (context override > global)
         let transcript = try await provider.transcribe(
             audioURL: audioURL,
-            language: settings.selectedDictationLanguage
+            language: settings.effectiveTranscriptionLanguage
         )
 
         return transcript

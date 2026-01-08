@@ -8,6 +8,7 @@
 //
 
 import AVFoundation
+import AudioToolbox
 import ScreenCaptureKit
 import SwiftSpeakCore
 
@@ -49,6 +50,22 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     private var singleSourceMode = false
     private var singleSourceURL: URL?
     private var singleSourceFile: AVAudioFile?
+
+    // Device selection
+    private var _selectedDeviceID: AudioDeviceID?
+
+    // MARK: - Device Selection
+
+    /// Set the selected audio input device ID
+    /// Call this before starting recording to use a specific microphone
+    public func setSelectedDeviceID(_ deviceID: AudioDeviceID?) {
+        _selectedDeviceID = deviceID
+    }
+
+    /// Get the currently selected device ID
+    public func getSelectedDeviceID() -> AudioDeviceID? {
+        _selectedDeviceID
+    }
 
     // MARK: - Initialization
 
@@ -114,6 +131,12 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
 
         let engine = AVAudioEngine()
+
+        // Set input device if specified
+        if let deviceID = _selectedDeviceID {
+            try Self.setInputDevice(deviceID, on: engine)
+        }
+
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -317,6 +340,12 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
 
         // Setup microphone capture
         let engine = AVAudioEngine()
+
+        // Set input device if specified
+        if let deviceID = _selectedDeviceID {
+            try Self.setInputDevice(deviceID, on: engine)
+        }
+
         let inputNode = engine.inputNode
         let inputFormat = inputNode.outputFormat(forBus: 0)
 
@@ -400,6 +429,37 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     }
 
     // MARK: - Private Methods
+
+    /// Set the input device for an AVAudioEngine
+    /// - Parameters:
+    ///   - deviceID: The Core Audio device ID to use
+    ///   - engine: The AVAudioEngine to configure
+    /// - Throws: MeetingRecordingError if device selection fails
+    private static func setInputDevice(_ deviceID: AudioDeviceID, on engine: AVAudioEngine) throws {
+        let inputNode = engine.inputNode
+
+        // Get the underlying AudioUnit from the input node
+        guard let audioUnit = inputNode.audioUnit else {
+            throw MeetingRecordingError.recordingFailed("Failed to get audio unit from input node")
+        }
+
+        // Set the current device on the audio unit
+        var deviceID = deviceID
+        let status = AudioUnitSetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        )
+
+        guard status == noErr else {
+            throw MeetingRecordingError.recordingFailed("Failed to set input device (error: \(status))")
+        }
+
+        macLog("Set input device ID: \(deviceID)", category: "DualSourceRecorder")
+    }
 
     private func checkMicrophonePermission() async -> Bool {
         switch AVCaptureDevice.authorizationStatus(for: .audio) {

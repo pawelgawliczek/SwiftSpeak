@@ -540,6 +540,7 @@ struct MacContextEditorSheet: View {
                             memoryLimit: context.memoryLimit,
                             autoSendAfterInsert: context.autoSendAfterInsert,
                             enterKeyBehavior: context.enterKeyBehavior,
+                            defaultInputLanguage: context.defaultInputLanguage,
                             appAssignment: context.appAssignment,
                             isPreset: false
                         )
@@ -618,6 +619,33 @@ struct MacContextEditorSheet: View {
 
                 // Transcription Settings
                 Section {
+                    // Input Language Override
+                    Toggle("Custom Input Language", isOn: Binding(
+                        get: { context.defaultInputLanguage != nil },
+                        set: { enabled in
+                            if enabled {
+                                context.defaultInputLanguage = .english
+                            } else {
+                                context.defaultInputLanguage = nil
+                            }
+                        }
+                    ))
+
+                    if context.defaultInputLanguage != nil {
+                        Picker("Language", selection: Binding(
+                            get: { context.defaultInputLanguage ?? .english },
+                            set: { context.defaultInputLanguage = $0 }
+                        )) {
+                            ForEach(Language.allCases) { lang in
+                                HStack {
+                                    Text(lang.flag)
+                                    Text(lang.displayName)
+                                }
+                                .tag(lang)
+                            }
+                        }
+                    }
+
                     Picker("Domain Jargon", selection: $context.domainJargon) {
                         ForEach(DomainJargon.allCases) { jargon in
                             HStack {
@@ -683,8 +711,13 @@ struct MacContextEditorSheet: View {
                 } header: {
                     Text("Transcription")
                 } footer: {
-                    if context.domainJargon != .none {
-                        Text("Domain jargon helps recognize industry-specific terminology.")
+                    VStack(alignment: .leading, spacing: 4) {
+                        if context.defaultInputLanguage != nil {
+                            Text("Custom language will be sent to transcription services when this context is active.")
+                        }
+                        if context.domainJargon != .none {
+                            Text("Domain jargon helps recognize industry-specific terminology.")
+                        }
                     }
                 }
 

@@ -155,13 +155,39 @@ public enum Language: String, Codable, CaseIterable, Identifiable {
         case .german: return "de-DE"
         case .italian: return "it-IT"
         case .portuguese: return "pt-BR"
-        case .chinese: return "zh-CN"
+        case .chinese: return "zh-CN"  // Note: cmn-Hans-CN also works
         case .japanese: return "ja-JP"
         case .korean: return "ko-KR"
         case .arabic: return "ar-SA"
         case .egyptianArabic: return "ar-EG"
         case .russian: return "ru-RU"
         case .polish: return "pl-PL"
+        }
+    }
+
+    /// Google STT models supported by this language
+    /// Reference: https://cloud.google.com/speech-to-text/docs/v1/speech-to-text-supported-languages
+    public var googleSTTSupportedModels: [String] {
+        switch self {
+        case .english, .spanish, .french, .german, .italian, .portuguese, .japanese, .korean:
+            // Full support including telephony
+            return ["latest_long", "latest_short", "telephony", "command_and_search", "default"]
+        case .arabic, .egyptianArabic, .russian, .polish:
+            // No telephony support
+            return ["latest_long", "latest_short", "command_and_search", "default"]
+        case .chinese:
+            // Only default and command_and_search
+            return ["command_and_search", "default"]
+        }
+    }
+
+    /// Best Google STT model for this language
+    public var googleSTTBestModel: String {
+        switch self {
+        case .chinese:
+            return "default"  // latest models not supported
+        default:
+            return "latest_long"  // Best quality for most languages
         }
     }
 }

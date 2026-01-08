@@ -238,6 +238,11 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 }
             }
 
+            // Set recording format based on transcription provider
+            // Google STT requires WAV (LINEAR16), other providers work with AAC (smaller files)
+            audioRecorder.recordingFormat = RecordingFormat.forProvider(settings.selectedTranscriptionProvider)
+            macLog("Using recording format: \(audioRecorder.recordingFormat) for provider: \(settings.selectedTranscriptionProvider.displayName)", category: "Transcribe")
+
             // Start audio recording (may take time on first call due to audio engine init)
             try await audioRecorder.startRecording()
 
@@ -321,7 +326,17 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             guard let transcriptionProvider = factory.createTranscriptionProvider(
                 for: selectedProvider
             ) else {
-                macLog("Failed to create provider \(selectedProvider.displayName) - API key missing?", category: "Transcribe", level: .error)
+                // Log detailed config info for debugging
+                if let config = settings.getAIProviderConfig(for: selectedProvider) {
+                    macLog("Provider \(selectedProvider.displayName) config exists but failed to create:", category: "Transcribe", level: .error)
+                    macLog("  - apiKey empty: \(config.apiKey.isEmpty)", category: "Transcribe", level: .error)
+                    if selectedProvider == .google {
+                        macLog("  - googleProjectId: \(config.googleProjectId ?? "nil")", category: "Transcribe", level: .error)
+                    }
+                } else {
+                    macLog("No config found for provider \(selectedProvider.displayName)", category: "Transcribe", level: .error)
+                    macLog("Configured providers: \(settings.configuredAIProviders.map { $0.provider.displayName })", category: "Transcribe", level: .error)
+                }
                 throw TranscriptionError.apiKeyMissing
             }
 
@@ -430,9 +445,145 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
         } catch {
             macLog("Processing failed: \(error)", category: "Transcribe", level: .error)
-            errorMessage = error.localizedDescription
-            state = .error(error.localizedDescription)
+
+            // Provide user-friendly error messages for common issues
+            let userMessage = friendlyErrorMessage(for: error)
+            errorMessage = userMessage
+            state = .error(userMessage)
         }
+    }
+
+    /// Convert technical errors into user-friendly messages with actionable guidance
+    private func friendlyErrorMessage(for error: Error) -> String {
+        let errorString = String(describing: error)
+        let provider = settings.selectedTranscriptionProvider
+
+        // Google Cloud specific errors
+        if provider == .google {
+            if errorString.contains("403") {
+                if errorString.contains("Speech-to-Text API has not been used") || errorString.contains("it is disabled") {
+                    return """
+                    ❌ Google Speech-to-Text API Not Enabled
+
+                    Fix in Google Cloud Console:
+                    1. Go to console.cloud.google.com
+                    2. Select your project
+                    3. Go to: APIs & Services → Library
+                    4. Search "Cloud Speech-to-Text API"
+                    5. Click ENABLE
+                    6. Wait 1-2 minutes, then retry
+                    """
+                }
+                if errorString.contains("Permission") && errorString.contains("denied") {
+                    return """
+                    ❌ Google API Permission Denied
+
+                    Your API key cannot access Speech-to-Text. Fix this:
+
+                    1. Go to console.cloud.google.com
+                    2. APIs & Services → Credentials
+                    3. Click on your API key to edit it
+                    4. Under "API restrictions":
+                       • Select "Don't restrict key" OR
+                       • Select "Restrict key" and ADD "Cloud Speech-to-Text API"
+                    5. Click SAVE
+                    6. Also verify: Project ID in SwiftSpeak matches the API key's project
+                    """
+                }
+                return "Google API Error (403): Access denied.\n\nCheck API key permissions and project configuration."
+            }
+
+            if errorString.contains("404") {
+                return """
+                ❌ Google API Endpoint Not Found (404)
+
+                The Project ID appears to be incorrect.
+
+                Fix: Go to console.cloud.google.com and copy the correct Project ID from the project selector dropdown.
+                """
+            }
+
+            if errorString.contains("400") {
+                if errorString.contains("enhanced model") || errorString.contains("no enhanced") {
+                    return """
+                    ❌ Google Model Not Available
+
+                    The selected model doesn't support this language.
+
+                    Try changing the model in Settings → Google Cloud → Transcription Model.
+                    Recommended: "default" for broad language support.
+                    """
+                }
+                if errorString.contains("not supported for language") {
+                    return """
+                    ❌ Language Not Supported by Model
+
+                    The selected Google STT model doesn't support your language.
+
+                    Fix: Go to Settings → Edit Google Cloud provider
+                    Change Transcription Model to "default"
+
+                    Model language support:
+                    • "default" - Most languages (125+)
+                    • "latest_long/short" - English, Spanish, French, German, etc.
+                    • "telephony" - Limited languages
+                    """
+                }
+                return """
+                ❌ Google API Bad Request (400)
+
+                The request format was invalid.
+
+                Error: \(errorString.prefix(300))
+                """
+            }
+        }
+
+        if errorString.contains("401") {
+            return """
+            ❌ Invalid API Key (401)
+
+            Your API key is invalid or expired.
+
+            Fix: Get a new API key from your provider's console and update it in SwiftSpeak Settings.
+            """
+        }
+
+        // Generic transcription errors
+        if case TranscriptionError.apiKeyMissing = error {
+            return """
+            ❌ API Key or Project ID Missing
+
+            Configure your \(provider.displayName) provider in Settings → Transcription & AI.
+            """
+        }
+
+        if case TranscriptionError.emptyResponse = error {
+            return """
+            ⚠️ No Speech Detected
+
+            The transcription returned empty. Try:
+            • Speaking louder or closer to the mic
+            • Checking your microphone settings
+            • Recording for longer (at least 1-2 seconds)
+            """
+        }
+
+        if case TranscriptionError.audioFileNotFound = error {
+            return "❌ Audio file not found. Recording may have failed."
+        }
+
+        // Network errors
+        if errorString.contains("NSURLError") || errorString.contains("network") {
+            return """
+            ❌ Network Error
+
+            Could not connect to \(provider.displayName). Check your internet connection.
+            """
+        }
+
+        // Fallback with raw error
+        return "❌ Transcription Failed\n\n\(error.localizedDescription)"
     }
 
     private func formatTranscription(_ text: String) async throws -> FormattingResult? {

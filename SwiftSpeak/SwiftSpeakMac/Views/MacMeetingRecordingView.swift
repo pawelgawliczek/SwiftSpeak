@@ -15,6 +15,7 @@ struct MacMeetingRecordingView: View {
     @ObservedObject private var notificationManager = MeetingNotificationManager.shared
 
     @StateObject private var orchestrator = MeetingRecordingOrchestrator()
+    @StateObject private var deviceManager = MacAudioDeviceManager()
 
     // Services (created once and retained)
     // Use dual-source recorder for both single and dual modes
@@ -46,7 +47,7 @@ struct MacMeetingRecordingView: View {
                         .padding(.top, 8)
                 }
 
-                Spacer(minLength: 20)
+                Spacer(minLength: 8)
 
                 // Timer display
                 timerView
@@ -56,10 +57,22 @@ struct MacMeetingRecordingView: View {
                     .frame(height: 60)
                     .padding(.horizontal, 40)
 
-                // Cost estimate and audio source
-                infoRow
+                // Cost estimate (no dual mode indicator)
+                if orchestrator.isRecording || orchestrator.duration > 0 {
+                    HStack(spacing: 6) {
+                        Image(systemName: "dollarsign.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(orchestrator.formattedCost)
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.quaternary.opacity(0.6), in: Capsule())
+                }
 
-                Spacer(minLength: 20)
+                Spacer(minLength: 12)
 
                 // Status indicator
                 statusView
@@ -98,7 +111,8 @@ struct MacMeetingRecordingView: View {
             MacMeetingSettingsSheet(
                 settings: $orchestrator.settings,
                 isDualSourceAvailable: isDualSourceAvailable,
-                contexts: settings.contexts
+                contexts: settings.contexts,
+                deviceManager: deviceManager
             )
         }
         .sheet(isPresented: $showingResult) {
@@ -114,6 +128,20 @@ struct MacMeetingRecordingView: View {
         }
         .onChange(of: selectedContextId) { newValue in
             orchestrator.settings.setContext(id: newValue, from: settings.contexts)
+        }
+        .onChange(of: deviceManager.selectedDevice) { newDevice in
+            // Update the audio recorder with the selected device
+            Task {
+                if let device = newDevice, !device.isSystemDefault {
+                    if let deviceID = UInt32(device.id) {
+                        await audioRecorder.setSelectedDeviceID(deviceID)
+                        macLog("Selected microphone: \(device.name)", category: "Meeting")
+                    }
+                } else {
+                    await audioRecorder.setSelectedDeviceID(nil)
+                    macLog("Using system default microphone", category: "Meeting")
+                }
+            }
         }
         .onAppear {
             configureOrchestrator()
@@ -195,24 +223,51 @@ struct MacMeetingRecordingView: View {
                 endPoint: .bottomTrailing
             )
 
-            // More visible SwiftSpeak logo watermark
+            // SwiftSpeak logo watermark
             Image("SwiftSpeakLogo")
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(width: 280, height: 280)
-                .opacity(0.22)
-                .offset(y: 60)
+                .frame(width: 160, height: 160)
+                .opacity(0.18)
+                .offset(y: 40)
         }
         .ignoresSafeArea()
     }
 
     private var quickSettingsCard: some View {
-        HStack(spacing: 20) {
-            // Context picker
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Context")
+        HStack(spacing: 16) {
+            // Microphone picker (compact)
+            HStack(spacing: 8) {
+                Image(systemName: "mic.fill")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.blue)
+
+                Picker("Microphone", selection: $deviceManager.selectedDevice) {
+                    ForEach(deviceManager.availableDevices) { device in
+                        HStack(spacing: 6) {
+                            Image(systemName: device.deviceType.iconName)
+                            Text(device.name)
+                            if device.deviceType == .continuity {
+                                Text("iPhone")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .tag(device as AudioInputDevice?)
+                    }
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            Divider()
+                .frame(height: 24)
+
+            // Context picker (compact)
+            HStack(spacing: 8) {
+                Image(systemName: "tag.fill")
+                    .font(.caption)
+                    .foregroundStyle(.purple)
 
                 Picker("Context", selection: $selectedContextId) {
                     Text("None").tag(nil as UUID?)
@@ -226,59 +281,49 @@ struct MacMeetingRecordingView: View {
                     }
                 }
                 .labelsHidden()
-                .frame(minWidth: 160)
+                .fixedSize()
             }
 
             Divider()
-                .frame(height: 50)
+                .frame(height: 24)
 
-            // Speaker count
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Speakers")
+            // Speaker count (compact)
+            HStack(spacing: 6) {
+                Image(systemName: "person.2.fill")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.teal)
 
-                HStack(spacing: 10) {
-                    Image(systemName: "person.2.fill")
-                        .font(.body)
-                        .foregroundStyle(.teal)
+                Text("\(orchestrator.settings.expectedSpeakerCount ?? 2)")
+                    .font(.callout.weight(.medium).monospacedDigit())
 
-                    Text("\(orchestrator.settings.expectedSpeakerCount ?? 2)")
-                        .font(.title3.weight(.medium).monospacedDigit())
-                        .frame(minWidth: 24)
-
-                    Stepper(
-                        "",
-                        value: Binding(
-                            get: { orchestrator.settings.expectedSpeakerCount ?? 2 },
-                            set: { orchestrator.settings.expectedSpeakerCount = $0 }
-                        ),
-                        in: 2...10
-                    )
-                    .labelsHidden()
-                }
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { orchestrator.settings.expectedSpeakerCount ?? 2 },
+                        set: { orchestrator.settings.expectedSpeakerCount = $0 }
+                    ),
+                    in: 2...10
+                )
+                .labelsHidden()
             }
 
-            Spacer()
-
-            // Word boost indicator
+            // Word boost indicator (if any)
             if !orchestrator.settings.wordBoost.isEmpty {
-                VStack(alignment: .trailing, spacing: 4) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "text.badge.plus")
-                            .font(.caption)
-                        Text("\(orchestrator.settings.wordBoost.count)")
-                            .font(.caption.weight(.semibold))
-                    }
-                    .foregroundStyle(.teal)
-                    Text("vocabulary")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                Divider()
+                    .frame(height: 24)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "text.badge.plus")
+                        .font(.caption)
+                    Text("\(orchestrator.settings.wordBoost.count)")
+                        .font(.caption.weight(.semibold))
                 }
+                .foregroundStyle(.teal)
             }
         }
-        .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var timerView: some View {
@@ -313,64 +358,6 @@ struct MacMeetingRecordingView: View {
             startPoint: .bottom,
             endPoint: .top
         )
-    }
-
-    private var infoRow: some View {
-        HStack(spacing: 20) {
-            // Audio source indicator
-            audioSourceIndicator
-
-            // Cost estimate (shown during/after recording)
-            if orchestrator.isRecording || orchestrator.duration > 0 {
-                HStack(spacing: 6) {
-                    Image(systemName: "dollarsign.circle")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Text(orchestrator.formattedCost)
-                        .font(.callout.monospacedDigit())
-                        .foregroundStyle(.primary)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(.quaternary.opacity(0.6), in: Capsule())
-            }
-        }
-    }
-
-    private var audioSourceIndicator: some View {
-        Group {
-            if orchestrator.settings.audioSource == .microphoneAndSystemAudio && isDualSourceAvailable {
-                HStack(spacing: 6) {
-                    Image(systemName: "mic.fill")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                    Text("+")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                    Image(systemName: "speaker.wave.2.fill")
-                        .font(.caption)
-                        .foregroundStyle(.green)
-                    Text("Dual")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.blue.opacity(0.1), in: Capsule())
-            } else {
-                HStack(spacing: 6) {
-                    Image(systemName: "mic.fill")
-                        .font(.caption)
-                        .foregroundStyle(.blue)
-                    Text("Mic Only")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.quaternary.opacity(0.6), in: Capsule())
-            }
-        }
     }
 
     private var statusView: some View {
@@ -566,6 +553,7 @@ struct MacMeetingSettingsSheet: View {
     @Binding var settings: MeetingSettings
     var isDualSourceAvailable: Bool = false
     var contexts: [ConversationContext] = []
+    @ObservedObject var deviceManager: MacAudioDeviceManager
 
     // Selected context for UI binding
     @State private var selectedContextId: UUID?
@@ -576,6 +564,53 @@ struct MacMeetingSettingsSheet: View {
                 .font(.title2.bold())
 
             Form {
+                // Microphone selection
+                Section("Microphone") {
+                    Picker("Input Device", selection: $deviceManager.selectedDevice) {
+                        ForEach(deviceManager.availableDevices) { device in
+                            HStack(spacing: 8) {
+                                Image(systemName: device.deviceType.iconName)
+                                    .foregroundStyle(device.deviceType == .continuity ? .blue : .primary)
+                                Text(device.name)
+                                if device.isDefault && !device.isSystemDefault {
+                                    Text("(Default)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                if device.deviceType == .continuity {
+                                    Text("iPhone")
+                                        .font(.caption)
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                            .tag(device as AudioInputDevice?)
+                        }
+                    }
+                    .pickerStyle(.menu)
+
+                    // Continuity hint for older macOS
+                    if #unavailable(macOS 13.0) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "info.circle")
+                                .foregroundStyle(.secondary)
+                            Text("iPhone as microphone requires macOS Ventura or later")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    // Show current selection summary
+                    if let selected = deviceManager.selectedDevice {
+                        HStack(spacing: 6) {
+                            Image(systemName: selected.deviceType.iconName)
+                                .foregroundStyle(.teal)
+                            Text("Recording from: \(selected.name)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
                 // Context picker for vocabulary hints
                 Section("Context") {
                     Picker("Use Context", selection: $selectedContextId) {

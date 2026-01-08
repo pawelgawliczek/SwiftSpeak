@@ -20,25 +20,14 @@ struct MacMeetingHistoryView: View {
     let orchestrator: MeetingRecordingOrchestrator?
 
     var body: some View {
-        NavigationSplitView {
-            // Meeting list
-            List(selection: $selectedMeeting) {
-                if historyManager.meetings.isEmpty {
-                    emptyState
-                } else {
-                    ForEach(historyManager.meetings) { meeting in
-                        MeetingRowView(meeting: meeting)
-                            .tag(meeting)
-                            .contextMenu {
-                                meetingContextMenu(for: meeting)
-                            }
-                    }
-                }
-            }
-            .listStyle(.sidebar)
-            .navigationTitle("Meeting History")
-            .toolbar {
-                ToolbarItem(placement: .automatic) {
+        HSplitView {
+            // Sidebar - Meeting list
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    Text("Meetings")
+                        .font(.headline)
+                    Spacer()
                     Menu {
                         Button("Clean up old meetings") {
                             historyManager.cleanupOldMeetings()
@@ -48,20 +37,55 @@ struct MacMeetingHistoryView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .frame(width: 24)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+
+                Divider()
+
+                // Meeting list
+                List(selection: $selectedMeeting) {
+                    if historyManager.meetings.isEmpty {
+                        emptyState
+                    } else {
+                        ForEach(historyManager.meetings) { meeting in
+                            MeetingRowView(meeting: meeting)
+                                .tag(meeting)
+                                .contextMenu {
+                                    meetingContextMenu(for: meeting)
+                                }
+                        }
                     }
                 }
+                .listStyle(.plain)
             }
-        } detail: {
-            if let meeting = selectedMeeting {
-                MeetingDetailView(
-                    meeting: meeting,
-                    orchestrator: orchestrator,
-                    onRetry: { await retryMeeting(meeting) }
-                )
-            } else {
-                Text("Select a meeting")
-                    .foregroundStyle(.secondary)
+            .frame(minWidth: 280, idealWidth: 320, maxWidth: 400)
+
+            // Detail view
+            VStack(spacing: 0) {
+                if let meeting = selectedMeeting {
+                    MeetingDetailView(
+                        meeting: meeting,
+                        orchestrator: orchestrator,
+                        onRetry: { await retryMeeting(meeting) }
+                    )
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: "calendar.badge.clock")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.tertiary)
+                        Text("Select a meeting")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
+            .frame(minWidth: 400)
         }
         .alert("Delete Meeting", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
@@ -127,14 +151,22 @@ struct MacMeetingHistoryView: View {
     }
 
     private func retryMeeting(_ meeting: MeetingRecord) async {
-        guard let orchestrator = orchestrator else { return }
+        guard let orchestrator = orchestrator else {
+            macLog("Retry failed: No orchestrator configured", category: "Meeting", level: .error)
+            retryError = "Retry not available - orchestrator not configured"
+            return
+        }
 
         isRetrying = true
         defer { isRetrying = false }
 
+        macLog("Starting retry for meeting: \(meeting.id)", category: "Meeting")
+
         do {
             try await orchestrator.retryTranscription(meetingId: meeting.id)
+            macLog("Retry completed successfully", category: "Meeting")
         } catch {
+            macLog("Retry failed: \(error.localizedDescription)", category: "Meeting", level: .error)
             retryError = error.localizedDescription
         }
     }
@@ -234,36 +266,17 @@ struct MeetingDetailView: View {
     @State private var isRetrying = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                // Header
-                headerSection
+        VStack(spacing: 0) {
+            // Title bar with actions
+            HStack {
+                Text(meeting.title)
+                    .font(.title2)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
 
-                Divider()
+                Spacer()
 
-                // Status/Error section
-                if meeting.status == .transcriptionFailed {
-                    errorSection
-                }
-
-                // Transcript section
-                if !meeting.plainTranscript.isEmpty {
-                    transcriptSection
-                }
-
-                // Notes section
-                if let notes = meeting.generatedNotes {
-                    notesSection(notes)
-                }
-
-                // Metadata
-                metadataSection
-            }
-            .padding()
-        }
-        .navigationTitle(meeting.title)
-        .toolbar {
-            ToolbarItemGroup {
+                // Action buttons
                 if meeting.status.canRetry {
                     Button {
                         Task {
@@ -279,6 +292,7 @@ struct MeetingDetailView: View {
                             Label("Retry", systemImage: "arrow.clockwise")
                         }
                     }
+                    .buttonStyle(.bordered)
                     .disabled(isRetrying)
                 }
 
@@ -288,7 +302,41 @@ struct MeetingDetailView: View {
                     } label: {
                         Label("Copy", systemImage: "doc.on.doc")
                     }
+                    .buttonStyle(.bordered)
                 }
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+
+            Divider()
+
+            // Content
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    // Header
+                    headerSection
+
+                    Divider()
+
+                    // Status/Error section
+                    if meeting.status == .transcriptionFailed {
+                        errorSection
+                    }
+
+                    // Transcript section
+                    if !meeting.plainTranscript.isEmpty {
+                        transcriptSection
+                    }
+
+                    // Notes section
+                    if let notes = meeting.generatedNotes {
+                        notesSection(notes)
+                    }
+
+                    // Metadata
+                    metadataSection
+                }
+                .padding(20)
             }
         }
     }

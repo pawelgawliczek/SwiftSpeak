@@ -12,6 +12,7 @@ struct VoiceLanguageSettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
     @State private var showPaywall = false
+    @StateObject private var audioDeviceManager = AudioDeviceManager()
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -26,6 +27,9 @@ struct VoiceLanguageSettingsView: View {
             backgroundColor.ignoresSafeArea()
 
             List {
+                // Microphone Section
+                microphoneSection
+
                 // Dictation Language Section
                 dictationSection
 
@@ -42,6 +46,63 @@ struct VoiceLanguageSettingsView: View {
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showPaywall) {
             PaywallView()
+        }
+    }
+
+    // MARK: - Microphone Section
+
+    private var microphoneSection: some View {
+        Section {
+            Picker("Input Device", selection: $audioDeviceManager.selectedDevice) {
+                ForEach(audioDeviceManager.availableDevices) { device in
+                    HStack(spacing: 8) {
+                        Image(systemName: device.deviceType.iconName)
+                            .foregroundStyle(deviceIconColor(for: device))
+                        Text(device.name)
+                        if device.isDefault && !device.isSystemDefault {
+                            Text("(Default)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .tag(device as AudioInputDevice?)
+                }
+            }
+            .listRowBackground(rowBackground)
+
+            // Show current selection
+            if let selected = audioDeviceManager.selectedDevice {
+                HStack(spacing: 8) {
+                    Image(systemName: selected.deviceType.iconName)
+                        .foregroundStyle(.teal)
+                    Text("Recording from: \(selected.name)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .listRowBackground(rowBackground)
+            }
+
+            // Test microphone
+            NavigationLink {
+                MicrophoneTestView(audioDeviceManager: audioDeviceManager)
+            } label: {
+                Label("Test Microphone", systemImage: "waveform.badge.mic")
+            }
+            .listRowBackground(rowBackground)
+        } header: {
+            Text("Microphone")
+        } footer: {
+            Text("Select which microphone to use for voice recording. System Default uses the currently active input device.")
+        }
+    }
+
+    private func deviceIconColor(for device: AudioInputDevice) -> Color {
+        switch device.deviceType {
+        case .airpods: return .blue
+        case .bluetooth: return .purple
+        case .builtIn: return .primary
+        case .usb: return .green
+        default: return .secondary
         }
     }
 

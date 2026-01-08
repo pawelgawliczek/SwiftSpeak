@@ -34,6 +34,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Initialize components
             let audioRecorder = MacAudioRecorder()
 
+            // Load saved audio device selection
+            if let savedDeviceID = UserDefaults.standard.string(forKey: "mac_selectedAudioInputDeviceID"),
+               let deviceID = UInt32(savedDeviceID) {
+                audioRecorder.selectedDeviceID = deviceID
+                macLog("Loaded saved audio device: \(savedDeviceID)", category: "Audio")
+            }
+
             // Pre-warm audio engine (this is the heavy operation)
             // We await it to ensure splash shows during the actual initialization
             await audioRecorder.prewarmAsync()

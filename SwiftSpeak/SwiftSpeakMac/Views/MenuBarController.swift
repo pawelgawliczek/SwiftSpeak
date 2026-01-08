@@ -59,6 +59,11 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     private let hotkeyManager: MacHotkeyManager
     private lazy var windowContextService = MacWindowContextService()
     private lazy var providerFactory = ProviderFactory(settings: settings)
+    private lazy var meetingOrchestrator = MeetingRecordingOrchestrator()
+
+    /// Audio device manager for microphone selection
+    private let audioDeviceManager = MacAudioDeviceManager()
+    private var deviceSelectionCancellable: AnyCancellable?
 
     init(audioRecorder: MacAudioRecorder,
          textInsertion: MacTextInsertionService,
@@ -454,6 +459,30 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
                 self?.updateStatusIcon(isRecording: recording)
             }
             .store(in: &cancellables)
+
+        // Observe audio device selection changes and update recorders
+        deviceSelectionCancellable = audioDeviceManager.$selectedDevice
+            .dropFirst() // Skip initial value (already loaded at startup)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] device in
+                guard let self = self else { return }
+                if let device = device, !device.isSystemDefault {
+                    if let deviceID = UInt32(device.id) {
+                        self.audioRecorder.selectedDeviceID = deviceID
+                        // Also update meeting audio recorder
+                        Task {
+                            await self.meetingAudioRecorder.setSelectedDeviceID(deviceID)
+                        }
+                        macLog("Audio device changed to: \(device.name)", category: "Audio")
+                    }
+                } else {
+                    self.audioRecorder.selectedDeviceID = nil
+                    Task {
+                        await self.meetingAudioRecorder.setSelectedDeviceID(nil)
+                    }
+                    macLog("Audio device changed to: System Default", category: "Audio")
+                }
+            }
     }
 
     private func setupHotkeys() {
@@ -706,11 +735,14 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
 
-        let historyView = MacMeetingHistoryView(orchestrator: nil)
+        // Configure orchestrator with AssemblyAI for retry support
+        configureMeetingOrchestrator()
+
+        let historyView = MacMeetingHistoryView(orchestrator: meetingOrchestrator)
         let hostingView = NSHostingView(rootView: historyView)
 
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -723,6 +755,36 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
 
         // Retain the window
         meetingHistoryWindow = window
+    }
+
+    // MARK: - Meeting Orchestrator Configuration
+
+    /// Dual-source recorder for meeting orchestrator (lazy to avoid creating if not needed)
+    private lazy var meetingAudioRecorder = MacDualSourceAudioRecorder()
+
+    /// Configure the meeting orchestrator with AssemblyAI for retry support
+    private func configureMeetingOrchestrator() {
+        // Get AssemblyAI config from settings
+        guard let assemblyAIConfig = settings.configuredAIProviders.first(where: { $0.provider == AIProvider.assemblyAI }),
+              !assemblyAIConfig.apiKey.isEmpty else {
+            macLog("AssemblyAI not configured - retry will not work", category: "Meeting", level: .warning)
+            return
+        }
+
+        // Create transcription service
+        let transcriptionService = AssemblyAIMeetingService(
+            apiKey: assemblyAIConfig.apiKey,
+            model: assemblyAIConfig.transcriptionModel ?? "best"
+        )
+
+        // Configure orchestrator with meeting-capable audio recorder
+        meetingOrchestrator.configure(
+            audioRecorder: meetingAudioRecorder,
+            transcriptionService: transcriptionService,
+            notesGenerator: nil
+        )
+
+        macLog("Meeting orchestrator configured for retry", category: "Meeting")
     }
 
     // MARK: - Meeting Notifications
@@ -793,11 +855,13 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             if self.settingsWindow == nil {
                 let window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
-                    styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                    styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                     backing: .buffered,
                     defer: false
                 )
-                window.title = "SwiftSpeak Settings"
+                window.title = "Settings"
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
                 window.minSize = NSSize(width: 750, height: 500)
                 window.isReleasedWhenClosed = false  // Prevent dangling pointer
                 window.delegate = self
@@ -806,7 +870,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             }
 
             // Create view after window exists
-            let settingsView = MacSettingsView(settings: MacSettings.shared)
+            let settingsView = MacSettingsView(settings: MacSettings.shared, audioDeviceManager: audioDeviceManager)
             let hostingView = NSHostingView(rootView: settingsView)
 
             self.settingsWindow?.contentView = hostingView
@@ -1085,10 +1149,10 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         // Build vocabulary prompt from settings and active context
         let vocabularyPrompt = buildVocabularyPrompt()
 
-        // Pass the selected dictation language and vocabulary hints
+        // Pass the effective language (context override > global) and vocabulary hints
         return try await transcriptionService.transcribe(
             audioURL: audioURL,
-            language: settings.selectedDictationLanguage,
+            language: settings.effectiveTranscriptionLanguage,
             promptHint: vocabularyPrompt
         )
     }
@@ -1126,7 +1190,8 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             throw TranscriptionError.apiKeyMissing
         }
 
-        return try await translationService.translate(text: text, from: settings.selectedDictationLanguage, to: targetLanguage)
+        // Use effectiveTranscriptionLanguage for source language hint (context override > global)
+        return try await translationService.translate(text: text, from: settings.effectiveTranscriptionLanguage, to: targetLanguage)
     }
 
     private func saveToHistory(transcription: String, finalText: String, wasTranslated: Bool) {
@@ -1361,65 +1426,71 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
 struct MacSettingsView: View {
     @ObservedObject var settings: MacSettings
+    @ObservedObject var audioDeviceManager: MacAudioDeviceManager
     @State private var selectedSection: SettingsSection = .voiceLanguage
 
     var body: some View {
-        NavigationSplitView {
-            // Sidebar with header inside list
-            List(selection: $selectedSection) {
-                // App Header
-                Section {
-                    VStack(spacing: 6) {
-                        if let logo = NSImage(named: "SwiftSpeakLogo") {
-                            Image(nsImage: logo)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 40, height: 40)
-                        } else {
-                            Image(systemName: "waveform.circle.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.purple)
+        HSplitView {
+            // Sidebar
+            VStack(spacing: 0) {
+                // App Header with traffic light spacing
+                VStack(spacing: 6) {
+                    if let logo = NSImage(named: "SwiftSpeakLogo") {
+                        Image(nsImage: logo)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 36, height: 36)
+                    } else {
+                        Image(systemName: "waveform.circle.fill")
+                            .font(.system(size: 36))
+                            .foregroundStyle(.purple)
+                    }
+                    Text("SwiftSpeak")
+                        .font(.headline)
+                    Text("v1.0.0")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40) // Space for traffic lights
+                .padding(.bottom, 12)
+
+                Divider()
+                    .padding(.horizontal, 16)
+
+                // Settings List
+                List(selection: $selectedSection) {
+                    // Main settings (matches iOS)
+                    Section {
+                        ForEach([SettingsSection.voiceLanguage, .transcription, .personalization, .behavior, .security, .usage, .vaults], id: \.self) { section in
+                            SidebarRow(section: section, settings: settings)
+                                .tag(section)
                         }
-                        Text("SwiftSpeak")
-                            .font(.headline)
-                        Text("v1.0.0")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                }
 
-                // Main settings (matches iOS)
-                Section {
-                    ForEach([SettingsSection.voiceLanguage, .transcription, .personalization, .behavior, .security, .usage, .vaults], id: \.self) { section in
-                        SidebarRow(section: section, settings: settings)
-                            .tag(section)
+                    // macOS-specific
+                    Section("macOS") {
+                        ForEach([SettingsSection.hotkeys, .logs], id: \.self) { section in
+                            SidebarRow(section: section, settings: settings)
+                                .tag(section)
+                        }
                     }
-                }
 
-                // macOS-specific
-                Section("macOS") {
-                    ForEach([SettingsSection.hotkeys, .logs], id: \.self) { section in
-                        SidebarRow(section: section, settings: settings)
-                            .tag(section)
+                    // About
+                    Section {
+                        SidebarRow(section: .about, settings: settings)
+                            .tag(SettingsSection.about)
                     }
                 }
-
-                // About
-                Section {
-                    SidebarRow(section: .about, settings: settings)
-                        .tag(SettingsSection.about)
-                }
+                .listStyle(.sidebar)
             }
-            .listStyle(.sidebar)
-            .frame(minWidth: 200)
-        } detail: {
+            .frame(minWidth: 200, idealWidth: 220, maxWidth: 260)
+
             // Detail View
             Group {
                 switch selectedSection {
                 case .voiceLanguage:
-                    GeneralSettingsTab(settings: settings)
+                    GeneralSettingsTab(settings: settings, audioDeviceManager: audioDeviceManager)
                 case .transcription:
                     ProvidersSettingsTab(settings: settings)
                 case .personalization:
@@ -1445,7 +1516,6 @@ struct MacSettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 800, minHeight: 550)
-        .toolbar(.hidden, for: .windowToolbar)
     }
 }
 
@@ -1907,6 +1977,8 @@ struct AddProviderSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedProvider: AIProvider?
     @State private var apiKey = ""
+    @State private var googleProjectId = ""
+    @State private var azureRegion = "eastus"
 
     var body: some View {
         VStack(spacing: 20) {
@@ -1953,6 +2025,42 @@ struct AddProviderSheet: View {
                                 .font(.caption)
                         }
                     }
+
+                    // Google Cloud - Project ID
+                    if provider == .google {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Project ID")
+                                    .font(.headline)
+                                Text("Required for Transcription")
+                                    .font(.caption2)
+                                    .foregroundStyle(.orange)
+                            }
+                            TextField("your-gcp-project-id", text: $googleProjectId)
+                                .textFieldStyle(.roundedBorder)
+                            Text("Find this in Google Cloud Console → Project Settings")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
+                    // Azure - Region
+                    if provider == .azure {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack {
+                                Text("Region")
+                                    .font(.headline)
+                                Text("Required")
+                                    .font(.caption2)
+                                    .foregroundStyle(.blue)
+                            }
+                            TextField("eastus", text: $azureRegion)
+                                .textFieldStyle(.roundedBorder)
+                            Text("The region where your Azure Translator resource is deployed")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
 
@@ -1962,13 +2070,23 @@ struct AddProviderSheet: View {
                 Spacer()
                 Button("Add Provider") {
                     if let provider = selectedProvider {
-                        let config = AIProviderConfig(provider: provider, apiKey: apiKey)
+                        var config = AIProviderConfig(provider: provider, apiKey: apiKey)
+                        // Set provider-specific configuration
+                        if provider == .google {
+                            config.googleProjectId = googleProjectId.isEmpty ? nil : googleProjectId
+                        }
+                        if provider == .azure {
+                            config.azureRegion = azureRegion.isEmpty ? nil : azureRegion
+                        }
                         settings.addAIProvider(config)
                         dismiss()
                     }
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(selectedProvider == nil || (selectedProvider?.requiresAPIKey == true && apiKey.isEmpty))
+                .disabled(selectedProvider == nil ||
+                          (selectedProvider?.requiresAPIKey == true && apiKey.isEmpty) ||
+                          (selectedProvider == .google && googleProjectId.isEmpty) ||
+                          (selectedProvider == .azure && azureRegion.isEmpty))
             }
         }
         .padding(24)
@@ -1990,6 +2108,10 @@ struct EditProviderSheet: View {
     @State private var transcriptionModel: String = ""
     @State private var translationModel: String = ""
     @State private var powerModeModel: String = ""
+
+    // Provider-specific configuration
+    @State private var googleProjectId: String = ""
+    @State private var azureRegion: String = "eastus"
 
     // Validation state
     @State private var isValidating = false
@@ -2137,6 +2259,62 @@ struct EditProviderSheet: View {
                         .foregroundStyle(.secondary)
                 }
             }
+
+            // Google Cloud - Project ID (required for STT)
+            if config.provider == .google {
+                Divider()
+                    .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Project ID")
+                            .font(.subheadline.weight(.medium))
+
+                        Text("Required for Transcription")
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.orange.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+
+                    TextField("your-gcp-project-id", text: $googleProjectId)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("Find this in Google Cloud Console → Project Settings")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            // Azure - Region (required for Translator)
+            if config.provider == .azure {
+                Divider()
+                    .padding(.vertical, 8)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Region")
+                            .font(.subheadline.weight(.medium))
+
+                        Text("Required")
+                            .font(.caption2)
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.15))
+                            .clipShape(Capsule())
+                    }
+
+                    TextField("eastus", text: $azureRegion)
+                        .textFieldStyle(.roundedBorder)
+
+                    Text("Select the region where your Azure Translator resource is deployed (e.g., eastus, westeurope)")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
         }
     }
 
@@ -2220,6 +2398,14 @@ struct EditProviderSheet: View {
         if config.provider.requiresAPIKey && apiKey.isEmpty {
             return false
         }
+        // Google STT requires Project ID
+        if config.provider == .google && usageCategories.contains(.transcription) && googleProjectId.isEmpty {
+            return false
+        }
+        // Azure requires region
+        if config.provider == .azure && azureRegion.isEmpty {
+            return false
+        }
         return !usageCategories.isEmpty
     }
 
@@ -2247,6 +2433,10 @@ struct EditProviderSheet: View {
         translationModel = config.translationModel ?? config.provider.defaultLLMModel ?? ""
         powerModeModel = config.powerModeModel ?? config.provider.defaultLLMModel ?? ""
 
+        // Load provider-specific configuration
+        googleProjectId = config.googleProjectId ?? ""
+        azureRegion = config.azureRegion ?? "eastus"
+
         // If already has API key, mark as validated
         if !apiKey.isEmpty {
             isValidated = true
@@ -2260,6 +2450,15 @@ struct EditProviderSheet: View {
         updatedConfig.transcriptionModel = usageCategories.contains(.transcription) ? transcriptionModel : nil
         updatedConfig.translationModel = usageCategories.contains(.translation) ? translationModel : nil
         updatedConfig.powerModeModel = usageCategories.contains(.powerMode) ? powerModeModel : nil
+
+        // Save provider-specific configuration
+        if config.provider == .google {
+            updatedConfig.googleProjectId = googleProjectId.isEmpty ? nil : googleProjectId
+        }
+        if config.provider == .azure {
+            updatedConfig.azureRegion = azureRegion.isEmpty ? nil : azureRegion
+        }
+
         settings.updateAIProvider(updatedConfig)
         dismiss()
     }
@@ -2510,9 +2709,58 @@ struct EditProviderSheet: View {
 
 struct GeneralSettingsTab: View {
     @ObservedObject var settings: MacSettings
+    @ObservedObject var audioDeviceManager: MacAudioDeviceManager
+    @State private var showMicTest = false
 
     var body: some View {
         Form {
+            Section("Microphone") {
+                Picker("Input Device", selection: $audioDeviceManager.selectedDevice) {
+                    ForEach(audioDeviceManager.availableDevices) { device in
+                        HStack(spacing: 8) {
+                            Image(systemName: device.deviceType.iconName)
+                            Text(device.name)
+                            if device.isDefault && !device.isSystemDefault {
+                                Text("(Default)")
+                                    .foregroundStyle(.secondary)
+                            }
+                            if device.deviceType == .continuity {
+                                Text("iPhone")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                        .tag(device as AudioInputDevice?)
+                    }
+                }
+
+                if let selected = audioDeviceManager.selectedDevice {
+                    HStack(spacing: 6) {
+                        Image(systemName: selected.deviceType.iconName)
+                            .foregroundStyle(.teal)
+                        Text("Recording from: \(selected.name)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Test microphone button
+                Button {
+                    showMicTest = true
+                } label: {
+                    Label("Test Microphone", systemImage: "waveform.badge.mic")
+                }
+
+                // Hint for Continuity Camera
+                if #unavailable(macOS 13.0) {
+                    Text("iPhone as microphone requires macOS Ventura or later")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .sheet(isPresented: $showMicTest) {
+                MacMicrophoneTestView(audioDeviceManager: audioDeviceManager)
+            }
+
             Section("Dictation Language") {
                 Picker("Language", selection: Binding(
                     get: { settings.selectedDictationLanguage ?? .english },

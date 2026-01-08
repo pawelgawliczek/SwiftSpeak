@@ -117,6 +117,17 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Effective transcription language: context override > global setting > auto-detect
+    /// Use this for all transcription requests to respect per-context language settings
+    var effectiveTranscriptionLanguage: Language? {
+        // Check if active context has a custom input language
+        if let contextLanguage = activeContext?.defaultInputLanguage {
+            return contextLanguage
+        }
+        // Fall back to global setting (nil = auto-detect)
+        return selectedDictationLanguage
+    }
+
     @Published var isTranslationEnabled: Bool = false {
         didSet {
             defaults?.set(isTranslationEnabled, forKey: Constants.Keys.isTranslationEnabled)

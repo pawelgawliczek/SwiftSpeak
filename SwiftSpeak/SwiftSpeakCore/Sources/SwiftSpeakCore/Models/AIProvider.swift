@@ -142,7 +142,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]
         case .local: return [] // Models are fetched dynamically from the local server
         case .assemblyAI: return ["best", "nano"]
-        case .google: return ["long", "short", "telephony", "medical_dictation", "medical_conversation"]
+        case .google: return ["default", "latest_long", "latest_short", "command_and_search", "telephony"]
         case .anthropic, .deepL, .azure: return []
         }
     }
@@ -154,7 +154,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .deepgram: return "nova-2"
         case .local: return nil // Must be selected after connecting
         case .assemblyAI: return "best"
-        case .google: return "long"
+        case .google: return "default"  // Safest - supports all languages
         case .anthropic, .deepL, .azure: return nil
         }
     }
@@ -216,7 +216,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .openAI: return URL(string: "https://platform.openai.com/api-keys")
         case .anthropic: return URL(string: "https://console.anthropic.com/settings/keys")
-        case .google: return URL(string: "https://console.cloud.google.com/apis/credentials")
+        case .google: return URL(string: "https://console.cloud.google.com/apis/library/speech.googleapis.com")
         case .elevenLabs: return URL(string: "https://elevenlabs.io/app/settings/api-keys")
         case .deepgram: return URL(string: "https://console.deepgram.com/project/api-keys")
         case .local: return URL(string: "https://ollama.ai") // Default to Ollama docs
@@ -246,16 +246,28 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
             """
         case .google:
             return """
-            1. Go to aistudio.google.com
-            2. Sign in with your Google account
-            3. Click "Get API Key"
-            4. Create a new API key
-            5. Copy and paste the key here
+            For Transcription (Speech-to-Text v2 API):
 
-            For transcription, you also need:
-            6. Go to console.cloud.google.com
-            7. Create or select a project
-            8. Copy the Project ID from the dashboard
+            1. Go to console.cloud.google.com
+            2. Create or select a project
+            3. Copy the Project ID (shown in project selector)
+
+            4. Enable Speech-to-Text API:
+               • APIs & Services → Library
+               • Search "Cloud Speech-to-Text API"
+               • Click ENABLE
+
+            5. Create an API Key:
+               • APIs & Services → Credentials
+               • + CREATE CREDENTIALS → API key
+               • IMPORTANT: Click "Edit API key"
+               • Under "API restrictions" select either:
+                 - "Don't restrict key" (easiest), OR
+                 - "Restrict key" and add "Cloud Speech-to-Text API"
+
+            6. Paste API Key and Project ID here
+
+            Note: API key must be unrestricted or explicitly allow Speech-to-Text API.
             """
         case .elevenLabs:
             return """

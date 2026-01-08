@@ -27,7 +27,9 @@ struct MacTranscribeOverlayView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            if viewModel.state.isProcessing {
+            if case .error(let message) = viewModel.state {
+                errorView(message: message)
+            } else if viewModel.state.isProcessing {
                 processingView
             } else if viewModel.state == .complete {
                 completeView
@@ -164,6 +166,61 @@ struct MacTranscribeOverlayView: View {
                     .keyboardShortcut(.escape)
             }
         }
+    }
+
+    // MARK: - Error View
+
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 16) {
+            HStack(alignment: .top, spacing: 16) {
+                // Error icon
+                ZStack {
+                    Circle()
+                        .fill(Color.red.opacity(0.2))
+                        .frame(width: 60, height: 60)
+
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 28))
+                        .foregroundStyle(.red)
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("TRANSCRIPTION FAILED")
+                        .font(.system(size: 11, weight: .bold, design: .rounded))
+                        .foregroundStyle(.red)
+                        .tracking(2)
+
+                    ScrollView(.vertical, showsIndicators: true) {
+                        Text(message)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 150)
+                }
+
+                Spacer(minLength: 0)
+            }
+
+            // Action buttons
+            HStack(spacing: 12) {
+                Button(action: {
+                    viewModel.state = .ready
+                    viewModel.errorMessage = nil
+                }) {
+                    Label("Try Again", systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+                .keyboardShortcut(.return, modifiers: [])
+
+                Button("Close", action: onClose)
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.escape)
+            }
+        }
+        .frame(minWidth: 400)
     }
 
     // MARK: - Recording View
@@ -621,57 +678,37 @@ struct TranscribeWaveformView: View {
     let level: Float
     var isRecording: Bool = false
 
-    private let barCount = 12
+    private let barCount = 20
+
+    @State private var waveformLevels: [Double] = Array(repeating: 0.08, count: 20)
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(0..<barCount, id: \.self) { index in
-                TranscribeWaveformBar(
-                    index: index,
-                    level: level,
-                    isRecording: isRecording
-                )
+                let barLevel = waveformLevels.indices.contains(index) ? waveformLevels[index] : 0.08
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(barColor(for: barLevel, isRecording: isRecording))
+                    .frame(width: 4, height: max(4, CGFloat(barLevel) * 36))
+                    .animation(.easeOut(duration: 0.08), value: barLevel)
             }
         }
-    }
-}
-
-struct TranscribeWaveformBar: View {
-    let index: Int
-    let level: Float
-    var isRecording: Bool = false
-
-    @State private var animatedHeight: CGFloat = 4
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-            .fill(
-                LinearGradient(
-                    colors: isRecording
-                        ? [Color.green, Color.green.opacity(0.6)]
-                        : [Color.gray.opacity(0.5), Color.gray.opacity(0.3)],
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-            )
-            .frame(width: 3, height: animatedHeight)
-            .onChange(of: level) { newLevel in
-                updateHeight(for: newLevel)
-            }
-            .onAppear {
-                animatedHeight = CGFloat.random(in: 4...12)
-                updateHeight(for: level)
-            }
-    }
-
-    private func updateHeight(for level: Float) {
-        let baseHeight = CGFloat(level) * 28
-        let variation = sin(Double(index) * 0.8 + Date().timeIntervalSince1970 * 10) * 6
-        let targetHeight = max(4, min(32, baseHeight + CGFloat(variation)))
-
-        withAnimation(.easeInOut(duration: 0.1)) {
-            animatedHeight = targetHeight
+        .onChange(of: level) { newLevel in
+            // Shift levels left and add new level
+            var newLevels = waveformLevels
+            newLevels.removeFirst()
+            let normalizedLevel = Double(max(0.08, min(1.0, newLevel)))
+            newLevels.append(normalizedLevel)
+            waveformLevels = newLevels
         }
+    }
+
+    private func barColor(for level: Double, isRecording: Bool) -> Color {
+        guard isRecording else { return Color.gray.opacity(0.4) }
+
+        if level < 0.25 { return .green }
+        if level < 0.45 { return .yellow }
+        if level < 0.65 { return .orange }
+        return .red
     }
 }
 

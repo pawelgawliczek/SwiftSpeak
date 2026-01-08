@@ -380,9 +380,10 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
                 throw NSError(domain: "PowerMode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Transcription provider not configured"])
             }
 
+            // Use effectiveTranscriptionLanguage to respect per-context language settings
             userInput = try await transcriptionService.transcribe(
                 audioURL: audioURL,
-                language: settings.selectedDictationLanguage,
+                language: settings.effectiveTranscriptionLanguage,
                 promptHint: buildVocabularyPrompt()
             )
 
@@ -824,9 +825,10 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
                 throw NSError(domain: "PowerMode", code: 1, userInfo: [NSLocalizedDescriptionKey: "Transcription provider not configured"])
             }
 
+            // Use effectiveTranscriptionLanguage to respect per-context language settings
             let transcribedText = try await transcriptionService.transcribe(
                 audioURL: audioURL,
-                language: settings.selectedDictationLanguage,
+                language: settings.effectiveTranscriptionLanguage,
                 promptHint: buildVocabularyPrompt()
             )
 

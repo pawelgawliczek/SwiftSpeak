@@ -361,8 +361,9 @@ final class SwiftLinkSessionManager: ObservableObject {
                 let vocabularyPrompt = self.buildVocabularyPrompt(settings: settings)
                 let instructions = self.buildTranscriptionInstructions(settings: settings)
 
+                // Use effectiveTranscriptionLanguage to respect per-context language settings
                 try await provider.connect(
-                    language: settings.selectedDictationLanguage,
+                    language: settings.effectiveTranscriptionLanguage,
                     sampleRate: streamingTargetSampleRate,
                     transcriptionPrompt: vocabularyPrompt,
                     instructions: instructions
@@ -821,9 +822,10 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
 
         // Transcribe with domain hint for vocabulary - full formatting applied by LLM
+        // Use effectiveTranscriptionLanguage to respect per-context language settings
         let transcript = try await transcriptionProvider.transcribe(
             audioURL: audioURL,
-            language: settings.selectedDictationLanguage,
+            language: settings.effectiveTranscriptionLanguage,
             promptHint: domainHint
         )
 
@@ -1324,13 +1326,13 @@ final class SwiftLinkSessionManager: ObservableObject {
             let settings = SharedSettings.shared
             let providerFactory = ProviderFactory(settings: settings)
 
-            // Step 1: Transcribe
+            // Step 1: Transcribe with effective language (context override > global)
             guard let transcriptionProvider = providerFactory.createSelectedTranscriptionProvider() else {
                 throw SwiftLinkError.recordingFailed("No transcription provider configured")
             }
             let rawText = try await transcriptionProvider.transcribe(
                 audioURL: url,
-                language: settings.selectedDictationLanguage
+                language: settings.effectiveTranscriptionLanguage
             )
 
             // Step 2: Apply vocabulary
