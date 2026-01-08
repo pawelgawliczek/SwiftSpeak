@@ -707,7 +707,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     // MARK: - Text Insertion
 
     /// Restore focus to the previous app before text insertion
-    private func restoreFocusToPreviousApp() async {
+    private func restoreFocusToPreviousApp() {
         guard let app = previousApp else {
             macLog("No previous app to restore focus to", category: "Transcribe", level: .warning)
             return
@@ -715,21 +715,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
         macLog("Restoring focus to: \(app.localizedName ?? "unknown")", category: "Transcribe")
         app.activate()
-
-        // Poll for app to become active (max 100ms) instead of fixed sleep
-        let startTime = CFAbsoluteTimeGetCurrent()
-        let maxWaitTime: Double = 0.1 // 100ms max
-        let pollInterval: UInt64 = 10_000_000 // 10ms
-
-        while CFAbsoluteTimeGetCurrent() - startTime < maxWaitTime {
-            if app.isActive {
-                macLog("App became active in \(Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000))ms", category: "Transcribe")
-                return
-            }
-            try? await Task.sleep(nanoseconds: pollInterval)
-        }
-
-        macLog("App activation timed out, proceeding anyway", category: "Transcribe", level: .warning)
+        // No delay - proceed immediately after activation request
     }
 
     func insertText() async {
@@ -739,7 +725,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         onWillInsertText?()
 
         // Restore focus to previous app before inserting
-        await restoreFocusToPreviousApp()
+        restoreFocusToPreviousApp()
 
         if let textService = textInsertion {
             let result = await textService.insertText(transcribedText, replaceSelection: true)
@@ -756,9 +742,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private func insertTextAndSend() async {
         await insertText()
 
-        // Brief wait for text insertion to complete before sending Enter
-        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
-
+        // No delay - send Enter immediately after text insertion
         macLog("Sending Enter key to target app...", category: "Transcribe")
 
         let source = CGEventSource(stateID: .hidSystemState)
