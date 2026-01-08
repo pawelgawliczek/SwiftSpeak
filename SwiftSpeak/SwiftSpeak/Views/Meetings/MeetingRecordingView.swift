@@ -16,10 +16,20 @@ struct MeetingRecordingView: View {
 
     @StateObject private var orchestrator = MeetingRecordingOrchestrator()
 
+    // Audio recorder (retained for stats monitoring)
+    @State private var audioRecorder: MeetingAudioRecorderImpl?
+
     // State
     @State private var showingSettings = false
     @State private var showingResult = false
     @State private var meetingTitle = ""
+    @State private var configurationError: String?
+    @State private var selectedContextId: UUID?
+
+    // Recording health stats
+    @State private var recordingFileSizeMB: Double = 0
+    @State private var recordingWriteErrors: Int = 0
+    @State private var statsTimer: Timer?
 
     // Animation
     @State private var pulseAnimation = false
@@ -94,12 +104,10 @@ struct MeetingRecordingView: View {
                 }
             }
             .onChange(of: orchestrator.state) { _, newState in
-                if case .complete = newState {
-                    HapticManager.success()
-                    showingResult = true
-                } else if case .error = newState {
-                    HapticManager.error()
-                }
+                handleStateChange(newState)
+            }
+            .onDisappear {
+                stopStatsTimer()
             }
             .onAppear {
                 configureOrchestrator()
@@ -144,28 +152,52 @@ struct MeetingRecordingView: View {
     private var costEstimateView: some View {
         Group {
             if orchestrator.isRecording || orchestrator.duration > 0 {
-                VStack(spacing: 4) {
-                    Text("Estimated Cost")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    // Cost estimate
+                    VStack(spacing: 2) {
+                        Text("Cost")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                        Text(orchestrator.formattedCost)
+                            .font(.callout.monospacedDigit().bold())
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
 
-                    Text(orchestrator.formattedCost)
-                        .font(.headline.monospacedDigit())
-                        .foregroundStyle(.primary)
+                    // File size indicator (recording health)
+                    HStack(spacing: 4) {
+                        Image(systemName: recordingWriteErrors > 0 ? "exclamationmark.triangle.fill" : "doc.fill")
+                            .font(.caption)
+                            .foregroundStyle(recordingWriteErrors > 0 ? .orange : .secondary)
+                        Text(String(format: "%.1f MB", recordingFileSizeMB))
+                            .font(.callout.monospacedDigit())
+                            .foregroundStyle(.primary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(.ultraThinMaterial, in: Capsule())
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial, in: Capsule())
             }
         }
     }
 
     private var statusView: some View {
         HStack(spacing: 8) {
-            switch orchestrator.state {
-            case .idle:
-                Text("Ready to record")
-                    .foregroundStyle(.secondary)
+            // Check for configuration error first
+            if let error = configurationError {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                Text(error)
+                    .foregroundStyle(.orange)
+                    .font(.caption)
+                    .multilineTextAlignment(.center)
+            } else {
+                switch orchestrator.state {
+                case .idle:
+                    Text("Ready to record")
+                        .foregroundStyle(.secondary)
 
             case .recording(_, let isPaused):
                 if isPaused {
@@ -204,6 +236,7 @@ struct MeetingRecordingView: View {
                     .foregroundStyle(.red)
                     .lineLimit(2)
                     .font(.caption)
+                }
             }
         }
         .font(.subheadline)
@@ -235,7 +268,8 @@ struct MeetingRecordingView: View {
                 mainButtonContent
             }
             .buttonStyle(.plain)
-            .disabled(orchestrator.isProcessing)
+            .disabled(orchestrator.isProcessing || configurationError != nil)
+            .opacity(configurationError != nil ? 0.5 : 1.0)
         }
     }
 
@@ -284,9 +318,81 @@ struct MeetingRecordingView: View {
     }
 
     private func configureOrchestrator() {
-        // TODO: Configure with actual audio recorder and transcription service
-        // This will be done when integrating with the app's service layer
-        appLog("Meeting recording view appeared", category: "Meeting")
+        appLog("Configuring meeting orchestrator", category: "Meeting")
+
+        // Create audio recorder (shared implementation from Core)
+        let recorder = MeetingAudioRecorderImpl()
+        self.audioRecorder = recorder
+
+        // AssemblyAI is required for meeting recording (best diarization support)
+        guard let assemblyConfig = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
+              let transcriptionService = AssemblyAIMeetingService(config: assemblyConfig) else {
+            configurationError = "AssemblyAI not configured. Please add your AssemblyAI API key in Settings → Providers."
+            appLog("Meeting recording: AssemblyAI not configured", category: "Meeting", level: .error)
+            return
+        }
+
+        // Configure orchestrator with AssemblyAI
+        orchestrator.configure(
+            audioRecorder: recorder,
+            transcriptionService: transcriptionService,
+            notesGenerator: nil
+        )
+
+        // iOS always uses microphone-only (no system audio capture)
+        orchestrator.settings.audioSource = .microphoneOnly
+
+        // Apply context settings if selected
+        if let contextId = selectedContextId,
+           let context = settings.contexts.first(where: { $0.id == contextId }) {
+            // Set language from context
+            if let language = context.defaultInputLanguage {
+                orchestrator.settings.language = language.rawValue
+            }
+            // Context vocabulary is already applied via setContext()
+            appLog("Meeting recording configured with context: \(context.name)", category: "Meeting")
+        }
+
+        appLog("Meeting recording configured with AssemblyAI", category: "Meeting")
+    }
+
+    // MARK: - Recording Stats Timer
+
+    private func startStatsTimer() {
+        stopStatsTimer()
+        statsTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            Task { @MainActor in
+                guard let recorder = audioRecorder else { return }
+                let stats = await recorder.getRecordingStats()
+                recordingFileSizeMB = Double(stats.fileSize) / (1024 * 1024)
+                recordingWriteErrors = stats.errors
+            }
+        }
+    }
+
+    private func stopStatsTimer() {
+        statsTimer?.invalidate()
+        statsTimer = nil
+    }
+
+    private func handleStateChange(_ newState: MeetingRecordingState) {
+        switch newState {
+        case .recording:
+            startStatsTimer()
+        case .stopping, .chunking, .transcribing, .mergingTranscripts, .generatingNotes, .savingToObsidian:
+            stopStatsTimer()
+        case .complete:
+            stopStatsTimer()
+            HapticManager.success()
+            showingResult = true
+        case .error:
+            stopStatsTimer()
+            HapticManager.error()
+        case .idle:
+            stopStatsTimer()
+            recordingFileSizeMB = 0
+            recordingWriteErrors = 0
+        }
     }
 
     private func audioLevelForBar(_ index: Int) -> CGFloat {
