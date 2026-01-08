@@ -189,8 +189,13 @@ public final class MacAudioDeviceManager: ObservableObject {
         // Get default input device for comparison
         let defaultDeviceID = getDefaultInputDeviceID()
 
-        // Filter for input devices only
+        // Filter for input devices only (exclude virtual/aggregate devices)
         for deviceID in deviceIDs {
+            // Skip aggregate and virtual devices (like CADefaultDeviceAggregate)
+            if isAggregateOrVirtualDevice(deviceID: deviceID) {
+                continue
+            }
+
             if hasInputChannels(deviceID: deviceID),
                let device = createAudioInputDevice(deviceID: deviceID, isDefault: deviceID == defaultDeviceID) {
                 devices.append(device)
@@ -257,6 +262,39 @@ public final class MacAudioDeviceManager: ObservableObject {
 
         guard status == noErr, let deviceName = name as String? else { return nil }
         return deviceName
+    }
+
+    /// Check if device is aggregate or virtual (should be hidden from user)
+    private func isAggregateOrVirtualDevice(deviceID: AudioDeviceID) -> Bool {
+        // Check transport type
+        var propertyAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        var transportType: UInt32 = 0
+        var dataSize = UInt32(MemoryLayout<UInt32>.size)
+
+        let status = AudioObjectGetPropertyData(deviceID, &propertyAddress, 0, nil, &dataSize, &transportType)
+        if status == noErr {
+            if transportType == kAudioDeviceTransportTypeAggregate ||
+               transportType == kAudioDeviceTransportTypeVirtual {
+                return true
+            }
+        }
+
+        // Also check device name for system aggregate devices
+        if let name = getDeviceName(deviceID: deviceID) {
+            let lowercaseName = name.lowercased()
+            if lowercaseName.contains("aggregate") ||
+               lowercaseName.contains("cadefaultdevice") ||
+               lowercaseName.contains("multi-output") {
+                return true
+            }
+        }
+
+        return false
     }
 
     /// Get transport type (built-in, bluetooth, continuity, etc.)

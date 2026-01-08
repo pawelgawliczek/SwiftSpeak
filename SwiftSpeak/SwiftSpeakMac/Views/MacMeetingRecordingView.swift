@@ -39,22 +39,21 @@ struct MacMeetingRecordingView: View {
             // Background with logo
             backgroundView
 
-            VStack(spacing: 20) {
+            VStack(spacing: 16) {
                 // Quick settings card (context + speakers)
                 if !orchestrator.isRecording && !orchestrator.isProcessing {
                     quickSettingsCard
                         .padding(.horizontal, 24)
-                        .padding(.top, 8)
+                        .padding(.top, 4)
                 }
 
-                Spacer(minLength: 8)
-
-                // Timer display
+                // Timer display - positioned higher
                 timerView
+                    .padding(.top, orchestrator.isRecording ? 20 : 4)
 
                 // Audio waveform visualization
                 waveformView
-                    .frame(height: 60)
+                    .frame(height: 50)
                     .padding(.horizontal, 40)
 
                 // Cost estimate (no dual mode indicator)
@@ -72,24 +71,31 @@ struct MacMeetingRecordingView: View {
                     .background(.quaternary.opacity(0.6), in: Capsule())
                 }
 
-                Spacer(minLength: 12)
+                Spacer()
+
+                // Logo watermark above controls
+                Image("SwiftSpeakLogo")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                    .opacity(0.12)
 
                 // Status indicator
                 statusView
 
                 // Recording controls
                 controlsView
-                    .padding(.bottom, 40)
+                    .padding(.bottom, 32)
 
                 // Background processing hint
                 if orchestrator.isProcessing {
                     Text("You can close this window. You'll be notified when processing completes.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .padding(.bottom, 16)
+                        .padding(.bottom, 12)
                 }
             }
-            .padding(.top, 16)
+            .padding(.top, 12)
         }
         .frame(minWidth: 480, minHeight: 620)
         .toolbar {
@@ -211,37 +217,26 @@ struct MacMeetingRecordingView: View {
     // MARK: - Subviews
 
     private var backgroundView: some View {
-        ZStack {
-            // Modern gradient background
-            LinearGradient(
-                colors: [
-                    Color(nsColor: .windowBackgroundColor),
-                    Color(nsColor: .controlBackgroundColor).opacity(0.5),
-                    Color.teal.opacity(0.03)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-
-            // SwiftSpeak logo watermark
-            Image("SwiftSpeakLogo")
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 160, height: 160)
-                .opacity(0.18)
-                .offset(y: 40)
-        }
+        LinearGradient(
+            colors: [
+                Color(nsColor: .windowBackgroundColor),
+                Color(nsColor: .controlBackgroundColor).opacity(0.5),
+                Color.teal.opacity(0.03)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
         .ignoresSafeArea()
     }
 
     private var quickSettingsCard: some View {
-        HStack(spacing: 16) {
-            // Microphone picker (compact)
-            HStack(spacing: 8) {
-                Image(systemName: "mic.fill")
-                    .font(.caption)
-                    .foregroundStyle(.blue)
-
+        VStack(spacing: 0) {
+            // Microphone row
+            settingsRow(
+                icon: "mic.fill",
+                iconColor: .blue,
+                label: "Microphone"
+            ) {
                 Picker("Microphone", selection: $deviceManager.selectedDevice) {
                     ForEach(deviceManager.availableDevices) { device in
                         HStack(spacing: 6) {
@@ -257,18 +252,17 @@ struct MacMeetingRecordingView: View {
                     }
                 }
                 .labelsHidden()
-                .fixedSize()
             }
 
             Divider()
-                .frame(height: 24)
+                .padding(.leading, 40)
 
-            // Context picker (compact)
-            HStack(spacing: 8) {
-                Image(systemName: "tag.fill")
-                    .font(.caption)
-                    .foregroundStyle(.purple)
-
+            // Context row
+            settingsRow(
+                icon: "tag.fill",
+                iconColor: .purple,
+                label: "Context"
+            ) {
                 Picker("Context", selection: $selectedContextId) {
                     Text("None").tag(nil as UUID?)
                     ForEach(settings.contexts) { context in
@@ -281,49 +275,77 @@ struct MacMeetingRecordingView: View {
                     }
                 }
                 .labelsHidden()
-                .fixedSize()
             }
 
             Divider()
-                .frame(height: 24)
+                .padding(.leading, 40)
 
-            // Speaker count (compact)
-            HStack(spacing: 6) {
-                Image(systemName: "person.2.fill")
-                    .font(.caption)
-                    .foregroundStyle(.teal)
+            // Speakers row
+            settingsRow(
+                icon: "person.2.fill",
+                iconColor: .teal,
+                label: "Speakers"
+            ) {
+                HStack(spacing: 4) {
+                    Text("\(orchestrator.settings.expectedSpeakerCount ?? 2)")
+                        .font(.callout.weight(.medium).monospacedDigit())
+                        .frame(width: 24)
 
-                Text("\(orchestrator.settings.expectedSpeakerCount ?? 2)")
-                    .font(.callout.weight(.medium).monospacedDigit())
-
-                Stepper(
-                    "",
-                    value: Binding(
-                        get: { orchestrator.settings.expectedSpeakerCount ?? 2 },
-                        set: { orchestrator.settings.expectedSpeakerCount = $0 }
-                    ),
-                    in: 2...10
-                )
-                .labelsHidden()
+                    Stepper(
+                        "",
+                        value: Binding(
+                            get: { orchestrator.settings.expectedSpeakerCount ?? 2 },
+                            set: { orchestrator.settings.expectedSpeakerCount = $0 }
+                        ),
+                        in: 2...10
+                    )
+                    .labelsHidden()
+                }
             }
 
-            // Word boost indicator (if any)
+            // Word boost row (only if vocabulary terms exist)
             if !orchestrator.settings.wordBoost.isEmpty {
                 Divider()
-                    .frame(height: 24)
+                    .padding(.leading, 40)
 
-                HStack(spacing: 4) {
-                    Image(systemName: "text.badge.plus")
-                        .font(.caption)
-                    Text("\(orchestrator.settings.wordBoost.count)")
-                        .font(.caption.weight(.semibold))
+                settingsRow(
+                    icon: "text.badge.plus",
+                    iconColor: .orange,
+                    label: "Vocabulary"
+                ) {
+                    Text("\(orchestrator.settings.wordBoost.count) terms")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-                .foregroundStyle(.teal)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    /// Consistent settings row style matching iOS/macOS settings
+    private func settingsRow<Content: View>(
+        icon: String,
+        iconColor: Color,
+        label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: 28, height: 28)
+                .background(iconColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+            Text(label)
+                .font(.callout)
+                .foregroundStyle(.primary)
+
+            Spacer()
+
+            content()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
     }
 
     private var timerView: some View {
