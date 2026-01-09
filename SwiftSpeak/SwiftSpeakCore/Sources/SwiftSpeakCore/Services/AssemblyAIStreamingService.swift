@@ -267,9 +267,6 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
 
         case "Termination":
             // Session ended - server has processed all audio
-            #if DEBUG
-            print("[AssemblyAI] 🏁 Session terminated - all audio processed")
-            #endif
             sessionEndedSubject.send(())
             disconnect()
 
@@ -293,30 +290,15 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         let endOfTurn = json["end_of_turn"] as? Bool ?? false
         let turnIsFormatted = json["turn_is_formatted"] as? Bool ?? false
 
-        #if DEBUG
-        print("[AssemblyAI] Turn: '\(transcript.prefix(40))' endOfTurn=\(endOfTurn) formatted=\(turnIsFormatted)")
-        #endif
-
         if turnIsFormatted {
             // Formatted final - this is the high-quality output we want
             fullTranscript += transcript + " "
-            #if DEBUG
-            print("[AssemblyAI] 📨 Sending FORMATTED FINAL: '\(transcript.prefix(40))'")
-            #endif
             finalTranscriptSubject.send(transcript)
             delegate?.didReceiveFinalTranscript(transcript)
         } else if endOfTurn {
-            // Unformatted end-of-turn - skip this, wait for the formatted version
-            // (AssemblyAI sends both, we only want the formatted one)
-            #if DEBUG
-            print("[AssemblyAI] ⏭️ Skipping unformatted endOfTurn (waiting for formatted)")
-            #endif
+            // Unformatted end-of-turn - skip this, wait for formatted version
         } else {
-            // Partial/interim result - use transcript directly (utterance is often empty)
-            // The transcript field contains the current partial text
-            #if DEBUG
-            print("[AssemblyAI] 📨 Sending PARTIAL: '\(transcript.prefix(40))'")
-            #endif
+            // Partial/interim result
             partialTranscriptSubject.send(transcript)
             delegate?.didReceivePartialTranscript(transcript)
         }

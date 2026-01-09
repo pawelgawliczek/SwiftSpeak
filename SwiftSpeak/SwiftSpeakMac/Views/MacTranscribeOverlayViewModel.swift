@@ -72,44 +72,34 @@ private class StreamingDelegateBridge: StreamingTranscriptionDelegate {
     }
 
     func didReceivePartialTranscript(_ text: String) {
-        // Bridge to MainActor - use DispatchQueue for synchronous behavior
         DispatchQueue.main.async { [weak self] in
             guard let self, let vm = self.viewModel else { return }
-            macLog("📝 DELEGATE PARTIAL: '\(text.prefix(50))' delta=\(self.partialsAreDelta)", category: "Streaming")
-
             if self.partialsAreDelta {
                 vm.liveTranscript += text
             } else {
                 vm.liveTranscript = vm.streamingFullTranscript + text
             }
-            macLog("📝 liveTranscript: '\(vm.liveTranscript.suffix(50))'", category: "Streaming")
         }
     }
 
     func didReceiveFinalTranscript(_ text: String) {
         DispatchQueue.main.async { [weak self] in
             guard let self, let vm = self.viewModel else { return }
-            macLog("✅ DELEGATE FINAL: '\(text.prefix(50))'", category: "Streaming")
-
             vm.streamingFullTranscript += text + " "
             vm.liveTranscript = vm.streamingFullTranscript
-            macLog("✅ liveTranscript: '\(vm.liveTranscript.suffix(50))'", category: "Streaming")
         }
     }
 
     func didEncounterError(_ error: TranscriptionError) {
         DispatchQueue.main.async { [weak self] in
             guard let vm = self?.viewModel else { return }
-            macLog("❌ Streaming error: \(error)", category: "Streaming", level: .error)
+            macLog("Streaming error: \(error)", category: "Streaming", level: .error)
             vm.errorMessage = error.errorDescription
         }
     }
 
     func connectionStateDidChange(_ state: StreamingConnectionState) {
-        DispatchQueue.main.async { [weak self] in
-            guard let vm = self?.viewModel else { return }
-            macLog("🔌 Connection state: \(state)", category: "Streaming")
-        }
+        // Only log errors, not normal state changes
     }
 }
 
@@ -267,23 +257,17 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private func autoSelectContext(for bundleId: String) {
         guard !bundleId.isEmpty else { return }
 
-        macLog("Auto-detecting context for bundleId: '\(bundleId)'", category: "Transcribe")
-        macLog("Available contexts: \(settings.contexts.map { "\($0.name) (apps: \($0.appAssignment.assignedAppIds))" })", category: "Transcribe")
-
         // Find a context that includes this app
-        // Check all contexts for app assignment match
         for context in settings.contexts {
-            let hasAssignments = context.appAssignment.hasAssignments
             let matches = context.appAssignment.includes(
                 bundleId: bundleId,
-                userOverrides: [:],  // TODO: Load user category overrides
-                appLookup: { _ in nil }  // TODO: Implement app library lookup
+                userOverrides: [:],
+                appLookup: { _ in nil }
             )
-            macLog("Context '\(context.name)': hasAssignments=\(hasAssignments), matches=\(matches), assignedApps=\(context.appAssignment.assignedAppIds)", category: "Transcribe", level: .debug)
 
             if matches {
                 activeContext = context
-                macLog("Auto-selected context '\(context.name)' for app '\(bundleId)'", category: "Transcribe")
+                macLog("Auto-selected context '\(context.name)' for '\(bundleId)'", category: "Transcribe")
 
                 // Apply context's default input language (only if context has one)
                 if let contextLanguage = context.defaultInputLanguage {
@@ -293,11 +277,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             }
         }
 
-        // No app-specific match - use global active context from settings (if any)
-        // But DON'T override inputLanguage - keep the global dictation language
-        // The user's global dictation language takes precedence unless a context explicitly sets one
+        // No app-specific match - use global active context
         activeContext = settings.activeContext
-        macLog("No app-specific context match, using activeContext: \(activeContext?.name ?? "none"), keeping inputLanguage: \(inputLanguage?.displayName ?? "auto")", category: "Transcribe")
     }
 
     // MARK: - Recording Control
@@ -311,6 +292,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             liveTranscript = ""
             streamingFullTranscript = ""
             errorMessage = nil
+            audioLevel = 0
+
+            // Clean up any leftover resources from previous session
+            streamingCancellables.removeAll()
+            streamingProvider?.disconnect()
+            streamingProvider = nil
+            streamingAudioRecorder = nil
+            streamingDelegateBridge = nil
 
             // Check if streaming should be used
             let selectedProvider = settings.selectedTranscriptionProvider
@@ -318,7 +307,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             let shouldUseStreaming = settings.transcriptionStreamingEnabled && streamingAvailable
 
             isStreamingSession = shouldUseStreaming
-            macLog("⚡️ RECORDING START - streamingEnabled: \(settings.transcriptionStreamingEnabled), streamingAvailable: \(streamingAvailable), shouldUseStreaming: \(shouldUseStreaming), provider: \(selectedProvider.displayName)", category: "Transcribe")
+            macLog("Recording start - streaming: \(shouldUseStreaming), provider: \(selectedProvider.displayName)", category: "Transcribe")
 
             if shouldUseStreaming {
                 // STREAMING MODE
@@ -387,13 +376,11 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
 
         self.streamingProvider = provider
-        macLog("Created streaming provider: \(selectedProvider.displayName)", category: "Transcribe")
 
-        // Setup delegate for receiving transcription updates (more reliable than Combine)
+        // Setup delegate for receiving transcription updates
         let delegateBridge = StreamingDelegateBridge(viewModel: self, partialsAreDelta: provider.partialsAreDelta)
         self.streamingDelegateBridge = delegateBridge
         provider.delegate = delegateBridge
-        macLog("Set up delegate bridge (partialsAreDelta=\(provider.partialsAreDelta))", category: "Transcribe")
 
         // Determine sample rate based on provider
         let sampleRate: Int
@@ -407,7 +394,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         let streamRecorder = MacStreamingAudioRecorder(sampleRate: sampleRate)
         self.streamingAudioRecorder = streamRecorder
 
-        // Setup provider subscriptions for partial/final transcripts
+        // Setup provider subscriptions
         setupStreamingSubscriptions(provider)
 
         // Setup audio chunk forwarding
@@ -425,17 +412,13 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         let transcriptionPrompt = promptContext.buildTranscriptionHint()
 
         // IMPORTANT: Subscribe to audio level BEFORE starting recording
-        // This prevents race condition where audio starts before subscription is ready
-        // The sender already dispatches to main, so no need for .receive(on:)
+        // Use same pattern as non-streaming mode in setupBindings() which works
         streamRecorder.audioLevelSubject
+            .receive(on: RunLoop.main)
             .sink { [weak self] level in
-                guard let self = self else { return }
-                self.audioLevel = level
+                self?.audioLevel = level
             }
             .store(in: &streamingCancellables)
-        macLog("Audio level subscription set up", category: "Transcribe")
-
-        macLog("Connecting to streaming service (sampleRate: \(sampleRate))...", category: "Transcribe")
 
         // Connect to streaming service
         try await provider.connect(
@@ -443,8 +426,6 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             sampleRate: sampleRate,
             transcriptionPrompt: transcriptionPrompt
         )
-
-        macLog("Connected to streaming service", category: "Transcribe")
 
         // Start streaming audio recorder
         try await streamRecorder.startRecording()
@@ -466,21 +447,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             }
         }
 
-        macLog("Recording started (streaming mode)", category: "Transcribe")
     }
 
-    /// Cancellables specifically for streaming subscriptions (kept separate to avoid clearing)
+    /// Cancellables specifically for streaming subscriptions
     private var streamingCancellables = Set<AnyCancellable>()
 
     /// Setup subscriptions for streaming provider updates
-    /// Note: Primary updates come via delegate (StreamingDelegateBridge), this is kept as fallback
     private func setupStreamingSubscriptions(_ provider: StreamingTranscriptionProvider) {
-        // Clear previous streaming subscriptions
         streamingCancellables.removeAll()
-
-        // Note: We now primarily use the delegate pattern (StreamingDelegateBridge) for updates
-        // as it's more reliable with @MainActor isolation. Combine subscriptions kept minimal.
-        macLog("Streaming subscriptions cleared, using delegate pattern", category: "Transcribe")
     }
 
     func stopRecording() async {
@@ -1150,34 +1124,16 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     // MARK: - Enter Key Behavior Execution
 
     private func executeEnterKeyBehavior() async {
-        // Default to .defaultNewLine when no context is selected (just insert, no send)
         let behavior = activeContext?.enterKeyBehavior ?? .defaultNewLine
-
-        macLog("Executing enter behavior: \(behavior.displayName) (context: \(activeContext?.name ?? "none"))", category: "Transcribe")
+        macLog("Enter behavior: \(behavior.displayName)", category: "Transcribe")
 
         switch behavior {
-        case .defaultNewLine:
-            // Just insert the text (no send)
-            macLog("Behavior: Insert only (no send)", category: "Transcribe")
+        case .defaultNewLine, .formatThenInsert:
             await insertText()
-
-        case .formatThenInsert:
-            // Already formatted above, just insert (no send)
-            macLog("Behavior: Format + Insert (no send)", category: "Transcribe")
-            await insertText()
-
-        case .justSend:
-            // Insert text and send (simulate Enter key)
-            macLog("Behavior: Insert + Send", category: "Transcribe")
-            await insertTextAndSend()
-
-        case .formatAndSend:
-            // Already formatted, insert and send
-            macLog("Behavior: Format + Insert + Send", category: "Transcribe")
+        case .justSend, .formatAndSend:
             await insertTextAndSend()
         }
 
-        // Signal that insertion is complete - overlay should auto-close
         shouldAutoClose = true
     }
 
@@ -1213,107 +1169,57 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     }
 
     func insertText() async {
-        let totalStartTime = CFAbsoluteTimeGetCurrent()
         guard !transcribedText.isEmpty else { return }
-
-        macLog("⏱️ [TIMING] ========== INSERT TEXT START ==========", category: "Transcribe")
-
-        // Show inserting state to keep user informed
-        state = .inserting
-
-        // Hide overlay before restoring focus (prevents focus stealing)
-        let hideStartTime = CFAbsoluteTimeGetCurrent()
-        onWillInsertText?()
-        macLog("⏱️ [TIMING] Overlay hide callback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - hideStartTime) * 1000))ms", category: "Transcribe")
-
-        // IMPORTANT: Wait for the Enter key event (that triggered this action) to clear
-        // Without this delay, the Enter keyUp can leak to the target app
-        Thread.sleep(forTimeInterval: 0.1)
-
-        // Restore focus to previous app and wait for it to be ready
-        let focusStartTime = CFAbsoluteTimeGetCurrent()
-        _ = restoreFocusToPreviousApp()
-        macLog("⏱️ [TIMING] Focus restoration: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - focusStartTime) * 1000))ms", category: "Transcribe")
-
-        if let textService = textInsertion {
-            let insertStartTime = CFAbsoluteTimeGetCurrent()
-            let result = await textService.insertText(transcribedText, replaceSelection: true)
-            let insertElapsed = (CFAbsoluteTimeGetCurrent() - insertStartTime) * 1000
-
-            switch result {
-            case .accessibilitySuccess:
-                macLog("⏱️ [TIMING] Text inserted (accessibility) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
-            case .clipboardFallback:
-                macLog("⏱️ [TIMING] Text inserted (clipboard) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
-            case .failed(let error):
-                macLog("⏱️ [TIMING] Text insertion FAILED after \(String(format: "%.1f", insertElapsed))ms: \(error)", category: "Transcribe", level: .error)
-            }
-        }
-
-        state = .complete
-        let totalElapsed = (CFAbsoluteTimeGetCurrent() - totalStartTime) * 1000
-        macLog("⏱️ [TIMING] ========== INSERT TEXT TOTAL: \(String(format: "%.1f", totalElapsed))ms ==========", category: "Transcribe")
-    }
-
-    private func insertTextAndSend() async {
-        let totalStartTime = CFAbsoluteTimeGetCurrent()
-        guard !transcribedText.isEmpty else { return }
-
-        macLog("⏱️ [TIMING] ========== INSERT TEXT AND SEND START ==========", category: "Transcribe")
-
-        // Show inserting state
         state = .inserting
 
         // Hide overlay before restoring focus
-        let hideStartTime = CFAbsoluteTimeGetCurrent()
         onWillInsertText?()
-        macLog("⏱️ [TIMING] Overlay hide callback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - hideStartTime) * 1000))ms", category: "Transcribe")
 
-        // IMPORTANT: Wait for the Enter key event (that triggered this action) to clear
-        // Without this delay, the Enter keyUp can leak to the target app
+        // Wait for Enter key event to clear before restoring focus
         Thread.sleep(forTimeInterval: 0.1)
-
-        // Restore focus and wait for it to be ready (uses Thread.sleep for precise timing)
-        let focusStartTime = CFAbsoluteTimeGetCurrent()
         _ = restoreFocusToPreviousApp()
-        macLog("⏱️ [TIMING] Focus restoration: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - focusStartTime) * 1000))ms", category: "Transcribe")
 
         if let textService = textInsertion {
-            let insertStartTime = CFAbsoluteTimeGetCurrent()
             let result = await textService.insertText(transcribedText, replaceSelection: true)
-            let insertElapsed = (CFAbsoluteTimeGetCurrent() - insertStartTime) * 1000
-
-            switch result {
-            case .accessibilitySuccess:
-                macLog("⏱️ [TIMING] Text inserted (accessibility) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
-            case .clipboardFallback:
-                macLog("⏱️ [TIMING] Text inserted (clipboard) in \(String(format: "%.1f", insertElapsed))ms", category: "Transcribe")
-            case .failed(let error):
-                macLog("⏱️ [TIMING] Text insertion FAILED after \(String(format: "%.1f", insertElapsed))ms: \(error)", category: "Transcribe", level: .error)
+            if case .failed(let error) = result {
+                macLog("Text insertion failed: \(error)", category: "Transcribe", level: .error)
             }
         }
 
-        // Brief delay before Enter - use Thread.sleep for precise timing
-        let preEnterDelayStart = CFAbsoluteTimeGetCurrent()
-        Thread.sleep(forTimeInterval: 0.05)  // 50ms - enough for clipboard paste to complete
-        macLog("⏱️ [TIMING] Pre-Enter delay: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - preEnterDelayStart) * 1000))ms", category: "Transcribe")
+        state = .complete
+    }
 
-        let enterStartTime = CFAbsoluteTimeGetCurrent()
+    private func insertTextAndSend() async {
+        guard !transcribedText.isEmpty else { return }
+        state = .inserting
+
+        // Hide overlay before restoring focus
+        onWillInsertText?()
+
+        // Wait for Enter key event to clear before restoring focus
+        Thread.sleep(forTimeInterval: 0.1)
+        _ = restoreFocusToPreviousApp()
+
+        if let textService = textInsertion {
+            let result = await textService.insertText(transcribedText, replaceSelection: true)
+            if case .failed(let error) = result {
+                macLog("Text insertion failed: \(error)", category: "Transcribe", level: .error)
+            }
+        }
+
+        // Brief delay before Enter for clipboard paste to complete
+        Thread.sleep(forTimeInterval: 0.05)
+
+        // Send Enter key
         let source = CGEventSource(stateID: .hidSystemState)
-        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)  // Return key
+        let enterDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)
         let enterUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
-
-        // Clear all modifier flags to ensure plain Enter (not Cmd+Enter, etc.)
         enterDown?.flags = []
         enterUp?.flags = []
-
         enterDown?.post(tap: .cghidEventTap)
         enterUp?.post(tap: .cghidEventTap)
-        macLog("⏱️ [TIMING] Enter key sent in \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - enterStartTime) * 1000))ms", category: "Transcribe")
 
         state = .complete
-        let totalElapsed = (CFAbsoluteTimeGetCurrent() - totalStartTime) * 1000
-        macLog("⏱️ [TIMING] ========== INSERT TEXT AND SEND TOTAL: \(String(format: "%.1f", totalElapsed))ms ==========", category: "Transcribe")
     }
 
     func copyToClipboard() {

@@ -156,10 +156,13 @@ final class MacTranscribeOverlayController {
         // Ensure window is first responder
         window.makeFirstResponder(hosting)
 
+        // Double-check the window is actually key
+        if !window.isKeyWindow {
+            window.makeKey()
+        }
+
         // Setup keyboard monitoring
         setupKeyboardMonitor()
-
-        macLog("Transcribe overlay window shown, isKey: \(window.isKeyWindow)", category: "Transcribe")
 
         // Start recording automatically
         Task {
@@ -290,8 +293,14 @@ final class MacTranscribeOverlayController {
         }
 
         // Also add a global monitor as fallback for accessory mode apps
+        // Note: Global monitor cannot consume events, so only use it when window isn't key
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            _ = self?.handleKeyDown(event)
+            guard let self else { return }
+            // Skip if window is key - local monitor handles it
+            if self.overlayWindow?.isKeyWindow == true {
+                return
+            }
+            _ = self.handleKeyDown(event)
         }
     }
 
@@ -309,7 +318,6 @@ final class MacTranscribeOverlayController {
         let meaningfulModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
         let hasModifiers = !event.modifierFlags.intersection(meaningfulModifiers).isEmpty
 
-        macLog("Key pressed: \(keyCode), hasModifiers: \(hasModifiers)", category: "Transcribe", level: .debug)
 
         // T (keyCode 17) - Toggle translation (no meaningful modifiers)
         if keyCode == 17 && !hasModifiers {

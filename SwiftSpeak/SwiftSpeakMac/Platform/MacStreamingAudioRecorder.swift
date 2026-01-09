@@ -122,6 +122,7 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         startTime = Date()
         isRecording = true
         error = nil
+        levelUpdateCount = 0
 
         // Start duration timer
         durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
@@ -193,18 +194,20 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
 
         // Send chunk via callback
         if !data.isEmpty {
-            // Log every 20th chunk to avoid log spam (50ms * 20 = 1 second)
-            let chunkCount = (frameLength * 2)
-            if arc4random_uniform(20) == 0 {
-                macLog("🎤 Audio chunk: \(chunkCount) bytes", category: "StreamingRecorder", level: .debug)
-            }
             onAudioChunk?(data)
         }
     }
 
     /// Update audio level from buffer for visualization
     private func updateAudioLevel(from buffer: AVAudioPCMBuffer) {
-        guard let channelData = buffer.floatChannelData else { return }
+        guard let channelData = buffer.floatChannelData else {
+            // Log if we can't get float data (only once)
+            if levelUpdateCount == 0 {
+                macLog("[MacStreamingAudioRecorder] WARNING: No floatChannelData in buffer, format: \(buffer.format)", category: "StreamingRecorder", level: .warning)
+            }
+            levelUpdateCount += 1
+            return
+        }
 
         let frameLength = Int(buffer.frameLength)
         var sum: Float = 0.0
@@ -215,8 +218,11 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         }
 
         let rms = sqrt(sum / Float(frameLength))
-        // Convert to 0-1 range with some scaling
-        let level = min(1.0, rms * 3.0)
+        // Convert to 0-1 range with aggressive scaling for low-level mic input
+        // macOS mic levels are often very low (0.001-0.01 RMS), need 50-100x scaling
+        let level = min(1.0, rms * 50.0)
+
+        levelUpdateCount += 1
 
         // Call callback and publish on main thread for immediate UI update
         DispatchQueue.main.async { [weak self] in
@@ -226,6 +232,8 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
             self.audioLevelSubject.send(level)
         }
     }
+
+    private var levelUpdateCount: Int = 0
 
     /// Check microphone permission
     private func checkMicrophonePermission() async -> Bool {

@@ -21,6 +21,7 @@ class MacSettings: ObservableObject {
     private var iCloudObserver: NSObjectProtocol?
     private var isSyncing = false
     private var isInitializing = true  // Prevent syncing during init
+    private var syncWorkItem: DispatchWorkItem?  // Debounce sync calls
 
     // iCloud sync keys - MUST match iOS SharedSettings.swift
     private enum iCloudKeys {
@@ -47,6 +48,8 @@ class MacSettings: ObservableObject {
         static let keyboardProgrammableAction = "icloud_keyboard_programmableAction"
         static let keyboardShowProgrammableNextToReturn = "icloud_keyboard_showProgrammableNextToReturn"
         static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
+        // Streaming settings
+        static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
     }
 
     // MARK: - Published Properties
@@ -607,6 +610,11 @@ class MacSettings: ObservableObject {
            let returnAction = MacProgrammableButtonAction(rawValue: returnActionRaw) {
             keyboardReturnProgrammableAction = returnAction
         }
+
+        // Load streaming settings
+        if let streamingEnabled = iCloud?.object(forKey: iCloudKeys.transcriptionStreamingEnabled) as? Bool {
+            transcriptionStreamingEnabled = streamingEnabled
+        }
     }
 
     private func syncToiCloud() {
@@ -614,17 +622,25 @@ class MacSettings: ObservableObject {
             // Don't sync during initialization - we're still loading
             return
         }
-        guard !isSyncing else {
-            macLog("syncToiCloud: Skipped (already syncing)", category: "iCloud")
-            return
-        }
 
-        macLog("syncToiCloud: Starting sync to iCloud KVS...", category: "iCloud")
+        // Cancel any pending sync and schedule a new one after debounce delay
+        // This coalesces rapid-fire setting changes into a single sync
+        syncWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.performSync()
+        }
+        syncWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    private func performSync() {
+        guard !isSyncing else { return }
+        isSyncing = true
+        defer { isSyncing = false }
 
         // Sync providers
         if let data = try? JSONEncoder().encode(configuredAIProviders) {
             iCloud?.set(data, forKey: iCloudKeys.configuredAIProviders)
-            macLog("syncToiCloud: Synced \(configuredAIProviders.count) providers (\(data.count) bytes)", category: "iCloud")
         }
 
         // Sync contexts
@@ -681,12 +697,14 @@ class MacSettings: ObservableObject {
         iCloud?.set(keyboardShowProgrammableNextToReturn, forKey: iCloudKeys.keyboardShowProgrammableNextToReturn)
         iCloud?.set(keyboardReturnProgrammableAction.rawValue, forKey: iCloudKeys.keyboardReturnProgrammableAction)
 
+        // Sync streaming settings
+        iCloud?.set(transcriptionStreamingEnabled, forKey: iCloudKeys.transcriptionStreamingEnabled)
+
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
         // Trigger synchronization
-        let syncResult = iCloud?.synchronize()
-        macLog("syncToiCloud: synchronize() returned \(String(describing: syncResult))", category: "iCloud")
+        _ = iCloud?.synchronize()
     }
 
     /// Force sync settings to iCloud (call after making changes)

@@ -261,7 +261,7 @@ struct MacTranscribeOverlayView: View {
                             TranscribeProcessingAnimationView()
                                 .frame(width: 100, height: 32)
                         } else {
-                            TranscribeWaveformView(level: viewModel.audioLevel, isRecording: viewModel.state == .recording)
+                            TranscribeWaveformView(viewModel: viewModel)
                                 .frame(width: 100, height: 32)
                         }
                     }
@@ -744,25 +744,45 @@ struct TranscribeKeyboardHint: View {
 // MARK: - Waveform View
 
 struct TranscribeWaveformView: View {
-    let level: Float
-    var isRecording: Bool = false
+    @ObservedObject var viewModel: MacTranscribeOverlayViewModel
 
     private let barCount = 20
 
     @State private var waveformLevels: [Double] = Array(repeating: 0.08, count: 20)
+    @State private var lastLevel: Float = 0
+
+    private var isRecording: Bool {
+        viewModel.state == .recording
+    }
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<barCount, id: \.self) { index in
-                let barLevel = waveformLevels.indices.contains(index) ? waveformLevels[index] : 0.08
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(barColor(for: barLevel, isRecording: isRecording))
-                    .frame(width: 4, height: max(4, CGFloat(barLevel) * 36))
-                    .animation(.easeOut(duration: 0.08), value: barLevel)
+        // Use TimelineView for guaranteed updates during recording
+        TimelineView(.animation(minimumInterval: 0.05, paused: !isRecording)) { timeline in
+            HStack(spacing: 2) {
+                ForEach(0..<barCount, id: \.self) { index in
+                    let barLevel = waveformLevels.indices.contains(index) ? waveformLevels[index] : 0.08
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(barColor(for: barLevel))
+                        .frame(width: 4, height: max(4, CGFloat(barLevel) * 36))
+                }
+            }
+            .onChange(of: timeline.date) { _ in
+                // Update waveform on each timeline tick - read latest level from viewModel
+                guard isRecording else { return }
+                let currentLevel = viewModel.audioLevel
+                if currentLevel != lastLevel {
+                    var newLevels = waveformLevels
+                    newLevels.removeFirst()
+                    let normalizedLevel = Double(max(0.08, min(1.0, currentLevel)))
+                    newLevels.append(normalizedLevel)
+                    waveformLevels = newLevels
+                    lastLevel = currentLevel
+                }
             }
         }
-        .onChange(of: level) { newLevel in
-            // Shift levels left and add new level
+        .onChange(of: viewModel.audioLevel) { newLevel in
+            // Also update on level change for immediate response
+            guard isRecording else { return }
             var newLevels = waveformLevels
             newLevels.removeFirst()
             let normalizedLevel = Double(max(0.08, min(1.0, newLevel)))
@@ -771,7 +791,7 @@ struct TranscribeWaveformView: View {
         }
     }
 
-    private func barColor(for level: Double, isRecording: Bool) -> Color {
+    private func barColor(for level: Double) -> Color {
         guard isRecording else { return Color.gray.opacity(0.4) }
 
         if level < 0.25 { return .green }
