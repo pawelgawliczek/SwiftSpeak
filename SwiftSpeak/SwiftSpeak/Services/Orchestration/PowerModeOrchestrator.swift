@@ -216,6 +216,9 @@ final class PowerModeOrchestrator: ObservableObject {
         startTime = Date()
 
         do {
+            // Set audio quality from settings
+            audioRecorder.audioQuality = settings.audioQuality
+
             state = .recording
             try await audioRecorder.startRecording()
         } catch let error as TranscriptionError {
@@ -927,6 +930,8 @@ extension PowerModeOrchestrator {
     func startSearchDictation() async {
         isDictatingSearchQuery = true
         do {
+            // Set audio quality from settings
+            audioRecorder.audioQuality = settings.audioQuality
             try await audioRecorder.startRecording()
         } catch {
             isDictatingSearchQuery = false

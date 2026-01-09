@@ -59,6 +59,60 @@ enum TranscribeMode {
     case pushToTalk  // User is holding the hotkey (closes on release)
 }
 
+// MARK: - Streaming Delegate Bridge
+// This class bridges streaming provider delegate calls to the MainActor view model
+
+private class StreamingDelegateBridge: StreamingTranscriptionDelegate {
+    weak var viewModel: MacTranscribeOverlayViewModel?
+    let partialsAreDelta: Bool
+
+    init(viewModel: MacTranscribeOverlayViewModel, partialsAreDelta: Bool) {
+        self.viewModel = viewModel
+        self.partialsAreDelta = partialsAreDelta
+    }
+
+    func didReceivePartialTranscript(_ text: String) {
+        // Bridge to MainActor - use DispatchQueue for synchronous behavior
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let vm = self.viewModel else { return }
+            macLog("📝 DELEGATE PARTIAL: '\(text.prefix(50))' delta=\(self.partialsAreDelta)", category: "Streaming")
+
+            if self.partialsAreDelta {
+                vm.liveTranscript += text
+            } else {
+                vm.liveTranscript = vm.streamingFullTranscript + text
+            }
+            macLog("📝 liveTranscript: '\(vm.liveTranscript.suffix(50))'", category: "Streaming")
+        }
+    }
+
+    func didReceiveFinalTranscript(_ text: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let vm = self.viewModel else { return }
+            macLog("✅ DELEGATE FINAL: '\(text.prefix(50))'", category: "Streaming")
+
+            vm.streamingFullTranscript += text + " "
+            vm.liveTranscript = vm.streamingFullTranscript
+            macLog("✅ liveTranscript: '\(vm.liveTranscript.suffix(50))'", category: "Streaming")
+        }
+    }
+
+    func didEncounterError(_ error: TranscriptionError) {
+        DispatchQueue.main.async { [weak self] in
+            guard let vm = self?.viewModel else { return }
+            macLog("❌ Streaming error: \(error)", category: "Streaming", level: .error)
+            vm.errorMessage = error.errorDescription
+        }
+    }
+
+    func connectionStateDidChange(_ state: StreamingConnectionState) {
+        DispatchQueue.main.async { [weak self] in
+            guard let vm = self?.viewModel else { return }
+            macLog("🔌 Connection state: \(state)", category: "Streaming")
+        }
+    }
+}
+
 // MARK: - MacTranscribeOverlayViewModel
 
 @MainActor
@@ -66,7 +120,11 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     // MARK: - Published State
 
-    @Published var state: TranscribeOverlayState = .idle
+    @Published var state: TranscribeOverlayState = .idle {
+        didSet {
+            macLog("🔄 State changed: \(oldValue) → \(state)", category: "Transcribe")
+        }
+    }
     @Published var mode: TranscribeMode = .toggle
 
     /// Active context (auto-detected or manually selected)
@@ -128,6 +186,24 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     /// Last recorded audio URL - stored for retry functionality
     private var lastRecordingURL: URL?
 
+    // MARK: - Streaming State
+
+    /// Whether this session is using streaming transcription
+    private var isStreamingSession: Bool = false
+
+    /// Active streaming provider (when streaming)
+    private var streamingProvider: StreamingTranscriptionProvider?
+
+    /// Streaming audio recorder (when streaming)
+    private var streamingAudioRecorder: MacStreamingAudioRecorder?
+
+    /// Accumulated full transcript from finals (when streaming)
+    /// Note: fileprivate for delegate bridge access
+    fileprivate var streamingFullTranscript: String = ""
+
+    /// Delegate bridge for streaming provider
+    private var streamingDelegateBridge: StreamingDelegateBridge?
+
     // MARK: - Initialization
 
     init(
@@ -158,11 +234,13 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         targetLanguage = settings.selectedTargetLanguage
         inputLanguage = settings.selectedDictationLanguage
 
-        // Observe audio recorder level
+        // Observe audio recorder level - only when NOT in streaming mode
+        // (Streaming mode uses its own audio recorder and timer for levels)
         audioRecorder.$currentLevel
             .receive(on: RunLoop.main)
             .sink { [weak self] level in
-                self?.audioLevel = level
+                guard let self, !self.isStreamingSession else { return }
+                self.audioLevel = level
             }
             .store(in: &cancellables)
     }
@@ -231,46 +309,178 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             state = .initializing
             recordingDuration = 0
             liveTranscript = ""
+            streamingFullTranscript = ""
             errorMessage = nil
 
-            // Set recording format based on transcription provider
-            // Google STT requires WAV (LINEAR16), other providers work with AAC (smaller files)
-            audioRecorder.recordingFormat = RecordingFormat.forProvider(settings.selectedTranscriptionProvider)
-            audioRecorder.audioQuality = settings.audioQuality
+            // Check if streaming should be used
+            let selectedProvider = settings.selectedTranscriptionProvider
+            let streamingAvailable = selectedProvider == .openAI || selectedProvider == .deepgram || selectedProvider == .assemblyAI
+            let shouldUseStreaming = settings.transcriptionStreamingEnabled && streamingAvailable
 
-            // Resolve effective quality for UI display
-            effectiveAudioQuality = settings.audioQuality == .auto
-                ? NetworkQualityMonitor.shared.recommendedQuality
-                : settings.audioQuality
+            isStreamingSession = shouldUseStreaming
+            macLog("⚡️ RECORDING START - streamingEnabled: \(settings.transcriptionStreamingEnabled), streamingAvailable: \(streamingAvailable), shouldUseStreaming: \(shouldUseStreaming), provider: \(selectedProvider.displayName)", category: "Transcribe")
 
-            macLog("Using recording format: \(audioRecorder.recordingFormat), quality: \(effectiveAudioQuality.displayName)", category: "Transcribe")
-
-            // Start audio recording (may take time on first call due to audio engine init)
-            // We wait for this to complete BEFORE showing "Recording" state
-            try await audioRecorder.startRecording()
-
-            // NOW audio is actually being captured - switch to recording state
-            state = .recording
-
-            // Play start sound AFTER audio engine is ready (user can now speak)
-            if settings.playSoundOnRecordStart {
-                NSSound(named: "Tink")?.play()
+            if shouldUseStreaming {
+                // STREAMING MODE
+                try await startStreamingRecording()
+            } else {
+                // BATCH MODE (existing behavior)
+                try await startBatchRecording()
             }
-
-            // Start timer only after recording has actually begun
-            recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                Task { @MainActor in
-                    guard let self = self else { return }
-                    self.recordingDuration = self.audioRecorder.duration
-                }
-            }
-
-            macLog("Recording started", category: "Transcribe")
         } catch {
             macLog("Failed to start recording: \(error)", category: "Transcribe", level: .error)
             errorMessage = "Failed to start recording: \(error.localizedDescription)"
             state = .error(error.localizedDescription)
         }
+    }
+
+    /// Start recording in batch mode (existing behavior)
+    private func startBatchRecording() async throws {
+        // Set recording format based on transcription provider
+        // Google STT requires WAV (LINEAR16), other providers work with AAC (smaller files)
+        audioRecorder.recordingFormat = RecordingFormat.forProvider(settings.selectedTranscriptionProvider)
+        audioRecorder.audioQuality = settings.audioQuality
+
+        // Resolve effective quality for UI display
+        effectiveAudioQuality = settings.audioQuality == .auto
+            ? NetworkQualityMonitor.shared.recommendedQuality
+            : settings.audioQuality
+
+        macLog("Using recording format: \(audioRecorder.recordingFormat), quality: \(effectiveAudioQuality.displayName)", category: "Transcribe")
+
+        // Start audio recording (may take time on first call due to audio engine init)
+        // We wait for this to complete BEFORE showing "Recording" state
+        try await audioRecorder.startRecording()
+
+        // NOW audio is actually being captured - switch to recording state
+        state = .recording
+
+        // Play start sound AFTER audio engine is ready (user can now speak)
+        if settings.playSoundOnRecordStart {
+            NSSound(named: "Tink")?.play()
+        }
+
+        // Start timer only after recording has actually begun
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self = self else { return }
+                self.recordingDuration = self.audioRecorder.duration
+            }
+        }
+
+        macLog("Recording started (batch mode)", category: "Transcribe")
+    }
+
+    /// Start recording in streaming mode
+    private func startStreamingRecording() async throws {
+        guard let factory = providerFactory else {
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        // Create streaming provider
+        let selectedProvider = settings.selectedTranscriptionProvider
+        guard let provider = factory.createStreamingTranscriptionProvider(for: selectedProvider) else {
+            macLog("Failed to create streaming provider for \(selectedProvider.displayName), falling back to batch", category: "Transcribe", level: .warning)
+            isStreamingSession = false
+            try await startBatchRecording()
+            return
+        }
+
+        self.streamingProvider = provider
+        macLog("Created streaming provider: \(selectedProvider.displayName)", category: "Transcribe")
+
+        // Setup delegate for receiving transcription updates (more reliable than Combine)
+        let delegateBridge = StreamingDelegateBridge(viewModel: self, partialsAreDelta: provider.partialsAreDelta)
+        self.streamingDelegateBridge = delegateBridge
+        provider.delegate = delegateBridge
+        macLog("Set up delegate bridge (partialsAreDelta=\(provider.partialsAreDelta))", category: "Transcribe")
+
+        // Determine sample rate based on provider
+        let sampleRate: Int
+        if selectedProvider == .openAI {
+            sampleRate = 24000 // OpenAI Realtime requires 24kHz
+        } else {
+            sampleRate = 16000 // Standard for Deepgram/AssemblyAI
+        }
+
+        // Create streaming audio recorder
+        let streamRecorder = MacStreamingAudioRecorder(sampleRate: sampleRate)
+        self.streamingAudioRecorder = streamRecorder
+
+        // Setup provider subscriptions for partial/final transcripts
+        setupStreamingSubscriptions(provider)
+
+        // Setup audio chunk forwarding
+        streamRecorder.onAudioChunk = { [weak provider] data in
+            provider?.sendAudio(data)
+        }
+
+        // Build transcription hints from context
+        let promptContext = PromptContext.from(
+            context: activeContext,
+            powerMode: nil,
+            globalMemory: settings.globalMemoryEnabled ? settings.globalMemory : nil,
+            vocabularyEntries: settings.vocabulary
+        )
+        let transcriptionPrompt = promptContext.buildTranscriptionHint()
+
+        // IMPORTANT: Subscribe to audio level BEFORE starting recording
+        // This prevents race condition where audio starts before subscription is ready
+        // The sender already dispatches to main, so no need for .receive(on:)
+        streamRecorder.audioLevelSubject
+            .sink { [weak self] level in
+                guard let self = self else { return }
+                self.audioLevel = level
+            }
+            .store(in: &streamingCancellables)
+        macLog("Audio level subscription set up", category: "Transcribe")
+
+        macLog("Connecting to streaming service (sampleRate: \(sampleRate))...", category: "Transcribe")
+
+        // Connect to streaming service
+        try await provider.connect(
+            language: inputLanguage,
+            sampleRate: sampleRate,
+            transcriptionPrompt: transcriptionPrompt
+        )
+
+        macLog("Connected to streaming service", category: "Transcribe")
+
+        // Start streaming audio recorder
+        try await streamRecorder.startRecording()
+
+        // NOW audio is actually being captured - switch to recording state
+        state = .recording
+
+        // Play start sound
+        if settings.playSoundOnRecordStart {
+            NSSound(named: "Tink")?.play()
+        }
+
+        // Start timer to track duration
+        let startTime = Date()
+        recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.recordingDuration = Date().timeIntervalSince(startTime)
+            }
+        }
+
+        macLog("Recording started (streaming mode)", category: "Transcribe")
+    }
+
+    /// Cancellables specifically for streaming subscriptions (kept separate to avoid clearing)
+    private var streamingCancellables = Set<AnyCancellable>()
+
+    /// Setup subscriptions for streaming provider updates
+    /// Note: Primary updates come via delegate (StreamingDelegateBridge), this is kept as fallback
+    private func setupStreamingSubscriptions(_ provider: StreamingTranscriptionProvider) {
+        // Clear previous streaming subscriptions
+        streamingCancellables.removeAll()
+
+        // Note: We now primarily use the delegate pattern (StreamingDelegateBridge) for updates
+        // as it's more reliable with @MainActor isolation. Combine subscriptions kept minimal.
+        macLog("Streaming subscriptions cleared, using delegate pattern", category: "Transcribe")
     }
 
     func stopRecording() async {
@@ -284,20 +494,221 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             NSSound(named: "Pop")?.play()
         }
 
-        do {
-            let audioURL = try audioRecorder.stopRecording()
-            macLog("Recording stopped, audio file: \(audioURL)", category: "Transcribe")
+        if isStreamingSession {
+            // STREAMING MODE - use accumulated transcript
+            await stopStreamingRecording()
+        } else {
+            // BATCH MODE - existing behavior
+            do {
+                let audioURL = try audioRecorder.stopRecording()
+                macLog("Recording stopped, audio file: \(audioURL)", category: "Transcribe")
 
-            // Store URL for potential retry
-            lastRecordingURL = audioURL
+                // Store URL for potential retry
+                lastRecordingURL = audioURL
 
-            // Process the recording
-            await processRecording(audioURL: audioURL)
-        } catch {
-            macLog("Failed to stop recording: \(error)", category: "Transcribe", level: .error)
-            errorMessage = "Failed to stop recording: \(error.localizedDescription)"
-            state = .error(error.localizedDescription)
+                // Process the recording
+                await processRecording(audioURL: audioURL)
+            } catch {
+                macLog("Failed to stop recording: \(error)", category: "Transcribe", level: .error)
+                errorMessage = "Failed to stop recording: \(error.localizedDescription)"
+                state = .error(error.localizedDescription)
+            }
         }
+    }
+
+    /// Stop streaming recording and process result
+    private func stopStreamingRecording() async {
+        macLog("Stopping streaming recording...", category: "Transcribe")
+
+        // Capture the current partial before we start cleanup
+        // This is important because we might not get a final for the last utterance
+        let lastPartial = liveTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Stop streaming audio recorder first - no more audio to send
+        streamingAudioRecorder?.stopRecording()
+
+        // Signal end of audio - this tells the provider we're done sending
+        streamingProvider?.finishAudio()
+
+        // Wait for the provider to signal it's done processing all audio
+        // Use sessionEndedPublisher with a timeout
+        if let provider = streamingProvider {
+            macLog("Waiting for provider to finish processing...", category: "Transcribe")
+
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                // Use a class to safely track if we've resumed
+                final class ContinuationState {
+                    var hasResumed = false
+                    let lock = NSLock()
+
+                    func tryResume(_ continuation: CheckedContinuation<Void, Never>) -> Bool {
+                        lock.lock()
+                        defer { lock.unlock() }
+                        if hasResumed { return false }
+                        hasResumed = true
+                        continuation.resume()
+                        return true
+                    }
+                }
+
+                let state = ContinuationState()
+                var sessionEndedCancellable: AnyCancellable?
+
+                // Set up timeout
+                let timeoutTask = Task {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 second timeout
+                    sessionEndedCancellable?.cancel()
+                    if state.tryResume(continuation) {
+                        macLog("Session wait timed out after 2s", category: "Transcribe", level: .warning)
+                    }
+                }
+
+                // Wait for session ended signal
+                sessionEndedCancellable = provider.sessionEndedPublisher
+                    .first()
+                    .sink { _ in
+                        timeoutTask.cancel()
+                        if state.tryResume(continuation) {
+                            macLog("Session ended signal received", category: "Transcribe")
+                        }
+                    }
+            }
+        }
+
+        // Disconnect streaming service
+        streamingProvider?.disconnect()
+        streamingProvider = nil
+        streamingAudioRecorder = nil
+        streamingDelegateBridge = nil
+
+        // Clear streaming subscriptions
+        streamingCancellables.removeAll()
+
+        // Get the accumulated transcript
+        var transcript = streamingFullTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If there's a partial that wasn't finalized, include it
+        // (This happens when user stops quickly before provider sends final)
+        if !lastPartial.isEmpty {
+            // Check if the last partial content is already in the transcript
+            let lastPartialWords = lastPartial.components(separatedBy: .whitespaces).suffix(5).joined(separator: " ")
+            if !transcript.contains(lastPartialWords) && lastPartialWords.count > 3 {
+                macLog("Including unfinalzed partial: '\(lastPartial.suffix(50))'", category: "Transcribe")
+                // Extract just the part that's not in the transcript
+                if let range = lastPartial.range(of: transcript, options: .caseInsensitive) {
+                    let remaining = String(lastPartial[range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !remaining.isEmpty {
+                        transcript += " " + remaining
+                    }
+                } else if transcript.isEmpty {
+                    transcript = lastPartial
+                }
+            }
+        }
+
+        if transcript.isEmpty {
+            macLog("Streaming transcript is empty", category: "Transcribe", level: .warning)
+            state = .idle
+            return
+        }
+
+        macLog("Streaming transcription complete: \(transcript.count) chars", category: "Transcribe")
+
+        // Process the streaming result (formatting, translation, etc.)
+        await processStreamingResult(transcript: transcript)
+    }
+
+    /// Process the result from streaming transcription
+    private func processStreamingResult(transcript: String) async {
+        state = .transcribing
+        var processingSteps: [ProcessingStepInfo] = []
+        let overallStartTime = Date()
+
+        // Apply vocabulary corrections
+        var processedText = settings.applyVocabulary(to: transcript)
+        self.transcribedText = processedText
+        let rawTranscription = processedText
+
+        macLog("Streaming result: \(processedText.prefix(100))...", category: "Transcribe")
+
+        // Create transcription processing step
+        let transcriptionStep = ProcessingStepInfo(
+            stepType: .transcription,
+            provider: settings.selectedTranscriptionProvider,
+            modelName: settings.selectedTranscriptionProvider.defaultTranscriptionModel,
+            startTime: overallStartTime,
+            endTime: Date(),
+            cost: 0,
+            prompt: nil
+        )
+        processingSteps.append(transcriptionStep)
+
+        // Track if formatting was actually applied
+        var formattingResult: FormattingResult?
+
+        // Apply formatting if context has formatting enabled
+        let shouldFormat = activeContext?.hasFormatting == true
+        macLog("Context: \(activeContext?.name ?? "none"), hasFormatting: \(shouldFormat)", category: "Transcribe")
+
+        if shouldFormat {
+            state = .formatting
+            do {
+                formattingResult = try await formatTranscription(processedText)
+                if let result = formattingResult {
+                    processedText = result.text
+                    self.transcribedText = processedText
+
+                    // Create formatting processing step
+                    let formattingStep = ProcessingStepInfo(
+                        stepType: .formatting,
+                        provider: settings.selectedPowerModeProvider,
+                        modelName: settings.selectedPowerModeProvider.defaultLLMModel ?? "default",
+                        startTime: result.startTime,
+                        endTime: result.endTime,
+                        cost: 0,
+                        prompt: result.prompt
+                    )
+                    processingSteps.append(formattingStep)
+                    macLog("Formatting applied", category: "Transcribe")
+                }
+            } catch {
+                macLog("Formatting failed: \(error)", category: "Transcribe", level: .warning)
+            }
+        }
+
+        // Translate if enabled
+        if isTranslationEnabled {
+            state = .formatting
+            do {
+                processedText = try await translateText(processedText)
+                self.transcribedText = processedText
+            } catch {
+                macLog("Translation failed: \(error)", category: "Transcribe", level: .warning)
+            }
+        }
+
+        state = .complete
+
+        // Build processing metadata
+        let overallEndTime = Date()
+        let processingMetadata = ProcessingMetadata(
+            steps: processingSteps,
+            totalProcessingTime: overallEndTime.timeIntervalSince(overallStartTime),
+            sourceLanguageHint: inputLanguage,
+            vocabularyApplied: settings.vocabulary.isEmpty ? nil : settings.vocabulary.map { $0.recognizedWord }
+        )
+
+        // Save to history
+        saveToHistory(
+            rawText: rawTranscription,
+            finalText: self.transcribedText,
+            wasTranslated: isTranslationEnabled,
+            didFormat: formattingResult != nil,
+            processingMetadata: processingMetadata
+        )
+
+        // Execute the context's enter key behavior
+        await executeEnterKeyBehavior()
     }
 
     /// Retry processing the last recording (used when transcription/formatting fails)
@@ -326,11 +737,24 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     func cancelRecording() {
         recordingTimer?.invalidate()
         recordingTimer = nil
-        audioRecorder.cancelRecording()
+
+        if isStreamingSession {
+            // Clean up streaming resources
+            streamingCancellables.removeAll()
+            streamingAudioRecorder?.cancelRecording()
+            streamingProvider?.disconnect()
+            streamingProvider = nil
+            streamingAudioRecorder = nil
+            streamingDelegateBridge = nil
+        } else {
+            audioRecorder.cancelRecording()
+        }
 
         state = .idle
         liveTranscript = ""
         transcribedText = ""
+        streamingFullTranscript = ""
+        isStreamingSession = false
         macLog("Recording cancelled", category: "Transcribe")
     }
 
@@ -338,6 +762,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     func cleanup() {
         recordingTimer?.invalidate()
         recordingTimer = nil
+
+        // Clean up streaming resources
+        streamingCancellables.removeAll()
+        streamingProvider?.disconnect()
+        streamingProvider = nil
+        streamingAudioRecorder = nil
+        streamingDelegateBridge = nil
+
         cancellables.removeAll()
         macLog("Transcribe viewModel cleanup", category: "Transcribe")
     }
@@ -794,6 +1226,10 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         onWillInsertText?()
         macLog("⏱️ [TIMING] Overlay hide callback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - hideStartTime) * 1000))ms", category: "Transcribe")
 
+        // IMPORTANT: Wait for the Enter key event (that triggered this action) to clear
+        // Without this delay, the Enter keyUp can leak to the target app
+        Thread.sleep(forTimeInterval: 0.1)
+
         // Restore focus to previous app and wait for it to be ready
         let focusStartTime = CFAbsoluteTimeGetCurrent()
         _ = restoreFocusToPreviousApp()
@@ -832,6 +1268,10 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         let hideStartTime = CFAbsoluteTimeGetCurrent()
         onWillInsertText?()
         macLog("⏱️ [TIMING] Overlay hide callback: \(String(format: "%.1f", (CFAbsoluteTimeGetCurrent() - hideStartTime) * 1000))ms", category: "Transcribe")
+
+        // IMPORTANT: Wait for the Enter key event (that triggered this action) to clear
+        // Without this delay, the Enter keyUp can leak to the target app
+        Thread.sleep(forTimeInterval: 0.1)
 
         // Restore focus and wait for it to be ready (uses Thread.sleep for precise timing)
         let focusStartTime = CFAbsoluteTimeGetCurrent()
@@ -1026,5 +1466,16 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         recordingDuration = 0
         audioLevel = 0
         errorMessage = nil
+        streamingFullTranscript = ""
+        isStreamingSession = false
+
+        // Clean up streaming resources for fresh start
+        streamingCancellables.removeAll()
+        streamingProvider?.disconnect()
+        streamingProvider = nil
+        streamingAudioRecorder = nil
+        streamingDelegateBridge = nil
+
+        macLog("ViewModel reset for next session", category: "Transcribe")
     }
 }

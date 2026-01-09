@@ -40,7 +40,14 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         finalTranscriptSubject.eraseToAnyPublisher()
     }
 
+    public var sessionEndedPublisher: AnyPublisher<Void, Never> {
+        sessionEndedSubject.eraseToAnyPublisher()
+    }
+
     public private(set) var fullTranscript: String = ""
+
+    /// AssemblyAI sends full utterance text (replacement), not deltas
+    public var partialsAreDelta: Bool { false }
 
     // MARK: - Properties
 
@@ -50,6 +57,7 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
 
     private let partialTranscriptSubject = PassthroughSubject<String, Never>()
     private let finalTranscriptSubject = PassthroughSubject<String, Never>()
+    private let sessionEndedSubject = PassthroughSubject<Void, Never>()
 
     private var isFinishing = false
     private var currentLanguage: Language?
@@ -258,7 +266,11 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
             handleTurnMessage(json)
 
         case "Termination":
-            // Session ended
+            // Session ended - server has processed all audio
+            #if DEBUG
+            print("[AssemblyAI] 🏁 Session terminated - all audio processed")
+            #endif
+            sessionEndedSubject.send(())
             disconnect()
 
         case "Error":
@@ -281,16 +293,32 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         let endOfTurn = json["end_of_turn"] as? Bool ?? false
         let turnIsFormatted = json["turn_is_formatted"] as? Bool ?? false
 
-        if endOfTurn || turnIsFormatted {
-            // Final transcript for this turn
+        #if DEBUG
+        print("[AssemblyAI] Turn: '\(transcript.prefix(40))' endOfTurn=\(endOfTurn) formatted=\(turnIsFormatted)")
+        #endif
+
+        if turnIsFormatted {
+            // Formatted final - this is the high-quality output we want
             fullTranscript += transcript + " "
+            #if DEBUG
+            print("[AssemblyAI] 📨 Sending FORMATTED FINAL: '\(transcript.prefix(40))'")
+            #endif
             finalTranscriptSubject.send(transcript)
             delegate?.didReceiveFinalTranscript(transcript)
+        } else if endOfTurn {
+            // Unformatted end-of-turn - skip this, wait for the formatted version
+            // (AssemblyAI sends both, we only want the formatted one)
+            #if DEBUG
+            print("[AssemblyAI] ⏭️ Skipping unformatted endOfTurn (waiting for formatted)")
+            #endif
         } else {
-            // Partial/interim result - use utterance if available
-            let displayText = (json["utterance"] as? String) ?? transcript
-            partialTranscriptSubject.send(displayText)
-            delegate?.didReceivePartialTranscript(displayText)
+            // Partial/interim result - use transcript directly (utterance is often empty)
+            // The transcript field contains the current partial text
+            #if DEBUG
+            print("[AssemblyAI] 📨 Sending PARTIAL: '\(transcript.prefix(40))'")
+            #endif
+            partialTranscriptSubject.send(transcript)
+            delegate?.didReceivePartialTranscript(transcript)
         }
     }
 

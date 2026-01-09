@@ -10,6 +10,7 @@ import AVFoundation
 import Foundation
 import Combine
 import UIKit
+import WidgetKit
 import SwiftSpeakCore
 
 /// Manages SwiftLink background recording sessions.
@@ -2310,12 +2311,18 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
         // Force flush to ensure keyboard extension and widgets see the updated state immediately
         sharedDefaults?.synchronize()
+
+        // Refresh widget to show updated state
+        WidgetCenter.shared.reloadTimelines(ofKind: "SwiftLinkWidget")
     }
 
     /// Update widget recording state
     private func updateWidgetRecordingState(_ recording: Bool) {
         sharedDefaults?.set(recording, forKey: Constants.Keys.swiftLinkWidgetIsRecording)
         sharedDefaults?.synchronize()
+
+        // Refresh widget to show updated recording state
+        WidgetCenter.shared.reloadTimelines(ofKind: "SwiftLinkWidget")
     }
 
     private func restoreSessionStateIfNeeded() {

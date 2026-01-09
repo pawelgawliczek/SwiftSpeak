@@ -344,6 +344,19 @@ struct ContentView: View {
             return
         }
 
+        // Handle SwiftLink toggle from widget (start if inactive, stop if active)
+        if url.host == Constants.URLHosts.swiftlinkToggle {
+            if SwiftLinkSessionManager.shared.isSessionActive {
+                appLog("SwiftLink toggle: ending session", category: "SwiftLink")
+                SwiftLinkSessionManager.shared.endSession()
+            } else {
+                appLog("SwiftLink toggle: showing quick start", category: "SwiftLink")
+                swiftLinkPreselectedApp = nil
+                showSwiftLinkQuickStart = true
+            }
+            return
+        }
+
         // Phase 12: Handle Edit Text request from keyboard
         if url.host == Constants.URLHosts.edit {
             let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)

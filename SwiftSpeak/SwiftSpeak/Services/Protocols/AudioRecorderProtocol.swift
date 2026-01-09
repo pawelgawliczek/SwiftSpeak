@@ -25,6 +25,9 @@ protocol AudioRecorderProtocol: ObservableObject {
     /// Error if recording failed
     var error: TranscriptionError? { get }
 
+    /// Audio quality mode - affects file size and upload speed
+    var audioQuality: AudioQualityMode { get set }
+
     /// Start recording audio
     func startRecording() async throws
 

@@ -92,6 +92,44 @@ struct ProviderFactory {
         createTranscriptionProvider(for: settings.effectiveTranscriptionProvider)
     }
 
+    // MARK: - Streaming Transcription Providers
+
+    /// Create a streaming transcription provider for real-time transcription
+    /// - Parameter provider: The AI provider type (must support streaming)
+    /// - Returns: A configured StreamingTranscriptionProvider, or nil if not supported
+    func createStreamingTranscriptionProvider(for provider: AIProvider) -> StreamingTranscriptionProvider? {
+        guard let config = settings.getAIProviderConfig(for: provider),
+              !config.apiKey.isEmpty,
+              provider.supportsStreamingTranscription else {
+            return nil
+        }
+
+        switch provider {
+        case .openAI:
+            return SwiftSpeakCore.OpenAIStreamingService(config: config)
+
+        case .assemblyAI:
+            return SwiftSpeakCore.AssemblyAIStreamingService(config: config)
+
+        case .deepgram:
+            return SwiftSpeakCore.DeepgramStreamingService(config: config)
+
+        default:
+            return nil
+        }
+    }
+
+    /// Create streaming provider for the currently selected transcription provider
+    func createSelectedStreamingProvider() -> StreamingTranscriptionProvider? {
+        createStreamingTranscriptionProvider(for: settings.selectedTranscriptionProvider)
+    }
+
+    /// Check if the current provider supports streaming transcription
+    var isStreamingAvailable: Bool {
+        let provider = settings.selectedTranscriptionProvider
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+    }
+
     // MARK: - Translation Providers
 
     /// Create a translation provider for the specified AI provider

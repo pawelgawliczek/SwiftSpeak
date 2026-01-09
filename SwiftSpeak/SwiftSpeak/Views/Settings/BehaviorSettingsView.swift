@@ -45,6 +45,9 @@ struct BehaviorSettingsView: View {
                 // After Transcription Section
                 afterTranscriptionSection
 
+                // Audio Quality Section
+                audioQualitySection
+
                 // Streaming Section
                 streamingSection
 
@@ -84,6 +87,63 @@ struct BehaviorSettingsView: View {
             .listRowBackground(rowBackground)
         } header: {
             Text("After Transcription")
+        }
+    }
+
+    // MARK: - Audio Quality Section
+
+    private var audioQualitySection: some View {
+        Section {
+            Picker(selection: $settings.audioQuality) {
+                ForEach(AudioQualityMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Recording Quality")
+                        .font(.callout)
+                    Text(settings.audioQuality.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            if settings.audioQuality == .auto {
+                HStack(spacing: 8) {
+                    Image(systemName: "wifi")
+                        .font(.callout)
+                        .foregroundStyle(networkQualityColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Network Status")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(NetworkQualityMonitor.shared.networkStatusDescription)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                        Text("Current: \(NetworkQualityMonitor.shared.recommendedQuality.displayName)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Audio Quality")
+        } footer: {
+            Text("Lower quality reduces file size for faster uploads on slow networks.")
+        }
+    }
+
+    private var networkQualityColor: Color {
+        let quality = NetworkQualityMonitor.shared.recommendedQuality
+        switch quality {
+        case .high: return .green
+        case .standard: return .yellow
+        case .lowBandwidth: return .orange
+        case .auto: return .green
         }
     }
 

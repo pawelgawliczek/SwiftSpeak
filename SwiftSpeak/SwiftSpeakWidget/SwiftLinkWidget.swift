@@ -2,7 +2,7 @@
 //  SwiftLinkWidget.swift
 //  SwiftSpeakWidget
 //
-//  Lock Screen and Home Screen widgets for SwiftLink status
+//  Simple toggle widget for SwiftLink - tap to enable/disable
 //
 
 import WidgetKit
@@ -13,44 +13,13 @@ import SwiftUI
 struct SwiftLinkWidgetEntry: TimelineEntry {
     let date: Date
     let isActive: Bool
-    let isRecording: Bool
-    let targetAppName: String?
-    let targetAppIcon: String?
-    let sessionEndTime: Date?
 
-    var timeRemaining: TimeInterval? {
-        guard let endTime = sessionEndTime, isActive else { return nil }
-        let remaining = endTime.timeIntervalSince(date)
-        return remaining > 0 ? remaining : nil
-    }
-
-    var timeRemainingText: String {
-        guard let remaining = timeRemaining else { return "Active" }
-        let minutes = Int(remaining) / 60
-        let seconds = Int(remaining) % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    static var placeholder: SwiftLinkWidgetEntry {
-        SwiftLinkWidgetEntry(
-            date: Date(),
-            isActive: true,
-            isRecording: false,
-            targetAppName: "WhatsApp",
-            targetAppIcon: "message.fill",
-            sessionEndTime: Date().addingTimeInterval(300)
-        )
+    static var active: SwiftLinkWidgetEntry {
+        SwiftLinkWidgetEntry(date: Date(), isActive: true)
     }
 
     static var inactive: SwiftLinkWidgetEntry {
-        SwiftLinkWidgetEntry(
-            date: Date(),
-            isActive: false,
-            isRecording: false,
-            targetAppName: nil,
-            targetAppIcon: nil,
-            sessionEndTime: nil
-        )
+        SwiftLinkWidgetEntry(date: Date(), isActive: false)
     }
 }
 
@@ -60,7 +29,7 @@ struct SwiftLinkTimelineProvider: TimelineProvider {
     private let appGroupIdentifier = "group.pawelgawliczek.swiftspeak"
 
     func placeholder(in context: Context) -> SwiftLinkWidgetEntry {
-        .placeholder
+        .active
     }
 
     func getSnapshot(in context: Context, completion: @escaping (SwiftLinkWidgetEntry) -> Void) {
@@ -70,157 +39,111 @@ struct SwiftLinkTimelineProvider: TimelineProvider {
     func getTimeline(in context: Context, completion: @escaping (Timeline<SwiftLinkWidgetEntry>) -> Void) {
         let entry = readWidgetData()
 
-        // Determine refresh policy
-        let refreshDate: Date
-        if entry.isActive {
-            // Refresh every minute when active (for countdown)
-            refreshDate = Date().addingTimeInterval(60)
-        } else {
-            // Refresh every 15 minutes when inactive
-            refreshDate = Date().addingTimeInterval(15 * 60)
-        }
-
+        // Refresh every 30 seconds to keep status current
+        let refreshDate = Date().addingTimeInterval(30)
         let timeline = Timeline(entries: [entry], policy: .after(refreshDate))
         completion(timeline)
     }
 
     private func readWidgetData() -> SwiftLinkWidgetEntry {
         let defaults = UserDefaults(suiteName: appGroupIdentifier)
-
         let isActive = defaults?.bool(forKey: "swiftLinkSessionActive") ?? false
-        let isRecording = defaults?.bool(forKey: "swiftLinkWidgetIsRecording") ?? false
-        let targetAppName = defaults?.string(forKey: "swiftLinkWidgetTargetAppName")
-        let targetAppIcon = defaults?.string(forKey: "swiftLinkWidgetTargetAppIcon")
-
-        var sessionEndTime: Date? = nil
-        if let endTimeInterval = defaults?.double(forKey: "swiftLinkWidgetSessionEndTime"), endTimeInterval > 0 {
-            sessionEndTime = Date(timeIntervalSince1970: endTimeInterval)
-        }
-
-        return SwiftLinkWidgetEntry(
-            date: Date(),
-            isActive: isActive,
-            isRecording: isRecording,
-            targetAppName: targetAppName,
-            targetAppIcon: targetAppIcon,
-            sessionEndTime: sessionEndTime
-        )
+        return SwiftLinkWidgetEntry(date: Date(), isActive: isActive)
     }
 }
 
 // MARK: - Widget Views
 
-// Lock Screen Circular Widget
-struct SwiftLinkAccessoryCircularView: View {
+// Lock Screen Circular Widget - Simple toggle button
+struct SwiftLinkCircularView: View {
     let entry: SwiftLinkWidgetEntry
 
     var body: some View {
         ZStack {
-            if entry.isActive {
-                // Active state - filled circle with icon
-                AccessoryWidgetBackground()
-                Image(systemName: "link.circle.fill")
-                    .font(.title)
-                    .foregroundStyle(.green)
-            } else {
-                // Inactive state
-                AccessoryWidgetBackground()
-                Image(systemName: "link.circle")
-                    .font(.title)
-                    .foregroundStyle(.secondary)
-            }
+            AccessoryWidgetBackground()
+
+            Image("SwiftSpeakLogo")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 24, height: 24)
+                .foregroundStyle(entry.isActive ? .green : .primary)
         }
+        .containerBackground(.clear, for: .widget)
+        .widgetURL(URL(string: "swiftspeak://swiftlink-toggle"))
     }
 }
 
-// Lock Screen Rectangular Widget
-struct SwiftLinkAccessoryRectangularView: View {
+// Lock Screen Rectangular Widget - Toggle with label
+struct SwiftLinkRectangularView: View {
     let entry: SwiftLinkWidgetEntry
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: entry.isActive ? "link.circle.fill" : "link.circle")
-                .font(.title2)
-                .foregroundStyle(entry.isActive ? .green : .secondary)
+        HStack(spacing: 10) {
+            ZStack {
+                Circle()
+                    .fill(entry.isActive ? Color.green.opacity(0.3) : Color.primary.opacity(0.1))
+                    .frame(width: 36, height: 36)
+
+                Image("SwiftSpeakLogo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 20, height: 20)
+                    .foregroundStyle(entry.isActive ? .green : .primary)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("SwiftLink")
+                Text("SwiftSpeak")
                     .font(.headline)
                     .widgetAccentable()
 
-                if entry.isActive {
-                    HStack(spacing: 4) {
-                        if let appName = entry.targetAppName {
-                            Text(appName)
-                        }
-                        Text("•")
-                        Text(entry.timeRemainingText)
-                        if entry.isRecording {
-                            Circle()
-                                .fill(.red)
-                                .frame(width: 6, height: 6)
-                        }
-                    }
+                Text(entry.isActive ? "On" : "Off")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                } else {
-                    Text("Inactive")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-}
-
-// Home Screen Small Widget
-struct SwiftLinkSmallWidgetView: View {
-    let entry: SwiftLinkWidgetEntry
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header
-            HStack {
-                Image(systemName: entry.isActive ? "link.circle.fill" : "link.circle")
-                    .font(.title2)
-                    .foregroundStyle(entry.isActive ? .green : .orange)
-
-                Spacer()
-
-                if entry.isRecording {
-                    Circle()
-                        .fill(.red)
-                        .frame(width: 8, height: 8)
-                }
             }
 
             Spacer()
+        }
+        .containerBackground(.clear, for: .widget)
+        .widgetURL(URL(string: "swiftspeak://swiftlink-toggle"))
+    }
+}
 
-            // Title
-            Text("SwiftLink")
-                .font(.subheadline.weight(.semibold))
+// Home Screen Small Widget - Large toggle button
+struct SwiftLinkSmallView: View {
+    let entry: SwiftLinkWidgetEntry
 
-            // Status
-            if entry.isActive {
-                VStack(alignment: .leading, spacing: 2) {
-                    if let appName = entry.targetAppName {
-                        Text(appName)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+    var body: some View {
+        ZStack {
+            // Background color based on state
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(entry.isActive ? Color.green.opacity(0.2) : Color.orange.opacity(0.15))
 
-                    Text(entry.timeRemainingText)
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
+            VStack(spacing: 12) {
+                // Large icon with SwiftSpeak logo
+                ZStack {
+                    Circle()
+                        .fill(entry.isActive ? Color.green : Color.orange)
+                        .frame(width: 56, height: 56)
+
+                    Image("SwiftSpeakLogo")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                        .foregroundStyle(.white)
                 }
-            } else {
-                Text("Tap to start")
+
+                // Label
+                Text("SwiftSpeak")
+                    .font(.subheadline.weight(.semibold))
+
+                // Status
+                Text(entry.isActive ? "Active" : "Tap to Start")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(entry.isActive ? .green : .secondary)
             }
         }
-        .padding()
-        .containerBackground(.fill.tertiary, for: .widget)
+        .containerBackground(.clear, for: .widget)
+        .widgetURL(URL(string: "swiftspeak://swiftlink-toggle"))
     }
 }
 
@@ -234,7 +157,7 @@ struct SwiftLinkWidget: Widget {
             SwiftLinkWidgetEntryView(entry: entry)
         }
         .configurationDisplayName("SwiftLink")
-        .description("Monitor and control SwiftLink background dictation")
+        .description("Tap to enable or disable SwiftLink background dictation")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryRectangular,
@@ -250,13 +173,13 @@ struct SwiftLinkWidgetEntryView: View {
     var body: some View {
         switch family {
         case .accessoryCircular:
-            SwiftLinkAccessoryCircularView(entry: entry)
+            SwiftLinkCircularView(entry: entry)
         case .accessoryRectangular:
-            SwiftLinkAccessoryRectangularView(entry: entry)
+            SwiftLinkRectangularView(entry: entry)
         case .systemSmall:
-            SwiftLinkSmallWidgetView(entry: entry)
+            SwiftLinkSmallView(entry: entry)
         default:
-            SwiftLinkSmallWidgetView(entry: entry)
+            SwiftLinkSmallView(entry: entry)
         }
     }
 }
@@ -266,7 +189,7 @@ struct SwiftLinkWidgetEntryView: View {
 #Preview("Circular - Active", as: .accessoryCircular) {
     SwiftLinkWidget()
 } timeline: {
-    SwiftLinkWidgetEntry.placeholder
+    SwiftLinkWidgetEntry.active
 }
 
 #Preview("Circular - Inactive", as: .accessoryCircular) {
@@ -278,13 +201,19 @@ struct SwiftLinkWidgetEntryView: View {
 #Preview("Rectangular - Active", as: .accessoryRectangular) {
     SwiftLinkWidget()
 } timeline: {
-    SwiftLinkWidgetEntry.placeholder
+    SwiftLinkWidgetEntry.active
+}
+
+#Preview("Rectangular - Inactive", as: .accessoryRectangular) {
+    SwiftLinkWidget()
+} timeline: {
+    SwiftLinkWidgetEntry.inactive
 }
 
 #Preview("Small - Active", as: .systemSmall) {
     SwiftLinkWidget()
 } timeline: {
-    SwiftLinkWidgetEntry.placeholder
+    SwiftLinkWidgetEntry.active
 }
 
 #Preview("Small - Inactive", as: .systemSmall) {

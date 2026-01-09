@@ -340,15 +340,25 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
     }
 
     private func setupProviderSubscriptions(_ provider: StreamingTranscriptionProvider) {
-        appLog("Setting up provider subscriptions...", category: "StreamingOrch")
+        appLog("Setting up provider subscriptions (partialsAreDelta=\(provider.partialsAreDelta))...", category: "StreamingOrch")
 
-        // Subscribe to partial transcripts - ACCUMULATE them for real-time display
+        // Capture whether this provider sends deltas or full replacement text
+        let partialsAreDelta = provider.partialsAreDelta
+
+        // Subscribe to partial transcripts
+        // - Delta providers (OpenAI): Accumulate increments
+        // - Replacement providers (AssemblyAI, Deepgram): Replace with full text
         provider.partialTranscriptPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] text in
                 guard let self else { return }
-                // Append each delta to build up the real-time transcript
-                self.partialTranscript += text
+                if partialsAreDelta {
+                    // Append each delta to build up the real-time transcript
+                    self.partialTranscript += text
+                } else {
+                    // Replace with the full current utterance
+                    self.partialTranscript = text
+                }
                 appLog("Partial transcript now: \(self.partialTranscript.suffix(30))...", category: "StreamingOrch", level: .debug)
             }
             .store(in: &cancellables)

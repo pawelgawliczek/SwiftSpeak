@@ -782,6 +782,9 @@ class MacSettings: ObservableObject {
         }
 
         // Load behavior settings
+        if defaults?.object(forKey: "transcriptionStreamingEnabled") != nil {
+            transcriptionStreamingEnabled = defaults?.bool(forKey: "transcriptionStreamingEnabled") ?? false
+        }
         if defaults?.object(forKey: "powerModeStreamingEnabled") != nil {
             powerModeStreamingEnabled = defaults?.bool(forKey: "powerModeStreamingEnabled") ?? true
         }

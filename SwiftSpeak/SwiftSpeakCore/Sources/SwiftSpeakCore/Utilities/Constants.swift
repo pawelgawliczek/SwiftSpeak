@@ -171,6 +171,7 @@ public enum Constants {
         public static let powermode = "powermode"
         public static let swiftlink = "swiftlink"
         public static let swiftlinkEnd = "swiftlink-end"
+        public static let swiftlinkToggle = "swiftlink-toggle"
         public static let setup = "setup"
         public static let pending = "pending"
     }

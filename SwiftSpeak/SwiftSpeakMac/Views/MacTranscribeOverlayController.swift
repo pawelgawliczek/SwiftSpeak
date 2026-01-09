@@ -267,10 +267,14 @@ final class MacTranscribeOverlayController {
         guard let screen = NSScreen.main else { return }
 
         let screenFrame = screen.visibleFrame
-        let windowSize = window.frame.size
+
+        // Reset window to consistent size before positioning
+        // This ensures second-use doesn't inherit a different size
+        let targetSize = NSSize(width: 420, height: 320)
+        window.setContentSize(targetSize)
 
         // Center horizontally, position just above the dock
-        let x = screenFrame.midX - windowSize.width / 2
+        let x = screenFrame.midX - targetSize.width / 2
         let y = screenFrame.minY + 80
 
         window.setFrameOrigin(NSPoint(x: x, y: y))

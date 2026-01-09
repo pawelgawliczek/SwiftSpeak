@@ -21,6 +21,11 @@ final class MockAudioRecorder: ObservableObject, AudioRecorderProtocol {
     @Published private(set) var duration: TimeInterval = 0
     @Published private(set) var error: TranscriptionError?
 
+    // MARK: - Protocol Requirements
+
+    /// Audio quality mode - affects file size and upload speed
+    var audioQuality: AudioQualityMode = .auto
+
     // MARK: - Configuration
 
     /// Whether recording should succeed

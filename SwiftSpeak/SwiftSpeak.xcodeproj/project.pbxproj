@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8316B8222F102B3E000FC1C2 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8316B8212F102B3E000FC1C2 /* WidgetKit.framework */; };
+		8316B8242F102B3E000FC1C2 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8316B8232F102B3E000FC1C2 /* SwiftUI.framework */; };
+		8316B8352F102B41000FC1C2 /* SwiftSpeakWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		833363C32F09144C00ACDE90 /* Carbon.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C22F09144C00ACDE90 /* Carbon.framework */; };
 		833363C52F09145800ACDE90 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C42F09145800ACDE90 /* ApplicationServices.framework */; };
 		833363C72F09146100ACDE90 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C62F09146100ACDE90 /* UserNotifications.framework */; };
@@ -21,6 +24,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		8316B8332F102B41000FC1C2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83ED790D2EFE4CB900880604 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 8316B81F2F102B3E000FC1C2;
+			remoteInfo = SwiftSpeakWidgetExtension;
+		};
 		833362642F090F3800ACDE90 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83ED790D2EFE4CB900880604 /* Project object */;
@@ -66,6 +76,7 @@
 			dstSubfolderSpec = 13;
 			files = (
 				83ED792E2EFE4D8F00880604 /* SwiftSpeakKeyboard.appex in Embed Foundation Extensions */,
+				8316B8352F102B41000FC1C2 /* SwiftSpeakWidgetExtension.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -73,6 +84,9 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8316B8212F102B3E000FC1C2 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		8316B8232F102B3E000FC1C2 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		833362572F090F3400ACDE90 /* SwiftSpeakMac.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftSpeakMac.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		833362632F090F3800ACDE90 /* SwiftSpeakMacTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftSpeakMacTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8333626D2F090F3800ACDE90 /* SwiftSpeakMacUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftSpeakMacUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -87,6 +101,13 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		8316B8392F102B41000FC1C2 /* Exceptions for "SwiftSpeakWidget" folder in "SwiftSpeakWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 8316B81F2F102B3E000FC1C2 /* SwiftSpeakWidgetExtension */;
+		};
 		833363D52F09223200ACDE90 /* Exceptions for "SwiftSpeak" folder in "SwiftSpeakMac" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -127,6 +148,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		8316B8252F102B3F000FC1C2 /* SwiftSpeakWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				8316B8392F102B41000FC1C2 /* Exceptions for "SwiftSpeakWidget" folder in "SwiftSpeakWidgetExtension" target */,
+			);
+			path = SwiftSpeakWidget;
+			sourceTree = "<group>";
+		};
 		833362662F090F3800ACDE90 /* SwiftSpeakMacTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SwiftSpeakMacTests;
@@ -174,6 +203,15 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		8316B81D2F102B3E000FC1C2 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8316B8242F102B3E000FC1C2 /* SwiftUI.framework in Frameworks */,
+				8316B8222F102B3E000FC1C2 /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		833362542F090F3400ACDE90 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -243,6 +281,8 @@
 				833363C62F09146100ACDE90 /* UserNotifications.framework */,
 				833363C42F09145800ACDE90 /* ApplicationServices.framework */,
 				833363C22F09144C00ACDE90 /* Carbon.framework */,
+				8316B8212F102B3E000FC1C2 /* WidgetKit.framework */,
+				8316B8232F102B3E000FC1C2 /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -257,6 +297,7 @@
 				8333629E2F09117100ACDE90 /* SwiftSpeakMac */,
 				833362662F090F3800ACDE90 /* SwiftSpeakMacTests */,
 				833362702F090F3800ACDE90 /* SwiftSpeakMacUITests */,
+				8316B8252F102B3F000FC1C2 /* SwiftSpeakWidget */,
 				833363C12F09144B00ACDE90 /* Frameworks */,
 				83ED79162EFE4CB900880604 /* Products */,
 			);
@@ -272,6 +313,7 @@
 				833362572F090F3400ACDE90 /* SwiftSpeakMac.app */,
 				833362632F090F3800ACDE90 /* SwiftSpeakMacTests.xctest */,
 				8333626D2F090F3800ACDE90 /* SwiftSpeakMacUITests.xctest */,
+				8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -279,6 +321,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		8316B81F2F102B3E000FC1C2 /* SwiftSpeakWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8316B8382F102B41000FC1C2 /* Build configuration list for PBXNativeTarget "SwiftSpeakWidgetExtension" */;
+			buildPhases = (
+				8316B81C2F102B3E000FC1C2 /* Sources */,
+				8316B81D2F102B3E000FC1C2 /* Frameworks */,
+				8316B81E2F102B3E000FC1C2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8316B8252F102B3F000FC1C2 /* SwiftSpeakWidget */,
+			);
+			name = SwiftSpeakWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = SwiftSpeakWidgetExtension;
+			productReference = 8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		833362562F090F3400ACDE90 /* SwiftSpeakMac */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 833362752F090F3800ACDE90 /* Build configuration list for PBXNativeTarget "SwiftSpeakMac" */;
@@ -361,6 +425,7 @@
 			);
 			dependencies = (
 				83ED792D2EFE4D8F00880604 /* PBXTargetDependency */,
+				8316B8342F102B41000FC1C2 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				83ED79172EFE4CB900880604 /* SwiftSpeak */,
@@ -455,6 +520,9 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					8316B81F2F102B3E000FC1C2 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					833362562F090F3400ACDE90 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -509,11 +577,19 @@
 				833362562F090F3400ACDE90 /* SwiftSpeakMac */,
 				833362622F090F3800ACDE90 /* SwiftSpeakMacTests */,
 				8333626C2F090F3800ACDE90 /* SwiftSpeakMacUITests */,
+				8316B81F2F102B3E000FC1C2 /* SwiftSpeakWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		8316B81E2F102B3E000FC1C2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		833362552F090F3400ACDE90 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -566,6 +642,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		8316B81C2F102B3E000FC1C2 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		833362532F090F3400ACDE90 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -618,6 +701,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		8316B8342F102B41000FC1C2 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 8316B81F2F102B3E000FC1C2 /* SwiftSpeakWidgetExtension */;
+			targetProxy = 8316B8332F102B41000FC1C2 /* PBXContainerItemProxy */;
+		};
 		833362652F090F3800ACDE90 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 833362562F090F3400ACDE90 /* SwiftSpeakMac */;
@@ -646,6 +734,72 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		8316B8362F102B41000FC1C2 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakWidget/SwiftSpeakWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak.SwiftSpeakWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		8316B8372F102B41000FC1C2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakWidget/SwiftSpeakWidget.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakWidget;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak.SwiftSpeakWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		833362762F090F3800ACDE90 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1168,6 +1322,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		8316B8382F102B41000FC1C2 /* Build configuration list for PBXNativeTarget "SwiftSpeakWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8316B8362F102B41000FC1C2 /* Debug */,
+				8316B8372F102B41000FC1C2 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		833362752F090F3800ACDE90 /* Build configuration list for PBXNativeTarget "SwiftSpeakMac" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

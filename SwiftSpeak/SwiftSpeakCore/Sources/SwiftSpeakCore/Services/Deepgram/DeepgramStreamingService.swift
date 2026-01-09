@@ -29,7 +29,14 @@ public final class DeepgramStreamingService: NSObject, StreamingTranscriptionPro
         finalTranscriptSubject.eraseToAnyPublisher()
     }
 
+    public var sessionEndedPublisher: AnyPublisher<Void, Never> {
+        sessionEndedSubject.eraseToAnyPublisher()
+    }
+
     public private(set) var fullTranscript: String = ""
+
+    /// Deepgram sends full transcript text (replacement), not deltas
+    public var partialsAreDelta: Bool { false }
 
     private let apiKey: String
     private let model: String
@@ -37,6 +44,7 @@ public final class DeepgramStreamingService: NSObject, StreamingTranscriptionPro
     private var urlSession: URLSession?
     private let partialTranscriptSubject = PassthroughSubject<String, Never>()
     private let finalTranscriptSubject = PassthroughSubject<String, Never>()
+    private let sessionEndedSubject = PassthroughSubject<Void, Never>()
     private var isFinishing = false
 
     public init(apiKey: String, model: String = "nova-2") {
@@ -122,6 +130,10 @@ public final class DeepgramStreamingService: NSObject, StreamingTranscriptionPro
     }
 
     public func disconnect() {
+        // Signal session ended before disconnect
+        if isFinishing {
+            sessionEndedSubject.send(())
+        }
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         urlSession?.invalidateAndCancel()

@@ -56,6 +56,15 @@ public protocol StreamingTranscriptionProvider: AnyObject {
     /// Publisher for final transcripts
     var finalTranscriptPublisher: AnyPublisher<String, Never> { get }
 
+    /// Publisher that fires when the session ends (server confirms all audio processed)
+    /// This fires after finishAudio() when the server sends back confirmation
+    var sessionEndedPublisher: AnyPublisher<Void, Never> { get }
+
+    /// Whether partialTranscriptPublisher sends deltas (increments) or full replacement text
+    /// - true: Partials are deltas that should be accumulated (e.g., OpenAI)
+    /// - false: Partials are full replacement text (e.g., AssemblyAI, Deepgram)
+    var partialsAreDelta: Bool { get }
+
     /// Connect to the streaming service
     /// - Parameters:
     ///   - language: Optional language hint

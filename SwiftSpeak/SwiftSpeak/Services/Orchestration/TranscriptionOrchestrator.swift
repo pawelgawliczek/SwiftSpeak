@@ -152,6 +152,9 @@ final class TranscriptionOrchestrator: ObservableObject {
         capturedVocabularyApplied = nil
 
         do {
+            // Set audio quality from settings
+            audioRecorder.audioQuality = settings.audioQuality
+
             state = .recording
             let contextInfo = activeContext != nil ? ", context: \(activeContext!.name)" : ""
             appLog("Recording started (mode: \(mode.rawValue)\(contextInfo))", category: "Transcription")

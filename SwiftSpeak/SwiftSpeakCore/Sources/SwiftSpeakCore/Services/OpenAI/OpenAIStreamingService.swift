@@ -37,7 +37,14 @@ public final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvi
         finalTranscriptSubject.eraseToAnyPublisher()
     }
 
+    public var sessionEndedPublisher: AnyPublisher<Void, Never> {
+        sessionEndedSubject.eraseToAnyPublisher()
+    }
+
     public private(set) var fullTranscript: String = ""
+
+    /// OpenAI sends deltas that should be accumulated
+    public var partialsAreDelta: Bool { true }
 
     // MARK: - Properties
 
@@ -48,6 +55,7 @@ public final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvi
 
     private let partialTranscriptSubject = PassthroughSubject<String, Never>()
     private let finalTranscriptSubject = PassthroughSubject<String, Never>()
+    private let sessionEndedSubject = PassthroughSubject<Void, Never>()
 
     private var isFinishing = false
     private var currentLanguage: Language?
@@ -211,6 +219,10 @@ public final class OpenAIStreamingService: NSObject, StreamingTranscriptionProvi
     }
 
     public func disconnect() {
+        // Signal session ended before disconnect
+        if isFinishing {
+            sessionEndedSubject.send(())
+        }
         connectionState = .disconnected
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil

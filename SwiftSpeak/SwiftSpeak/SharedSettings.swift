@@ -1429,6 +1429,7 @@ class SharedSettings: ObservableObject {
         selectedTargetLanguage = .spanish
         isTranslationEnabled = false
         autoReturnEnabled = true
+        audioQuality = .auto
         transcriptionHistory = []
         vocabulary = []
         customTemplates = []

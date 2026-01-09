@@ -3134,6 +3134,12 @@ struct MacBehaviorView: View {
     @ObservedObject var settings: MacSettings
     @State private var selectedTab = 0
 
+    /// Check if the current transcription provider supports streaming
+    private var isStreamingProviderSelected: Bool {
+        let provider = settings.selectedTranscriptionProvider
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -3174,10 +3180,37 @@ struct MacBehaviorView: View {
             // Streaming
             GroupBox("Streaming") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Enable streaming for Power Modes", isOn: $settings.powerModeStreamingEnabled)
-                    Text("Stream AI responses as they're generated instead of waiting for completion")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    // Transcription streaming
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Toggle("Stream transcriptions", isOn: $settings.transcriptionStreamingEnabled)
+                            Text("Beta")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.8))
+                                .clipShape(Capsule())
+                        }
+                        Text("Show transcription in real-time as you speak")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
+                            Text("Current provider doesn't support streaming. Use OpenAI, Deepgram, or AssemblyAI.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+
+                    Divider()
+
+                    // Power Mode streaming
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle("Stream Power Mode responses", isOn: $settings.powerModeStreamingEnabled)
+                        Text("Stream AI responses as they're generated instead of waiting for completion")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
                 .padding(8)
             }

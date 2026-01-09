@@ -272,10 +272,9 @@ struct MacTranscribeOverlayView: View {
             }
             .padding(.horizontal, 4)
 
-            // Transcribed text preview
-            if !viewModel.liveTranscript.isEmpty {
-                transcriptView
-            }
+            // Transcribed text preview during streaming
+            // Always show during recording state for streaming feedback
+            transcriptView
 
             // Keyboard hints
             keyboardHintsRow
@@ -379,15 +378,39 @@ struct MacTranscribeOverlayView: View {
     // MARK: - Transcript View
 
     private var transcriptView: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            Text(viewModel.liveTranscript)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(.white.opacity(0.85))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .multilineTextAlignment(.leading)
+        // Always show - display "Listening..." or transcript content
+        VStack(alignment: .leading, spacing: 4) {
+            if viewModel.liveTranscript.isEmpty {
+                Text("🎤 Listening...")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .italic()
+            } else {
+                // Use ScrollViewReader to auto-scroll to bottom
+                ScrollViewReader { proxy in
+                    ScrollView(.vertical, showsIndicators: false) {
+                        Text(viewModel.liveTranscript)
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .multilineTextAlignment(.leading)
+                            .id("transcriptEnd")
+                    }
+                    .onChange(of: viewModel.liveTranscript) { _ in
+                        // Scroll to bottom when text changes
+                        withAnimation(.easeOut(duration: 0.1)) {
+                            proxy.scrollTo("transcriptEnd", anchor: .bottom)
+                        }
+                    }
+                }
+                .frame(maxHeight: 80)
+            }
         }
-        .frame(maxHeight: 80)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     // MARK: - Keyboard Hints Row
