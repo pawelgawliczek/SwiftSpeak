@@ -1,65 +1,14 @@
 //
-//  PowerTabView.swift
+//  MeetingHistoryView.swift
 //  SwiftSpeak
 //
-//  Phase 4: Power Tab with segmented control for Modes and Contexts
+//  iOS meeting history list with navigation to details
 //
 
 import SwiftUI
 import SwiftSpeakCore
 
-struct PowerTabView: View {
-    enum Tab: String, CaseIterable {
-        case contexts = "Contexts"
-        case meetings = "Meetings"
-        case modes = "Modes"
-    }
-
-    @State private var selectedTab: Tab = .contexts
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                // Header subtitle
-                Text("Power tools")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-
-                // Segmented control
-                Picker("", selection: $selectedTab) {
-                    ForEach(Tab.allCases, id: \.self) { tab in
-                        Text(tab.rawValue).tag(tab)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 12)
-
-                // Content based on selection
-                switch selectedTab {
-                case .contexts:
-                    ContextsListContent()
-                case .meetings:
-                    MeetingsListContent()
-                case .modes:
-                    PowerModeListContent()
-                }
-            }
-            .background(AppTheme.darkBase.ignoresSafeArea())
-            .navigationTitle("Power")
-            .navigationBarTitleDisplayMode(.large)
-        }
-    }
-}
-
-// MARK: - Meetings List Content
-
-/// Wrapper for MeetingHistoryView content within PowerTabView
-private struct MeetingsListContent: View {
+struct MeetingHistoryView: View {
     @ObservedObject private var historyManager = MeetingHistoryManager.shared
     @StateObject private var orchestrator = MeetingRecordingOrchestrator()
 
@@ -74,6 +23,28 @@ private struct MeetingsListContent: View {
                 emptyState
             } else {
                 meetingsList
+            }
+        }
+        .navigationTitle("Meetings")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        historyManager.cleanupOldMeetings()
+                        HapticManager.success()
+                    } label: {
+                        Label("Clean up old meetings", systemImage: "trash.circle")
+                    }
+
+                    Button {
+                        historyManager.cleanupOrphanedAudio()
+                        HapticManager.success()
+                    } label: {
+                        Label("Clean up orphaned audio", systemImage: "waveform.circle")
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
             }
         }
         .alert("Delete Meeting", isPresented: $showingDeleteConfirmation) {
@@ -94,6 +65,8 @@ private struct MeetingsListContent: View {
         }
     }
 
+    // MARK: - Empty State
+
     @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: 16) {
@@ -105,14 +78,15 @@ private struct MeetingsListContent: View {
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Start a meeting recording from the home screen")
+            Text("Recorded meetings will appear here")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
     }
+
+    // MARK: - Meetings List
 
     @ViewBuilder
     private var meetingsList: some View {
@@ -143,7 +117,7 @@ private struct MeetingsListContent: View {
                 }
             }
         }
-        .listStyle(.plain)
+        .listStyle(.insetGrouped)
         .navigationDestination(for: MeetingRecord.self) { [self] meeting in
             if meeting.status.canRetry {
                 MeetingDetailView(meeting: meeting) {
@@ -154,6 +128,8 @@ private struct MeetingsListContent: View {
             }
         }
     }
+
+    // MARK: - Actions
 
     private func retryMeeting(_ meeting: MeetingRecord) async {
         appLog("Starting retry for meeting: \(meeting.id)", category: "Meeting")
@@ -175,7 +151,7 @@ private struct MeetingsListContent: View {
 // MARK: - Preview
 
 #Preview {
-    PowerTabView()
-        .environmentObject(SharedSettings.shared)
-        .preferredColorScheme(.dark)
+    NavigationStack {
+        MeetingHistoryView()
+    }
 }

@@ -210,8 +210,11 @@ public final class MeetingRecordingOrchestrator: ObservableObject {
     private var combinedURL: URL?
 
     // Meeting history tracking
-    private var currentMeetingId: UUID?
+    private var _currentMeetingId: UUID?
     private var meetingTitle: String = "Meeting"
+
+    /// Public getter for current meeting ID (for background handoff)
+    public var currentMeetingId: UUID? { _currentMeetingId }
 
     // Cost estimation constants (AssemblyAI Universal rate)
     private let costPerMinute: Double = 0.0025
@@ -251,7 +254,7 @@ public final class MeetingRecordingOrchestrator: ObservableObject {
             title: meetingTitle,
             settings: settings
         )
-        currentMeetingId = meetingId
+        _currentMeetingId = meetingId
 
         let timestamp = Date().timeIntervalSince1970
 
@@ -398,7 +401,7 @@ public final class MeetingRecordingOrchestrator: ObservableObject {
         }
 
         recordingURL = nil
-        currentMeetingId = nil
+        _currentMeetingId = nil
         state = .error(.cancelled)
         resetState()
     }
@@ -519,7 +522,7 @@ public final class MeetingRecordingOrchestrator: ObservableObject {
                 )
             }
 
-            currentMeetingId = nil
+            _currentMeetingId = nil
             state = .complete(record)
 
         } catch {
@@ -752,7 +755,7 @@ public final class MeetingRecordingOrchestrator: ObservableObject {
                 )
             }
 
-            currentMeetingId = nil
+            _currentMeetingId = nil
             state = .complete(record)
 
         } catch {
@@ -904,7 +907,7 @@ public final class MeetingRecordingOrchestrator: ObservableObject {
         }
 
         // Set up for retry
-        currentMeetingId = meetingId
+        _currentMeetingId = meetingId
         meetingTitle = meeting.title
         settings = meeting.settings
         duration = meeting.duration

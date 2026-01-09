@@ -530,17 +530,22 @@ final class SwiftLinkSessionManager: ObservableObject {
     private func setupStreamingProviderSubscriptions(_ provider: StreamingTranscriptionProvider) {
         streamingCancellables.removeAll()
         accumulatedPartialTranscript = ""  // Reset for new session
-        appLog("Setting up streaming provider subscriptions", category: "SwiftLink")
+        let partialsAreDelta = provider.partialsAreDelta
+        appLog("Setting up streaming provider subscriptions (partialsAreDelta=\(partialsAreDelta))", category: "SwiftLink")
 
-        // Subscribe to partial transcripts - accumulate them for real-time display
-        // Use throttle to reduce UI update frequency (150ms) while staying responsive
+        // Subscribe to partial transcripts for real-time display
+        // Some providers (OpenAI) send deltas, others (AssemblyAI, Deepgram) send full text
         provider.partialTranscriptPublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] partial in
                 guard let self else { return }
-                // Accumulate partial transcript for live display
-                // provider.fullTranscript only contains finalized segments, not current partials
-                self.accumulatedPartialTranscript += partial
+                if partialsAreDelta {
+                    // Delta mode: append new fragment to accumulated transcript
+                    self.accumulatedPartialTranscript += partial
+                } else {
+                    // Replacement mode: partial IS the full current transcript
+                    self.accumulatedPartialTranscript = partial
+                }
             }
             .store(in: &streamingCancellables)
 

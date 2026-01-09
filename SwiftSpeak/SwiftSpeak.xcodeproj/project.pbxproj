@@ -748,6 +748,7 @@
 				INFOPLIST_FILE = SwiftSpeakWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -781,6 +782,7 @@
 				INFOPLIST_FILE = SwiftSpeakWidget/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakWidget;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSSupportsLiveActivities = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

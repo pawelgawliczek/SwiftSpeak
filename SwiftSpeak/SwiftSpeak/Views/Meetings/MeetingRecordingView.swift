@@ -72,11 +72,18 @@ struct MeetingRecordingView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        Task {
-                            await orchestrator.cancelRecording()
+                    if orchestrator.isProcessing {
+                        // During transcription, offer to continue in background
+                        Button("Background") {
+                            continueInBackground()
                         }
-                        dismiss()
+                    } else {
+                        Button("Cancel") {
+                            Task {
+                                await orchestrator.cancelRecording()
+                            }
+                            dismiss()
+                        }
                     }
                 }
 
@@ -127,12 +134,19 @@ struct MeetingRecordingView: View {
 
     private var waveformView: some View {
         GeometryReader { geometry in
-            HStack(spacing: 4) {
-                ForEach(0..<20, id: \.self) { index in
+            let barCount = 20
+            let spacing: CGFloat = 4
+            let totalSpacing = spacing * CGFloat(barCount - 1)
+            let availableWidth = max(0, geometry.size.width - totalSpacing)
+            let barWidth = max(2, availableWidth / CGFloat(barCount))
+            let barMaxHeight = max(4, geometry.size.height)
+
+            HStack(spacing: spacing) {
+                ForEach(0..<barCount, id: \.self) { index in
                     let level = audioLevelForBar(index)
                     RoundedRectangle(cornerRadius: 2)
                         .fill(barGradient)
-                        .frame(width: (geometry.size.width - 76) / 20, height: max(4, level * geometry.size.height))
+                        .frame(width: barWidth, height: max(4, level * barMaxHeight))
                         .animation(.easeInOut(duration: 0.1), value: level)
                 }
             }
@@ -218,10 +232,17 @@ struct MeetingRecordingView: View {
                 }
 
             case .stopping, .chunking, .transcribing, .mergingTranscripts, .generatingNotes, .savingToObsidian:
-                ProgressView()
-                    .scaleEffect(0.8)
-                Text(orchestrator.state.statusText)
-                    .foregroundStyle(.secondary)
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text(orchestrator.state.statusText)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Tap 'Background' to continue in background")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
 
             case .complete:
                 Image(systemName: "checkmark.circle.fill")
@@ -315,6 +336,26 @@ struct MeetingRecordingView: View {
                 orchestrator.reset()
             }
         }
+    }
+
+    /// Hand off transcription to background manager and dismiss
+    private func continueInBackground() {
+        guard let meetingId = orchestrator.currentMeetingId else {
+            appLog("Cannot continue in background: no meeting ID", category: "Meeting", level: .error)
+            return
+        }
+
+        HapticManager.lightTap()
+        appLog("Continuing transcription in background for meeting: \(meetingId)", category: "Meeting")
+
+        // Hand off to background manager
+        BackgroundMeetingTranscriptionManager.shared.takeOverTranscription(
+            orchestrator: orchestrator,
+            meetingId: meetingId
+        )
+
+        // Dismiss the view
+        dismiss()
     }
 
     private func configureOrchestrator() {
@@ -462,21 +503,34 @@ struct MeetingRecordingView: View {
 
     private func handleStateChange(_ newState: MeetingRecordingState) {
         switch newState {
-        case .recording:
+        case .recording(_, let isPaused):
             startStatsTimer()
+            // Manage lock screen presence
+            if !MeetingLockScreenPresenceManager.shared.isActive {
+                MeetingLockScreenPresenceManager.shared.startPresence(title: meetingTitle.isEmpty ? "Meeting Recording" : meetingTitle)
+            }
+            if isPaused {
+                MeetingLockScreenPresenceManager.shared.pausePresence()
+            } else {
+                MeetingLockScreenPresenceManager.shared.resumePresence()
+            }
         case .stopping, .chunking, .transcribing, .mergingTranscripts, .generatingNotes, .savingToObsidian:
             stopStatsTimer()
+            MeetingLockScreenPresenceManager.shared.stopPresence()
         case .complete(let record):
             stopStatsTimer()
+            MeetingLockScreenPresenceManager.shared.stopPresence()
             HapticManager.success()
             showingResult = true
             // Save to Core Data for iCloud sync
             saveMeetingToCoreData(record)
         case .error:
             stopStatsTimer()
+            MeetingLockScreenPresenceManager.shared.stopPresence()
             HapticManager.error()
         case .idle:
             stopStatsTimer()
+            MeetingLockScreenPresenceManager.shared.stopPresence()
             recordingFileSizeMB = 0
             recordingWriteErrors = 0
         }

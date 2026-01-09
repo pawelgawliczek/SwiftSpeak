@@ -795,6 +795,7 @@ struct HomeView: View {
     @State private var showTranslationPicker = false
     @State private var isTranslationEnabled = false
     @State private var showSwiftLinkQuickStart = false
+    @State private var showMeetingRecording = false
 
     /// Whether the user has access to Pro features (contexts, modes, translation)
     private var hasProAccess: Bool {
@@ -891,6 +892,22 @@ struct HomeView: View {
                                 }
                                 .offset(x: 100, y: -50)
 
+                                // Meeting button - 4:30 position (lower-right)
+                                HomeArchButton(
+                                    icon: "🎙️",
+                                    label: "Meeting",
+                                    isLocked: !hasPowerAccess,
+                                    accentColor: .blue
+                                ) {
+                                    if hasPowerAccess {
+                                        HapticManager.lightTap()
+                                        showMeetingRecording = true
+                                    } else {
+                                        showPaywall = true
+                                    }
+                                }
+                                .offset(x: 100, y: 50)
+
                                 // Main transcribe button at center - HERO element
                                 HomeMainActionButton(isTranslationEnabled: isTranslationEnabled) {
                                     HapticManager.mediumTap()
@@ -898,7 +915,7 @@ struct HomeView: View {
                                     showRecording = true
                                 }
                             }
-                            .frame(height: 200) // Give space for arch layout
+                            .frame(height: 280) // Give space for arch layout including Meeting button
 
                             // Provider info (subtle)
                             Button(action: {
@@ -987,6 +1004,9 @@ struct HomeView: View {
             .sheet(isPresented: $showSwiftLinkQuickStart) {
                 SwiftLinkQuickStartSheet()
                     .presentationDetents([.medium, .large])
+            }
+            .fullScreenCover(isPresented: $showMeetingRecording) {
+                MeetingRecordingView()
             }
         }
     }

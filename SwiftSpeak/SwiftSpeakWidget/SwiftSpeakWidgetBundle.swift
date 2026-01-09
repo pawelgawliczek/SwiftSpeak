@@ -15,7 +15,9 @@ struct SwiftSpeakWidgetBundle: WidgetBundle {
         SwiftLinkWidget()
         // Control Center widget (iOS 18+)
         SwiftSpeakWidgetControl()
-        // Live Activity (for future use)
+        // Legacy Live Activity
         SwiftSpeakWidgetLiveActivity()
+        // Meeting Recording Live Activity (lock screen + Dynamic Island)
+        MeetingRecordingLiveActivity()
     }
 }

@@ -53,6 +53,8 @@ class SharedSettings: ObservableObject {
         static let keyboardProgrammableAction = "icloud_keyboard_programmableAction"
         static let keyboardShowProgrammableNextToReturn = "icloud_keyboard_showProgrammableNextToReturn"
         static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
+        // Streaming settings
+        static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
     }
 
     // MARK: - Published Properties
@@ -277,6 +279,7 @@ class SharedSettings: ObservableObject {
     @Published var transcriptionStreamingEnabled: Bool = false {
         didSet {
             defaults?.set(transcriptionStreamingEnabled, forKey: Constants.Keys.transcriptionStreamingEnabled)
+            syncToiCloud()
         }
     }
 
@@ -851,6 +854,11 @@ class SharedSettings: ObservableObject {
             keyboardReturnProgrammableAction = returnAction
         }
 
+        // Load streaming settings
+        if let streamingEnabled = iCloud?.object(forKey: iCloudKeys.transcriptionStreamingEnabled) as? Bool {
+            transcriptionStreamingEnabled = streamingEnabled
+        }
+
         // Transcription history is now synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
 
@@ -927,6 +935,9 @@ class SharedSettings: ObservableObject {
         iCloud?.set(keyboardProgrammableAction.rawValue, forKey: iCloudKeys.keyboardProgrammableAction)
         iCloud?.set(keyboardShowProgrammableNextToReturn, forKey: iCloudKeys.keyboardShowProgrammableNextToReturn)
         iCloud?.set(keyboardReturnProgrammableAction.rawValue, forKey: iCloudKeys.keyboardReturnProgrammableAction)
+
+        // Sync streaming settings
+        iCloud?.set(transcriptionStreamingEnabled, forKey: iCloudKeys.transcriptionStreamingEnabled)
 
         // Transcription history is synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
@@ -1563,16 +1574,13 @@ class SharedSettings: ObservableObject {
 
     var activeContext: ConversationContext? {
         guard let id = activeContextId else {
-            appLog("activeContext: activeContextId is nil, returning nil", category: "Context", level: .debug)
             return nil
         }
         // Check user-created contexts first, then presets
         if let found = contexts.first(where: { $0.id == id }) {
-            appLog("activeContext: found '\(found.name)' (id: \(id.uuidString.prefix(8))...) in contexts array", category: "Context", level: .debug)
             return found
         }
         if let found = ConversationContext.presets.first(where: { $0.id == id }) {
-            appLog("activeContext: found '\(found.name)' in presets (not in contexts array!)", category: "Context", level: .debug)
             return found
         }
         appLog("activeContext: id \(id.uuidString.prefix(8))... not found anywhere, returning nil", category: "Context", level: .error)
