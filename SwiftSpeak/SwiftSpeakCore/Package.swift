@@ -14,11 +14,17 @@ let package = Package(
             name: "SwiftSpeakCore",
             targets: ["SwiftSpeakCore"]),
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/grpc/grpc-swift.git", from: "1.21.0"),
+        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.25.0"),
+    ],
     targets: [
         .target(
             name: "SwiftSpeakCore",
-            dependencies: []
+            dependencies: [
+                .product(name: "GRPC", package: "grpc-swift"),
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+            ]
         ),
         .testTarget(
             name: "SwiftSpeakCoreTests",

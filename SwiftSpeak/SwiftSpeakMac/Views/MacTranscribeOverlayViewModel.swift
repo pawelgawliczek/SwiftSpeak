@@ -303,7 +303,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
             // Check if streaming should be used
             let selectedProvider = settings.selectedTranscriptionProvider
-            let streamingAvailable = selectedProvider == .openAI || selectedProvider == .deepgram || selectedProvider == .assemblyAI
+            let streamingAvailable = selectedProvider == .openAI || selectedProvider == .deepgram || selectedProvider == .assemblyAI || selectedProvider == .google
             let shouldUseStreaming = settings.transcriptionStreamingEnabled && streamingAvailable
 
             isStreamingSession = shouldUseStreaming

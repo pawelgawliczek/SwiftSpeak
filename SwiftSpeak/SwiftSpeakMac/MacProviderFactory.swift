@@ -70,6 +70,13 @@ struct ProviderFactory {
         case .deepgram:
             return SwiftSpeakCore.DeepgramStreamingService(config: config)
 
+        case .google:
+            guard let projectId = config.googleProjectId, !projectId.isEmpty else {
+                macLog("Google Cloud STT streaming requires Project ID", category: "ProviderFactory", level: .error)
+                return nil
+            }
+            return SwiftSpeakCore.GoogleStreamingSTTService(config: config)
+
         default:
             return nil
         }

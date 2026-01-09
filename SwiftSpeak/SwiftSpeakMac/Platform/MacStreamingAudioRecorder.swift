@@ -58,6 +58,15 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         AVAudioFrameCount(Double(sampleRate) * 0.05) // 50ms chunks
     }
 
+    // MARK: - Debug Tracking
+
+    /// Count of audio chunks generated
+    private var chunksGenerated: Int = 0
+    /// Total bytes of audio generated
+    private var bytesGenerated: Int = 0
+    /// Last time we logged stats
+    private var lastStatsLog: Date?
+
     // MARK: - Initialization
 
     /// Initialize with sample rate
@@ -137,7 +146,8 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
 
     /// Stop recording
     func stopRecording() {
-        macLog("[MacStreamingAudioRecorder] Stopping recording", category: "StreamingRecorder")
+        let kbGenerated = Double(bytesGenerated) / 1024.0
+        macLog("[MacStreamingAudioRecorder] Stopping recording - generated \(chunksGenerated) chunks, \(String(format: "%.1f", kbGenerated)) KB", category: "StreamingRecorder")
 
         durationTimer?.invalidate()
         durationTimer = nil
@@ -150,6 +160,11 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
 
         isRecording = false
         macLog("[MacStreamingAudioRecorder] Recording stopped, duration: \(String(format: "%.1f", duration))s", category: "StreamingRecorder")
+
+        // Reset stats for next session
+        chunksGenerated = 0
+        bytesGenerated = 0
+        lastStatsLog = nil
     }
 
     /// Cancel recording without saving
@@ -192,9 +207,27 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         let frameLength = Int(outputBuffer.frameLength)
         let data = Data(bytes: channelData[0], count: frameLength * 2) // 2 bytes per Int16 sample
 
+        // Track stats
+        chunksGenerated += 1
+        bytesGenerated += data.count
+
+        // Log stats every 2 seconds
+        let now = Date()
+        if lastStatsLog == nil || now.timeIntervalSince(lastStatsLog!) >= 2.0 {
+            let kbGenerated = Double(bytesGenerated) / 1024.0
+            let hasCallback = onAudioChunk != nil
+            macLog("[MacStreamingAudioRecorder] 📊 Audio: \(chunksGenerated) chunks, \(String(format: "%.1f", kbGenerated)) KB, callback set: \(hasCallback)", category: "StreamingRecorder")
+            lastStatsLog = now
+        }
+
         // Send chunk via callback
         if !data.isEmpty {
-            onAudioChunk?(data)
+            if onAudioChunk != nil {
+                onAudioChunk?(data)
+            } else if chunksGenerated == 1 {
+                // Log once if callback is nil
+                macLog("[MacStreamingAudioRecorder] ⚠️ onAudioChunk callback is nil!", category: "StreamingRecorder", level: .warning)
+            }
         }
     }
 

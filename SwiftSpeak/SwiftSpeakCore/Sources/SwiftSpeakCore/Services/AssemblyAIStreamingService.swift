@@ -26,6 +26,7 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
 
     public private(set) var connectionState: StreamingConnectionState = .disconnected {
         didSet {
+            print("[AssemblyAI] 🔌 Connection state: \(oldValue) → \(connectionState)")
             delegate?.connectionStateDidChange(connectionState)
         }
     }
@@ -63,6 +64,17 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     private var currentLanguage: Language?
     private var sessionId: String?
 
+    // MARK: - Debug Tracking
+
+    /// Count of audio chunks sent (for debugging)
+    private var audioChunksSent: Int = 0
+    /// Total bytes of audio sent (for debugging)
+    private var audioBytesTotal: Int = 0
+    /// Count of messages received (for debugging)
+    private var messagesReceived: Int = 0
+    /// Last time we logged audio stats
+    private var lastAudioStatsLog: Date?
+
     /// WebSocket endpoint
     private static let streamingEndpoint = "wss://streaming.assemblyai.com/v3/ws"
 
@@ -84,8 +96,11 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     // MARK: - Connection
 
     public func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
+        print("[AssemblyAI] 🔌 connect() called - language: \(language?.rawValue ?? "auto"), sampleRate: \(sampleRate)")
+
         // Note: AssemblyAI doesn't support system instructions, only vocabulary via word_boost
         guard isConfigured else {
+            print("[AssemblyAI] ❌ API key not configured")
             throw TranscriptionError.apiKeyMissing
         }
 
@@ -159,19 +174,46 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     }
 
     public func sendAudio(_ audioData: Data) {
-        guard connectionState == .connected, !isFinishing else { return }
+        // Log if audio is being dropped
+        if connectionState != .connected {
+            print("[AssemblyAI] ⚠️ Audio dropped - not connected (state: \(connectionState), chunks so far: \(audioChunksSent))")
+            return
+        }
+        if isFinishing {
+            print("[AssemblyAI] ⚠️ Audio dropped - finishing (chunks sent: \(audioChunksSent))")
+            return
+        }
+
+        // Track audio stats
+        audioChunksSent += 1
+        audioBytesTotal += audioData.count
+
+        // Log audio stats every 2 seconds
+        let now = Date()
+        if lastAudioStatsLog == nil || now.timeIntervalSince(lastAudioStatsLog!) >= 2.0 {
+            let kbSent = Double(audioBytesTotal) / 1024.0
+            print("[AssemblyAI] 📤 Audio stats: \(audioChunksSent) chunks, \(String(format: "%.1f", kbSent)) KB sent, messages received: \(messagesReceived)")
+            lastAudioStatsLog = now
+        }
 
         // AssemblyAI expects raw binary audio data
         let message = URLSessionWebSocketTask.Message.data(audioData)
         webSocket?.send(message) { [weak self] error in
             if let error {
+                print("[AssemblyAI] ❌ WebSocket send error: \(error.localizedDescription)")
                 self?.handleError(error)
             }
         }
     }
 
     public func finishAudio() {
-        guard connectionState == .connected, !isFinishing else { return }
+        let kbSent = Double(audioBytesTotal) / 1024.0
+        print("[AssemblyAI] 🏁 finishAudio() - Total: \(audioChunksSent) chunks, \(String(format: "%.1f", kbSent)) KB, messages received: \(messagesReceived)")
+
+        guard connectionState == .connected, !isFinishing else {
+            print("[AssemblyAI] ⚠️ finishAudio skipped - state: \(connectionState), isFinishing: \(isFinishing)")
+            return
+        }
         isFinishing = true
 
         // Send terminate message
@@ -179,12 +221,16 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         let message = URLSessionWebSocketTask.Message.string(terminateMessage)
         webSocket?.send(message) { [weak self] error in
             if let error {
+                print("[AssemblyAI] ❌ Terminate send error: \(error.localizedDescription)")
                 self?.handleError(error)
+            } else {
+                print("[AssemblyAI] ✅ Terminate message sent")
             }
         }
     }
 
     public func disconnect() {
+        print("[AssemblyAI] 🔌 disconnect() called - session: \(sessionId ?? "nil"), chunks sent: \(audioChunksSent)")
         webSocket?.cancel(with: .goingAway, reason: nil)
         webSocket = nil
         urlSession?.invalidateAndCancel()
@@ -192,6 +238,12 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         connectionState = .disconnected
         isFinishing = false
         sessionId = nil
+
+        // Reset stats for next session
+        audioChunksSent = 0
+        audioBytesTotal = 0
+        messagesReceived = 0
+        lastAudioStatsLog = nil
     }
 
     // MARK: - Private Helpers
@@ -219,7 +271,10 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
 
     private func continueReceiving() {
         webSocket?.receive { [weak self] result in
-            guard let self else { return }
+            guard let self else {
+                print("[AssemblyAI] ⚠️ continueReceiving - self is nil")
+                return
+            }
 
             switch result {
             case .success(let message):
@@ -228,6 +283,7 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
                 self.continueReceiving()
 
             case .failure(let error):
+                print("[AssemblyAI] ❌ Receive failed: \(error.localizedDescription)")
                 self.handleError(error)
                 self.sessionBeganCallback?(false)
                 self.sessionBeganCallback = nil
@@ -249,34 +305,46 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     }
 
     private func parseResponse(_ text: String) {
+        messagesReceived += 1
+
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let messageType = json["type"] as? String
-        else { return }
+        else {
+            print("[AssemblyAI] ⚠️ Failed to parse message: \(text.prefix(100))")
+            return
+        }
 
         switch messageType {
         case "Begin":
             // Session started
             sessionId = json["id"] as? String
+            print("[AssemblyAI] ✅ Session began - id: \(sessionId ?? "unknown")")
             sessionBeganCallback?(true)
             sessionBeganCallback = nil
 
         case "Turn":
             // Transcription result
+            let transcript = json["transcript"] as? String ?? ""
+            let endOfTurn = json["end_of_turn"] as? Bool ?? false
+            let turnIsFormatted = json["turn_is_formatted"] as? Bool ?? false
+            print("[AssemblyAI] 📝 Turn - formatted: \(turnIsFormatted), endOfTurn: \(endOfTurn), text: \"\(transcript.prefix(50))...\"")
             handleTurnMessage(json)
 
         case "Termination":
             // Session ended - server has processed all audio
+            print("[AssemblyAI] 🛑 Termination received - total messages: \(messagesReceived)")
             sessionEndedSubject.send(())
             disconnect()
 
         case "Error":
             if let errorMsg = json["error"] as? String {
+                print("[AssemblyAI] ❌ Server error: \(errorMsg)")
                 delegate?.didEncounterError(.serverError(statusCode: 400, message: errorMsg))
             }
 
         default:
-            break
+            print("[AssemblyAI] 📨 Unknown message type: \(messageType)")
         }
     }
 
@@ -305,8 +373,11 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     }
 
     private func handleError(_ error: Error) {
+        print("[AssemblyAI] ❌ handleError: \(error.localizedDescription)")
+
         let transcriptionError: TranscriptionError
         if let urlError = error as? URLError {
+            print("[AssemblyAI] ❌ URLError code: \(urlError.code.rawValue) - \(urlError.code)")
             switch urlError.code {
             case .notConnectedToInternet, .networkConnectionLost:
                 transcriptionError = .networkUnavailable
@@ -330,10 +401,12 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
 
 extension AssemblyAIStreamingService: URLSessionWebSocketDelegate {
     public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didOpenWithProtocol protocol: String?) {
-        // Connection opened, wait for Begin message
+        print("[AssemblyAI] 🔌 WebSocket opened - protocol: \(`protocol` ?? "none")")
     }
 
     public func urlSession(_ session: URLSession, webSocketTask: URLSessionWebSocketTask, didCloseWith closeCode: URLSessionWebSocketTask.CloseCode, reason: Data?) {
+        let reasonString = reason.flatMap { String(data: $0, encoding: .utf8) } ?? "none"
+        print("[AssemblyAI] 🔌 WebSocket closed - code: \(closeCode.rawValue), reason: \(reasonString)")
         DispatchQueue.main.async { [weak self] in
             self?.connectionState = .disconnected
         }

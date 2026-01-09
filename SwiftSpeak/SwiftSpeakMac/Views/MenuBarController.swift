@@ -3137,7 +3137,7 @@ struct MacBehaviorView: View {
     /// Check if the current transcription provider supports streaming
     private var isStreamingProviderSelected: Bool {
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google
     }
 
     var body: some View {
@@ -3196,7 +3196,7 @@ struct MacBehaviorView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
-                            Text("Current provider doesn't support streaming. Use OpenAI, Deepgram, or AssemblyAI.")
+                            Text("Current provider doesn't support streaming. Use OpenAI, Deepgram, AssemblyAI, or Google.")
                                 .font(.caption)
                                 .foregroundStyle(.orange)
                         }

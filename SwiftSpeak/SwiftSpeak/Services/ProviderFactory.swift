@@ -114,6 +114,9 @@ struct ProviderFactory {
         case .deepgram:
             return SwiftSpeakCore.DeepgramStreamingService(config: config)
 
+        case .google:
+            return SwiftSpeakCore.GoogleStreamingSTTService(config: config)
+
         default:
             return nil
         }
@@ -127,7 +130,7 @@ struct ProviderFactory {
     /// Check if the current provider supports streaming transcription
     var isStreamingAvailable: Bool {
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google
     }
 
     // MARK: - Translation Providers

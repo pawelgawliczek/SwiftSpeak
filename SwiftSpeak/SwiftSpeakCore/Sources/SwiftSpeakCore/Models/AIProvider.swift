@@ -162,19 +162,20 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     /// Whether this provider supports streaming transcription
     public var supportsStreamingTranscription: Bool {
         switch self {
-        case .openAI, .deepgram, .assemblyAI: return true
-        case .elevenLabs, .google, .local, .anthropic, .deepL, .azure: return false
+        case .openAI, .deepgram, .assemblyAI, .google: return true
+        case .elevenLabs, .local, .anthropic, .deepL, .azure: return false
         }
     }
 
-    /// STT models that support streaming transcription (real-time WebSocket)
+    /// STT models that support streaming transcription (real-time WebSocket/gRPC)
     /// Returns empty array if provider doesn't support streaming
     public var streamingSTTModels: [String] {
         switch self {
         case .openAI: return ["gpt-4o-transcribe", "gpt-4o-mini-transcribe"]
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]  // All Deepgram models support streaming
         case .assemblyAI: return ["best", "nano"]  // All AssemblyAI models support streaming
-        case .elevenLabs, .google, .local, .anthropic, .deepL, .azure: return []
+        case .google: return ["default", "latest_long", "latest_short"]  // Google Cloud STT streaming models
+        case .elevenLabs, .local, .anthropic, .deepL, .azure: return []
         }
     }
 
