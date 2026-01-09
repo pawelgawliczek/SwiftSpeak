@@ -58,6 +58,20 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         AVAudioFrameCount(Double(sampleRate) * 0.05) // 50ms chunks
     }
 
+    // MARK: - Backup File for Fallback
+
+    /// Whether to save audio to file for fallback to batch mode
+    var saveBackupFile: Bool = true
+
+    /// URL of the backup audio file (available after recording stops)
+    private(set) var backupFileURL: URL?
+
+    /// File handle for writing backup audio
+    private var backupFileHandle: FileHandle?
+
+    /// WAV header has been written
+    private var wavHeaderWritten: Bool = false
+
     // MARK: - Debug Tracking
 
     /// Count of audio chunks generated
@@ -127,6 +141,11 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
             throw TranscriptionError.recordingFailed("Failed to start audio engine: \(error.localizedDescription)")
         }
 
+        // Setup backup file for fallback to batch mode
+        if saveBackupFile {
+            setupBackupFile()
+        }
+
         // Update state
         startTime = Date()
         isRecording = true
@@ -157,6 +176,9 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         audioEngine = nil
         inputNode = nil
         formatConverter = nil
+
+        // Finalize backup file
+        finalizeBackupFile()
 
         isRecording = false
         macLog("[MacStreamingAudioRecorder] Recording stopped, duration: \(String(format: "%.1f", duration))s", category: "StreamingRecorder")
@@ -228,7 +250,100 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
                 // Log once if callback is nil
                 macLog("[MacStreamingAudioRecorder] ⚠️ onAudioChunk callback is nil!", category: "StreamingRecorder", level: .warning)
             }
+
+            // Write to backup file for fallback
+            writeToBackupFile(data)
         }
+    }
+
+    // MARK: - Backup File Methods
+
+    /// Setup backup WAV file for fallback to batch transcription
+    private func setupBackupFile() {
+        let tempDir = FileManager.default.temporaryDirectory
+        let fileName = "swiftspeak_streaming_backup_\(UUID().uuidString).wav"
+        let fileURL = tempDir.appendingPathComponent(fileName)
+
+        // Create empty file
+        FileManager.default.createFile(atPath: fileURL.path, contents: nil, attributes: nil)
+
+        do {
+            let handle = try FileHandle(forWritingTo: fileURL)
+            self.backupFileHandle = handle
+            self.backupFileURL = fileURL
+            self.wavHeaderWritten = false
+
+            // Write placeholder WAV header (will be updated when recording stops)
+            let placeholderHeader = createWAVHeader(dataSize: 0)
+            handle.write(placeholderHeader)
+
+            macLog("[MacStreamingAudioRecorder] Backup file created: \(fileName)", category: "StreamingRecorder")
+        } catch {
+            macLog("[MacStreamingAudioRecorder] Failed to create backup file: \(error)", category: "StreamingRecorder", level: .error)
+        }
+    }
+
+    /// Write audio data to backup file
+    private func writeToBackupFile(_ data: Data) {
+        backupFileHandle?.write(data)
+    }
+
+    /// Finalize backup file with correct WAV header
+    private func finalizeBackupFile() {
+        guard let handle = backupFileHandle, let url = backupFileURL else { return }
+
+        do {
+            // Get total data size (current position minus header size)
+            let currentPosition = handle.offsetInFile
+            let dataSize = UInt32(currentPosition - 44) // 44 bytes for WAV header
+
+            // Seek back to beginning and write final header
+            try handle.seek(toOffset: 0)
+            let finalHeader = createWAVHeader(dataSize: dataSize)
+            handle.write(finalHeader)
+
+            // Close file
+            try handle.close()
+            self.backupFileHandle = nil
+
+            macLog("[MacStreamingAudioRecorder] Backup file finalized: \(dataSize) bytes audio data", category: "StreamingRecorder")
+        } catch {
+            macLog("[MacStreamingAudioRecorder] Failed to finalize backup file: \(error)", category: "StreamingRecorder", level: .error)
+        }
+    }
+
+    /// Create WAV header for PCM16 mono audio
+    private func createWAVHeader(dataSize: UInt32) -> Data {
+        var header = Data(capacity: 44)
+
+        // RIFF header
+        header.append(contentsOf: "RIFF".utf8)
+        header.append(contentsOf: withUnsafeBytes(of: (dataSize + 36).littleEndian) { Array($0) })
+        header.append(contentsOf: "WAVE".utf8)
+
+        // fmt chunk
+        header.append(contentsOf: "fmt ".utf8)
+        header.append(contentsOf: withUnsafeBytes(of: UInt32(16).littleEndian) { Array($0) }) // Subchunk1Size
+        header.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) })  // AudioFormat (PCM)
+        header.append(contentsOf: withUnsafeBytes(of: UInt16(1).littleEndian) { Array($0) })  // NumChannels (mono)
+        header.append(contentsOf: withUnsafeBytes(of: UInt32(sampleRate).littleEndian) { Array($0) }) // SampleRate
+        header.append(contentsOf: withUnsafeBytes(of: UInt32(sampleRate * 2).littleEndian) { Array($0) }) // ByteRate
+        header.append(contentsOf: withUnsafeBytes(of: UInt16(2).littleEndian) { Array($0) })  // BlockAlign
+        header.append(contentsOf: withUnsafeBytes(of: UInt16(16).littleEndian) { Array($0) }) // BitsPerSample
+
+        // data chunk
+        header.append(contentsOf: "data".utf8)
+        header.append(contentsOf: withUnsafeBytes(of: dataSize.littleEndian) { Array($0) })
+
+        return header
+    }
+
+    /// Delete backup file (call after successful streaming or when no longer needed)
+    func deleteBackupFile() {
+        guard let url = backupFileURL else { return }
+        try? FileManager.default.removeItem(at: url)
+        backupFileURL = nil
+        macLog("[MacStreamingAudioRecorder] Backup file deleted", category: "StreamingRecorder")
     }
 
     /// Update audio level from buffer for visualization

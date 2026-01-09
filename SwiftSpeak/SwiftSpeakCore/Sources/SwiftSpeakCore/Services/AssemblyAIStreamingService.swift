@@ -122,14 +122,21 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
             queryItems.append(URLQueryItem(name: "language_detection", value: "true"))
         }
 
-        // Extract keywords from transcription prompt for AssemblyAI word boosting
+        // Extract keywords from transcription prompt for AssemblyAI
+        // Use keyterms_prompt (newer, 21% better accuracy) instead of deprecated word_boost
         if let prompt = transcriptionPrompt, !prompt.isEmpty {
             let keywords = extractKeywords(from: prompt)
             if !keywords.isEmpty {
-                // AssemblyAI uses word_boost parameter with JSON array
-                if let jsonData = try? JSONSerialization.data(withJSONObject: keywords),
+                // AssemblyAI keyterms_prompt: max 100 terms, 50 chars each
+                let limitedKeywords = keywords
+                    .map { String($0.prefix(50)) }  // Max 50 chars per term
+                    .prefix(100)  // Max 100 terms
+                    .map { $0 }
+
+                if let jsonData = try? JSONSerialization.data(withJSONObject: limitedKeywords),
                    let jsonString = String(data: jsonData, encoding: .utf8) {
-                    queryItems.append(URLQueryItem(name: "word_boost", value: jsonString))
+                    queryItems.append(URLQueryItem(name: "keyterms_prompt", value: jsonString))
+                    print("[AssemblyAI] 📝 Keyterms prompting enabled with \(limitedKeywords.count) terms")
                 }
             }
         }
@@ -249,15 +256,40 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     // MARK: - Private Helpers
 
     /// Extract keywords from transcription prompt for word boosting
+    /// Handles various formats: "Keywords: a, b", "Common names and terms: a, b", "Domain terminology: a, b"
     private func extractKeywords(from prompt: String) -> [String] {
-        // Extract words after "Keywords:" if present, otherwise use whole prompt
-        let keywordsSection = prompt.components(separatedBy: "Keywords:").last ?? prompt
-        return keywordsSection
-            .components(separatedBy: CharacterSet(charactersIn: ",.:;"))
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && $0.count > 2 }
-            .prefix(100)  // AssemblyAI limit
-            .map { $0 }
+        // Split by period to handle multiple sections, then extract from each
+        var allKeywords: [String] = []
+
+        for section in prompt.components(separatedBy: ".") {
+            var text = section
+
+            // Try multiple section markers
+            for marker in ["Keywords:", "Common names and terms:", "Domain terminology:", "terminology:", "Context:"] {
+                if let range = section.range(of: marker, options: .caseInsensitive) {
+                    text = String(section[range.upperBound...])
+                    break
+                }
+            }
+
+            let keywords = text
+                .components(separatedBy: CharacterSet(charactersIn: ",;:\n"))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && $0.count > 1 }
+
+            allKeywords.append(contentsOf: keywords)
+        }
+
+        // Remove duplicates while preserving order
+        var seen = Set<String>()
+        return allKeywords.filter { word in
+            let lowercased = word.lowercased()
+            if seen.contains(lowercased) { return false }
+            seen.insert(lowercased)
+            return true
+        }
+        .prefix(100)  // AssemblyAI limit
+        .map { $0 }
     }
 
     // MARK: - Message Handling

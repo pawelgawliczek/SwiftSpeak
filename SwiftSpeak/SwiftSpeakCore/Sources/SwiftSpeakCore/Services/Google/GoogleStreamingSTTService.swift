@@ -127,19 +127,35 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
         self.group = group
 
         do {
-            // Create gRPC channel with TLS
-            let channel = try GRPCChannelPool.with(
+            // Create gRPC channel with TLS and keepalive
+            var channelConfig = GRPCChannelPool.Configuration.with(
                 target: .host(Self.speechEndpoint, port: Self.speechPort),
                 transportSecurity: .tls(GRPCTLSConfiguration.makeClientConfigurationBackedByNIOSSL()),
                 eventLoopGroup: group
             )
+
+            // Configure keepalive to prevent "Transport became inactive" errors
+            channelConfig.keepalive = ClientConnectionKeepalive(
+                interval: .seconds(30),
+                timeout: .seconds(10),
+                permitWithoutCalls: true,
+                maximumPingsWithoutData: 0
+            )
+
+            // Set idle timeout to prevent premature disconnection
+            channelConfig.idleTimeout = .minutes(5)
+
+            let channel = try GRPCChannelPool.with(configuration: channelConfig)
             self.channel = channel
 
-            print("[GoogleSTT] ✅ gRPC channel established")
+            print("[GoogleSTT] ✅ gRPC channel established with keepalive")
 
             // Create Speech client with API key in call options
             var callOptions = CallOptions()
             callOptions.customMetadata.add(name: "x-goog-api-key", value: apiKey)
+
+            // Set a reasonable timeout for streaming (5 minutes max)
+            callOptions.timeLimit = .timeout(.minutes(5))
 
             // Add iOS bundle ID for tracking (optional but good practice)
             if let bundleId = Bundle.main.bundleIdentifier {
@@ -169,10 +185,16 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
             }
 
             // Add speech contexts for vocabulary boost
+            // Best practice: boost values 10-20 for important terms (Google recommends 0-20 range)
             if let prompt = transcriptionPrompt, !prompt.isEmpty {
-                var context = Google_Cloud_Speech_V1_SpeechContext()
-                context.phrases = extractKeywords(from: prompt)
-                config.speechContexts = [context]
+                let keywords = extractKeywords(from: prompt)
+                if !keywords.isEmpty {
+                    var context = Google_Cloud_Speech_V1_SpeechContext()
+                    context.phrases = keywords
+                    context.boost = 15.0  // Strong boost for custom vocabulary (0-20 range)
+                    config.speechContexts = [context]
+                    print("[GoogleSTT] 📝 Speech context with \(keywords.count) phrases, boost=15")
+                }
             }
 
             var streamingConfig = Google_Cloud_Speech_V1_StreamingRecognitionConfig()
@@ -289,14 +311,40 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
     // MARK: - Private Helpers
 
     /// Extract keywords from transcription prompt for speech context
+    /// Handles various formats: "Keywords: a, b", "Common names and terms: a, b", "Domain terminology: a, b"
     private func extractKeywords(from prompt: String) -> [String] {
-        let keywordsSection = prompt.components(separatedBy: "Keywords:").last ?? prompt
-        return keywordsSection
-            .components(separatedBy: CharacterSet(charactersIn: ",.:;"))
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty && $0.count > 2 && $0.count < 100 }  // Google limits phrase length
-            .prefix(500)  // Google limits to 500 phrases
-            .map { $0 }
+        // Split by period to handle multiple sections, then extract from each
+        var allKeywords: [String] = []
+
+        for section in prompt.components(separatedBy: ".") {
+            var text = section
+
+            // Try multiple section markers
+            for marker in ["Keywords:", "Common names and terms:", "Domain terminology:", "terminology:", "Context:"] {
+                if let range = section.range(of: marker, options: .caseInsensitive) {
+                    text = String(section[range.upperBound...])
+                    break
+                }
+            }
+
+            let keywords = text
+                .components(separatedBy: CharacterSet(charactersIn: ",;:\n"))
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty && $0.count > 1 && $0.count < 100 }
+
+            allKeywords.append(contentsOf: keywords)
+        }
+
+        // Remove duplicates while preserving order
+        var seen = Set<String>()
+        return allKeywords.filter { word in
+            let lowercased = word.lowercased()
+            if seen.contains(lowercased) { return false }
+            seen.insert(lowercased)
+            return true
+        }
+        .prefix(500)  // Google limits to 500 phrases
+        .map { $0 }
     }
 
     // MARK: - Response Handling

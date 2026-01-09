@@ -95,6 +95,7 @@ private class StreamingDelegateBridge: StreamingTranscriptionDelegate {
             guard let vm = self?.viewModel else { return }
             macLog("Streaming error: \(error)", category: "Streaming", level: .error)
             vm.errorMessage = error.errorDescription
+            vm.streamingConnectionErrorOccurred = true
         }
     }
 
@@ -190,6 +191,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     /// Accumulated full transcript from finals (when streaming)
     /// Note: fileprivate for delegate bridge access
     fileprivate var streamingFullTranscript: String = ""
+
+    /// Whether a streaming connection error occurred (for batch fallback decision)
+    fileprivate var streamingConnectionErrorOccurred: Bool = false
 
     /// Delegate bridge for streaming provider
     private var streamingDelegateBridge: StreamingDelegateBridge?
@@ -291,6 +295,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             recordingDuration = 0
             liveTranscript = ""
             streamingFullTranscript = ""
+            streamingConnectionErrorOccurred = false
             errorMessage = nil
             audioLevel = 0
 
@@ -552,8 +557,10 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         // Disconnect streaming service
         streamingProvider?.disconnect()
         streamingProvider = nil
-        streamingAudioRecorder = nil
         streamingDelegateBridge = nil
+
+        // Save backup file URL before clearing recorder (needed for fallback)
+        let backupFileURL = streamingAudioRecorder?.backupFileURL
 
         // Clear streaming subscriptions
         streamingCancellables.removeAll()
@@ -580,11 +587,57 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             }
         }
 
+        // Decide whether to fall back to batch transcription:
+        // 1. Empty transcript - always fall back
+        // 2. Error occurred AND transcript seems incomplete (less than ~0.5 words per second of recording)
+        let shouldFallBackToBatch: Bool
+        let fallbackReason: String
+
         if transcript.isEmpty {
-            macLog("Streaming transcript is empty", category: "Transcribe", level: .warning)
-            state = .idle
-            return
+            shouldFallBackToBatch = true
+            fallbackReason = "transcript is empty"
+        } else if streamingConnectionErrorOccurred {
+            // Estimate expected words: typical speech is 2-3 words per second
+            // If we have less than 0.5 words per second, likely incomplete
+            let wordCount = transcript.components(separatedBy: .whitespaces).filter { !$0.isEmpty }.count
+            let expectedMinWords = max(1, Int(recordingDuration * 0.5))  // At least 0.5 words/sec
+
+            if wordCount < expectedMinWords && recordingDuration > 1.5 {
+                shouldFallBackToBatch = true
+                fallbackReason = "streaming error occurred and transcript seems incomplete (\(wordCount) words for \(String(format: "%.1f", recordingDuration))s recording)"
+            } else {
+                shouldFallBackToBatch = false
+                fallbackReason = ""
+                macLog("Streaming error occurred but transcript seems complete (\(wordCount) words)", category: "Transcribe")
+            }
+        } else {
+            shouldFallBackToBatch = false
+            fallbackReason = ""
         }
+
+        if shouldFallBackToBatch {
+            macLog("Falling back to batch transcription - \(fallbackReason)", category: "Transcribe", level: .warning)
+
+            // Fall back to batch transcription using the backup audio file
+            if let backupURL = backupFileURL {
+                macLog("Using backup file for batch fallback: \(backupURL.lastPathComponent)", category: "Transcribe")
+                // Store for cleanup later
+                lastRecordingURL = backupURL
+                // Clear recorder now since we're using the backup
+                streamingAudioRecorder = nil
+                await processRecording(audioURL: backupURL)
+                return
+            } else {
+                macLog("No backup file available for fallback", category: "Transcribe", level: .error)
+                streamingAudioRecorder = nil
+                state = .error("Streaming failed and no backup available")
+                return
+            }
+        }
+
+        // Streaming succeeded - delete backup file and clear recorder
+        streamingAudioRecorder?.deleteBackupFile()
+        streamingAudioRecorder = nil
 
         macLog("Streaming transcription complete: \(transcript.count) chars", category: "Transcribe")
 

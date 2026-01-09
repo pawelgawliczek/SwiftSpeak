@@ -79,9 +79,12 @@ final class MacTranscribeOverlayController {
     ///   - mode: Toggle or push-to-talk mode
     ///   - context: Pre-captured context from hotkey callback
     func show(mode: TranscribeMode, context: HotkeyContext) {
-        // If already visible, just update context
+        // If already visible, hotkey press means "insert text only" (no send)
         if isVisible {
-            viewModel?.setPreCapturedContext(context)
+            macLog("Hotkey pressed again - inserting text without send", category: "Transcribe")
+            Task { @MainActor in
+                await insertTextOnly()
+            }
             return
         }
 
@@ -240,6 +243,76 @@ final class MacTranscribeOverlayController {
             // Wait for processing to complete, then execute context's enter behavior
             // The viewModel will handle this based on enterKeyBehavior
         }
+    }
+
+    // MARK: - Insert Text Only (Hotkey Re-press)
+
+    /// Insert text without sending (triggered by pressing hotkey again while overlay is visible)
+    /// This stops recording if needed, waits for transcription, inserts text, and closes overlay
+    private func insertTextOnly() async {
+        guard let vm = viewModel else {
+            hide()
+            return
+        }
+
+        // Capture any partial text that might be available (for streaming)
+        let partialText = vm.transcribedText
+
+        switch vm.state {
+        case .recording:
+            // Stop recording first - this will trigger transcription
+            await vm.stopRecording()
+            // Wait for transcription to complete (short timeout)
+            await waitForTranscriptionComplete(vm)
+            // Insert text if available
+            if !vm.transcribedText.isEmpty {
+                await vm.insertText()
+            } else if !partialText.isEmpty {
+                // Use partial text if final transcript is empty
+                macLog("Using partial text: \(partialText.prefix(50))...", category: "Transcribe")
+                vm.transcribedText = partialText
+                await vm.insertText()
+            }
+            finishAndClose()
+
+        case .transcribing, .formatting:
+            // Wait for current processing to complete
+            await waitForTranscriptionComplete(vm)
+            if !vm.transcribedText.isEmpty {
+                await vm.insertText()
+            }
+            finishAndClose()
+
+        case .complete:
+            // Text is ready, insert it
+            if !vm.transcribedText.isEmpty {
+                await vm.insertText()
+            }
+            finishAndClose()
+
+        case .idle, .ready, .initializing, .inserting:
+            // Nothing to insert, just close
+            finishAndClose()
+
+        case .error:
+            // On error, just close
+            finishAndClose()
+        }
+    }
+
+    /// Wait for transcription/formatting to complete
+    private func waitForTranscriptionComplete(_ vm: MacTranscribeOverlayViewModel) async {
+        // Poll for completion (max 5 seconds - shorter timeout since user wants quick insert)
+        for _ in 0..<50 {
+            switch vm.state {
+            case .complete, .error, .idle, .ready:
+                // These are all terminal/stable states
+                return
+            default:
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+            }
+        }
+        macLog("Timeout waiting for transcription to complete", category: "Transcribe", level: .warning)
     }
 
     // MARK: - Window Creation

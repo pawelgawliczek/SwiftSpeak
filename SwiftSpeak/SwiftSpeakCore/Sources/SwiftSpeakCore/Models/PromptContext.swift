@@ -110,10 +110,26 @@ public struct PromptContext: Sendable {
         globalMemory: String? = nil,
         vocabularyEntries: [VocabularyEntry] = []
     ) -> PromptContext {
-        // Collect vocabulary words for transcription hints
-        let vocabWords = vocabularyEntries
+        // Collect vocabulary words for transcription hints from multiple sources:
+        // 1. Global vocabulary entries (from Settings)
+        var vocabWords = vocabularyEntries
             .filter { $0.isEnabled }
             .map { $0.replacementWord }
+
+        // 2. Context-specific custom jargon (highest priority for this context)
+        if let customJargon = context?.customJargon {
+            // Prepend custom jargon so it appears first (higher priority)
+            vocabWords = customJargon.filter { !$0.isEmpty } + vocabWords
+        }
+
+        // Remove duplicates while preserving order
+        var seen = Set<String>()
+        vocabWords = vocabWords.filter { word in
+            let lowercased = word.lowercased()
+            if seen.contains(lowercased) { return false }
+            seen.insert(lowercased)
+            return true
+        }
 
         // Only include global memory if context allows it (or no context)
         let includeGlobalMemory = context?.useGlobalMemory ?? true
@@ -290,9 +306,9 @@ public struct PromptContext: Sendable {
             hints.append(domainHint)
         }
 
-        // Vocabulary/proper nouns (limit to 20 to avoid token limits)
+        // Vocabulary/proper nouns (limit to 50 - streaming providers can handle 100-500)
         if !vocabularyWords.isEmpty {
-            let words = vocabularyWords.prefix(20).joined(separator: ", ")
+            let words = vocabularyWords.prefix(50).joined(separator: ", ")
             hints.append("Common names and terms: \(words)")
         }
 
