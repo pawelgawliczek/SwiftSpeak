@@ -299,6 +299,12 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
         let selectedProvider = settings.selectedTranscriptionProvider
         appLog("createStreamingProvider() for: \(selectedProvider.displayName)", category: "StreamingOrch")
 
+        // Apple Speech doesn't need API key/config - handle first
+        if selectedProvider == .appleSpeech {
+            appLog("Creating Apple Speech streaming service...", category: "StreamingOrch")
+            return SwiftSpeakCore.AppleSpeechStreamingService()
+        }
+
         // Get provider config
         guard let config = settings.configuredAIProviders.first(where: { $0.provider == selectedProvider }) else {
             appLog("No config found for provider: \(selectedProvider.displayName)", category: "StreamingOrch", level: .error)
@@ -465,7 +471,7 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
     /// Check if streaming is available for the current provider
     var isStreamingAvailable: Bool {
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .appleSpeech
     }
 
     /// Get the display name of the current streaming provider

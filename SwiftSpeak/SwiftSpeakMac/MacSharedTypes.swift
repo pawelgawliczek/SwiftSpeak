@@ -23,6 +23,7 @@ enum HotkeyAction: CaseIterable, Hashable {
     case quickPaste
     case openPowerModeOverlay     // Open power mode selector overlay
     case powerMode(UUID)          // Trigger specific Power Mode by ID
+    case context(UUID)            // Trigger transcribe overlay with specific Context pre-selected
     case transcribeToggle         // Toggle transcribe overlay (opens/closes)
     case transcribePushToTalk     // Push-to-talk transcribe (held down)
 
@@ -45,6 +46,9 @@ enum HotkeyAction: CaseIterable, Hashable {
         case .powerMode(let id):
             hasher.combine("powerMode")
             hasher.combine(id)
+        case .context(let id):
+            hasher.combine("context")
+            hasher.combine(id)
         case .transcribeToggle:
             hasher.combine("transcribeToggle")
         case .transcribePushToTalk:
@@ -59,6 +63,7 @@ enum HotkeyAction: CaseIterable, Hashable {
         case (.quickPaste, .quickPaste): return true
         case (.openPowerModeOverlay, .openPowerModeOverlay): return true
         case (.powerMode(let lhsId), .powerMode(let rhsId)): return lhsId == rhsId
+        case (.context(let lhsId), .context(let rhsId)): return lhsId == rhsId
         case (.transcribeToggle, .transcribeToggle): return true
         case (.transcribePushToTalk, .transcribePushToTalk): return true
         default: return false

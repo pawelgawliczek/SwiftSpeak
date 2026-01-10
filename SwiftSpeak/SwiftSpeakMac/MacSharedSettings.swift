@@ -250,6 +250,43 @@ class MacSettings: ObservableObject {
         }
     }
 
+    // MARK: - Context Hotkeys
+
+    /// Dictionary mapping Context IDs to their hotkey combinations
+    @Published var contextHotkeys: [UUID: HotkeyCombination] = [:] {
+        didSet {
+            saveContextHotkeys()
+        }
+    }
+
+    private func saveContextHotkeys() {
+        let encoder = JSONEncoder()
+        // Convert to [String: HotkeyCombination] for JSON encoding
+        let stringKeyed = Dictionary(uniqueKeysWithValues: contextHotkeys.map { (key, value) in
+            (key.uuidString, value)
+        })
+
+        if let data = try? encoder.encode(stringKeyed) {
+            defaults?.set(data, forKey: "contextHotkeys")
+        }
+    }
+
+    private func loadContextHotkeys() {
+        guard let data = defaults?.data(forKey: "contextHotkeys") else { return }
+        let decoder = JSONDecoder()
+
+        do {
+            let stringKeyed = try decoder.decode([String: HotkeyCombination].self, from: data)
+            // Convert back to [UUID: HotkeyCombination]
+            contextHotkeys = Dictionary(uniqueKeysWithValues: stringKeyed.compactMap { (key, value) in
+                guard let uuid = UUID(uuidString: key) else { return nil }
+                return (uuid, value)
+            })
+        } catch {
+            macLog("Failed to load context hotkeys: \(error)", category: "Settings", level: .error)
+        }
+    }
+
     // MARK: - Phase 16: Keyboard Layout Settings (syncs to iOS)
 
     @Published var keyboardShowSwiftSpeakBar: Bool = true {
@@ -769,6 +806,7 @@ class MacSettings: ObservableObject {
         loadPowerModes()
         loadGlobalPowerModeHotkey()
         loadPowerModeHotkeys()
+        loadContextHotkeys()
         loadHistoryMemory()
         loadCustomTemplates()
         loadVocabulary()

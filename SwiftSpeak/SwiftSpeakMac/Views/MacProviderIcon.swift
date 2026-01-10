@@ -120,6 +120,7 @@ extension AIProvider {
         case .elevenLabs: return "elevenlabs"
         case .assemblyAI: return nil
         case .local: return nil
+        case .appleSpeech: return nil  // Uses SF Symbol
         }
     }
 
@@ -134,6 +135,7 @@ extension AIProvider {
         case .assemblyAI: return "waveform.circle.fill"
         case .deepL: return "character.book.closed.fill"
         case .azure: return "cloud.fill"
+        case .appleSpeech: return "apple.logo"
         }
     }
 
@@ -148,6 +150,7 @@ extension AIProvider {
         case .assemblyAI: return Color(red: 0.0, green: 0.47, blue: 1.0)
         case .deepL: return Color(red: 0.04, green: 0.21, blue: 0.38)
         case .azure: return Color(red: 0.0, green: 0.47, blue: 0.84)
+        case .appleSpeech: return Color.gray  // Apple's neutral color
         }
     }
 
@@ -164,6 +167,7 @@ extension AIProvider {
         case .elevenLabs: return "Varies by plan"
         case .assemblyAI: return "$0.005/min"
         case .local: return "Free (local)"
+        case .appleSpeech: return "Free (on-device)"
         }
     }
 }

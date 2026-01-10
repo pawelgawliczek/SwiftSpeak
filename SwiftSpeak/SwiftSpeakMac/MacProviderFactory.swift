@@ -21,6 +21,11 @@ struct ProviderFactory {
     // MARK: - Transcription Providers
 
     func createTranscriptionProvider(for provider: AIProvider) -> TranscriptionProvider? {
+        // Apple Speech doesn't need configuration or API key
+        if provider == .appleSpeech {
+            return SwiftSpeakCore.AppleSpeechTranscriptionService()
+        }
+
         guard let config = settings.getAIProviderConfig(for: provider) else {
             macLog("Provider \(provider.displayName) not configured", category: "ProviderFactory", level: .error)
             return nil
@@ -57,6 +62,11 @@ struct ProviderFactory {
     // MARK: - Streaming Transcription Providers
 
     func createStreamingTranscriptionProvider(for provider: AIProvider) -> StreamingTranscriptionProvider? {
+        // Apple Speech doesn't need configuration or API key
+        if provider == .appleSpeech {
+            return SwiftSpeakCore.AppleSpeechStreamingService()
+        }
+
         guard let config = settings.getAIProviderConfig(for: provider),
               !config.apiKey.isEmpty else { return nil }
 

@@ -27,6 +27,8 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
     private var keyUpEventHandlerRef: EventHandlerRef?  // Separate handler for key up
     private var hotkeyIdToPowerModeId: [UInt32: UUID] = [:]
     private var powerModeHotkeys: [UUID: HotkeyCombination] = [:]
+    private var hotkeyIdToContextId: [UInt32: UUID] = [:]
+    private var contextHotkeys: [UUID: HotkeyCombination] = [:]
 
     // MARK: - Initialization
 
@@ -197,6 +199,85 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
     /// - Returns: Dictionary mapping Power Mode IDs to hotkey combinations
     func getPowerModeHotkeys() -> [UUID: HotkeyCombination] {
         return powerModeHotkeys
+    }
+
+    // MARK: - Context Hotkeys
+
+    /// Register a hotkey for a specific Context
+    /// - Parameters:
+    ///   - contextId: UUID of the Context
+    ///   - keyCode: Virtual key code
+    ///   - modifiers: Modifier flags
+    /// - Returns: true if registration succeeded
+    @discardableResult
+    func registerContextHotkey(
+        contextId: UUID,
+        keyCode: UInt16,
+        modifiers: UInt
+    ) -> Bool {
+        // Create hotkey combination
+        let combination = HotkeyCombination(
+            keyCode: keyCode,
+            modifiers: modifiers,
+            displayString: displayString(from: keyCode, modifiers: modifiers)
+        )
+
+        // Unregister existing hotkey for this Context
+        unregisterContextHotkey(contextId: contextId)
+
+        let hotkeyId = nextHotkeyId
+        nextHotkeyId += 1
+
+        var hotKeyRef: EventHotKeyRef?
+        var hotKeyID = EventHotKeyID(
+            signature: OSType(0x5353_504B), // "SSPK"
+            id: hotkeyId
+        )
+
+        let carbonModifiers = carbonModifiers(from: modifiers)
+
+        let status = RegisterEventHotKey(
+            UInt32(keyCode),
+            carbonModifiers,
+            hotKeyID,
+            GetEventDispatcherTarget(),
+            0,
+            &hotKeyRef
+        )
+
+        guard status == noErr, let ref = hotKeyRef else {
+            return false
+        }
+
+        hotkeyRefs[hotkeyId] = ref
+        hotkeyIdToContextId[hotkeyId] = contextId
+        contextHotkeys[contextId] = combination
+
+        return true
+    }
+
+    /// Unregister hotkey for a Context
+    /// - Parameter contextId: UUID of the Context
+    func unregisterContextHotkey(contextId: UUID) {
+        // Find the hotkey ID for this Context
+        guard let hotkeyId = hotkeyIdToContextId.first(where: { $0.value == contextId })?.key else {
+            return
+        }
+
+        // Unregister the hotkey
+        if let ref = hotkeyRefs[hotkeyId] {
+            UnregisterEventHotKey(ref)
+        }
+
+        hotkeyRefs.removeValue(forKey: hotkeyId)
+        hotkeyIdToContextId.removeValue(forKey: hotkeyId)
+        contextHotkeys.removeValue(forKey: contextId)
+    }
+
+    /// Get all registered Context hotkeys
+    /// - Returns: Dictionary mapping Context IDs to hotkey combinations
+    func getContextHotkeys() -> [UUID: HotkeyCombination] {
+        return contextHotkeys
     }
 
     /// Generate display string for hotkey combination
@@ -379,6 +460,10 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
                 // Check power mode specific hotkeys
                 else if let powerModeId = manager.hotkeyIdToPowerModeId[hotKeyID.id] {
                     manager.eventHandler?(.powerMode(powerModeId), capturedContext)
+                }
+                // Check context specific hotkeys
+                else if let contextId = manager.hotkeyIdToContextId[hotKeyID.id] {
+                    manager.eventHandler?(.context(contextId), capturedContext)
                 }
             }
 

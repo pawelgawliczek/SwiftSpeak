@@ -50,6 +50,19 @@ final class MacTextInsertionService: TextInsertionProtocol {
         return copyToClipboard(text)
     }
 
+    /// Insert text and then press Enter to send (for chat apps, etc.)
+    func insertTextAndSend(_ text: String, replaceSelection: Bool) async -> TextInsertionResult {
+        let insertResult = await insertText(text, replaceSelection: replaceSelection)
+
+        // Small delay to ensure text is inserted before pressing Enter
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
+
+        // Simulate pressing Enter
+        simulateReturn()
+
+        return insertResult
+    }
+
     func getSelectedText() async -> String? {
         guard isAccessibilityAvailable else { return nil }
         guard let element = getFocusedElement() else { return nil }
@@ -235,5 +248,17 @@ final class MacTextInsertionService: TextInsertionProtocol {
 
         vKeyDown?.post(tap: .cghidEventTap)
         vKeyUp?.post(tap: .cghidEventTap)
+    }
+
+    /// Simulate Return/Enter keystroke to send/submit
+    private func simulateReturn() {
+        let source = CGEventSource(stateID: .hidSystemState)
+
+        // Return key = 0x24
+        let returnKeyDown = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: true)
+        let returnKeyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
+
+        returnKeyDown?.post(tap: .cghidEventTap)
+        returnKeyUp?.post(tap: .cghidEventTap)
     }
 }

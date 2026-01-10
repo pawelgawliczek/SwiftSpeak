@@ -55,9 +55,9 @@ struct PowerModeEditorView: View {
     @State private var obsidianAction: ObsidianActionConfig? = nil
     @State private var defaultObsidianSearchQuery: String = ""
 
-    // Phase 16: Input/Output Configuration
-    @State private var inputConfig: PowerModeInputConfig = .default
-    @State private var outputConfig: PowerModeOutputConfig = .default
+    // Phase 17: Input/Output Actions (unified system replaces Phase 16 config)
+    @State private var inputActions: [InputAction] = []
+    @State private var outputActions: [OutputAction] = []
 
     // UI state
     @State private var showingIconPicker = false
@@ -91,7 +91,9 @@ struct PowerModeEditorView: View {
             includeWindowContext: includeWindowContext,
             maxObsidianChunks: maxObsidianChunks,
             obsidianAction: obsidianAction,
-            defaultObsidianSearchQuery: defaultObsidianSearchQuery
+            defaultObsidianSearchQuery: defaultObsidianSearchQuery,
+            inputActions: inputActions,
+            outputActions: outputActions
         )
     }
 
@@ -122,8 +124,9 @@ struct PowerModeEditorView: View {
             _maxObsidianChunks = State(initialValue: mode.maxObsidianChunks)
             _obsidianAction = State(initialValue: mode.obsidianAction)
             _defaultObsidianSearchQuery = State(initialValue: mode.defaultObsidianSearchQuery)
-            _inputConfig = State(initialValue: mode.inputConfig)
-            _outputConfig = State(initialValue: mode.outputConfig)
+            // Migrate legacy config to actions if needed, then load actions
+            _inputActions = State(initialValue: mode.migratedInputActions)
+            _outputActions = State(initialValue: mode.migratedOutputActions)
         }
     }
 
@@ -140,11 +143,11 @@ struct PowerModeEditorView: View {
                     // Output format section
                     outputFormatSection
 
-                    // INPUT CONTEXT section (Phase 16)
-                    inputContextSection
+                    // CONTEXT SOURCES section (Phase 17 - unified)
+                    InputActionsEditor(actions: $inputActions)
 
-                    // OUTPUT DELIVERY section (Phase 16)
-                    outputDeliverySection
+                    // DELIVERY ACTIONS section (Phase 17 - unified)
+                    OutputActionsEditor(actions: $outputActions)
 
                     // Provider override section (Phase 10)
                     providerOverrideSection
@@ -276,654 +279,6 @@ struct PowerModeEditorView: View {
         }
     }
 
-    // MARK: - Input Context Section (Phase 16)
-
-    private var inputContextSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("INPUT CONTEXT")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text("Choose what information to include when running this Power Mode")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-
-            VStack(spacing: 8) {
-                // Global Memory
-                inputToggleRow(
-                    icon: "globe",
-                    title: "Global Memory",
-                    subtitle: "Include your global AI memory across all modes",
-                    isOn: $inputConfig.includeGlobalMemory,
-                    color: .blue
-                )
-
-                // Power Mode Memory
-                inputToggleRow(
-                    icon: "brain.head.profile",
-                    title: "Power Mode Memory",
-                    subtitle: "Include memory specific to this mode",
-                    isOn: $inputConfig.includePowerModeMemory,
-                    color: .purple
-                )
-
-                // RAG Documents
-                inputToggleRow(
-                    icon: "doc.text.magnifyingglass",
-                    title: "RAG Documents",
-                    subtitle: knowledgeDocumentIds.isEmpty ? "No documents attached" : "\(knowledgeDocumentIds.count) document\(knowledgeDocumentIds.count == 1 ? "" : "s") attached",
-                    isOn: $inputConfig.includeRAGDocuments,
-                    color: .green,
-                    action: {
-                        HapticManager.selection()
-                        showingKnowledgeBase = true
-                    }
-                )
-
-                // Obsidian Vaults
-                inputToggleRow(
-                    icon: "folder.fill",
-                    title: "Obsidian Vaults",
-                    subtitle: obsidianVaultIds.isEmpty ? "No vaults selected" : "\(obsidianVaultIds.count) vault\(obsidianVaultIds.count == 1 ? "" : "s") selected",
-                    isOn: $inputConfig.includeObsidianVaults,
-                    color: .purple
-                )
-
-                // Obsidian vault selection (when enabled)
-                if inputConfig.includeObsidianVaults {
-                    obsidianVaultSelector
-                }
-            }
-
-            // Memory Configuration (when Power Mode Memory is enabled)
-            if inputConfig.includePowerModeMemory {
-                memoryConfigSection
-            }
-        }
-    }
-
-    private func inputToggleRow(
-        icon: String,
-        title: String,
-        subtitle: String,
-        isOn: Binding<Bool>,
-        color: Color,
-        action: (() -> Void)? = nil
-    ) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(isOn.wrappedValue ? color : .secondary)
-                .frame(width: 40)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.subheadline.weight(.medium))
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            if let action = action {
-                Button(action: action) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .buttonStyle(.plain)
-            }
-
-            Toggle("", isOn: isOn)
-                .labelsHidden()
-                .tint(color)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 14)
-        .background(isOn.wrappedValue ? color.opacity(0.1) : Color.primary.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-    }
-
-    private var obsidianVaultSelector: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ForEach(settings.obsidianVaults) { vault in
-                let isSelected = obsidianVaultIds.contains(vault.id)
-
-                Button(action: {
-                    HapticManager.selection()
-                    if isSelected {
-                        obsidianVaultIds.removeAll { $0 == vault.id }
-                    } else {
-                        obsidianVaultIds.append(vault.id)
-                    }
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "folder.fill")
-                            .font(.caption)
-                            .foregroundStyle(isSelected ? .purple : .secondary)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(vault.name)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-
-                            Text("\(vault.noteCount) notes")
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .foregroundStyle(isSelected ? .purple : Color.secondary.opacity(0.3))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(isSelected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.03))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-
-            if settings.obsidianVaults.isEmpty {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 4) {
-                        Text("No Obsidian vaults configured")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Configure vaults in Settings")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 12)
-            }
-
-            // Default search query field
-            if !obsidianVaultIds.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Default Search Query")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    TextField("Leave empty to show all notes", text: $defaultObsidianSearchQuery)
-                        .textFieldStyle(.roundedBorder)
-                        .font(.subheadline)
-
-                    Text("Pre-fills the search field when using this Power Mode")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.top, 8)
-            }
-
-        }
-        .padding(.leading, 52)
-    }
-
-    private var memoryConfigSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Memory limit slider
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Memory Size Limit")
-                        .font(.caption.weight(.medium))
-                    Spacer()
-                    Text("\(memoryLimit) chars")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                }
-
-                Slider(
-                    value: Binding(
-                        get: { Double(memoryLimit) },
-                        set: { memoryLimit = Int($0) }
-                    ),
-                    in: 500...2000,
-                    step: 100
-                )
-                .tint(.purple)
-
-                Text("Smaller limits save API costs, larger limits preserve more context")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .background(Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            // Memory content editor
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Image(systemName: "brain")
-                        .font(.caption)
-                        .foregroundStyle(.purple)
-                    Text("Memory Content")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text("\(memoryContent.count)/\(memoryLimit)")
-                        .font(.caption2)
-                        .foregroundStyle(memoryContent.count > memoryLimit ? Color.red : Color.secondary)
-                        .monospacedDigit()
-                }
-
-                TextEditor(text: $memoryContent)
-                    .font(.subheadline)
-                    .scrollContentBackground(.hidden)
-                    .frame(minHeight: 80)
-                    .padding(10)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-                HStack {
-                    Text("AI will reference this memory when using this Power Mode")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-
-                    Spacer()
-
-                    if let lastUpdate = powerMode?.lastMemoryUpdate {
-                        Text("Updated \(lastUpdate.formatted(.relative(presentation: .named)))")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-            }
-            .padding(12)
-            .background(Color.purple.opacity(0.1))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-        }
-        .padding(.leading, 52)
-    }
-
-    // MARK: - Output Delivery Section (Phase 16)
-
-    private var outputDeliverySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("OUTPUT DELIVERY")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text("Choose how to deliver the Power Mode result")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-
-            VStack(spacing: 8) {
-                // Primary Output Action
-                ForEach(PowerModeOutputAction.allCases, id: \.self) { action in
-                    outputActionRow(action: action)
-                }
-            }
-
-            // Auto-send toggle
-            HStack(spacing: 12) {
-                Image(systemName: "paperplane.fill")
-                    .font(.title3)
-                    .foregroundStyle(outputConfig.autoSendAfterInsert ? AppTheme.powerAccent : .secondary)
-                    .frame(width: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Auto-Send Message")
-                        .font(.subheadline.weight(.medium))
-
-                    Text("Press Enter/Return after inserting text")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: $outputConfig.autoSendAfterInsert)
-                    .labelsHidden()
-                    .tint(AppTheme.powerAccent)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .background(outputConfig.autoSendAfterInsert ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            Divider()
-                .padding(.vertical, 4)
-
-            // Webhooks toggle
-            HStack(spacing: 12) {
-                Image(systemName: "link")
-                    .font(.title3)
-                    .foregroundStyle(outputConfig.webhookEnabled ? .orange : .secondary)
-                    .frame(width: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Webhooks")
-                        .font(.subheadline.weight(.medium))
-
-                    let count = outputConfig.webhookIds.count
-                    Text(count == 0 ? "Send output to external services" : "\(count) webhook\(count == 1 ? "" : "s") enabled")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: $outputConfig.webhookEnabled)
-                    .labelsHidden()
-                    .tint(.orange)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .background(outputConfig.webhookEnabled ? Color.orange.opacity(0.1) : Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            // Webhook selection (when enabled)
-            if outputConfig.webhookEnabled {
-                webhookSelector
-            }
-
-            Divider()
-                .padding(.vertical, 4)
-
-            // Obsidian Action
-            obsidianOutputSection
-        }
-    }
-
-    private func outputActionRow(action: PowerModeOutputAction) -> some View {
-        let isSelected = outputConfig.primaryAction == action
-
-        return Button(action: {
-            HapticManager.selection()
-            outputConfig.primaryAction = action
-        }) {
-            HStack(spacing: 12) {
-                Image(systemName: action.icon)
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? .white : AppTheme.powerAccent)
-                    .frame(width: 40, height: 40)
-                    .background(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(isSelected ? AppTheme.powerAccent : AppTheme.powerAccent.opacity(0.15))
-                    )
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(action.displayName)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-
-                    Text(action.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.title3)
-                    .foregroundStyle(isSelected ? AppTheme.powerAccent : Color.secondary.opacity(0.3))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .background(isSelected ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-        }
-        .buttonStyle(.plain)
-    }
-
-    private var webhookSelector: some View {
-        VStack(spacing: 8) {
-            if settings.webhooks.isEmpty {
-                HStack {
-                    Spacer()
-                    VStack(spacing: 4) {
-                        Text("No webhooks configured")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        NavigationLink(destination: WebhooksView()) {
-                            Text("Configure Webhooks")
-                                .font(.caption)
-                                .foregroundStyle(AppTheme.powerAccent)
-                        }
-                    }
-                    Spacer()
-                }
-                .padding(.vertical, 12)
-            } else {
-                ForEach(settings.webhooks) { webhook in
-                    let isEnabled = outputConfig.webhookIds.contains(webhook.id)
-
-                    Button(action: {
-                        HapticManager.selection()
-                        if isEnabled {
-                            outputConfig.webhookIds.removeAll { $0 == webhook.id }
-                        } else {
-                            outputConfig.webhookIds.append(webhook.id)
-                        }
-                    }) {
-                        HStack(spacing: 12) {
-                            Image(systemName: webhook.template.icon)
-                                .font(.caption)
-                                .foregroundStyle(isEnabled ? .orange : .secondary)
-                                .frame(width: 24)
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(webhook.name)
-                                    .font(.subheadline.weight(.medium))
-                                    .foregroundStyle(.primary)
-
-                                Text(webhook.url.host ?? "")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                                    .lineLimit(1)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
-                                .font(.title3)
-                                .foregroundStyle(isEnabled ? .orange : Color.secondary.opacity(0.3))
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 10)
-                        .background(isEnabled ? Color.orange.opacity(0.1) : Color.primary.opacity(0.03))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .padding(.leading, 52)
-    }
-
-    private var obsidianOutputSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Obsidian action toggle
-            HStack(spacing: 12) {
-                Image(systemName: "square.and.arrow.down.on.square")
-                    .font(.title3)
-                    .foregroundStyle(outputConfig.obsidianAction != nil ? .purple : .secondary)
-                    .frame(width: 40)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Save to Obsidian")
-                        .font(.subheadline.weight(.medium))
-
-                    Text(outputConfig.obsidianAction != nil ? outputConfig.obsidianAction!.action.displayName : "No action configured")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: Binding(
-                    get: { outputConfig.obsidianAction != nil },
-                    set: { enabled in
-                        if enabled {
-                            // Set default action if enabling
-                            if let firstVault = settings.obsidianVaults.first {
-                                outputConfig.obsidianAction = ObsidianActionConfig(
-                                    action: .appendToDaily,
-                                    targetVaultId: firstVault.id
-                                )
-                            }
-                        } else {
-                            outputConfig.obsidianAction = nil
-                        }
-                    }
-                ))
-                .labelsHidden()
-                .tint(.purple)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 14)
-            .background(outputConfig.obsidianAction != nil ? Color.purple.opacity(0.1) : Color.primary.opacity(0.05))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-            // Obsidian action configuration (when enabled)
-            if outputConfig.obsidianAction != nil {
-                obsidianActionConfig
-            }
-        }
-    }
-
-    private var obsidianActionConfig: some View {
-        VStack(spacing: 8) {
-            // Action type picker
-            ForEach(ObsidianAction.allCases.filter { $0 != .none }, id: \.self) { action in
-                let isSelected = outputConfig.obsidianAction?.action == action
-
-                Button(action: {
-                    HapticManager.selection()
-                    outputConfig.obsidianAction?.action = action
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: action.icon)
-                            .font(.caption)
-                            .foregroundStyle(isSelected ? .purple : .secondary)
-                            .frame(width: 24)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(action.displayName)
-                                .font(.subheadline.weight(.medium))
-                                .foregroundStyle(.primary)
-
-                            Text(action.description)
-                                .font(.caption)
-                                .foregroundStyle(.tertiary)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .font(.title3)
-                            .foregroundStyle(isSelected ? .purple : Color.secondary.opacity(0.3))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(isSelected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.03))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-
-            // Vault picker
-            if !settings.obsidianVaults.isEmpty {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Target Vault")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    ForEach(settings.obsidianVaults) { vault in
-                        let isSelected = outputConfig.obsidianAction?.targetVaultId == vault.id
-
-                        Button(action: {
-                            HapticManager.selection()
-                            outputConfig.obsidianAction?.targetVaultId = vault.id
-                        }) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "folder.fill")
-                                    .font(.caption)
-                                    .foregroundStyle(isSelected ? .purple : .secondary)
-
-                                Text(vault.name)
-                                    .font(.subheadline)
-                                    .foregroundStyle(.primary)
-
-                                Spacer()
-
-                                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                    .font(.title3)
-                                    .foregroundStyle(isSelected ? .purple : Color.secondary.opacity(0.3))
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(isSelected ? Color.purple.opacity(0.1) : Color.primary.opacity(0.03))
-                            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-
-            // Note name (for append to note / create note)
-            if let action = outputConfig.obsidianAction?.action, action == .appendToNote || action == .createNote {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(action == .createNote ? "Note Name" : "Target Note")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.secondary)
-
-                    TextField(
-                        action == .createNote ? "New note name" : "Note to append to",
-                        text: Binding(
-                            get: { outputConfig.obsidianAction?.targetNoteName ?? "" },
-                            set: { outputConfig.obsidianAction?.targetNoteName = $0.isEmpty ? nil : $0 }
-                        )
-                    )
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-                }
-            }
-
-            // Auto-execute toggle
-            HStack(spacing: 12) {
-                Image(systemName: "bolt.fill")
-                    .font(.caption)
-                    .foregroundStyle(outputConfig.obsidianAction?.autoExecute == true ? .purple : .secondary)
-                    .frame(width: 24)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Auto-Execute")
-                        .font(.subheadline.weight(.medium))
-
-                    Text("Save to Obsidian automatically when Power Mode completes")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                }
-
-                Spacer()
-
-                Toggle("", isOn: Binding(
-                    get: { outputConfig.obsidianAction?.autoExecute ?? false },
-                    set: { outputConfig.obsidianAction?.autoExecute = $0 }
-                ))
-                .labelsHidden()
-                .tint(.purple)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(Color.primary.opacity(0.03))
-            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-        }
-        .padding(.leading, 52)
-    }
 
     // MARK: - Memory Section (Phase 4)
 
@@ -1554,12 +909,6 @@ struct PowerModeEditorView: View {
         let memoryWasUpdated = memoryContent != (powerMode?.memory ?? "")
         let newMemoryUpdate: Date? = memoryWasUpdated ? Date() : powerMode?.lastMemoryUpdate
 
-        // Sync legacy fields with new config
-        let effectiveMemoryEnabled = inputConfig.includePowerModeMemory
-        let effectiveEnterSends = outputConfig.autoSendAfterInsert
-        let effectiveWebhookIds = outputConfig.webhookEnabled ? outputConfig.webhookIds : []
-        let effectiveObsidianAction = outputConfig.obsidianAction
-
         let savedMode = PowerMode(
             id: powerMode?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespaces),
@@ -1571,25 +920,25 @@ struct PowerModeEditorView: View {
             createdAt: powerMode?.createdAt ?? Date(),
             updatedAt: Date(),
             usageCount: powerMode?.usageCount ?? 0,
-            memoryEnabled: effectiveMemoryEnabled,
+            memoryEnabled: memoryEnabled,
             memory: memoryContent.isEmpty ? nil : memoryContent,
             memoryLimit: memoryLimit,
             lastMemoryUpdate: newMemoryUpdate,
             knowledgeDocumentIds: knowledgeDocumentIds,
             isArchived: powerMode?.isArchived ?? false,
             appAssignment: appAssignment,
-            enabledWebhookIds: effectiveWebhookIds,
+            enabledWebhookIds: enabledWebhookIds,
             providerOverride: providerOverride,
             aiAutocorrectEnabled: aiAutocorrectEnabled,
-            enterSendsMessage: effectiveEnterSends,
+            enterSendsMessage: enterSendsMessage,
             enterRunsContext: enterRunsContext,
             obsidianVaultIds: obsidianVaultIds,
-            includeWindowContext: inputConfig.includeActiveAppText,
+            includeWindowContext: includeWindowContext,
             maxObsidianChunks: maxObsidianChunks,
-            obsidianAction: effectiveObsidianAction,
+            obsidianAction: obsidianAction,
             defaultObsidianSearchQuery: defaultObsidianSearchQuery,
-            inputConfig: inputConfig,
-            outputConfig: outputConfig
+            inputActions: inputActions,
+            outputActions: outputActions
         )
         HapticManager.success()
         onSave(savedMode)

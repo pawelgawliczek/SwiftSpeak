@@ -943,6 +943,9 @@ struct AIProviderEditorSheet: View {
         case .azure:
             // Azure Translator doesn't have model selection
             return ([], config.provider.availableLLMModels)
+        case .appleSpeech:
+            // Apple Speech uses on-device model, no API fetch needed
+            return (config.provider.availableSTTModels, [])
         }
     }
 

@@ -152,6 +152,14 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
     // Note: Using Mac-specific query service - see MacObsidianQueryService.swift
     private var textInsertion: MacTextInsertionService?
 
+    // Phase 17: Action executors
+    private var inputActionExecutor: MacInputActionExecutor?
+    private var outputActionExecutor: MacOutputActionExecutor?
+
+    // Phase 17: Action results storage
+    private var inputActionResults: [InputActionResult] = []
+    private var outputActionResults: [OutputActionResult] = []
+
     // MARK: - Initialization
 
     init(
@@ -196,6 +204,16 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         self.providerFactory = providerFactory
         self.obsidianQueryService = obsidianQueryService
         self.textInsertion = textInsertion
+
+        // Phase 17: Initialize action executors
+        self.inputActionExecutor = MacInputActionExecutor(
+            settings: settings,
+            windowContextService: windowContextService
+        )
+        self.outputActionExecutor = MacOutputActionExecutor(
+            settings: settings,
+            textInsertionService: textInsertion
+        )
     }
 
     // MARK: - Pre-captured Context
@@ -411,6 +429,21 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         errorMessage = nil
 
         do {
+            // Phase 17: Execute input actions (before context gathering)
+            inputActionResults = []
+            if !currentPowerMode.inputActions.isEmpty, let executor = inputActionExecutor {
+                let enabledInputActions = currentPowerMode.inputActions.filter { $0.isEnabled }
+                if !enabledInputActions.isEmpty {
+                    do {
+                        inputActionResults = try await executor.execute(actions: enabledInputActions)
+                        macLog("Input actions executed: \(inputActionResults.count) results", category: "PowerMode")
+                    } catch {
+                        macLog("Input action execution failed: \(error)", category: "PowerMode")
+                        throw error
+                    }
+                }
+            }
+
             // Build prompts using shared PowerModePromptBuilder
             let promptInput = buildPromptInput()
             let (systemPrompt, userMessage) = PowerModePromptBuilder.buildPrompt(for: promptInput)
@@ -435,12 +468,38 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
                 aiQuestion = extractQuestion(from: aiResponse)
                 state = .aiQuestion
             } else {
+                // Phase 17: Execute output actions (after generation)
+                await executeOutputActions()
                 state = .result
             }
 
         } catch {
             errorMessage = error.localizedDescription
             state = .contextPreview
+        }
+    }
+
+    // MARK: - Phase 17: Output Actions
+
+    /// Execute output actions after AI generation
+    private func executeOutputActions() async {
+        guard !currentPowerMode.outputActions.isEmpty,
+              let executor = outputActionExecutor else { return }
+
+        let enabledOutputActions = currentPowerMode.outputActions.filter { $0.isEnabled }
+        guard !enabledOutputActions.isEmpty else { return }
+
+        do {
+            outputActionResults = try await executor.execute(
+                actions: enabledOutputActions,
+                output: aiResponse,
+                powerMode: currentPowerMode
+            )
+            macLog("Output actions executed: \(outputActionResults.count) results", category: "PowerMode")
+        } catch {
+            macLog("Output action execution failed: \(error)", category: "PowerMode")
+            // Don't fail the whole operation - user still has the result
+            errorMessage = "Some output actions failed: \(error.localizedDescription)"
         }
     }
 
@@ -471,6 +530,16 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         let selectedTextSource: String? = inputConfig.includeSelectedText ? windowContext?.appName : nil
         let clipboard: String? = inputConfig.includeClipboard ? clipboardContent : nil
 
+        // Phase 17: Build input action contexts from results
+        let inputActionContexts: [InputActionContextInfo] = inputActionResults.compactMap { result in
+            guard result.isSuccess, let content = result.content else { return nil }
+            return InputActionContextInfo(
+                actionLabel: result.label,
+                actionType: result.actionType.rawValue,
+                content: content
+            )
+        }
+
         return PowerModePromptInput(
             powerMode: currentPowerMode,
             userInput: userInput,
@@ -482,7 +551,8 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
             selectedText: selectedText,
             selectedTextSource: selectedTextSource,
             clipboardText: clipboard,
-            webhookContexts: []  // macOS doesn't have webhooks yet
+            webhookContexts: [],  // macOS doesn't have webhooks yet
+            inputActionContexts: inputActionContexts
         )
     }
 
@@ -668,6 +738,9 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         obsidianSearchQuery = ""
         isSearchingObsidian = false
         manualObsidianResults = []
+        // Phase 17: Reset action results
+        inputActionResults = []
+        outputActionResults = []
         selectedObsidianResultIds = []
         isDictatingSearchQuery = false
     }

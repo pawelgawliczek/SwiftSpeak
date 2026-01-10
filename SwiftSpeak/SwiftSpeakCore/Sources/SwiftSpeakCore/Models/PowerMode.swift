@@ -222,6 +222,162 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     public var inputConfig: PowerModeInputConfig
     public var outputConfig: PowerModeOutputConfig
 
+    // Phase 17: Input/Output Actions (flexible action system)
+    public var inputActions: [InputAction]
+    public var outputActions: [OutputAction]
+
+    // MARK: - Phase 17 Migration
+
+    /// Returns input actions, migrating from legacy inputConfig if actions are empty
+    public var migratedInputActions: [InputAction] {
+        // If we already have actions, use them
+        if !inputActions.isEmpty {
+            return inputActions
+        }
+
+        // Migrate from legacy inputConfig
+        var actions: [InputAction] = []
+
+        // Memory (combines global + power mode memory)
+        if inputConfig.includeGlobalMemory || inputConfig.includePowerModeMemory {
+            actions.append(InputAction(
+                type: .memory,
+                isEnabled: true,
+                isRequired: false,
+                label: "Memory",
+                includeGlobalMemory: inputConfig.includeGlobalMemory,
+                includeContextMemory: false,
+                includePowerModeMemory: inputConfig.includePowerModeMemory
+            ))
+        }
+
+        // RAG Documents
+        if inputConfig.includeRAGDocuments && !knowledgeDocumentIds.isEmpty {
+            actions.append(InputAction(
+                type: .ragDocuments,
+                isEnabled: true,
+                isRequired: false,
+                label: "Knowledge Base",
+                ragDocumentIds: knowledgeDocumentIds
+            ))
+        }
+
+        // Obsidian Vaults
+        if inputConfig.includeObsidianVaults && !obsidianVaultIds.isEmpty {
+            actions.append(InputAction(
+                type: .obsidianVaults,
+                isEnabled: true,
+                isRequired: false,
+                label: "Obsidian Notes",
+                obsidianVaultIds: obsidianVaultIds,
+                obsidianSearchQuery: defaultObsidianSearchQuery.isEmpty ? nil : defaultObsidianSearchQuery,
+                obsidianMinSimilarity: Double(obsidianMinSimilarity),
+                obsidianMaxResults: maxObsidianChunks
+            ))
+        }
+
+        // Clipboard
+        if inputConfig.includeClipboard {
+            actions.append(InputAction(
+                type: .clipboard,
+                isEnabled: true,
+                isRequired: false,
+                label: "Clipboard"
+            ))
+        }
+
+        // Selected Text (macOS)
+        if inputConfig.includeSelectedText {
+            actions.append(InputAction(
+                type: .selectedText,
+                isEnabled: true,
+                isRequired: false,
+                label: "Selected Text"
+            ))
+        }
+
+        return actions
+    }
+
+    /// Returns output actions, migrating from legacy outputConfig if actions are empty
+    public var migratedOutputActions: [OutputAction] {
+        // If we already have actions, use them
+        if !outputActions.isEmpty {
+            return outputActions
+        }
+
+        // Migrate from legacy outputConfig
+        var actions: [OutputAction] = []
+
+        // Primary output action
+        switch outputConfig.primaryAction {
+        case .clipboard:
+            actions.append(OutputAction(
+                type: .clipboard,
+                isEnabled: true,
+                isRequired: true,
+                label: "Copy to Clipboard"
+            ))
+        case .clipboardAndTextField:
+            actions.append(OutputAction(
+                type: .clipboard,
+                isEnabled: true,
+                isRequired: true,
+                label: "Copy to Clipboard"
+            ))
+            actions.append(OutputAction(
+                type: .insertAtCursor,
+                isEnabled: true,
+                isRequired: false,
+                label: "Insert at Cursor"
+            ))
+        case .textFieldOnly:
+            actions.append(OutputAction(
+                type: .insertAtCursor,
+                isEnabled: true,
+                isRequired: true,
+                label: "Insert at Cursor"
+            ))
+        }
+
+        // Webhooks
+        if outputConfig.webhookEnabled {
+            for webhookId in outputConfig.webhookIds {
+                actions.append(OutputAction(
+                    type: .webhook,
+                    isEnabled: true,
+                    isRequired: false,
+                    label: "Webhook",
+                    webhookId: webhookId
+                ))
+            }
+        }
+
+        // Obsidian save action
+        if let obsidianConfig = outputConfig.obsidianAction {
+            let saveAction: ObsidianSaveAction
+            switch obsidianConfig.action {
+            case .appendToDaily: saveAction = .appendDaily
+            case .appendToNote: saveAction = .appendNote
+            case .createNote: saveAction = .createNote
+            case .none: saveAction = .appendDaily
+            }
+
+            actions.append(OutputAction(
+                type: .obsidianSave,
+                isEnabled: true,
+                isRequired: false,
+                label: "Save to Obsidian",
+                obsidianSaveAction: saveAction,
+                obsidianTargetVaultId: obsidianConfig.targetVaultId,
+                obsidianTargetNoteName: obsidianConfig.targetNoteName,
+                obsidianAutoExecute: obsidianConfig.autoExecute
+            ))
+        }
+
+        return actions
+    }
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -254,7 +410,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         obsidianMinSimilarity: Float = 0.3,
         obsidianAutoSelectThreshold: Float = 0.7,
         inputConfig: PowerModeInputConfig = .default,
-        outputConfig: PowerModeOutputConfig = .default
+        outputConfig: PowerModeOutputConfig = .default,
+        inputActions: [InputAction] = [],
+        outputActions: [OutputAction] = .defaultActions
     ) {
         self.id = id
         self.name = name
@@ -288,6 +446,8 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.obsidianAutoSelectThreshold = obsidianAutoSelectThreshold
         self.inputConfig = inputConfig
         self.outputConfig = outputConfig
+        self.inputActions = inputActions
+        self.outputActions = outputActions
     }
 
     // MARK: - Meeting Notes Template
@@ -402,6 +562,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         case obsidianVaultIds, includeWindowContext, maxObsidianChunks, obsidianAction, defaultObsidianSearchQuery
         case obsidianMinSimilarity, obsidianAutoSelectThreshold
         case inputConfig, outputConfig
+        case inputActions, outputActions
         // Legacy
         case systemPrompt  // Migrate to instruction
     }
@@ -478,6 +639,10 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
                 obsidianAction: obsidianAction
             )
         }
+
+        // Phase 17: Input/Output Actions
+        inputActions = try container.decodeIfPresent([InputAction].self, forKey: .inputActions) ?? []
+        outputActions = try container.decodeIfPresent([OutputAction].self, forKey: .outputActions) ?? .defaultActions
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -515,6 +680,8 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         try container.encode(obsidianAutoSelectThreshold, forKey: .obsidianAutoSelectThreshold)
         try container.encode(inputConfig, forKey: .inputConfig)
         try container.encode(outputConfig, forKey: .outputConfig)
+        try container.encode(inputActions, forKey: .inputActions)
+        try container.encode(outputActions, forKey: .outputActions)
     }
 }
 

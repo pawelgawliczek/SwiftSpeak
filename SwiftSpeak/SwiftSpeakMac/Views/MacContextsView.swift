@@ -52,6 +52,7 @@ struct MacContextsView: View {
                             isExpanded: expandedContextId == context.id,
                             isActive: settings.activeContextId == context.id,
                             isPreset: true,
+                            settings: settings,
                             onTap: { toggleExpanded(context.id) },
                             onSetActive: { toggleActive(context) },
                             onEdit: nil,
@@ -93,6 +94,7 @@ struct MacContextsView: View {
                                 isExpanded: expandedContextId == context.id,
                                 isActive: settings.activeContextId == context.id,
                                 isPreset: false,
+                                settings: settings,
                                 onTap: { toggleExpanded(context.id) },
                                 onSetActive: { toggleActive(context) },
                                 onEdit: { editingContext = context },
@@ -178,10 +180,15 @@ private struct ContextCard: View {
     let isExpanded: Bool
     let isActive: Bool
     let isPreset: Bool
+    @ObservedObject var settings: MacSettings
     let onTap: () -> Void
     let onSetActive: () -> Void
     let onEdit: (() -> Void)?
     let onDelete: (() -> Void)?
+
+    private var assignedHotkey: HotkeyCombination? {
+        settings.contextHotkeys[context.id]
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -268,6 +275,16 @@ private struct ContextCard: View {
 
     private var featureBadges: some View {
         HStack(spacing: 6) {
+            if let hotkey = assignedHotkey {
+                Text(hotkey.displayString)
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.accentColor.opacity(0.15))
+                    .foregroundStyle(.accentColor)
+                    .clipShape(Capsule())
+            }
             if context.useContextMemory {
                 Image(systemName: "brain")
                     .font(.caption)
@@ -897,10 +914,19 @@ struct MacContextEditorSheet: View {
                 } footer: {
                     Text("Automatically switch to this context when the frontmost app matches. Specific apps take priority over categories.")
                 }
+
+                // Hotkey
+                Section("Hotkey") {
+                    MacContextHotkeyEditor(
+                        context: context,
+                        settings: settings,
+                        hotkeyManager: MacHotkeyManager.shared
+                    )
+                }
             }
             .formStyle(.grouped)
         }
-        .frame(width: 550, height: 750)
+        .frame(width: 550, height: 800)
         .sheet(isPresented: $showingIconPicker) {
             MacIconPicker(
                 selectedIcon: $context.icon,

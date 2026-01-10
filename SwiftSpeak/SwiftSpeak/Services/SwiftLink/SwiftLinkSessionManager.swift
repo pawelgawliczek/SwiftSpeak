@@ -219,7 +219,7 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         // Check if provider supports streaming
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .appleSpeech
     }
 
     /// Mark the start of a dictation segment.
@@ -473,6 +473,11 @@ final class SwiftLinkSessionManager: ObservableObject {
         let settings = SharedSettings.shared
         let selectedProvider = settings.selectedTranscriptionProvider
 
+        // Apple Speech doesn't need API key/config - handle first
+        if selectedProvider == .appleSpeech {
+            return SwiftSpeakCore.AppleSpeechStreamingService()
+        }
+
         guard let config = settings.configuredAIProviders.first(where: { $0.provider == selectedProvider }) else {
             throw TranscriptionError.providerNotConfigured
         }
@@ -554,7 +559,16 @@ final class SwiftLinkSessionManager: ObservableObject {
             .throttle(for: .milliseconds(150), scheduler: DispatchQueue.main, latest: true)
             .sink { [weak self] _ in
                 guard let self else { return }
-                let displayTranscript = provider.fullTranscript + self.accumulatedPartialTranscript
+                // For replacement-mode providers (partialsAreDelta=false), the partial
+                // already contains the full display text - don't add fullTranscript
+                // For delta-mode providers (OpenAI), we need fullTranscript + accumulated
+                let displayTranscript: String
+                if partialsAreDelta {
+                    displayTranscript = provider.fullTranscript + self.accumulatedPartialTranscript
+                } else {
+                    // Replacement mode: accumulatedPartialTranscript IS the full display
+                    displayTranscript = self.accumulatedPartialTranscript
+                }
                 appLog("PARTIAL update: display: \(displayTranscript.count) chars", category: "SwiftLink", level: .debug)
                 if !displayTranscript.isEmpty {
                     self.updateStreamingTranscript(displayTranscript)
@@ -1222,14 +1236,23 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
 
         // Extract PCM16 data from output buffer
-        guard let int16Data = outputBuffer.int16ChannelData else { return }
+        guard let int16Data = outputBuffer.int16ChannelData else {
+            appLog("int16ChannelData is nil in forwardAudioToStreamingProvider", category: "SwiftLink", level: .error)
+            return
+        }
 
         let data = Data(bytes: int16Data[0], count: Int(outputBuffer.frameLength) * 2)
 
         // Accumulate audio for hybrid approach fallback (OpenAI: Whisper API if streaming empty)
         accumulatedAudioLock.lock()
         accumulatedStreamingAudio.append(data)
+        let totalAccumulated = accumulatedStreamingAudio.count
         accumulatedAudioLock.unlock()
+
+        // Log occasionally to confirm audio is flowing
+        if totalAccumulated % 50000 < data.count {
+            appLog("Forwarding audio: \(data.count) bytes, total accumulated: \(totalAccumulated) bytes", category: "SwiftLink", level: .debug)
+        }
 
         provider.sendAudio(data)
     }

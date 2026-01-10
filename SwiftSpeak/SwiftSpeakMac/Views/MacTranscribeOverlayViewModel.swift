@@ -308,7 +308,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
             // Check if streaming should be used
             let selectedProvider = settings.selectedTranscriptionProvider
-            let streamingAvailable = selectedProvider == .openAI || selectedProvider == .deepgram || selectedProvider == .assemblyAI || selectedProvider == .google
+            let streamingAvailable = selectedProvider == .openAI || selectedProvider == .deepgram || selectedProvider == .assemblyAI || selectedProvider == .google || selectedProvider == .appleSpeech
             let shouldUseStreaming = settings.transcriptionStreamingEnabled && streamingAvailable
 
             isStreamingSession = shouldUseStreaming
@@ -1342,6 +1342,22 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     func clearContext() {
         activeContext = nil
         inputLanguage = settings.selectedDictationLanguage
+    }
+
+    /// Select a specific context by ID (used for context hotkeys)
+    func selectContext(by contextId: UUID) {
+        guard let context = settings.contexts.first(where: { $0.id == contextId }) else {
+            macLog("Context not found for ID: \(contextId)", category: "Transcribe", level: .error)
+            return
+        }
+
+        activeContext = context
+        macLog("Pre-selected context '\(context.name)' via hotkey", category: "Transcribe")
+
+        // Apply context's language override
+        if let lang = context.defaultInputLanguage {
+            inputLanguage = lang
+        }
     }
 
     // MARK: - Translation Toggle

@@ -22,6 +22,8 @@
     <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>SwiftSpeak needs microphone access to transcribe your voice.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>SwiftSpeak uses on-device speech recognition to transcribe your voice without sending audio to external servers.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>SwiftSpeak needs accessibility access to insert text into other applications.</string>
     <key>LSMinimumSystemVersion</key>

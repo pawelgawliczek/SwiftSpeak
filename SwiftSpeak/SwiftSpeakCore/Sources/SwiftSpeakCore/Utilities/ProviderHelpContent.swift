@@ -99,6 +99,8 @@ public struct ProviderHelpDatabase {
             return deepLGuide
         case .azure:
             return azureGuide
+        case .appleSpeech:
+            return appleSpeechGuide
         }
     }
 
@@ -512,6 +514,36 @@ public struct ProviderHelpDatabase {
         apiKeyURL: URL(string: "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/TextTranslation"),
         pricingURL: URL(string: "https://azure.microsoft.com/pricing/details/cognitive-services/translator"),
         documentationURL: URL(string: "https://docs.microsoft.com/azure/cognitive-services/translator")
+    )
+
+    public static let appleSpeechGuide = ProviderSetupGuide(
+        provider: .appleSpeech,
+        steps: [
+            SetupStep(
+                number: 1,
+                title: "Grant Speech Recognition Permission",
+                description: "When prompted, allow SwiftSpeak to use speech recognition"
+            ),
+            SetupStep(
+                number: 2,
+                title: "That's it!",
+                description: "Apple Speech Recognition is built into iOS and macOS - no account or API key needed"
+            )
+        ],
+        tips: [
+            "100% free - no API costs ever",
+            "Complete privacy - all processing on device",
+            "Works offline after language download",
+            "50+ languages supported",
+            "Best for quick dictation tasks"
+        ],
+        estimatedCost: "Free (on-device)",
+        freeCredits: "Always free",
+        bestFor: ["Privacy", "Offline Use", "No Setup"],
+        websiteURL: URL(string: "https://developer.apple.com/documentation/speech"),
+        apiKeyURL: nil, // No API key needed
+        pricingURL: nil,
+        documentationURL: URL(string: "https://developer.apple.com/documentation/speech")
     )
 }
 

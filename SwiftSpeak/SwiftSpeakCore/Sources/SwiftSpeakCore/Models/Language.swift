@@ -165,6 +165,25 @@ public enum Language: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// Apple SFSpeechRecognizer uses BCP-47 locale identifiers
+    public var appleSpeechCode: String {
+        switch self {
+        case .english: return "en-US"
+        case .spanish: return "es-ES"
+        case .french: return "fr-FR"
+        case .german: return "de-DE"
+        case .italian: return "it-IT"
+        case .portuguese: return "pt-BR"
+        case .chinese: return "zh-CN"
+        case .japanese: return "ja-JP"
+        case .korean: return "ko-KR"
+        case .arabic: return "ar-SA"
+        case .egyptianArabic: return "ar-EG"
+        case .russian: return "ru-RU"
+        case .polish: return "pl-PL"
+        }
+    }
+
     /// Google STT models supported by this language
     /// Reference: https://cloud.google.com/speech-to-text/docs/v1/speech-to-text-supported-languages
     public var googleSTTSupportedModels: [String] {

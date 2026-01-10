@@ -59,6 +59,8 @@ final class PowerModeOrchestrator: ObservableObject {
     // NOTE: memoryManager removed - memory updates now handled by MemoryUpdateScheduler
     private let ragOrchestrator: RAGOrchestrator
     private let webhookExecutor: WebhookExecutor
+    private let inputActionExecutor: InputActionExecutor
+    private let outputActionExecutor: OutputActionExecutor
     private var cancellables = Set<AnyCancellable>()
 
     // MARK: - RAG State
@@ -112,6 +114,14 @@ final class PowerModeOrchestrator: ObservableObject {
     /// Context fetched from webhooks (used in prompt building)
     private var webhookContextResults: [WebhookExecutor.ContextSourceResult] = []
 
+    // MARK: - Input/Output Action State (Phase 17)
+
+    /// Results from input actions (used in prompt building)
+    private var inputActionResults: [InputActionResult] = []
+
+    /// Results from output actions (for reporting)
+    private var outputActionResults: [OutputActionResult] = []
+
     // MARK: - Obsidian Action State (Phase 4)
 
     /// Pending Obsidian action for UI confirmation
@@ -144,6 +154,8 @@ final class PowerModeOrchestrator: ObservableObject {
             providerFactory: ProviderFactory(settings: resolvedSettings),
             ragOrchestrator: RAGOrchestrator(),
             webhookExecutor: WebhookExecutor(settings: resolvedSettings),
+            inputActionExecutor: nil,
+            outputActionExecutor: nil,
             setupBindings: true
         )
     }
@@ -156,6 +168,8 @@ final class PowerModeOrchestrator: ObservableObject {
         providerFactory: any ProviderFactoryProtocol,
         ragOrchestrator: RAGOrchestrator? = nil,
         webhookExecutor: WebhookExecutor? = nil,
+        inputActionExecutor: InputActionExecutor? = nil,
+        outputActionExecutor: OutputActionExecutor? = nil,
         setupBindings: Bool = false
     ) {
         // Initialize all stored properties first
@@ -164,7 +178,16 @@ final class PowerModeOrchestrator: ObservableObject {
         self.audioRecorder = audioRecorder
         self.providerFactory = providerFactory
         self.ragOrchestrator = ragOrchestrator ?? RAGOrchestrator()
-        self.webhookExecutor = webhookExecutor ?? WebhookExecutor(settings: settings)
+        let resolvedWebhookExecutor = webhookExecutor ?? WebhookExecutor(settings: settings)
+        self.webhookExecutor = resolvedWebhookExecutor
+        self.inputActionExecutor = inputActionExecutor ?? InputActionExecutor(
+            settings: settings,
+            webhookExecutor: resolvedWebhookExecutor
+        )
+        self.outputActionExecutor = outputActionExecutor ?? OutputActionExecutor(
+            settings: settings,
+            webhookExecutor: resolvedWebhookExecutor
+        )
 
         // Setup bindings after all properties are initialized
         if setupBindings, let concreteRecorder = audioRecorder as? AudioRecorder {
@@ -246,6 +269,22 @@ final class PowerModeOrchestrator: ObservableObject {
 
             // Thinking phase
             state = .thinking
+
+            // Phase 17: Execute input actions (before other context gathering)
+            inputActionResults = []
+            if !powerMode.inputActions.isEmpty {
+                let enabledInputActions = powerMode.inputActions.filter { $0.isEnabled }
+                if !enabledInputActions.isEmpty {
+                    do {
+                        inputActionResults = try await inputActionExecutor.execute(actions: enabledInputActions)
+                        appLog("Executed \(inputActionResults.count) input actions", category: "PowerMode")
+                    } catch {
+                        // If a required input action failed, the error propagates
+                        appLog("Input action failed: \(LogSanitizer.sanitizeError(error))", category: "PowerMode", level: .error)
+                        throw error
+                    }
+                }
+            }
 
             // Fetch context from webhooks (Phase 4f)
             webhookContextResults = []
@@ -344,31 +383,50 @@ final class PowerModeOrchestrator: ObservableObject {
             // Update usage count
             settings.incrementPowerModeUsage(id: powerMode.id)
 
-            // Copy to clipboard
-            UIPasteboard.general.string = output
+            // Phase 17: Execute output actions (replaces legacy clipboard/webhook handling when actions are configured)
+            outputActionResults = []
+            if !powerMode.outputActions.isEmpty {
+                let enabledOutputActions = powerMode.outputActions.filter { $0.isEnabled }
+                if !enabledOutputActions.isEmpty {
+                    do {
+                        outputActionResults = try await outputActionExecutor.execute(
+                            actions: enabledOutputActions,
+                            output: output,
+                            powerMode: powerMode
+                        )
+                        appLog("Executed \(outputActionResults.count) output actions", category: "PowerMode")
+                    } catch {
+                        // Required output action failed - log but don't fail the whole flow
+                        appLog("Output action failed: \(LogSanitizer.sanitizeError(error))", category: "PowerMode", level: .error)
+                    }
+                }
+            } else {
+                // Legacy: Copy to clipboard if no output actions configured
+                UIPasteboard.general.string = output
 
-            // NOTE: Memory updates removed - now handled by MemoryUpdateScheduler on app start/foreground
-
-            // Execute output webhooks (Phase 4f - non-blocking)
-            if !powerMode.enabledWebhookIds.isEmpty {
-                Task {
-                    let contextName = activeContext?.name
-                    // Send to output destinations
-                    _ = await webhookExecutor.sendOutput(
-                        for: powerMode,
-                        input: processedInput,
-                        output: output,
-                        contextName: contextName
-                    )
-                    // Trigger automation webhooks
-                    _ = await webhookExecutor.triggerAutomations(
-                        for: powerMode,
-                        input: processedInput,
-                        output: output,
-                        contextName: contextName
-                    )
+                // Legacy: Execute output webhooks (Phase 4f - non-blocking)
+                if !powerMode.enabledWebhookIds.isEmpty {
+                    Task {
+                        let contextName = activeContext?.name
+                        // Send to output destinations
+                        _ = await webhookExecutor.sendOutput(
+                            for: powerMode,
+                            input: processedInput,
+                            output: output,
+                            contextName: contextName
+                        )
+                        // Trigger automation webhooks
+                        _ = await webhookExecutor.triggerAutomations(
+                            for: powerMode,
+                            input: processedInput,
+                            output: output,
+                            contextName: contextName
+                        )
+                    }
                 }
             }
+
+            // NOTE: Memory updates removed - now handled by MemoryUpdateScheduler on app start/foreground
 
             // Handle Obsidian action (Phase 4)
             if let action = powerMode.obsidianAction, action.action != .none {
@@ -543,6 +601,10 @@ final class PowerModeOrchestrator: ObservableObject {
         manualObsidianResults = []
         selectedObsidianResultIds = []
         isDictatingSearchQuery = false
+
+        // Reset action results (Phase 17)
+        inputActionResults = []
+        outputActionResults = []
     }
 
     /// Retry after error
@@ -765,6 +827,17 @@ final class PowerModeOrchestrator: ObservableObject {
             .filter { $0.error == nil && $0.content != nil }
             .map { WebhookContextInfo(webhookName: $0.webhookName, content: $0.content!) }
 
+        // Build input action contexts (Phase 17)
+        let inputActionContexts = inputActionResults
+            .compactMap { result -> InputActionContextInfo? in
+                guard result.isSuccess, let content = result.content else { return nil }
+                return InputActionContextInfo(
+                    actionLabel: result.label,
+                    actionType: result.actionType.rawValue,
+                    content: content
+                )
+            }
+
         return PowerModePromptInput(
             powerMode: powerMode,
             userInput: userInput,
@@ -780,7 +853,9 @@ final class PowerModeOrchestrator: ObservableObject {
             selectedTextSource: nil,
             clipboardText: nil,
             // Webhooks
-            webhookContexts: webhookContexts
+            webhookContexts: webhookContexts,
+            // Input actions (Phase 17)
+            inputActionContexts: inputActionContexts
         )
     }
 

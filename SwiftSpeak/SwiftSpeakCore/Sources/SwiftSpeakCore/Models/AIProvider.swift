@@ -23,6 +23,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case assemblyAI = "assemblyai"
     case deepL = "deepl"
     case azure = "azure"
+    case appleSpeech = "applespeech"  // On-device SFSpeechRecognizer
 
     public var id: String { rawValue }
 
@@ -37,6 +38,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return "AssemblyAI"
         case .deepL: return "DeepL"
         case .azure: return "Azure Translator"
+        case .appleSpeech: return "Apple Speech"
         }
     }
 
@@ -51,6 +53,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return "AssemblyAI"
         case .deepL: return "DeepL"
         case .azure: return "Azure"
+        case .appleSpeech: return "Apple"
         }
     }
 
@@ -65,6 +68,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return "waveform.circle.fill"
         case .deepL: return "character.book.closed.fill"
         case .azure: return "cloud.fill"
+        case .appleSpeech: return "apple.logo"
         }
     }
 
@@ -79,24 +83,25 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return "Fast, accurate transcription with speaker diarization"
         case .deepL: return "High-quality neural machine translation"
         case .azure: return "Microsoft Azure Translator for 100+ languages"
+        case .appleSpeech: return "On-device speech recognition using Apple's Speech framework"
         }
     }
 
     /// Whether this provider requires an API key (cloud providers)
     public var requiresAPIKey: Bool {
-        self != .local
+        self != .local && self != .appleSpeech
     }
 
     /// Whether this is a local/self-hosted provider
     public var isLocalProvider: Bool {
-        self == .local
+        self == .local || self == .appleSpeech
     }
 
     // MARK: - Capability Support
 
     public var supportsTranscription: Bool {
         switch self {
-        case .openAI, .elevenLabs, .deepgram, .local, .assemblyAI, .google: return true
+        case .openAI, .elevenLabs, .deepgram, .local, .assemblyAI, .google, .appleSpeech: return true
         case .anthropic, .deepL, .azure: return false
         }
     }
@@ -104,14 +109,14 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     public var supportsTranslation: Bool {
         switch self {
         case .openAI, .anthropic, .google, .local, .deepL, .azure: return true
-        case .elevenLabs, .deepgram, .assemblyAI: return false
+        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech: return false
         }
     }
 
     public var supportsPowerMode: Bool {
         switch self {
         case .openAI, .anthropic, .google, .local: return true
-        case .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure: return false
+        case .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech: return false
         }
     }
 
@@ -143,6 +148,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .local: return [] // Models are fetched dynamically from the local server
         case .assemblyAI: return ["best", "nano"]
         case .google: return ["default", "latest_long", "latest_short", "command_and_search", "telephony"]
+        case .appleSpeech: return ["on-device"]
         case .anthropic, .deepL, .azure: return []
         }
     }
@@ -155,6 +161,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .local: return nil // Must be selected after connecting
         case .assemblyAI: return "best"
         case .google: return "default"  // Safest - supports all languages
+        case .appleSpeech: return "on-device"
         case .anthropic, .deepL, .azure: return nil
         }
     }
@@ -162,7 +169,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     /// Whether this provider supports streaming transcription
     public var supportsStreamingTranscription: Bool {
         switch self {
-        case .openAI, .deepgram, .assemblyAI, .google: return true
+        case .openAI, .deepgram, .assemblyAI, .google, .appleSpeech: return true
         case .elevenLabs, .local, .anthropic, .deepL, .azure: return false
         }
     }
@@ -175,6 +182,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .deepgram: return ["nova-2", "nova", "enhanced", "base"]  // All Deepgram models support streaming
         case .assemblyAI: return ["best", "nano"]  // All AssemblyAI models support streaming
         case .google: return ["default", "latest_long", "latest_short"]  // Google Cloud STT streaming models
+        case .appleSpeech: return ["on-device"]  // Apple Speech streaming via SFSpeechAudioBufferRecognitionRequest
         case .elevenLabs, .local, .anthropic, .deepL, .azure: return []
         }
     }
@@ -195,7 +203,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .local: return [] // Models are fetched dynamically from the local server
         case .deepL: return ["default"]  // DeepL doesn't have model selection
         case .azure: return ["default"]  // Azure Translator doesn't have model selection
-        case .elevenLabs, .deepgram, .assemblyAI: return []
+        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech: return []
         }
     }
 
@@ -207,7 +215,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .local: return nil // Must be selected after connecting
         case .deepL: return "default"
         case .azure: return "default"
-        case .elevenLabs, .deepgram, .assemblyAI: return nil
+        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech: return nil
         }
     }
 
@@ -224,6 +232,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return URL(string: "https://www.assemblyai.com/app/account")
         case .deepL: return URL(string: "https://www.deepl.com/account/summary")
         case .azure: return URL(string: "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/TextTranslation")
+        case .appleSpeech: return nil  // No API key needed - built into iOS/macOS
         }
     }
 
@@ -328,6 +337,13 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
             4. Copy Key 1 or Key 2
             5. Note the region (e.g., eastus)
             """
+        case .appleSpeech:
+            return """
+            Apple Speech Recognition is built into iOS and macOS.
+            No setup required - just grant speech recognition permission when prompted.
+
+            Supports 50+ languages with on-device processing.
+            """
         }
     }
 
@@ -337,7 +353,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return 0.0
         case .deepgram: return 0.0043
         case .assemblyAI: return 0.00025  // $0.00025/second = $0.015/minute (universal model)
-        case .anthropic, .google, .local, .deepL, .azure: return 0.0  // Per-character pricing doesn't translate to per-minute
+        case .anthropic, .google, .local, .deepL, .azure, .appleSpeech: return 0.0  // Per-character pricing doesn't translate to per-minute
         }
     }
 
@@ -345,7 +361,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     public var requiresPowerTier: Bool {
         switch self {
         case .local: return true
-        case .openAI, .anthropic, .google, .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure: return false
+        case .openAI, .anthropic, .google, .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech: return false
         }
     }
 

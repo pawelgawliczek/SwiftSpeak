@@ -59,6 +59,11 @@ public struct PowerModePromptInput: Sendable {
     /// Context fetched from webhooks
     public let webhookContexts: [WebhookContextInfo]
 
+    // MARK: - Input Action Context (Phase 17)
+
+    /// Context gathered from input actions (clipboard, URL fetch, Shortcuts, etc.)
+    public let inputActionContexts: [InputActionContextInfo]
+
     // MARK: - Initialization
 
     public init(
@@ -72,7 +77,8 @@ public struct PowerModePromptInput: Sendable {
         selectedText: String? = nil,
         selectedTextSource: String? = nil,
         clipboardText: String? = nil,
-        webhookContexts: [WebhookContextInfo] = []
+        webhookContexts: [WebhookContextInfo] = [],
+        inputActionContexts: [InputActionContextInfo] = []
     ) {
         self.powerMode = powerMode
         self.userInput = userInput
@@ -85,6 +91,7 @@ public struct PowerModePromptInput: Sendable {
         self.selectedTextSource = selectedTextSource
         self.clipboardText = clipboardText
         self.webhookContexts = webhookContexts
+        self.inputActionContexts = inputActionContexts
     }
 }
 
@@ -129,6 +136,21 @@ public struct WebhookContextInfo: Sendable {
 
     public init(webhookName: String, content: String) {
         self.webhookName = webhookName
+        self.content = content
+    }
+}
+
+// MARK: - Input Action Context Info
+
+/// Information about input action results for prompt injection
+public struct InputActionContextInfo: Sendable {
+    public let actionLabel: String
+    public let actionType: String
+    public let content: String
+
+    public init(actionLabel: String, actionType: String, content: String) {
+        self.actionLabel = actionLabel
+        self.actionType = actionType
         self.content = content
     }
 }
@@ -252,7 +274,22 @@ public enum PowerModePromptBuilder {
             sections.append("  [/WEBHOOKS]")
         }
 
-        // 5. Memory (combined single block)
+        // 5. Input Actions (Phase 17 - gathered context from actions)
+        if !input.inputActionContexts.isEmpty {
+            sections.append("  [INPUT_ACTIONS]")
+            for action in input.inputActionContexts {
+                sections.append("    [ACTION type=\"\(action.actionType)\" label=\"\(action.actionLabel)\"]")
+                // Truncate very long content
+                let truncated = action.content.count > 5000
+                    ? String(action.content.prefix(5000)) + "\n...[truncated]"
+                    : action.content
+                sections.append(truncated.indented(by: 6))
+                sections.append("    [/ACTION]")
+            }
+            sections.append("  [/INPUT_ACTIONS]")
+        }
+
+        // 6. Memory (combined single block)
         let memorySection = buildMemorySection(for: input)
         if !memorySection.isEmpty {
             sections.append("  [MEMORY]")

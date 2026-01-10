@@ -25,7 +25,7 @@ struct BehaviorSettingsView: View {
     /// Check if the current transcription provider supports streaming
     private var isStreamingProviderSelected: Bool {
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
     }
 
     private var webhooksSubtitle: String {

@@ -340,7 +340,8 @@ struct CostCalculator {
         case .assemblyAI: costPerMinute = 0.00025
         case .elevenLabs: costPerMinute = 0.01
         case .google: costPerMinute = 0.006
-        case .local: costPerMinute = 0
+        case .local: costPerMinute = 0              // Free (on-device WhisperKit)
+        case .appleSpeech: costPerMinute = 0        // Free (on-device Apple SFSpeechRecognizer)
         default: costPerMinute = 0.006
         }
         return costPerMinute * (durationSeconds / 60.0)

@@ -54,6 +54,10 @@ struct ProviderFactory {
             // Phase 10f: WhisperKit on-device transcription
             return createWhisperKitProvider()
 
+        case .appleSpeech:
+            // On-device Apple Speech Recognition (SFSpeechRecognizer)
+            return SwiftSpeakCore.AppleSpeechTranscriptionService()
+
         case .elevenLabs:
             // TODO: Implement ElevenLabs transcription (Phase 3 scope but lower priority)
             return nil
@@ -98,6 +102,11 @@ struct ProviderFactory {
     /// - Parameter provider: The AI provider type (must support streaming)
     /// - Returns: A configured StreamingTranscriptionProvider, or nil if not supported
     func createStreamingTranscriptionProvider(for provider: AIProvider) -> StreamingTranscriptionProvider? {
+        // Apple Speech doesn't need API key for streaming
+        if provider == .appleSpeech {
+            return SwiftSpeakCore.AppleSpeechStreamingService()
+        }
+
         guard let config = settings.getAIProviderConfig(for: provider),
               !config.apiKey.isEmpty,
               provider.supportsStreamingTranscription else {
@@ -130,7 +139,7 @@ struct ProviderFactory {
     /// Check if the current provider supports streaming transcription
     var isStreamingAvailable: Bool {
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
     }
 
     // MARK: - Translation Providers
@@ -176,7 +185,7 @@ struct ProviderFactory {
             // Phase 10f: Apple Translation on-device
             return createAppleTranslationProvider()
 
-        case .assemblyAI, .deepgram, .elevenLabs:
+        case .assemblyAI, .deepgram, .elevenLabs, .appleSpeech:
             // These providers don't support translation
             return nil
         }
@@ -243,7 +252,7 @@ struct ProviderFactory {
             // Phase 10f: Apple Intelligence on-device formatting
             return createAppleIntelligenceProvider()
 
-        case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure:
+        case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure, .appleSpeech:
             // These providers don't support power mode
             return nil
         }

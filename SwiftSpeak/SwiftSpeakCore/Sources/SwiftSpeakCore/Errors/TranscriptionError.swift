@@ -12,6 +12,8 @@ public enum TranscriptionError: LocalizedError, Equatable, Sendable {
     // MARK: - Permission Errors
     case microphonePermissionDenied
     case microphonePermissionNotDetermined
+    case speechRecognitionPermissionDenied
+    case speechRecognitionNotAvailable
 
     // MARK: - Recording Errors
     case audioSessionConfigurationFailed(String)
@@ -73,6 +75,10 @@ public enum TranscriptionError: LocalizedError, Equatable, Sendable {
             return "Microphone access is required. Please enable it in Settings."
         case .microphonePermissionNotDetermined:
             return "Microphone permission has not been requested yet."
+        case .speechRecognitionPermissionDenied:
+            return "Speech recognition access is required. Please enable it in Settings."
+        case .speechRecognitionNotAvailable:
+            return "Speech recognition is not available on this device or for this language."
 
         case .audioSessionConfigurationFailed(let reason):
             return "Failed to configure audio: \(reason)"
@@ -151,6 +157,10 @@ public enum TranscriptionError: LocalizedError, Equatable, Sendable {
         switch self {
         case .microphonePermissionDenied:
             return "Go to Settings > SwiftSpeak > Microphone and enable access."
+        case .speechRecognitionPermissionDenied:
+            return "Go to Settings > SwiftSpeak > Speech Recognition and enable access."
+        case .speechRecognitionNotAvailable:
+            return "Try a different language or use a cloud-based transcription provider."
         case .apiKeyMissing, .apiKeyInvalid, .apiKeyExpired:
             return "Open Settings in the app to configure your API key."
         case .providerNotConfigured:
@@ -172,6 +182,8 @@ public enum TranscriptionError: LocalizedError, Equatable, Sendable {
         switch (lhs, rhs) {
         case (.microphonePermissionDenied, .microphonePermissionDenied),
              (.microphonePermissionNotDetermined, .microphonePermissionNotDetermined),
+             (.speechRecognitionPermissionDenied, .speechRecognitionPermissionDenied),
+             (.speechRecognitionNotAvailable, .speechRecognitionNotAvailable),
              (.recordingInterrupted, .recordingInterrupted),
              (.noAudioRecorded, .noAudioRecorded),
              (.invalidAudioFile, .invalidAudioFile),
@@ -220,6 +232,7 @@ extension TranscriptionError {
     public var isUserRecoverable: Bool {
         switch self {
         case .microphonePermissionDenied,
+             .speechRecognitionPermissionDenied,
              .apiKeyMissing,
              .apiKeyInvalid,
              .apiKeyExpired,
@@ -251,6 +264,8 @@ extension TranscriptionError {
         switch self {
         case .microphonePermissionDenied, .microphonePermissionNotDetermined:
             return "mic.slash.fill"
+        case .speechRecognitionPermissionDenied, .speechRecognitionNotAvailable:
+            return "waveform.slash"
         case .networkUnavailable, .networkTimeout, .networkError:
             return "wifi.slash"
         case .apiKeyMissing, .apiKeyInvalid, .apiKeyExpired:

@@ -78,7 +78,8 @@ final class MacTranscribeOverlayController {
     /// - Parameters:
     ///   - mode: Toggle or push-to-talk mode
     ///   - context: Pre-captured context from hotkey callback
-    func show(mode: TranscribeMode, context: HotkeyContext) {
+    ///   - preSelectedContextId: Optional context ID to pre-select (for context hotkeys)
+    func show(mode: TranscribeMode, context: HotkeyContext, preSelectedContextId: UUID? = nil) {
         // If already visible, hotkey press means "insert text only" (no send)
         if isVisible {
             macLog("Hotkey pressed again - inserting text without send", category: "Transcribe")
@@ -102,6 +103,12 @@ final class MacTranscribeOverlayController {
 
         vm.mode = mode
         vm.setPreCapturedContext(context)
+
+        // Pre-select context if specified (for context hotkeys)
+        if let contextId = preSelectedContextId {
+            vm.selectContext(by: contextId)
+        }
+
         viewModel = vm
 
         // Set callback to hide overlay before text insertion

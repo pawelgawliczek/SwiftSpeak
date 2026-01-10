@@ -456,6 +456,15 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             )
         }
 
+        // Re-register saved context hotkeys
+        for (contextId, combination) in settings.contextHotkeys {
+            hotkeyManager.registerContextHotkey(
+                contextId: contextId,
+                keyCode: combination.keyCode,
+                modifiers: combination.modifiers
+            )
+        }
+
         // Set handler - context is captured in the Carbon callback BEFORE async dispatch
         hotkeyManager.setHandler { [weak self] action, context in
             switch action {
@@ -478,6 +487,9 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             case .powerMode(let powerModeId):
                 // Handle power mode activation with captured context
                 self?.activatePowerMode(powerModeId, context: context)
+            case .context(let contextId):
+                // Open transcribe overlay with pre-selected context
+                self?.openTranscribeOverlay(mode: .toggle, context: context, preSelectedContextId: contextId)
             case .transcribeToggle:
                 // Open transcribe overlay in toggle mode
                 self?.openTranscribeOverlay(mode: .toggle, context: context)
@@ -868,7 +880,8 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
     /// - Parameters:
     ///   - mode: Toggle or push-to-talk mode
     ///   - context: Pre-captured context from hotkey callback
-    public func openTranscribeOverlay(mode: TranscribeMode, context: HotkeyContext? = nil) {
+    ///   - preSelectedContextId: Optional context ID to pre-select (for context hotkeys)
+    public func openTranscribeOverlay(mode: TranscribeMode, context: HotkeyContext? = nil, preSelectedContextId: UUID? = nil) {
         // Create controller lazily
         if transcribeOverlayController == nil {
             transcribeOverlayController = MacTranscribeOverlayController(
@@ -881,9 +894,9 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             )
         }
 
-        // Show overlay with captured context
+        // Show overlay with captured context and optional pre-selected context
         let capturedContext = context ?? HotkeyContext.empty
-        transcribeOverlayController?.show(mode: mode, context: capturedContext)
+        transcribeOverlayController?.show(mode: mode, context: capturedContext, preSelectedContextId: preSelectedContextId)
     }
 
     /// Show the power mode overlay for a specific mode
@@ -3137,7 +3150,7 @@ struct MacBehaviorView: View {
     /// Check if the current transcription provider supports streaming
     private var isStreamingProviderSelected: Bool {
         let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
     }
 
     var body: some View {

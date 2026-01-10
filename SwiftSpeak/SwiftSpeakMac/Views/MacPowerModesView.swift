@@ -269,49 +269,19 @@ private struct PowerModeCard: View {
 
                     Spacer()
 
-                    // Feature badges - show what inputs/outputs are enabled
+                    // Feature badges - show enabled input/output actions
                     HStack(spacing: 6) {
-                        // Memory (Power Mode or Global)
-                        if powerMode.inputConfig.includePowerModeMemory || powerMode.inputConfig.includeGlobalMemory {
-                            Image(systemName: "brain")
+                        // Show badges for enabled input actions
+                        ForEach(powerMode.migratedInputActions.filter { $0.isEnabled }.prefix(4)) { action in
+                            Image(systemName: action.type.icon)
                                 .font(.caption)
-                                .foregroundStyle(.purple)
+                                .foregroundStyle(action.type.color)
                         }
-                        // RAG Documents (enabled AND has documents)
-                        if powerMode.inputConfig.includeRAGDocuments && !powerMode.knowledgeDocumentIds.isEmpty {
-                            Image(systemName: "doc.text.magnifyingglass")
+                        // Show badges for enabled output actions
+                        ForEach(powerMode.migratedOutputActions.filter { $0.isEnabled }.prefix(3)) { action in
+                            Image(systemName: action.type.icon)
                                 .font(.caption)
-                                .foregroundStyle(.green)
-                        }
-                        // Obsidian Vaults (enabled AND has vaults selected)
-                        if powerMode.inputConfig.includeObsidianVaults && !powerMode.obsidianVaultIds.isEmpty {
-                            Image(systemName: "folder.fill")
-                                .font(.caption)
-                                .foregroundStyle(.purple)
-                        }
-                        // Selected Text (macOS only, requires accessibility)
-                        if powerMode.inputConfig.includeSelectedText {
-                            Image(systemName: "text.cursor")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                        // Clipboard
-                        if powerMode.inputConfig.includeClipboard {
-                            Image(systemName: "doc.on.clipboard")
-                                .font(.caption)
-                                .foregroundStyle(.indigo)
-                        }
-                        // Webhooks (enabled AND has webhooks selected)
-                        if powerMode.outputConfig.webhookEnabled && !powerMode.outputConfig.webhookIds.isEmpty {
-                            Image(systemName: "link")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                        // Obsidian Output Action
-                        if powerMode.outputConfig.obsidianAction != nil {
-                            Image(systemName: "square.and.arrow.down.on.square")
-                                .font(.caption)
-                                .foregroundStyle(.purple)
+                                .foregroundStyle(action.type.color)
                         }
                     }
 
@@ -522,6 +492,10 @@ struct MacPowerModeEditorSheet: View {
     @StateObject private var vaultManager = ObsidianVaultManager.shared
     @State private var showingVaultsSettings = false
 
+    // Phase 17: Input/Output Actions (unified system)
+    @State private var inputActions: [InputAction] = []
+    @State private var outputActions: [OutputAction] = []
+
     private let iconOptions = ["bolt.fill", "magnifyingglass.circle.fill", "envelope.fill", "calendar", "brain.head.profile", "text.bubble.fill", "doc.text.fill", "chart.bar.fill", "star.fill", "lightbulb.fill"]
 
     var body: some View {
@@ -588,438 +562,45 @@ struct MacPowerModeEditorSheet: View {
                         .font(.body)
                 }
 
-                // INPUT CONTEXT Section
+                // MARK: - Context Sources (Phase 17 unified)
                 Section {
-                    // Global Memory
-                    Toggle(isOn: $powerMode.inputConfig.includeGlobalMemory) {
-                        HStack {
-                            Image(systemName: "globe")
-                                .foregroundStyle(.blue)
-                            VStack(alignment: .leading) {
-                                Text("Global Memory")
-                                Text("Include your global AI memory across all modes")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    // Power Mode Memory
-                    Toggle(isOn: $powerMode.inputConfig.includePowerModeMemory) {
-                        HStack {
-                            Image(systemName: "brain.head.profile")
-                                .foregroundStyle(.purple)
-                            VStack(alignment: .leading) {
-                                Text("Power Mode Memory")
-                                Text("Include memory specific to this mode")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    if powerMode.inputConfig.includePowerModeMemory {
-                        Stepper("Memory Limit: \(powerMode.memoryLimit) characters",
-                                value: $powerMode.memoryLimit,
-                                in: 500...2000,
-                                step: 100)
-                    }
-
-                    // RAG Documents
-                    Toggle(isOn: $powerMode.inputConfig.includeRAGDocuments) {
-                        HStack {
-                            Image(systemName: "doc.text.magnifyingglass")
-                                .foregroundStyle(.green)
-                            VStack(alignment: .leading) {
-                                Text("RAG Documents")
-                                let count = powerMode.knowledgeDocumentIds.count
-                                Text(count == 0 ? "No documents attached" : "\(count) document\(count == 1 ? "" : "s") attached")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    // Obsidian Vaults
-                    Toggle(isOn: $powerMode.inputConfig.includeObsidianVaults) {
-                        HStack {
-                            Image("ObsidianIcon")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 16, height: 16)
-                            VStack(alignment: .leading) {
-                                Text("Obsidian Vaults")
-                                // Count only vault IDs that actually exist in vaultManager
-                                let validVaultIds = powerMode.obsidianVaultIds.filter { vaultId in
-                                    vaultManager.vaults.contains { $0.id == vaultId }
-                                }
-                                let count = validVaultIds.count
-                                Text(count == 0 ? "No vaults selected" : "\(count) vault\(count == 1 ? "" : "s") selected")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                    .onChange(of: powerMode.inputConfig.includeObsidianVaults) { isEnabled in
-                        // Clean up stale vault IDs when toggling
-                        if isEnabled {
-                            let validVaultIds = vaultManager.vaults.map { $0.id }
-                            powerMode.obsidianVaultIds = powerMode.obsidianVaultIds.filter { validVaultIds.contains($0) }
-                        }
-                    }
-
-                    if powerMode.inputConfig.includeObsidianVaults {
-                        if vaultManager.vaults.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("No Obsidian vaults configured")
-                                    .foregroundStyle(.secondary)
-                                Button("Configure Vaults...") {
-                                    showingVaultsSettings = true
-                                }
-                                .buttonStyle(.bordered)
-                            }
-                        } else {
-                            ForEach(vaultManager.vaults) { vault in
-                                Toggle(isOn: Binding(
-                                    get: { powerMode.obsidianVaultIds.contains(vault.id) },
-                                    set: { isSelected in
-                                        if isSelected {
-                                            if !powerMode.obsidianVaultIds.contains(vault.id) {
-                                                powerMode.obsidianVaultIds.append(vault.id)
-                                            }
-                                        } else {
-                                            powerMode.obsidianVaultIds.removeAll { $0 == vault.id }
-                                        }
-                                    }
-                                )) {
-                                    HStack {
-                                        Image(systemName: "folder")
-                                            .foregroundStyle(.secondary)
-                                        Text(vault.name)
-                                        Spacer()
-                                        Text("\(vault.noteCount) notes")
-                                            .font(.caption)
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .padding(.leading, 20)
-                            }
-
-                            // Default search query field - show when at least one valid vault is selected
-                            let hasValidVaults = powerMode.obsidianVaultIds.contains { vaultId in
-                                vaultManager.vaults.contains { $0.id == vaultId }
-                            }
-                            if hasValidVaults {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text("Default Search Query")
-                                        .font(.subheadline.weight(.medium))
-
-                                    TextField("Leave empty to show all notes", text: $powerMode.defaultObsidianSearchQuery)
-                                        .textFieldStyle(.roundedBorder)
-
-                                    Text("Pre-fills the search field when using this Power Mode")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.leading, 20)
-                                .padding(.top, 8)
-
-                                // Similarity Thresholds
-                                VStack(alignment: .leading, spacing: 12) {
-                                    // Min Similarity (for showing results)
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack {
-                                            Text("Minimum Similarity")
-                                                .font(.subheadline.weight(.medium))
-                                            Spacer()
-                                            Text("\(Int(powerMode.obsidianMinSimilarity * 100))%")
-                                                .font(.subheadline.monospacedDigit())
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Slider(value: $powerMode.obsidianMinSimilarity, in: 0.1...0.9, step: 0.05)
-                                        Text("Notes below this similarity won't appear in search results")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-
-                                    // Auto-Select Threshold
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        HStack {
-                                            Text("Auto-Select Threshold")
-                                                .font(.subheadline.weight(.medium))
-                                            Spacer()
-                                            Text("\(Int(powerMode.obsidianAutoSelectThreshold * 100))%")
-                                                .font(.subheadline.monospacedDigit())
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Slider(value: $powerMode.obsidianAutoSelectThreshold, in: 0.1...0.95, step: 0.05)
-                                        Text("Notes above this similarity are automatically selected")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.leading, 20)
-                                .padding(.top, 8)
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    // macOS-specific: Selected Text (requires accessibility/non-sandboxed)
-                    if SandboxDetector.isSandboxed {
-                        disabledAccessibilityRow(
-                            icon: "text.cursor",
-                            iconColor: .orange,
-                            title: "Selected Text",
-                            subtitle: "Include currently selected text from active app"
-                        )
-                    } else {
-                        Toggle(isOn: $powerMode.inputConfig.includeSelectedText) {
-                            HStack {
-                                Image(systemName: "text.cursor")
-                                    .foregroundStyle(.orange)
-                                VStack(alignment: .leading) {
-                                    Text("Selected Text")
-                                    Text("Include currently selected text from active app")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-
-                    // macOS-specific: Clipboard
-                    Toggle(isOn: $powerMode.inputConfig.includeClipboard) {
-                        HStack {
-                            Image(systemName: "doc.on.clipboard")
-                                .foregroundStyle(.indigo)
-                            VStack(alignment: .leading) {
-                                Text("Clipboard")
-                                Text("Include current clipboard contents")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
+                    MacInputActionsEditor(actions: $inputActions, settings: settings)
                 } header: {
-                    Text("Input Context")
+                    Text("Context Sources")
                 } footer: {
                     Text("Choose what information to include when running this Power Mode")
                 }
 
-                // OUTPUT DELIVERY Section
+                // MARK: - Delivery Actions (Phase 17 unified)
                 Section {
-                    // Output Format (describes how AI should format response)
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Image(systemName: "text.alignleft")
-                                .foregroundStyle(.teal)
-                            Text("Output Format")
-                        }
-                        Text("Describe how the AI should format its response")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        TextEditor(text: $powerMode.outputFormat)
-                            .frame(minHeight: 60)
-                            .font(.body)
-                    }
-
-                    // Primary Output Action
-                    Picker("Primary Action", selection: $powerMode.outputConfig.primaryAction) {
-                        ForEach(PowerModeOutputAction.allCases, id: \.self) { action in
-                            HStack {
-                                Image(systemName: action.icon)
-                                Text(action.displayName)
-                            }
-                            .tag(action)
-                        }
-                    }
-
-                    Text(powerMode.outputConfig.primaryAction.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    // Auto-send toggle
-                    Toggle(isOn: $powerMode.outputConfig.autoSendAfterInsert) {
-                        HStack {
-                            Image(systemName: "paperplane.fill")
-                                .foregroundStyle(.orange)
-                            VStack(alignment: .leading) {
-                                Text("Auto-Send Message")
-                                Text("Press Enter/Return after inserting text")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    // Webhooks
-                    Toggle(isOn: $powerMode.outputConfig.webhookEnabled) {
-                        HStack {
-                            Image(systemName: "link")
-                                .foregroundStyle(.orange)
-                            VStack(alignment: .leading) {
-                                Text("Webhooks")
-                                let count = powerMode.outputConfig.webhookIds.count
-                                Text(count == 0 ? "Send output to external services" : "\(count) webhook\(count == 1 ? "" : "s") enabled")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    // Note: Webhooks are configured via iOS app and synced via iCloud
-                    // macOS displays the configuration but webhook list comes from shared settings
-                    if powerMode.outputConfig.webhookEnabled {
-                        Text("Webhooks configured in iOS app")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .padding(.leading, 20)
-                    }
-
-                    // Obsidian Action
-                    Toggle(isOn: Binding(
-                        get: { powerMode.outputConfig.obsidianAction != nil },
-                        set: { enabled in
-                            if enabled {
-                                if let firstVault = vaultManager.vaults.first {
-                                    powerMode.outputConfig.obsidianAction = ObsidianActionConfig(
-                                        action: .appendToDaily,
-                                        targetVaultId: firstVault.id
-                                    )
-                                }
-                            } else {
-                                powerMode.outputConfig.obsidianAction = nil
-                            }
-                        }
-                    )) {
-                        HStack {
-                            Image("ObsidianIcon")
-                                .resizable()
-                                .scaledToFit()
-                                .frame(width: 16, height: 16)
-                            VStack(alignment: .leading) {
-                                Text("Save to Obsidian")
-                                Text(powerMode.outputConfig.obsidianAction != nil
-                                     ? powerMode.outputConfig.obsidianAction!.action.displayName
-                                     : "No action configured")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-
-                    if powerMode.outputConfig.obsidianAction != nil {
-                        // Action type picker
-                        Picker("Action", selection: Binding(
-                            get: { powerMode.outputConfig.obsidianAction?.action ?? .appendToDaily },
-                            set: { powerMode.outputConfig.obsidianAction?.action = $0 }
-                        )) {
-                            ForEach(ObsidianAction.allCases.filter { $0 != .none }, id: \.self) { action in
-                                HStack {
-                                    Image(systemName: action.icon)
-                                    Text(action.displayName)
-                                }
-                                .tag(action)
-                            }
-                        }
-                        .padding(.leading, 20)
-
-                        // Vault picker
-                        if !vaultManager.vaults.isEmpty {
-                            Picker("Target Vault", selection: Binding(
-                                get: { powerMode.outputConfig.obsidianAction?.targetVaultId ?? UUID() },
-                                set: { powerMode.outputConfig.obsidianAction?.targetVaultId = $0 }
-                            )) {
-                                ForEach(vaultManager.vaults) { vault in
-                                    Text(vault.name).tag(vault.id)
-                                }
-                            }
-                            .padding(.leading, 20)
-                        }
-
-                        // Note name (for specific actions)
-                        if let action = powerMode.outputConfig.obsidianAction?.action,
-                           action == .appendToNote || action == .createNote {
-                            TextField(
-                                action == .createNote ? "Note Name" : "Target Note",
-                                text: Binding(
-                                    get: { powerMode.outputConfig.obsidianAction?.targetNoteName ?? "" },
-                                    set: { powerMode.outputConfig.obsidianAction?.targetNoteName = $0.isEmpty ? nil : $0 }
-                                )
-                            )
-                            .padding(.leading, 20)
-                        }
-
-                        // Auto-execute toggle
-                        Toggle(isOn: Binding(
-                            get: { powerMode.outputConfig.obsidianAction?.autoExecute ?? false },
-                            set: { powerMode.outputConfig.obsidianAction?.autoExecute = $0 }
-                        )) {
-                            HStack {
-                                Image(systemName: "bolt.fill")
-                                    .foregroundStyle(.purple)
-                                VStack(alignment: .leading) {
-                                    Text("Auto-Execute")
-                                    Text("Save to Obsidian automatically when Power Mode completes")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                        .padding(.leading, 20)
-                    }
+                    MacOutputActionsEditor(actions: $outputActions, settings: settings)
                 } header: {
-                    Text("Output Delivery")
+                    Text("Delivery Actions")
                 } footer: {
                     Text("Choose how to deliver the Power Mode result")
                 }
             }
             .formStyle(.grouped)
         }
-        .frame(width: 550, height: 800)
+        .frame(width: 550, height: 900)
+        .onAppear {
+            // Initialize actions - use migration if legacy config exists
+            inputActions = powerMode.migratedInputActions
+            outputActions = powerMode.migratedOutputActions
+        }
         .sheet(isPresented: $showingVaultsSettings) {
             MacVaultsSettingsView(settings: settings)
                 .frame(width: 600, height: 500)
         }
     }
 
-    /// Row for accessibility features that are disabled in App Store (sandboxed) version
-    private func disabledAccessibilityRow(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
-        HStack {
-            Image(systemName: icon)
-                .foregroundStyle(iconColor.opacity(0.4))
-            VStack(alignment: .leading) {
-                HStack {
-                    Text(title)
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "lock.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-                Text("Available in Direct Download version")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            }
-            Spacer()
-        }
-        .padding(.vertical, 4)
-        .opacity(0.6)
-    }
-
     private func savePowerMode() {
-        // Sync legacy fields with new config
         var updatedMode = powerMode
-        updatedMode.memoryEnabled = powerMode.inputConfig.includePowerModeMemory
-        updatedMode.enterSendsMessage = powerMode.outputConfig.autoSendAfterInsert
-        updatedMode.enabledWebhookIds = powerMode.outputConfig.webhookEnabled ? powerMode.outputConfig.webhookIds : []
-        updatedMode.obsidianAction = powerMode.outputConfig.obsidianAction
-        updatedMode.includeWindowContext = powerMode.inputConfig.includeActiveAppText
         updatedMode.updatedAt = Date()
+
+        // Phase 17: Use unified input/output actions
+        updatedMode.inputActions = inputActions
+        updatedMode.outputActions = outputActions
 
         onSave(updatedMode)
     }
