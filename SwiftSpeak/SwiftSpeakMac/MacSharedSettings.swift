@@ -333,6 +333,40 @@ class MacSettings: ObservableObject {
         }
     }
 
+    // MARK: - Hidden Preset Contexts
+
+    /// Set of preset context IDs that the user has hidden
+    @Published var hiddenPresetContextIds: Set<UUID> = [] {
+        didSet {
+            saveHiddenPresetContextIds()
+        }
+    }
+
+    /// Hide a preset context from the main view
+    func hidePresetContext(_ contextId: UUID) {
+        hiddenPresetContextIds.insert(contextId)
+    }
+
+    /// Show a previously hidden preset context
+    func showPresetContext(_ contextId: UUID) {
+        hiddenPresetContextIds.remove(contextId)
+    }
+
+    /// Check if a preset context is hidden
+    func isPresetContextHidden(_ contextId: UUID) -> Bool {
+        hiddenPresetContextIds.contains(contextId)
+    }
+
+    private func saveHiddenPresetContextIds() {
+        let uuidStrings = hiddenPresetContextIds.map { $0.uuidString }
+        defaults?.set(uuidStrings, forKey: "hiddenPresetContextIds")
+    }
+
+    private func loadHiddenPresetContextIds() {
+        guard let uuidStrings = defaults?.stringArray(forKey: "hiddenPresetContextIds") else { return }
+        hiddenPresetContextIds = Set(uuidStrings.compactMap { UUID(uuidString: $0) })
+    }
+
     // MARK: - Phase 16: Keyboard Layout Settings (syncs to iOS)
 
     @Published var keyboardShowSwiftSpeakBar: Bool = true {
@@ -854,6 +888,7 @@ class MacSettings: ObservableObject {
         loadPowerModeHotkeys()
         loadContextHotkeys()
         loadLastUsedContextPerApp()
+        loadHiddenPresetContextIds()
         loadHistoryMemory()
         loadCustomTemplates()
         loadVocabulary()

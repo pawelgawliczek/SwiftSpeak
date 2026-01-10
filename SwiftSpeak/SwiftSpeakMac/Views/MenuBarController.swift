@@ -2697,7 +2697,8 @@ struct HotkeySettingsTab: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
 
-                    let allContexts = ConversationContext.presets + settings.contexts.filter { !$0.isPreset }
+                    let visiblePresets = ConversationContext.presets.filter { !settings.isPresetContextHidden($0.id) }
+                    let allContexts = visiblePresets + settings.contexts.filter { !$0.isPreset }
 
                     if allContexts.isEmpty {
                         HStack {

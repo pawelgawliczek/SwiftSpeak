@@ -18,6 +18,15 @@ struct MacContextsView: View {
     @State private var expandedContextId: UUID?
     @State private var showingDeleteConfirmation = false
     @State private var contextToDelete: ConversationContext?
+    @State private var showHiddenPresets = false
+
+    private var visiblePresets: [ConversationContext] {
+        ConversationContext.presets.filter { !settings.isPresetContextHidden($0.id) }
+    }
+
+    private var hiddenPresets: [ConversationContext] {
+        ConversationContext.presets.filter { settings.isPresetContextHidden($0.id) }
+    }
 
     var body: some View {
         ScrollView {
@@ -47,23 +56,55 @@ struct MacContextsView: View {
                     .padding(.vertical, 4)
 
                 // Presets Section
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Presets")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
+                if !visiblePresets.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Presets")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
 
-                    ForEach(ConversationContext.presets) { context in
-                        ContextCard(
-                            context: context,
-                            isExpanded: expandedContextId == context.id,
-                            isActive: settings.activeContextId == context.id,
-                            isPreset: true,
-                            settings: settings,
-                            onTap: { toggleExpanded(context.id) },
-                            onSetActive: { toggleActive(context) },
-                            onEdit: nil,
-                            onDelete: nil
-                        )
+                        ForEach(visiblePresets) { context in
+                            ContextCard(
+                                context: context,
+                                isExpanded: expandedContextId == context.id,
+                                isActive: settings.activeContextId == context.id,
+                                isPreset: true,
+                                settings: settings,
+                                onTap: { toggleExpanded(context.id) },
+                                onSetActive: { toggleActive(context) },
+                                onEdit: nil,
+                                onDelete: nil,
+                                onHide: { settings.hidePresetContext(context.id) }
+                            )
+                        }
+                    }
+                }
+
+                // Hidden Presets Section
+                if !hiddenPresets.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Button(action: { withAnimation { showHiddenPresets.toggle() } }) {
+                            HStack {
+                                Text("Hidden Presets")
+                                    .font(.headline)
+                                    .foregroundStyle(.secondary)
+                                Image(systemName: showHiddenPresets ? "chevron.up" : "chevron.down")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                                Text("(\(hiddenPresets.count))")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        if showHiddenPresets {
+                            ForEach(hiddenPresets) { context in
+                                HiddenPresetRow(
+                                    context: context,
+                                    onRestore: { settings.showPresetContext(context.id) }
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -191,6 +232,7 @@ private struct ContextCard: View {
     let onSetActive: () -> Void
     let onEdit: (() -> Void)?
     let onDelete: (() -> Void)?
+    var onHide: (() -> Void)? = nil
 
     private var assignedHotkey: HotkeyCombination? {
         settings.contextHotkeys[context.id]
@@ -473,6 +515,15 @@ private struct ContextCard: View {
             }
 
             Spacer()
+
+            if let onHide = onHide {
+                Button(action: onHide) {
+                    Image(systemName: "eye.slash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.secondary)
+                .help("Hide this preset")
+            }
 
             if let onDelete = onDelete {
                 Button(role: .destructive, action: onDelete) {
@@ -1079,15 +1130,69 @@ struct AppIconView: View {
     }
 }
 
+// MARK: - Hidden Preset Row
+
+private struct HiddenPresetRow: View {
+    let context: ConversationContext
+    let onRestore: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(context.color.color.opacity(0.15))
+                    .frame(width: 36, height: 36)
+
+                if context.icon.contains(".") {
+                    Image(systemName: context.icon)
+                        .font(.system(size: 16))
+                        .foregroundStyle(context.color.gradient)
+                } else {
+                    Text(context.icon)
+                        .font(.system(size: 16))
+                }
+            }
+            .opacity(0.6)
+
+            // Name
+            VStack(alignment: .leading, spacing: 2) {
+                Text(context.name)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+
+                Text("Preset")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            // Restore button
+            Button("Restore") {
+                withAnimation {
+                    onRestore()
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(12)
+        .background(Color.primary.opacity(0.02))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 // MARK: - Context Hotkeys Section
 
 private struct ContextHotkeysSection: View {
     @ObservedObject var settings: MacSettings
     @ObservedObject var hotkeyManager: MacHotkeyManager = MacHotkeyManager.shared
 
-    // All contexts (presets + custom) that can have hotkeys
+    // All visible contexts (presets + custom) that can have hotkeys
     private var allContexts: [ConversationContext] {
-        ConversationContext.presets + settings.contexts.filter { !$0.isPreset }
+        let visiblePresets = ConversationContext.presets.filter { !settings.isPresetContextHidden($0.id) }
+        return visiblePresets + settings.contexts.filter { !$0.isPreset }
     }
 
     // Contexts with hotkeys assigned
