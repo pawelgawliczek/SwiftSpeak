@@ -2687,6 +2687,46 @@ struct HotkeySettingsTab: View {
                     }
                 }
 
+                // Per-Context Hotkeys
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Context Shortcuts")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+
+                    Text("Assign hotkeys to open transcription with a specific Context pre-selected")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+
+                    let allContexts = ConversationContext.presets + settings.contexts.filter { !$0.isPreset }
+
+                    if allContexts.isEmpty {
+                        HStack {
+                            Spacer()
+                            Text("No contexts available")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.vertical, 16)
+                        .background(Color.primary.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else {
+                        VStack(spacing: 0) {
+                            ForEach(Array(allContexts.enumerated()), id: \.element.id) { index, context in
+                                if index > 0 {
+                                    Divider().padding(.horizontal, 12)
+                                }
+                                ContextHotkeySettingsRow(
+                                    context: context,
+                                    settings: settings,
+                                    hotkeyManager: hotkeyManager
+                                )
+                            }
+                        }
+                        .background(Color.primary.opacity(0.03))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+
                 // Tips
                 VStack(alignment: .leading, spacing: 8) {
                     Text("Tips")
@@ -2698,6 +2738,7 @@ struct HotkeySettingsTab: View {
                         HotkeyTipRow(icon: "exclamationmark.triangle", text: "Avoid system shortcuts like Cmd+C, Cmd+V, Cmd+Tab")
                         HotkeyTipRow(icon: "hand.raised", text: "Use modifiers: Cmd (⌘), Option (⌥), Control (⌃), Shift (⇧)")
                         HotkeyTipRow(icon: "bolt.circle", text: "Power Mode hotkeys open the overlay for voice input")
+                        HotkeyTipRow(icon: "text.bubble", text: "Context hotkeys open transcription with that context pre-selected")
                     }
                     .padding(12)
                     .background(Color.blue.opacity(0.05))
@@ -2906,6 +2947,195 @@ private struct PowerModeHotkeyRow: View {
     private func clearHotkey() {
         settings.powerModeHotkeys.removeValue(forKey: powerMode.id)
         hotkeyManager.unregisterPowerModeHotkey(powerModeId: powerMode.id)
+    }
+
+    private func createDisplayString(keyCode: UInt16, modifiers: UInt) -> String {
+        var result = ""
+        let flags = NSEvent.ModifierFlags(rawValue: modifiers)
+
+        if flags.contains(.control) { result += "⌃" }
+        if flags.contains(.option) { result += "⌥" }
+        if flags.contains(.shift) { result += "⇧" }
+        if flags.contains(.command) { result += "⌘" }
+
+        // Map key codes to characters
+        let keyMap: [UInt16: String] = [
+            0x00: "A", 0x01: "S", 0x02: "D", 0x03: "F", 0x04: "H", 0x05: "G",
+            0x06: "Z", 0x07: "X", 0x08: "C", 0x09: "V", 0x0B: "B", 0x0C: "Q",
+            0x0D: "W", 0x0E: "E", 0x0F: "R", 0x10: "Y", 0x11: "T", 0x1F: "O",
+            0x20: "U", 0x22: "I", 0x23: "P", 0x25: "L", 0x26: "J", 0x28: "K",
+            0x2D: "N", 0x2E: "M", 0x12: "1", 0x13: "2", 0x14: "3", 0x15: "4",
+            0x17: "5", 0x16: "6", 0x1A: "7", 0x1C: "8", 0x19: "9", 0x1D: "0",
+            0x31: "Space"
+        ]
+
+        result += keyMap[keyCode] ?? "?"
+        return result
+    }
+}
+
+// MARK: - Context Hotkey Settings Row
+
+private struct ContextHotkeySettingsRow: View {
+    let context: ConversationContext
+    @ObservedObject var settings: MacSettings
+    @ObservedObject var hotkeyManager: MacHotkeyManager
+
+    @State private var isRecording = false
+    @State private var keyMonitor: Any?
+    @State private var showError = false
+    @State private var errorMessage = ""
+
+    private var currentHotkey: HotkeyCombination? {
+        settings.contextHotkeys[context.id]
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(context.color.color.opacity(0.2))
+                    .frame(width: 32, height: 32)
+
+                if context.icon.contains(".") {
+                    Image(systemName: context.icon)
+                        .font(.system(size: 14))
+                        .foregroundStyle(context.color.gradient)
+                } else {
+                    Text(context.icon)
+                        .font(.system(size: 14))
+                }
+            }
+
+            // Name
+            VStack(alignment: .leading, spacing: 2) {
+                Text(context.name)
+                    .font(.callout)
+                    .fontWeight(.medium)
+
+                if context.isPreset {
+                    Text("Preset")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Spacer()
+
+            // Hotkey display or recording
+            if isRecording {
+                Text("Press keys...")
+                    .font(.system(.callout, design: .monospaced))
+                    .foregroundStyle(.blue)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.blue.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            } else if let hotkey = currentHotkey {
+                Text(hotkey.displayString)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.green.opacity(0.15))
+                    .foregroundStyle(.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+
+            // Buttons
+            if isRecording {
+                Button("Cancel") {
+                    stopRecording()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            } else {
+                if currentHotkey != nil {
+                    Button(action: clearHotkey) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Button("Set") {
+                    startRecording()
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+            }
+        }
+        .padding(12)
+        .alert("Hotkey Error", isPresented: $showError) {
+            Button("OK") {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+
+    private func startRecording() {
+        isRecording = true
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            self.handleKeyPress(event)
+            return nil
+        }
+    }
+
+    private func stopRecording() {
+        isRecording = false
+        if let monitor = keyMonitor {
+            NSEvent.removeMonitor(monitor)
+            keyMonitor = nil
+        }
+    }
+
+    private func handleKeyPress(_ event: NSEvent) {
+        let modifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let hasModifier = modifiers.contains(.command) || modifiers.contains(.control) ||
+                         modifiers.contains(.option) || modifiers.contains(.shift)
+
+        guard hasModifier else {
+            errorMessage = "Hotkeys must include a modifier key (⌘, ⌃, ⌥, or ⇧)"
+            showError = true
+            stopRecording()
+            return
+        }
+
+        let keyCode = UInt16(event.keyCode)
+        let modifierFlags = UInt(modifiers.rawValue)
+
+        // Create display string
+        let displayString = createDisplayString(keyCode: keyCode, modifiers: modifierFlags)
+
+        // Save hotkey
+        let combination = HotkeyCombination(
+            keyCode: keyCode,
+            modifiers: modifierFlags,
+            displayString: displayString
+        )
+
+        settings.contextHotkeys[context.id] = combination
+
+        // Register with hotkey manager
+        let success = hotkeyManager.registerContextHotkey(
+            contextId: context.id,
+            keyCode: keyCode,
+            modifiers: modifierFlags
+        )
+
+        if !success {
+            errorMessage = "Failed to register hotkey"
+            showError = true
+            settings.contextHotkeys.removeValue(forKey: context.id)
+        }
+
+        stopRecording()
+    }
+
+    private func clearHotkey() {
+        settings.contextHotkeys.removeValue(forKey: context.id)
+        hotkeyManager.unregisterContextHotkey(contextId: context.id)
     }
 
     private func createDisplayString(keyCode: UInt16, modifiers: UInt) -> String {
