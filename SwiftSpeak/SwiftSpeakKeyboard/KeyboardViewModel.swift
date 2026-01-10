@@ -41,6 +41,8 @@ class KeyboardViewModel: ObservableObject {
     @Published var swiftLinkAudioLevels: [Float] = []
     /// Recording duration for display
     @Published var swiftLinkRecordingDuration: TimeInterval = 0
+    /// Last error message from SwiftLink for display
+    @Published var lastSwiftLinkError: String?
     /// Timer for reading audio levels from App Groups
     private var audioLevelReadTimer: Timer?
     /// Recording start time for duration calculation
@@ -281,6 +283,9 @@ class KeyboardViewModel: ObservableObject {
             isSwiftLinkStreaming = false
             swiftLinkStreamingTranscript = ""
 
+            // Show error briefly then dismiss overlay
+            swiftLinkProcessingStatus = "error"
+
             // Check if session expired - mark SwiftLink as inactive and fall back to app
             if errorMsg.contains("expired") || errorMsg.contains("not active") || errorMsg.contains("Session") {
                 keyboardLog("SwiftLink session is invalid - marking as inactive", category: "SwiftLink", level: .warning)
@@ -290,12 +295,25 @@ class KeyboardViewModel: ObservableObject {
                 defaults?.set(false, forKey: Constants.Keys.swiftLinkSessionActive)
             }
 
-            // Clear error state
+            // Store error message for display
+            lastSwiftLinkError = errorMsg
+
+            // Clear error state from App Groups
             defaults?.removeObject(forKey: Constants.Keys.swiftLinkTranscriptionResult)
             defaults?.removeObject(forKey: Constants.Keys.swiftLinkProcessingStatus)
             defaults?.removeObject(forKey: Constants.EditMode.lastResultWasEdit)
             defaults?.removeObject(forKey: Constants.EditMode.swiftLinkEditOriginalText)
             defaults?.synchronize()
+
+            // Auto-dismiss error after showing briefly
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                guard let self = self else { return }
+                if self.swiftLinkProcessingStatus == "error" {
+                    self.swiftLinkProcessingStatus = ""
+                    self.lastSwiftLinkError = nil
+                    keyboardLog("SwiftLink error overlay auto-dismissed", category: "SwiftLink")
+                }
+            }
         } else {
             // Status not recognized - don't clear streaming state yet, wait for proper result
             keyboardLog("SwiftLink result not ready yet (status: '\(status)')", category: "SwiftLink", level: .warning)

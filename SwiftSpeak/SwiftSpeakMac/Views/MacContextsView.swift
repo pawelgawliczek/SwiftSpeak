@@ -40,6 +40,12 @@ struct MacContextsView: View {
                 }
                 .padding(.bottom, 8)
 
+                // Context Hotkeys Section
+                ContextHotkeysSection(settings: settings)
+
+                Divider()
+                    .padding(.vertical, 4)
+
                 // Presets Section
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Presets")
@@ -1070,6 +1076,130 @@ struct AppIconView: View {
         if let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) {
             icon = NSWorkspace.shared.icon(forFile: appURL.path)
         }
+    }
+}
+
+// MARK: - Context Hotkeys Section
+
+private struct ContextHotkeysSection: View {
+    @ObservedObject var settings: MacSettings
+    @ObservedObject var hotkeyManager: MacHotkeyManager = MacHotkeyManager.shared
+
+    // All contexts (presets + custom) that can have hotkeys
+    private var allContexts: [ConversationContext] {
+        ConversationContext.presets + settings.contexts.filter { !$0.isPreset }
+    }
+
+    // Contexts with hotkeys assigned
+    private var contextsWithHotkeys: [ConversationContext] {
+        allContexts.filter { settings.contextHotkeys[$0.id] != nil }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Context Hotkeys")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            Text("Assign global hotkeys to open transcription with a specific context pre-selected")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+
+            if contextsWithHotkeys.isEmpty {
+                // No hotkeys assigned yet
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        Image(systemName: "keyboard")
+                            .font(.system(size: 28))
+                            .foregroundStyle(.tertiary)
+                        Text("No context hotkeys assigned")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Text("Edit a context to assign a hotkey")
+                            .font(.caption)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 20)
+                    Spacer()
+                }
+                .background(Color.primary.opacity(0.02))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            } else {
+                // Show contexts with hotkeys
+                VStack(spacing: 8) {
+                    ForEach(contextsWithHotkeys) { context in
+                        ContextHotkeyRow(
+                            context: context,
+                            hotkey: settings.contextHotkeys[context.id],
+                            onClear: {
+                                settings.contextHotkeys.removeValue(forKey: context.id)
+                                hotkeyManager.unregisterContextHotkey(contextId: context.id)
+                            }
+                        )
+                    }
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.02))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+            }
+        }
+    }
+}
+
+// MARK: - Context Hotkey Row
+
+private struct ContextHotkeyRow: View {
+    let context: ConversationContext
+    let hotkey: HotkeyCombination?
+    let onClear: () -> Void
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Context icon
+            ZStack {
+                Circle()
+                    .fill(context.color.color.opacity(0.2))
+                    .frame(width: 32, height: 32)
+
+                if context.icon.contains(".") {
+                    Image(systemName: context.icon)
+                        .font(.system(size: 14))
+                        .foregroundStyle(context.color.gradient)
+                } else {
+                    Text(context.icon)
+                        .font(.system(size: 14))
+                }
+            }
+
+            // Context name
+            Text(context.name)
+                .font(.callout)
+                .fontWeight(.medium)
+
+            Spacer()
+
+            // Hotkey badge
+            if let hotkey = hotkey {
+                Text(hotkey.displayString)
+                    .font(.system(.callout, design: .monospaced))
+                    .fontWeight(.medium)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.accentColor.opacity(0.15))
+                    .foregroundColor(.accentColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                // Clear button
+                Button(action: onClear) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundColor(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("Remove hotkey")
+            }
+        }
+        .padding(.vertical, 4)
     }
 }
 

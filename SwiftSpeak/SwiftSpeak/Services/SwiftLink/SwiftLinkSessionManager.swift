@@ -388,15 +388,16 @@ final class SwiftLinkSessionManager: ObservableObject {
 
                 appLog("Streaming provider connected, forwarding audio from existing tap", category: "SwiftLink")
 
-            } catch {
-                appLog("Failed to start streaming: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+            } catch let transcriptionError as TranscriptionError {
+                appLog("Failed to start streaming (TranscriptionError): \(transcriptionError.localizedDescription)", category: "SwiftLink", level: .error)
                 // Reset connection state
                 self.isStreamingProviderConnecting = false
                 self.pendingStreamingAudio.removeAll()
 
                 // Check if this is a language not supported error (e.g., Apple Speech without on-device model)
-                if case TranscriptionError.languageNotSupported(let language) = error {
+                if case .languageNotSupported(let language) = transcriptionError {
                     // Show error to user immediately instead of falling back
+                    appLog("Language not supported: \(language) - showing error to user", category: "SwiftLink", level: .error)
                     self.isRecording = false
                     self.isStreamingMode = false
                     self.streamingProvider = nil
@@ -409,7 +410,20 @@ final class SwiftLinkSessionManager: ObservableObject {
                     return
                 }
 
-                // Fall back to batch mode for other errors
+                // Fall back to batch mode for other TranscriptionErrors
+                isStreamingMode = false
+                streamingProvider = nil
+                audioConverter = nil
+                sharedDefaults?.set("recording", forKey: Constants.Keys.swiftLinkProcessingStatus)
+                sharedDefaults?.synchronize()
+                startSegmentRecording()
+            } catch {
+                appLog("Failed to start streaming (other error): \(error.localizedDescription)", category: "SwiftLink", level: .error)
+                // Reset connection state
+                self.isStreamingProviderConnecting = false
+                self.pendingStreamingAudio.removeAll()
+
+                // Fall back to batch mode for non-TranscriptionErrors
                 isStreamingMode = false
                 streamingProvider = nil
                 audioConverter = nil

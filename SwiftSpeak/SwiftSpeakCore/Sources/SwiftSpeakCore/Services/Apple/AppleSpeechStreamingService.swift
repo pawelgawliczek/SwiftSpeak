@@ -198,9 +198,10 @@ public final class AppleSpeechStreamingService: NSObject, StreamingTranscription
     public func connect(language: Language?, sampleRate: Int, transcriptionPrompt: String?, instructions: String?) async throws {
         print("[AppleSpeech] connect() called - language: \(language?.displayName ?? "auto"), sampleRate: \(sampleRate)")
 
-        // Reset counters for new session
+        // Reset counters and flags for new session
         totalAudioBytesReceived = 0
         audioChunkCount = 0
+        isFinishing = false
 
         // Check authorization
         let status = SFSpeechRecognizer.authorizationStatus()
@@ -337,7 +338,13 @@ public final class AppleSpeechStreamingService: NSObject, StreamingTranscription
     private var totalAudioBytesReceived: Int = 0
     private var audioChunkCount: Int = 0
 
+    /// Flag to stop accepting audio after finishAudio() is called
+    private var isFinishing: Bool = false
+
     public func sendAudio(_ audioData: Data) {
+        // Don't accept audio after finishAudio() was called
+        guard !isFinishing else { return }
+
         guard let request = recognitionRequest,
               let format = audioFormat else {
             print("[AppleSpeech] sendAudio: No request or format available")
@@ -380,6 +387,8 @@ public final class AppleSpeechStreamingService: NSObject, StreamingTranscription
     }
 
     public func finishAudio() {
+        // Stop accepting more audio immediately
+        isFinishing = true
         print("[AppleSpeech] finishAudio() called - total received: \(totalAudioBytesReceived) bytes in \(audioChunkCount) chunks")
         queue.async { [weak self] in
             self?.recognitionRequest?.endAudio()
@@ -388,6 +397,7 @@ public final class AppleSpeechStreamingService: NSObject, StreamingTranscription
     }
 
     public func disconnect() {
+        isFinishing = false  // Reset flag for potential reuse
         queue.async { [weak self] in
             self?.recognitionTask?.cancel()
             self?.recognitionTask = nil
