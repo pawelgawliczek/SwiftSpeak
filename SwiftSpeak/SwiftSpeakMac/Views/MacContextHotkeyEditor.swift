@@ -345,7 +345,7 @@ struct MacContextHotkeyEditor: View {
 struct MacContextHotkeyEditor_Previews: PreviewProvider {
     static var previews: some View {
         MacContextHotkeyEditor(
-            context: ConversationContext.preset.work,
+            context: ConversationContext.presets.first!,
             settings: MacSettings.shared,
             hotkeyManager: MacHotkeyManager.shared
         )

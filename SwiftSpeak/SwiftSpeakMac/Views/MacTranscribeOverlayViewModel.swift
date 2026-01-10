@@ -261,7 +261,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     private func autoSelectContext(for bundleId: String) {
         guard !bundleId.isEmpty else { return }
 
-        // Find a context that includes this app
+        // Find ALL contexts that match this app
+        var matchingContexts: [ConversationContext] = []
         for context in settings.contexts {
             let matches = context.appAssignment.includes(
                 bundleId: bundleId,
@@ -270,19 +271,51 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             )
 
             if matches {
-                activeContext = context
-                macLog("Auto-selected context '\(context.name)' for '\(bundleId)'", category: "Transcribe")
-
-                // Apply context's default input language (only if context has one)
-                if let contextLanguage = context.defaultInputLanguage {
-                    inputLanguage = contextLanguage
-                }
-                return
+                matchingContexts.append(context)
             }
         }
 
-        // No app-specific match - use global active context
-        activeContext = settings.activeContext
+        guard !matchingContexts.isEmpty else {
+            // No app-specific match - use global active context
+            activeContext = settings.activeContext
+            return
+        }
+
+        // If only one match, use it
+        if matchingContexts.count == 1 {
+            let context = matchingContexts[0]
+            activeContext = context
+            macLog("Auto-selected context '\(context.name)' for '\(bundleId)'", category: "Transcribe")
+
+            // Apply context's default input language (only if context has one)
+            if let contextLanguage = context.defaultInputLanguage {
+                inputLanguage = contextLanguage
+            }
+            return
+        }
+
+        // Multiple contexts match - check for last used preference
+        if let lastUsedContextId = settings.getLastUsedContext(forApp: bundleId),
+           let lastUsedContext = matchingContexts.first(where: { $0.id == lastUsedContextId }) {
+            activeContext = lastUsedContext
+            macLog("Auto-selected last used context '\(lastUsedContext.name)' for '\(bundleId)' (from \(matchingContexts.count) options)", category: "Transcribe")
+
+            // Apply context's default input language
+            if let contextLanguage = lastUsedContext.defaultInputLanguage {
+                inputLanguage = contextLanguage
+            }
+            return
+        }
+
+        // No last used preference or it's not among matches - use first match
+        let context = matchingContexts[0]
+        activeContext = context
+        macLog("Auto-selected first matching context '\(context.name)' for '\(bundleId)' (from \(matchingContexts.count) options)", category: "Transcribe")
+
+        // Apply context's default input language
+        if let contextLanguage = context.defaultInputLanguage {
+            inputLanguage = contextLanguage
+        }
     }
 
     // MARK: - Recording Control
@@ -1287,21 +1320,44 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
     // MARK: - Context Management
 
+    /// Get contexts assigned to the current app
+    private func contextsForCurrentApp() -> [ConversationContext] {
+        guard !sourceAppBundleId.isEmpty else { return [] }
+
+        return settings.contexts.filter { context in
+            context.appAssignment.includes(
+                bundleId: sourceAppBundleId,
+                userOverrides: [:],
+                appLookup: { _ in nil }
+            )
+        }
+    }
+
     /// Cycle to next context: nil -> context1 -> context2 -> ... -> nil
+    /// If contexts are assigned to the current app, only cycles through those
     func cycleToNextContext() {
-        let contexts = settings.contexts
+        // If contexts are assigned to this app, only cycle through those
+        let appContexts = contextsForCurrentApp()
+        let contexts = appContexts.isEmpty ? settings.contexts : appContexts
+
         guard !contexts.isEmpty else { return }
 
         if let current = activeContext,
            let index = contexts.firstIndex(where: { $0.id == current.id }) {
-            // If at last context, cycle back to nil (no context)
+            // If at last context, cycle back to nil (no context) only if using all contexts
+            // For app-specific contexts, stay within that set
             if index == contexts.count - 1 {
-                activeContext = nil
+                if appContexts.isEmpty {
+                    activeContext = nil
+                } else {
+                    // Wrap around to first app context
+                    activeContext = contexts.first
+                }
             } else {
                 activeContext = contexts[index + 1]
             }
         } else {
-            // No context selected, start with first context
+            // No context selected (or current not in list), start with first context
             activeContext = contexts.first
         }
 
@@ -1314,20 +1370,30 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
     }
 
     /// Cycle to previous context: nil -> contextN -> ... -> context1 -> nil
+    /// If contexts are assigned to the current app, only cycles through those
     func cycleToPreviousContext() {
-        let contexts = settings.contexts
+        // If contexts are assigned to this app, only cycle through those
+        let appContexts = contextsForCurrentApp()
+        let contexts = appContexts.isEmpty ? settings.contexts : appContexts
+
         guard !contexts.isEmpty else { return }
 
         if let current = activeContext,
            let index = contexts.firstIndex(where: { $0.id == current.id }) {
-            // If at first context, cycle back to nil (no context)
+            // If at first context, cycle back to nil (no context) only if using all contexts
+            // For app-specific contexts, stay within that set
             if index == 0 {
-                activeContext = nil
+                if appContexts.isEmpty {
+                    activeContext = nil
+                } else {
+                    // Wrap around to last app context
+                    activeContext = contexts.last
+                }
             } else {
                 activeContext = contexts[index - 1]
             }
         } else {
-            // No context selected, start with last context
+            // No context selected (or current not in list), start with last context
             activeContext = contexts.last
         }
 
@@ -1430,6 +1496,11 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         )
         settings.addToHistory(record)
         macLog("Saved transcription to history with cost: $\(String(format: "%.6f", costBreakdown.total))", category: "Transcribe")
+
+        // Remember last used context for this app (for multi-context apps)
+        if let contextId = activeContext?.id, !sourceAppBundleId.isEmpty {
+            settings.setLastUsedContext(contextId, forApp: sourceAppBundleId)
+        }
     }
 
     // MARK: - Reset

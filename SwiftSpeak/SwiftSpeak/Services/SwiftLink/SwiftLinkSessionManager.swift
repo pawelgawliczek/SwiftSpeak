@@ -394,7 +394,22 @@ final class SwiftLinkSessionManager: ObservableObject {
                 self.isStreamingProviderConnecting = false
                 self.pendingStreamingAudio.removeAll()
 
-                // Fall back to batch mode
+                // Check if this is a language not supported error (e.g., Apple Speech without on-device model)
+                if case TranscriptionError.languageNotSupported(let language) = error {
+                    // Show error to user immediately instead of falling back
+                    self.isRecording = false
+                    self.isStreamingMode = false
+                    self.streamingProvider = nil
+                    self.audioConverter = nil
+                    let errorMessage = "Language '\(language)' is not supported for streaming. Please change your language in Settings or switch to a different provider."
+                    self.sharedDefaults?.set("error", forKey: Constants.Keys.swiftLinkProcessingStatus)
+                    self.sharedDefaults?.set(errorMessage, forKey: Constants.Keys.swiftLinkTranscriptionResult)
+                    self.sharedDefaults?.synchronize()
+                    DarwinNotificationManager.shared.postResultReady()
+                    return
+                }
+
+                // Fall back to batch mode for other errors
                 isStreamingMode = false
                 streamingProvider = nil
                 audioConverter = nil

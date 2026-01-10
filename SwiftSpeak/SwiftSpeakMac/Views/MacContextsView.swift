@@ -282,7 +282,7 @@ private struct ContextCard: View {
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
                     .background(Color.accentColor.opacity(0.15))
-                    .foregroundStyle(.accentColor)
+                    .foregroundColor(.accentColor)
                     .clipShape(Capsule())
             }
             if context.useContextMemory {

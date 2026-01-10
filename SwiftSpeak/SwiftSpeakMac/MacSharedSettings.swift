@@ -287,6 +287,52 @@ class MacSettings: ObservableObject {
         }
     }
 
+    // MARK: - Last Used Context Per App
+
+    /// Dictionary mapping app bundle IDs to the last used context ID
+    /// Used when multiple contexts are assigned to the same app
+    @Published var lastUsedContextPerApp: [String: UUID] = [:] {
+        didSet {
+            saveLastUsedContextPerApp()
+        }
+    }
+
+    /// Remember which context was last used for a specific app
+    func setLastUsedContext(_ contextId: UUID, forApp bundleId: String) {
+        lastUsedContextPerApp[bundleId] = contextId
+    }
+
+    /// Get the last used context for an app, if any
+    func getLastUsedContext(forApp bundleId: String) -> UUID? {
+        lastUsedContextPerApp[bundleId]
+    }
+
+    private func saveLastUsedContextPerApp() {
+        // Convert to [String: String] for JSON encoding
+        let stringKeyed = Dictionary(uniqueKeysWithValues: lastUsedContextPerApp.map { (key, value) in
+            (key, value.uuidString)
+        })
+
+        if let data = try? JSONEncoder().encode(stringKeyed) {
+            defaults?.set(data, forKey: "lastUsedContextPerApp")
+        }
+    }
+
+    private func loadLastUsedContextPerApp() {
+        guard let data = defaults?.data(forKey: "lastUsedContextPerApp") else { return }
+
+        do {
+            let stringKeyed = try JSONDecoder().decode([String: String].self, from: data)
+            // Convert back to [String: UUID]
+            lastUsedContextPerApp = Dictionary(uniqueKeysWithValues: stringKeyed.compactMap { (key, value) in
+                guard let uuid = UUID(uuidString: value) else { return nil }
+                return (key, uuid)
+            })
+        } catch {
+            macLog("Failed to load last used context per app: \(error)", category: "Settings", level: .error)
+        }
+    }
+
     // MARK: - Phase 16: Keyboard Layout Settings (syncs to iOS)
 
     @Published var keyboardShowSwiftSpeakBar: Bool = true {
@@ -807,6 +853,7 @@ class MacSettings: ObservableObject {
         loadGlobalPowerModeHotkey()
         loadPowerModeHotkeys()
         loadContextHotkeys()
+        loadLastUsedContextPerApp()
         loadHistoryMemory()
         loadCustomTemplates()
         loadVocabulary()

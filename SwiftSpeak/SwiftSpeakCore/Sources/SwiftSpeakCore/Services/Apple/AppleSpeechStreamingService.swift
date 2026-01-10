@@ -458,12 +458,20 @@ public final class AppleSpeechStreamingService: NSObject, StreamingTranscription
                 self.sessionEndedSubject.send()
             } else {
                 // Partial result - check if Apple reset the transcript (pause detection)
-                // If the new partial is shorter than the last one and doesn't start with
-                // the same content, Apple has started a new segment
-                if currentTranscript.count < self.lastPartialLength &&
+                // A true reset happens when Apple starts a completely new segment, which means:
+                // 1. Significant length reduction (< 50% of previous, not just a minor correction)
+                // 2. AND the beginning of the text is different (new segment, not a correction)
+                let isSignificantLengthReduction = currentTranscript.count < (self.lastPartialLength / 2)
+                let previousPrefix = String(self.fullTranscript.prefix(20))
+                let currentPrefix = String(currentTranscript.prefix(20))
+                let isNewSegment = !currentPrefix.hasPrefix(previousPrefix.prefix(10)) && previousPrefix.count >= 10
+
+                if isSignificantLengthReduction &&
                    self.lastPartialLength > 10 &&
-                   !self.fullTranscript.isEmpty {
+                   !self.fullTranscript.isEmpty &&
+                   isNewSegment {
                     // Apple reset on pause - save the previous transcript as accumulated
+                    print("[AppleSpeech] Detected segment reset: '\(previousPrefix)...' -> '\(currentPrefix)...'")
                     self.accumulatedTranscript = self.fullTranscript
                 }
 
