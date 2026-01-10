@@ -55,6 +55,8 @@ class SharedSettings: ObservableObject {
         static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
         // Streaming settings
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
+        // Hidden contexts
+        static let hiddenContextIds = "icloud_hiddenContextIds"
     }
 
     // MARK: - Published Properties
@@ -280,6 +282,49 @@ class SharedSettings: ObservableObject {
         didSet {
             defaults?.set(transcriptionStreamingEnabled, forKey: Constants.Keys.transcriptionStreamingEnabled)
             syncToiCloud()
+        }
+    }
+
+    // MARK: - Hidden Contexts
+
+    /// Set of context IDs (preset or custom) that the user has hidden
+    @Published var hiddenContextIds: Set<UUID> = [] {
+        didSet {
+            saveHiddenContextIds()
+            syncToiCloud()
+        }
+    }
+
+    /// Hide a context from the main view
+    func hideContext(_ contextId: UUID) {
+        hiddenContextIds.insert(contextId)
+    }
+
+    /// Show a previously hidden context
+    func showContext(_ contextId: UUID) {
+        hiddenContextIds.remove(contextId)
+    }
+
+    /// Check if a context is hidden
+    func isContextHidden(_ contextId: UUID) -> Bool {
+        hiddenContextIds.contains(contextId)
+    }
+
+    private func saveHiddenContextIds() {
+        let uuidStrings = hiddenContextIds.map { $0.uuidString }
+        defaults?.set(uuidStrings, forKey: "hiddenContextIds")
+    }
+
+    private func loadHiddenContextIds() {
+        // Try loading from new key first, then fall back to old key for migration
+        if let uuidStrings = defaults?.stringArray(forKey: "hiddenContextIds") {
+            hiddenContextIds = Set(uuidStrings.compactMap { UUID(uuidString: $0) })
+        } else if let uuidStrings = defaults?.stringArray(forKey: "hiddenPresetContextIds") {
+            // Migrate from old key
+            hiddenContextIds = Set(uuidStrings.compactMap { UUID(uuidString: $0) })
+            // Save to new key and remove old key
+            saveHiddenContextIds()
+            defaults?.removeObject(forKey: "hiddenPresetContextIds")
         }
     }
 
@@ -859,6 +904,11 @@ class SharedSettings: ObservableObject {
             transcriptionStreamingEnabled = streamingEnabled
         }
 
+        // Load hidden contexts
+        if let hiddenStrings = iCloud?.array(forKey: iCloudKeys.hiddenContextIds) as? [String] {
+            hiddenContextIds = Set(hiddenStrings.compactMap { UUID(uuidString: $0) })
+        }
+
         // Transcription history is now synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
 
@@ -938,6 +988,10 @@ class SharedSettings: ObservableObject {
 
         // Sync streaming settings
         iCloud?.set(transcriptionStreamingEnabled, forKey: iCloudKeys.transcriptionStreamingEnabled)
+
+        // Sync hidden contexts
+        let hiddenContextStrings = hiddenContextIds.map { $0.uuidString }
+        iCloud?.set(hiddenContextStrings, forKey: iCloudKeys.hiddenContextIds)
 
         // Transcription history is synced via Core Data + CloudKit (unlimited records)
         // No longer using iCloud KVS for history due to size limits
@@ -1056,6 +1110,7 @@ class SharedSettings: ObservableObject {
         // Load contexts and power modes
         loadContexts()
         loadPowerModes()
+        loadHiddenContextIds()
         loadObsidianVaults()
         loadHistoryMemory()
 

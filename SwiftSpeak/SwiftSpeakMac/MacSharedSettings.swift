@@ -50,6 +50,8 @@ class MacSettings: ObservableObject {
         static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
         // Streaming settings
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
+        // Hidden contexts
+        static let hiddenContextIds = "icloud_hiddenContextIds"
     }
 
     // MARK: - Published Properties
@@ -333,38 +335,47 @@ class MacSettings: ObservableObject {
         }
     }
 
-    // MARK: - Hidden Preset Contexts
+    // MARK: - Hidden Contexts
 
-    /// Set of preset context IDs that the user has hidden
-    @Published var hiddenPresetContextIds: Set<UUID> = [] {
+    /// Set of context IDs (preset or custom) that the user has hidden
+    @Published var hiddenContextIds: Set<UUID> = [] {
         didSet {
-            saveHiddenPresetContextIds()
+            saveHiddenContextIds()
+            syncToiCloud()
         }
     }
 
-    /// Hide a preset context from the main view
-    func hidePresetContext(_ contextId: UUID) {
-        hiddenPresetContextIds.insert(contextId)
+    /// Hide a context from the main view
+    func hideContext(_ contextId: UUID) {
+        hiddenContextIds.insert(contextId)
     }
 
-    /// Show a previously hidden preset context
-    func showPresetContext(_ contextId: UUID) {
-        hiddenPresetContextIds.remove(contextId)
+    /// Show a previously hidden context
+    func showContext(_ contextId: UUID) {
+        hiddenContextIds.remove(contextId)
     }
 
-    /// Check if a preset context is hidden
-    func isPresetContextHidden(_ contextId: UUID) -> Bool {
-        hiddenPresetContextIds.contains(contextId)
+    /// Check if a context is hidden
+    func isContextHidden(_ contextId: UUID) -> Bool {
+        hiddenContextIds.contains(contextId)
     }
 
-    private func saveHiddenPresetContextIds() {
-        let uuidStrings = hiddenPresetContextIds.map { $0.uuidString }
-        defaults?.set(uuidStrings, forKey: "hiddenPresetContextIds")
+    private func saveHiddenContextIds() {
+        let uuidStrings = hiddenContextIds.map { $0.uuidString }
+        defaults?.set(uuidStrings, forKey: "hiddenContextIds")
     }
 
-    private func loadHiddenPresetContextIds() {
-        guard let uuidStrings = defaults?.stringArray(forKey: "hiddenPresetContextIds") else { return }
-        hiddenPresetContextIds = Set(uuidStrings.compactMap { UUID(uuidString: $0) })
+    private func loadHiddenContextIds() {
+        // Try loading from new key first, then fall back to old key for migration
+        if let uuidStrings = defaults?.stringArray(forKey: "hiddenContextIds") {
+            hiddenContextIds = Set(uuidStrings.compactMap { UUID(uuidString: $0) })
+        } else if let uuidStrings = defaults?.stringArray(forKey: "hiddenPresetContextIds") {
+            // Migrate from old key
+            hiddenContextIds = Set(uuidStrings.compactMap { UUID(uuidString: $0) })
+            // Save to new key and remove old key
+            saveHiddenContextIds()
+            defaults?.removeObject(forKey: "hiddenPresetContextIds")
+        }
     }
 
     // MARK: - Phase 16: Keyboard Layout Settings (syncs to iOS)
@@ -732,6 +743,11 @@ class MacSettings: ObservableObject {
         if let streamingEnabled = iCloud?.object(forKey: iCloudKeys.transcriptionStreamingEnabled) as? Bool {
             transcriptionStreamingEnabled = streamingEnabled
         }
+
+        // Load hidden contexts
+        if let hiddenStrings = iCloud?.array(forKey: iCloudKeys.hiddenContextIds) as? [String] {
+            hiddenContextIds = Set(hiddenStrings.compactMap { UUID(uuidString: $0) })
+        }
     }
 
     private func syncToiCloud() {
@@ -817,6 +833,10 @@ class MacSettings: ObservableObject {
         // Sync streaming settings
         iCloud?.set(transcriptionStreamingEnabled, forKey: iCloudKeys.transcriptionStreamingEnabled)
 
+        // Sync hidden contexts
+        let hiddenContextStrings = hiddenContextIds.map { $0.uuidString }
+        iCloud?.set(hiddenContextStrings, forKey: iCloudKeys.hiddenContextIds)
+
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
@@ -888,7 +908,7 @@ class MacSettings: ObservableObject {
         loadPowerModeHotkeys()
         loadContextHotkeys()
         loadLastUsedContextPerApp()
-        loadHiddenPresetContextIds()
+        loadHiddenContextIds()
         loadHistoryMemory()
         loadCustomTemplates()
         loadVocabulary()

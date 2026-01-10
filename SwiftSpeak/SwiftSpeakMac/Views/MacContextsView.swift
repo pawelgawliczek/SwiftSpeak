@@ -18,14 +18,26 @@ struct MacContextsView: View {
     @State private var expandedContextId: UUID?
     @State private var showingDeleteConfirmation = false
     @State private var contextToDelete: ConversationContext?
-    @State private var showHiddenPresets = false
+    @State private var showHiddenContexts = false
 
     private var visiblePresets: [ConversationContext] {
-        ConversationContext.presets.filter { !settings.isPresetContextHidden($0.id) }
+        ConversationContext.presets.filter { !settings.isContextHidden($0.id) }
     }
 
     private var hiddenPresets: [ConversationContext] {
-        ConversationContext.presets.filter { settings.isPresetContextHidden($0.id) }
+        ConversationContext.presets.filter { settings.isContextHidden($0.id) }
+    }
+
+    private var visibleCustomContexts: [ConversationContext] {
+        settings.contexts.filter { !$0.isPreset && !settings.isContextHidden($0.id) }
+    }
+
+    private var hiddenCustomContexts: [ConversationContext] {
+        settings.contexts.filter { !$0.isPreset && settings.isContextHidden($0.id) }
+    }
+
+    private var totalHiddenCount: Int {
+        hiddenPresets.count + hiddenCustomContexts.count
     }
 
     var body: some View {
@@ -73,35 +85,45 @@ struct MacContextsView: View {
                                 onSetActive: { toggleActive(context) },
                                 onEdit: nil,
                                 onDelete: nil,
-                                onHide: { settings.hidePresetContext(context.id) }
+                                onHide: { settings.hideContext(context.id) }
                             )
                         }
                     }
                 }
 
-                // Hidden Presets Section
-                if !hiddenPresets.isEmpty {
+                // Hidden Contexts Section (both presets and custom)
+                if totalHiddenCount > 0 {
                     VStack(alignment: .leading, spacing: 12) {
-                        Button(action: { withAnimation { showHiddenPresets.toggle() } }) {
+                        Button(action: { withAnimation { showHiddenContexts.toggle() } }) {
                             HStack {
-                                Text("Hidden Presets")
+                                Text("Hidden Contexts")
                                     .font(.headline)
                                     .foregroundStyle(.secondary)
-                                Image(systemName: showHiddenPresets ? "chevron.up" : "chevron.down")
+                                Image(systemName: showHiddenContexts ? "chevron.up" : "chevron.down")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
-                                Text("(\(hiddenPresets.count))")
+                                Text("(\(totalHiddenCount))")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
                             }
                         }
                         .buttonStyle(.plain)
 
-                        if showHiddenPresets {
+                        if showHiddenContexts {
+                            // Hidden presets
                             ForEach(hiddenPresets) { context in
-                                HiddenPresetRow(
+                                HiddenContextRow(
                                     context: context,
-                                    onRestore: { settings.showPresetContext(context.id) }
+                                    isPreset: true,
+                                    onRestore: { settings.showContext(context.id) }
+                                )
+                            }
+                            // Hidden custom contexts
+                            ForEach(hiddenCustomContexts) { context in
+                                HiddenContextRow(
+                                    context: context,
+                                    isPreset: false,
+                                    onRestore: { settings.showContext(context.id) }
                                 )
                             }
                         }
@@ -114,8 +136,7 @@ struct MacContextsView: View {
                         .font(.headline)
                         .foregroundStyle(.secondary)
 
-                    let customContexts = settings.contexts.filter { !$0.isPreset }
-                    if customContexts.isEmpty {
+                    if visibleCustomContexts.isEmpty && hiddenCustomContexts.isEmpty {
                         HStack {
                             Spacer()
                             VStack(spacing: 8) {
@@ -134,8 +155,29 @@ struct MacContextsView: View {
                         }
                         .background(Color.primary.opacity(0.02))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } else if visibleCustomContexts.isEmpty {
+                        // All custom contexts are hidden
+                        HStack {
+                            Spacer()
+                            VStack(spacing: 8) {
+                                Image(systemName: "eye.slash")
+                                    .font(.system(size: 28))
+                                    .foregroundStyle(.tertiary)
+                                Text("All custom contexts are hidden")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                                Button("Create Context") {
+                                    showingNewEditor = true
+                                }
+                                .buttonStyle(.bordered)
+                            }
+                            .padding(.vertical, 20)
+                            Spacer()
+                        }
+                        .background(Color.primary.opacity(0.02))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
                     } else {
-                        ForEach(customContexts) { context in
+                        ForEach(visibleCustomContexts) { context in
                             ContextCard(
                                 context: context,
                                 isExpanded: expandedContextId == context.id,
@@ -148,7 +190,8 @@ struct MacContextsView: View {
                                 onDelete: {
                                     contextToDelete = context
                                     showingDeleteConfirmation = true
-                                }
+                                },
+                                onHide: { settings.hideContext(context.id) }
                             )
                         }
                     }
@@ -1130,10 +1173,11 @@ struct AppIconView: View {
     }
 }
 
-// MARK: - Hidden Preset Row
+// MARK: - Hidden Context Row
 
-private struct HiddenPresetRow: View {
+private struct HiddenContextRow: View {
     let context: ConversationContext
+    let isPreset: Bool
     let onRestore: () -> Void
 
     var body: some View {
@@ -1161,7 +1205,7 @@ private struct HiddenPresetRow: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
 
-                Text("Preset")
+                Text(isPreset ? "Preset" : "Custom")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -1191,8 +1235,9 @@ private struct ContextHotkeysSection: View {
 
     // All visible contexts (presets + custom) that can have hotkeys
     private var allContexts: [ConversationContext] {
-        let visiblePresets = ConversationContext.presets.filter { !settings.isPresetContextHidden($0.id) }
-        return visiblePresets + settings.contexts.filter { !$0.isPreset }
+        let visiblePresets = ConversationContext.presets.filter { !settings.isContextHidden($0.id) }
+        let visibleCustom = settings.contexts.filter { !$0.isPreset && !settings.isContextHidden($0.id) }
+        return visiblePresets + visibleCustom
     }
 
     // Contexts with hotkeys assigned
