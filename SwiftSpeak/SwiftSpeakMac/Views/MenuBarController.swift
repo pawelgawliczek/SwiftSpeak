@@ -1146,7 +1146,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
     case voiceLanguage = "Voice & Language"
     case transcription = "Transcription & AI"
     case personalization = "Personalization"
-    case behavior = "Behavior"
+    case powerMode = "Power Mode"
     case iOSKeyboard = "iOS Keyboard"
     case security = "Security & Privacy"
     case usage = "Usage & Costs"
@@ -1163,7 +1163,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .voiceLanguage: return "waveform"
         case .transcription: return "cpu"
         case .personalization: return "person.fill"
-        case .behavior: return "bolt.fill"
+        case .powerMode: return "bolt.fill"
         case .iOSKeyboard: return "keyboard.fill"
         case .security: return "lock.shield.fill"
         case .usage: return "chart.pie.fill"
@@ -1179,7 +1179,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .voiceLanguage: return .blue
         case .transcription: return .purple
         case .personalization: return .orange
-        case .behavior: return .yellow
+        case .powerMode: return .yellow
         case .iOSKeyboard: return .indigo
         case .security: return .green
         case .usage: return .mint
@@ -1231,7 +1231,7 @@ struct MacSettingsView: View {
                 List(selection: $selectedSection) {
                     // Main settings (matches iOS)
                     Section {
-                        ForEach([SettingsSection.voiceLanguage, .transcription, .personalization, .behavior, .security, .usage, .vaults], id: \.self) { section in
+                        ForEach([SettingsSection.voiceLanguage, .transcription, .personalization, .powerMode, .security, .usage, .vaults], id: \.self) { section in
                             SidebarRow(section: section, settings: settings)
                                 .tag(section)
                         }
@@ -1264,7 +1264,7 @@ struct MacSettingsView: View {
                     ProvidersSettingsTab(settings: settings)
                 case .personalization:
                     MacPersonalizationView(settings: settings)
-                case .behavior:
+                case .powerMode:
                     MacBehaviorView(settings: settings)
                 case .iOSKeyboard:
                     MacKeyboardSettingsView(settings: settings)
@@ -1331,9 +1331,9 @@ struct SidebarRow: View {
         case .personalization:
             let contextCount = settings.contexts.count
             return contextCount > 0 ? "\(contextCount) context\(contextCount == 1 ? "" : "s")" : "Contexts, memory"
-        case .behavior:
+        case .powerMode:
             let powerModeCount = settings.activePowerModes.count
-            return powerModeCount > 0 ? "\(powerModeCount) Power Mode\(powerModeCount == 1 ? "" : "s") active" : "Power Modes, streaming"
+            return powerModeCount > 0 ? "\(powerModeCount) active" : "AI agents, RAG"
         case .iOSKeyboard:
             var parts: [String] = []
             if !settings.keyboardShowSwiftSpeakBar { parts.append("Bar hidden") }
@@ -1413,28 +1413,86 @@ struct ProvidersSettingsTab: View {
     @ObservedObject var settings: MacSettings
     @State private var providerToAdd: AIProvider?
     @State private var editingConfig: AIProviderConfig?
+    @State private var selectedTab = 0
+
+    /// Provider options for Formatting, including Apple Intelligence when available
+    private var formattingProviderOptions: [AIProvider] {
+        var options = settings.formattingProviders.map { $0.provider }
+        if settings.appleIntelligenceConfig.isAvailable {
+            // Add Apple Intelligence (represented by .local) if device supports it
+            options.insert(.local, at: 0)
+        }
+        return options
+    }
+
+    /// Provider options for Power Mode, including Apple Intelligence when available
+    private var powerModeProviderOptions: [AIProvider] {
+        var options = settings.powerModeProviders.map { $0.provider }
+        if settings.appleIntelligenceConfig.isAvailable {
+            // Add Apple Intelligence (represented by .local) if device supports it
+            options.insert(.local, at: 0)
+        }
+        return options
+    }
+
+    /// Check if the current transcription provider supports streaming
+    private var isStreamingProviderSelected: Bool {
+        let provider = settings.selectedTranscriptionProvider
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("AI Providers")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                        Text("Configure cloud AI services for transcription, translation, and formatting")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button(action: { providerToAdd = settings.availableProvidersToAdd.first ?? .openAI }) {
-                        Label("Add Provider", systemImage: "plus")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(settings.availableProvidersToAdd.isEmpty)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Transcription & AI")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    Text("Configure AI providers and recording settings")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 8)
+
+                // Tab Picker
+                Picker("", selection: $selectedTab) {
+                    Text("AI Providers").tag(0)
+                    Text("Recording").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 300)
+
+                if selectedTab == 0 {
+                    aiProvidersContent
+                } else {
+                    recordingSettingsContent
+                }
+            }
+            .padding(24)
+        }
+        .sheet(item: $providerToAdd) { provider in
+            AddProviderSheet(settings: settings, initialProvider: provider)
+        }
+        .sheet(item: $editingConfig) { config in
+            EditProviderSheet(settings: settings, config: config)
+        }
+    }
+
+    // MARK: - AI Providers Tab Content
+
+    private var aiProvidersContent: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            // Add Provider Button
+            HStack {
+                Spacer()
+                Button(action: { providerToAdd = settings.availableProvidersToAdd.first ?? .openAI }) {
+                    Label("Add Provider", systemImage: "plus")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(settings.availableProvidersToAdd.isEmpty)
+            }
+            .padding(.bottom, 8)
 
                 // Configured Providers
                 VStack(alignment: .leading, spacing: 12) {
@@ -1482,7 +1540,8 @@ struct ProvidersSettingsTab: View {
                 }
 
                 // Default Provider Selection
-                if !settings.configuredAIProviders.isEmpty {
+                // Show if any cloud providers configured OR Apple Intelligence is available
+                if !settings.configuredAIProviders.isEmpty || settings.appleIntelligenceConfig.isAvailable {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Default Selection")
                             .font(.headline)
@@ -1517,17 +1576,36 @@ struct ProvidersSettingsTab: View {
 
                             Divider().padding(.horizontal, 12)
 
+                            // Formatting (for Contexts)
+                            // Include Apple Intelligence when available + cloud providers
+                            let formattingOptions = formattingProviderOptions
+                            if !formattingOptions.isEmpty {
+                                DefaultProviderRow(
+                                    title: "Formatting",
+                                    icon: "text.badge.checkmark",
+                                    color: .teal,
+                                    description: "AI text formatting for Contexts",
+                                    selection: $settings.selectedFormattingProvider,
+                                    options: formattingOptions
+                                )
+                            }
+
+                            Divider().padding(.horizontal, 12)
+
                             // Power Mode
-                            if !settings.powerModeProviders.isEmpty {
+                            // Include Apple Intelligence when available + cloud providers
+                            let powerModeOptions = powerModeProviderOptions
+                            if !powerModeOptions.isEmpty {
                                 DefaultProviderRow(
                                     title: "Power Mode",
                                     icon: "bolt.fill",
                                     color: .orange,
-                                    description: "AI formatting and processing",
+                                    description: "Power Mode voice workflows",
                                     selection: $settings.selectedPowerModeProvider,
-                                    options: settings.powerModeProviders.map { $0.provider }
+                                    options: powerModeOptions
                                 )
                             }
+
                         }
                         .background(Color.primary.opacity(0.03))
                         .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -1555,13 +1633,91 @@ struct ProvidersSettingsTab: View {
                     }
                 }
             }
-            .padding(24)
-        }
-        .sheet(item: $providerToAdd) { provider in
-            AddProviderSheet(settings: settings, initialProvider: provider)
-        }
-        .sheet(item: $editingConfig) { config in
-            EditProviderSheet(settings: settings, config: config)
+    }
+
+    // MARK: - Recording Settings Tab Content
+
+    private var recordingSettingsContent: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Transcription Streaming
+            GroupBox("Streaming") {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Toggle("Stream transcriptions", isOn: $settings.transcriptionStreamingEnabled)
+                            Text("Beta")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(Color.accentColor.opacity(0.8))
+                                .clipShape(Capsule())
+                        }
+                        Text("Show transcription in real-time as you speak")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
+                            Text("Current provider doesn't support streaming. Use OpenAI, Deepgram, AssemblyAI, or Google.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                .padding(8)
+            }
+
+            // Auto-return
+            GroupBox("Auto-Return") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Return to previous app after recording", isOn: $settings.autoReturnEnabled)
+                    Text("Automatically switch back to the app you were using after transcription completes")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(8)
+            }
+
+            // Sound effects
+            GroupBox("Sound Effects") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Toggle("Play sound when recording starts", isOn: $settings.playSoundOnRecordStart)
+                    Toggle("Play sound when recording ends", isOn: $settings.playSoundOnRecordEnd)
+                }
+                .padding(8)
+            }
+
+            // Audio Quality (Network Optimization)
+            GroupBox("Audio Quality") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("Recording Quality", selection: $settings.audioQuality) {
+                        ForEach(AudioQualityMode.allCases, id: \.self) { mode in
+                            Text(mode.displayName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 250)
+
+                    Text(settings.audioQuality.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    // Show current network status when auto is selected
+                    if settings.audioQuality == .auto {
+                        HStack(spacing: 6) {
+                            let recommended = NetworkQualityMonitor.shared.recommendedQuality
+                            Image(systemName: recommended == .high ? "wifi" : recommended == .standard ? "wifi" : "wifi.exclamationmark")
+                                .foregroundStyle(recommended == .high ? .green : recommended == .standard ? .yellow : .orange)
+                            Text("Current: \(recommended.displayName)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.top, 4)
+                    }
+                }
+                .padding(8)
+            }
+
+            Spacer()
         }
     }
 }
@@ -1640,6 +1796,7 @@ private struct ProviderConfigCard: View {
         switch capability {
         case "Transcription": return .blue
         case "Translation": return .purple
+        case "Formatting": return .teal
         case "Power Mode": return .orange
         default: return .gray
         }
@@ -1655,6 +1812,22 @@ private struct DefaultProviderRow: View {
     let description: String
     @Binding var selection: AIProvider
     let options: [AIProvider]
+
+    /// Display name for provider, showing "Apple Intelligence" for local in formatting/power contexts
+    private func displayName(for provider: AIProvider) -> String {
+        if provider == .local {
+            return "Apple Intelligence"
+        }
+        return provider.displayName
+    }
+
+    /// Short name for provider, showing "Apple" for local in formatting/power contexts
+    private func shortName(for provider: AIProvider) -> String {
+        if provider == .local {
+            return "Apple"
+        }
+        return provider.shortName
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -1682,18 +1855,17 @@ private struct DefaultProviderRow: View {
             Menu {
                 ForEach(options, id: \.self) { provider in
                     Button(action: { selection = provider }) {
-                        HStack {
-                            Text(provider.displayName)
-                            if selection == provider {
-                                Image(systemName: "checkmark")
-                            }
+                        Label {
+                            Text(displayName(for: provider))
+                        } icon: {
+                            Image(systemName: provider.macIconSystemName)
                         }
                     }
                 }
             } label: {
                 HStack(spacing: 6) {
                     MacProviderIcon(selection, size: .small, style: .filled)
-                    Text(selection.shortName)
+                    Text(shortName(for: selection))
                         .font(.callout)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.caption2)
@@ -1876,6 +2048,7 @@ struct EditProviderSheet: View {
     @State private var usageCategories: Set<ProviderUsageCategory> = []
     @State private var transcriptionModel: String = ""
     @State private var translationModel: String = ""
+    @State private var formattingModel: String = ""
     @State private var powerModeModel: String = ""
 
     // Provider-specific configuration
@@ -2182,6 +2355,7 @@ struct EditProviderSheet: View {
         switch category {
         case .transcription: return $transcriptionModel
         case .translation: return $translationModel
+        case .formatting: return $formattingModel
         case .powerMode: return $powerModeModel
         }
     }
@@ -2190,7 +2364,7 @@ struct EditProviderSheet: View {
         switch category {
         case .transcription:
             return refreshedSTTModels ?? config.provider.availableSTTModels
-        case .translation, .powerMode:
+        case .translation, .formatting, .powerMode:
             return refreshedLLMModels ?? config.provider.availableLLMModels
         }
     }
@@ -2200,6 +2374,7 @@ struct EditProviderSheet: View {
         usageCategories = config.usageCategories
         transcriptionModel = config.transcriptionModel ?? config.provider.defaultSTTModel ?? ""
         translationModel = config.translationModel ?? config.provider.defaultLLMModel ?? ""
+        formattingModel = config.formattingModel ?? config.provider.defaultLLMModel ?? ""
         powerModeModel = config.powerModeModel ?? config.provider.defaultLLMModel ?? ""
 
         // Load provider-specific configuration
@@ -2218,6 +2393,7 @@ struct EditProviderSheet: View {
         updatedConfig.usageCategories = usageCategories
         updatedConfig.transcriptionModel = usageCategories.contains(.transcription) ? transcriptionModel : nil
         updatedConfig.translationModel = usageCategories.contains(.translation) ? translationModel : nil
+        updatedConfig.formattingModel = usageCategories.contains(.formatting) ? formattingModel : nil
         updatedConfig.powerModeModel = usageCategories.contains(.powerMode) ? powerModeModel : nil
 
         // Save provider-specific configuration
@@ -3000,7 +3176,7 @@ private struct ContextHotkeySettingsRow: View {
                     .fill(context.color.color.opacity(0.2))
                     .frame(width: 32, height: 32)
 
-                if context.icon.contains(".") {
+                if context.icon.isSFSymbolName {
                     Image(systemName: context.icon)
                         .font(.system(size: 14))
                         .foregroundStyle(context.color.gradient)
@@ -3373,145 +3549,41 @@ struct MacPersonalizationView: View {
     }
 }
 
-// MARK: - Behavior View (matches iOS)
+// MARK: - Power Mode View (matches iOS)
 
 struct MacBehaviorView: View {
     @ObservedObject var settings: MacSettings
-    @State private var selectedTab = 0
-
-    /// Check if the current transcription provider supports streaming
-    private var isStreamingProviderSelected: Bool {
-        let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
-    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 // Header
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Behavior")
+                    Text("Power Mode")
                         .font(.title2)
                         .fontWeight(.semibold)
-                    Text("Configure Power Modes, streaming, and automation")
+                    Text("Create AI-powered voice workflows with agents, RAG, and web search")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.bottom, 8)
 
-                // Tab Picker
-                Picker("", selection: $selectedTab) {
-                    Text("Power Modes").tag(0)
-                    Text("Settings").tag(1)
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 300)
-
-                if selectedTab == 0 {
-                    // Power Modes
-                    MacPowerModesView(settings: settings)
-                        .frame(maxWidth: .infinity)
-                } else {
-                    // Behavior settings
-                    behaviorSettings
-                }
-            }
-            .padding(20)
-        }
-    }
-
-    private var behaviorSettings: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Streaming
-            GroupBox("Streaming") {
-                VStack(alignment: .leading, spacing: 12) {
-                    // Transcription streaming
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Toggle("Stream transcriptions", isOn: $settings.transcriptionStreamingEnabled)
-                            Text("Beta")
-                                .font(.caption2.weight(.medium))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Color.accentColor.opacity(0.8))
-                                .clipShape(Capsule())
-                        }
-                        Text("Show transcription in real-time as you speak")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
-                            Text("Current provider doesn't support streaming. Use OpenAI, Deepgram, AssemblyAI, or Google.")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                    }
-
-                    Divider()
-
-                    // Power Mode streaming
+                // Power Mode Streaming Setting
+                GroupBox("Streaming") {
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle("Stream Power Mode responses", isOn: $settings.powerModeStreamingEnabled)
                         Text("Stream AI responses as they're generated instead of waiting for completion")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    .padding(8)
                 }
-                .padding(8)
+
+                // Power Modes List
+                MacPowerModesView(settings: settings)
+                    .frame(maxWidth: .infinity)
             }
-
-            // Auto-return
-            GroupBox("Auto-Return") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Return to previous app after recording", isOn: $settings.autoReturnEnabled)
-                    Text("Automatically switch back to the app you were using after transcription completes")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(8)
-            }
-
-            // Sound effects
-            GroupBox("Sound Effects") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle("Play sound when recording starts", isOn: $settings.playSoundOnRecordStart)
-                    Toggle("Play sound when recording ends", isOn: $settings.playSoundOnRecordEnd)
-                }
-                .padding(8)
-            }
-
-            // Audio Quality (Network Optimization)
-            GroupBox("Audio Quality") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Picker("Recording Quality", selection: $settings.audioQuality) {
-                        ForEach(AudioQualityMode.allCases, id: \.self) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 250)
-
-                    Text(settings.audioQuality.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    // Show current network status when auto is selected
-                    if settings.audioQuality == .auto {
-                        HStack(spacing: 6) {
-                            let recommended = NetworkQualityMonitor.shared.recommendedQuality
-                            Image(systemName: recommended == .high ? "wifi" : recommended == .standard ? "wifi" : "wifi.exclamationmark")
-                                .foregroundStyle(recommended == .high ? .green : recommended == .standard ? .yellow : .orange)
-                            Text("Current: \(recommended.displayName)")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.top, 4)
-                    }
-                }
-                .padding(8)
-            }
-
-            Spacer()
+            .padding(20)
         }
     }
 }
