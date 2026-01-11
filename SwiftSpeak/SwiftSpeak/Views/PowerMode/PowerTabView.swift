@@ -58,34 +58,79 @@ struct PowerTabView: View {
 
 // MARK: - Meetings List Content
 
-/// Wrapper for MeetingHistoryView content within PowerTabView
+/// Card-based meeting list matching Context/PowerMode style
 private struct MeetingsListContent: View {
     @ObservedObject private var historyManager = MeetingHistoryManager.shared
     @StateObject private var orchestrator = MeetingRecordingOrchestrator()
 
     @State private var showingDeleteConfirmation = false
     @State private var meetingToDelete: MeetingRecord?
+    @State private var navigateToDetail: MeetingRecord?
     @State private var retryError: String?
     @State private var showRetryError = false
 
     var body: some View {
-        Group {
-            if historyManager.meetings.isEmpty {
-                emptyState
-            } else {
-                meetingsList
+        ScrollView {
+            VStack(spacing: 16) {
+                // Header section
+                headerSection
+
+                if historyManager.meetings.isEmpty {
+                    emptyState
+                } else {
+                    // Meetings list
+                    LazyVStack(spacing: 12) {
+                        ForEach(historyManager.meetings) { meeting in
+                            SwipeableMeetingCard(
+                                meeting: meeting,
+                                onTap: {
+                                    HapticManager.lightTap()
+                                    navigateToDetail = meeting
+                                },
+                                onDelete: {
+                                    meetingToDelete = meeting
+                                    showingDeleteConfirmation = true
+                                },
+                                onRetry: meeting.status.canRetry ? {
+                                    Task { await retryMeeting(meeting) }
+                                } : nil
+                            )
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // Bottom spacing
+                Spacer()
+                    .frame(height: 32)
             }
         }
-        .alert("Delete Meeting", isPresented: $showingDeleteConfirmation) {
-            Button("Cancel", role: .cancel) { }
+        .navigationDestination(item: $navigateToDetail) { meeting in
+            if meeting.status.canRetry {
+                MeetingDetailView(meeting: meeting) {
+                    await retryMeeting(meeting)
+                }
+            } else {
+                MeetingDetailView(meeting: meeting, onRetry: nil)
+            }
+        }
+        .alert("Delete Meeting?", isPresented: $showingDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                meetingToDelete = nil
+            }
             Button("Delete", role: .destructive) {
                 if let meeting = meetingToDelete {
-                    historyManager.deleteMeeting(id: meeting.id)
+                    withAnimation(AppTheme.smoothSpring) {
+                        historyManager.deleteMeeting(id: meeting.id)
+                    }
                     HapticManager.mediumTap()
                 }
+                meetingToDelete = nil
             }
         } message: {
-            Text("Are you sure you want to delete this meeting? This cannot be undone.")
+            if let meeting = meetingToDelete {
+                Text("Are you sure you want to delete \"\(meeting.title)\"? This action cannot be undone.")
+            }
         }
         .alert("Retry Failed", isPresented: $showRetryError) {
             Button("OK") { retryError = nil }
@@ -94,66 +139,39 @@ private struct MeetingsListContent: View {
         }
     }
 
-    @ViewBuilder
+    // MARK: - Header Section
+
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Recorded meetings and their transcriptions.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Empty State
+
     private var emptyState: some View {
         VStack(spacing: 16) {
             Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 64))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 48))
+                .foregroundStyle(AppTheme.accentGradient)
 
-            Text("No meetings yet")
-                .font(.title2)
-                .fontWeight(.semibold)
+            Text("No Meetings")
+                .font(.headline)
 
             Text("Start a meeting recording from the home screen")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+        .padding(32)
     }
 
-    @ViewBuilder
-    private var meetingsList: some View {
-        List {
-            ForEach(historyManager.meetings) { meeting in
-                NavigationLink(value: meeting) {
-                    MeetingRowView(meeting: meeting)
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    if meeting.status.canDelete {
-                        Button(role: .destructive) {
-                            meetingToDelete = meeting
-                            showingDeleteConfirmation = true
-                        } label: {
-                            Label("Delete", systemImage: "trash")
-                        }
-                    }
-                }
-                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    if meeting.status.canRetry {
-                        Button {
-                            Task { await retryMeeting(meeting) }
-                        } label: {
-                            Label("Retry", systemImage: "arrow.clockwise")
-                        }
-                        .tint(.orange)
-                    }
-                }
-            }
-        }
-        .listStyle(.plain)
-        .navigationDestination(for: MeetingRecord.self) { [self] meeting in
-            if meeting.status.canRetry {
-                MeetingDetailView(meeting: meeting) {
-                    await self.retryMeeting(meeting)
-                }
-            } else {
-                MeetingDetailView(meeting: meeting, onRetry: nil)
-            }
-        }
-    }
+    // MARK: - Actions
 
     private func retryMeeting(_ meeting: MeetingRecord) async {
         appLog("Starting retry for meeting: \(meeting.id)", category: "Meeting")
