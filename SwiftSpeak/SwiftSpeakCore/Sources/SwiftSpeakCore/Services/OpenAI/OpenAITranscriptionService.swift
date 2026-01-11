@@ -65,7 +65,8 @@ public final class OpenAITranscriptionService: TranscriptionProvider {
 
         var fields: [String: String] = [
             "model": modelName,
-            "response_format": "text"
+            "response_format": "text",
+            "temperature": "0"          // Use temperature 0 for more deterministic output
         ]
 
         if let language = language {
@@ -75,6 +76,22 @@ public final class OpenAITranscriptionService: TranscriptionProvider {
         if let prompt = promptHint, !prompt.isEmpty {
             fields["prompt"] = prompt
         }
+
+        // Log the request details for debugging
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("📤 OpenAI Whisper Transcription Request")
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+        print("Model: \(modelName)")
+        print("Language: \(language?.whisperCode ?? "auto-detect")")
+        print("Temperature: 0")
+        print("Audio file: \(audioURL.lastPathComponent)")
+        if let prompt = fields["prompt"] {
+            print("Prompt hint:")
+            print("  \(prompt)")
+        } else {
+            print("Prompt hint: (none)")
+        }
+        print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
         let text: String = try await httpClient.uploadForText(
             url: endpoint,

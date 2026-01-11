@@ -301,8 +301,9 @@ struct MacHistoryRowView: View {
             // Header badges
             headerBadges
 
-            // Input section (if different from output)
-            if record.hasTransformation {
+            // Input section (show when formatting was applied, regardless of whether text changed)
+            // mode != .raw indicates formatting was attempted
+            if record.mode != .raw {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Input")
                         .font(.caption2.weight(.medium))
@@ -316,7 +317,7 @@ struct MacHistoryRowView: View {
 
             // Output text
             VStack(alignment: .leading, spacing: 4) {
-                if record.hasTransformation {
+                if record.mode != .raw {
                     Text("Output")
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(.tertiary)
@@ -545,8 +546,8 @@ struct MacHistoryDetailView: View {
 
     private var textContentSection: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Raw transcription (if different)
-            if record.hasTransformation {
+            // Raw transcription (show when formatting was applied)
+            if record.mode != .raw {
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
                         Image(systemName: "mic.fill")

@@ -1539,6 +1539,45 @@ struct ProvidersSettingsTab: View {
                     }
                 }
 
+                // Local Models Section
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Local Models")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+
+                    VStack(spacing: 0) {
+                        // Apple Speech (always available on macOS)
+                        LocalModelRow(
+                            title: "Apple Speech",
+                            icon: "apple.logo",
+                            color: .blue,
+                            description: "On-device speech recognition",
+                            isAvailable: true,
+                            statusText: "Available",
+                            capabilities: ["Transcription", "Streaming"]
+                        )
+
+                        Divider().padding(.horizontal, 12)
+
+                        // Apple Intelligence
+                        LocalModelRow(
+                            title: "Apple Intelligence",
+                            icon: "apple.logo",
+                            color: .purple,
+                            description: settings.appleIntelligenceConfig.isAvailable
+                                ? "On-device AI text processing"
+                                : (settings.appleIntelligenceConfig.unavailableReason ?? "Not available"),
+                            isAvailable: settings.appleIntelligenceConfig.isAvailable,
+                            statusText: settings.appleIntelligenceConfig.isAvailable
+                                ? (settings.appleIntelligenceConfig.isEnabled ? "Enabled" : "Disabled")
+                                : "Unavailable",
+                            capabilities: settings.appleIntelligenceConfig.isAvailable ? ["Formatting", "Power Mode"] : []
+                        )
+                    }
+                    .background(Color.primary.opacity(0.03))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
                 // Default Provider Selection
                 // Show if any cloud providers configured OR Apple Intelligence is available
                 if !settings.configuredAIProviders.isEmpty || settings.appleIntelligenceConfig.isAvailable {
@@ -1879,6 +1918,71 @@ private struct DefaultProviderRow: View {
             .buttonStyle(.plain)
         }
         .padding(12)
+    }
+}
+
+// MARK: - Local Model Row
+
+private struct LocalModelRow: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let description: String
+    let isAvailable: Bool
+    let statusText: String
+    let capabilities: [String]
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Icon
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Image(systemName: icon)
+                    .foregroundStyle(color)
+            }
+
+            // Info
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 6) {
+                    Text(title)
+                        .font(.callout.weight(.medium))
+
+                    // Status badge
+                    Text(statusText)
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(isAvailable ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
+                        .foregroundStyle(isAvailable ? .green : .orange)
+                        .clipShape(Capsule())
+                }
+
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Capabilities
+                if !capabilities.isEmpty {
+                    HStack(spacing: 4) {
+                        ForEach(capabilities, id: \.self) { capability in
+                            Text(capability)
+                                .font(.caption2)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.primary.opacity(0.05))
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .padding(.top, 2)
+                }
+            }
+
+            Spacer()
+        }
+        .padding(12)
+        .opacity(isAvailable ? 1.0 : 0.6)
     }
 }
 

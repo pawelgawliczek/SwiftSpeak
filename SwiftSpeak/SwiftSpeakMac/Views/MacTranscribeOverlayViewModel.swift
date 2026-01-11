@@ -441,11 +441,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
 
         // Build transcription hints from context
+        // Include recent records if context has includeRecentMessages enabled
+        let recentRecords = getRecentRecordsForContext()
         let promptContext = PromptContext.from(
             context: activeContext,
             powerMode: nil,
             globalMemory: settings.globalMemoryEnabled ? settings.globalMemory : nil,
-            vocabularyEntries: settings.vocabulary
+            vocabularyEntries: settings.vocabulary,
+            recentRecords: recentRecords
         )
         let transcriptionPrompt = promptContext.buildTranscriptionHint()
 
@@ -743,8 +746,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                     // Create formatting processing step
                     let formattingStep = ProcessingStepInfo(
                         stepType: .formatting,
-                        provider: settings.selectedPowerModeProvider,
-                        modelName: settings.selectedPowerModeProvider.defaultLLMModel ?? "default",
+                        provider: settings.selectedFormattingProvider,
+                        modelName: settings.selectedFormattingProvider.defaultLLMModel ?? "default",
                         startTime: result.startTime,
                         endTime: result.endTime,
                         cost: 0,
@@ -905,12 +908,14 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 macLog("Audio file size: \(fileSize) bytes", category: "Transcribe")
             }
 
-            // Build prompt context with global memory and vocabulary
+            // Build prompt context with global memory, vocabulary, and recent records
+            let recentRecords = getRecentRecordsForContext()
             let promptContext = PromptContext.from(
                 context: activeContext,
                 powerMode: nil,
                 globalMemory: settings.globalMemoryEnabled ? settings.globalMemory : nil,
-                vocabularyEntries: settings.vocabulary
+                vocabularyEntries: settings.vocabulary,
+                recentRecords: recentRecords
             )
 
             // Transcribe audio with language and vocabulary hints
@@ -960,8 +965,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                     // Create formatting processing step
                     let formattingStep = ProcessingStepInfo(
                         stepType: .formatting,
-                        provider: settings.selectedPowerModeProvider,
-                        modelName: settings.selectedPowerModeProvider.defaultLLMModel ?? "default",
+                        provider: settings.selectedFormattingProvider,
+                        modelName: settings.selectedFormattingProvider.defaultLLMModel ?? "default",
                         startTime: result.startTime,
                         endTime: result.endTime,
                         cost: 0,  // Cost calculated separately
@@ -1155,9 +1160,9 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         let startTime = Date()
 
         do {
-            // Use Power Mode provider for formatting
+            // Use Formatting provider (not Power Mode provider)
             guard let formattingProvider = factory.createFormattingProvider(
-                for: settings.selectedPowerModeProvider
+                for: settings.selectedFormattingProvider
             ) else {
                 return nil
             }
@@ -1355,6 +1360,20 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
     }
 
+    /// Get recent transcription records for the active context
+    /// Returns records filtered by context if includeRecentMessages is enabled
+    private func getRecentRecordsForContext() -> [TranscriptionRecord] {
+        guard let context = activeContext,
+              context.includeRecentMessages else {
+            return []
+        }
+
+        // Filter history by context ID
+        return settings.transcriptionHistory.filter { record in
+            record.contextId == context.id
+        }
+    }
+
     /// Cycle to next context: nil -> context1 -> context2 -> ... -> nil
     /// If contexts are assigned to the current app, only cycles through those
     func cycleToNextContext() {
@@ -1479,8 +1498,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         let translationProvider = wasTranslated ? settings.selectedTranslationProvider : nil
 
         // Use didFormat flag (actual formatting happened) instead of hasFormatting (would formatting happen)
-        let formattingProvider = didFormat ? settings.selectedPowerModeProvider : nil
-        let formattingModel = didFormat ? settings.selectedPowerModeProvider.defaultLLMModel : nil
+        let formattingProvider = didFormat ? settings.selectedFormattingProvider : nil
+        let formattingModel = didFormat ? settings.selectedFormattingProvider.defaultLLMModel : nil
 
         macLog("Saving to history - didFormat: \(didFormat), formattingProvider: \(formattingProvider?.displayName ?? "none"), formattingModel: \(formattingModel ?? "none")", category: "Transcribe")
 

@@ -95,6 +95,11 @@ struct ProviderFactory {
     // MARK: - Formatting Providers
 
     func createFormattingProvider(for provider: AIProvider) -> FormattingProvider? {
+        // Handle local providers (Apple Intelligence) - no API key needed
+        if provider == .local {
+            return createAppleIntelligenceProvider()
+        }
+
         guard let config = settings.getAIProviderConfig(for: provider),
               !config.apiKey.isEmpty else { return nil }
 
@@ -111,6 +116,21 @@ struct ProviderFactory {
         default:
             return nil
         }
+    }
+
+    // MARK: - Apple Intelligence
+
+    /// Create Apple Intelligence formatting provider
+    private func createAppleIntelligenceProvider() -> FormattingProvider? {
+        guard settings.isAppleIntelligenceReady else {
+            macLog("Apple Intelligence not ready", category: "ProviderFactory", level: .warning)
+            return nil
+        }
+
+        if #available(macOS 26.0, *) {
+            return AppleIntelligenceFormattingService(config: settings.appleIntelligenceConfig)
+        }
+        return AppleIntelligenceFormattingServiceFallback()
     }
 
     // MARK: - Streaming Formatting Providers
@@ -168,6 +188,6 @@ struct ProviderFactory {
 
     /// Create the currently selected formatting provider
     func createSelectedFormattingProvider() -> FormattingProvider? {
-        createFormattingProvider(for: settings.selectedPowerModeProvider)
+        createFormattingProvider(for: settings.selectedFormattingProvider)
     }
 }
