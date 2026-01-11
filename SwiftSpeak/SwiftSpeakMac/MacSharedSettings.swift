@@ -35,6 +35,7 @@ class MacSettings: ObservableObject {
         static let globalMemoryLimit = "icloud_globalMemoryLimit"
         static let selectedTranscriptionProvider = "icloud_selectedTranscriptionProvider"
         static let selectedTranslationProvider = "icloud_selectedTranslationProvider"
+        static let selectedFormattingProvider = "icloud_selectedFormattingProvider"
         static let selectedPowerModeProvider = "icloud_selectedPowerModeProvider"
         static let selectedMode = "icloud_selectedMode"
         static let selectedTargetLanguage = "icloud_selectedTargetLanguage"
@@ -84,9 +85,24 @@ class MacSettings: ObservableObject {
         }
     }
 
+    @Published var selectedFormattingProvider: AIProvider = .openAI {
+        didSet {
+            defaults?.set(selectedFormattingProvider.rawValue, forKey: "selectedFormattingProvider")
+            syncToiCloud()
+        }
+    }
+
     @Published var selectedPowerModeProvider: AIProvider = .openAI {
         didSet {
             defaults?.set(selectedPowerModeProvider.rawValue, forKey: "selectedPowerModeProvider")
+            syncToiCloud()
+        }
+    }
+
+    /// Provider defaults including default context
+    @Published var providerDefaults: ProviderDefaults = .default {
+        didSet {
+            saveProviderDefaults()
             syncToiCloud()
         }
     }
@@ -134,6 +150,38 @@ class MacSettings: ObservableObject {
         }
         // Fall back to global setting (nil = auto-detect)
         return selectedDictationLanguage
+    }
+
+    /// Output transcription in Arabizi (Franco-Arabic) format
+    /// Converts Arabic script to Latin alphabet with number substitutions (e.g., 3=ع, 7=ح)
+    /// Only applies when language is Arabic or Egyptian Arabic
+    @Published var outputArabizi: Bool = false {
+        didSet {
+            defaults?.set(outputArabizi, forKey: "outputArabizi")
+            syncToiCloud()
+        }
+    }
+
+    /// Effective Arabizi output setting: context/power mode override > global setting
+    /// Use this to determine if Arabizi formatting should be applied
+    var effectiveOutputArabizi: Bool {
+        // Check active power mode override
+        if let powerModeArabizi = activePowerMode?.outputArabizi {
+            return powerModeArabizi
+        }
+        // Check active context override
+        if let contextArabizi = activeContext?.outputArabizi {
+            return contextArabizi
+        }
+        // Fall back to global setting
+        return outputArabizi
+    }
+
+    /// Check if Arabizi output option should be visible
+    /// Only show when effective language is Arabic or Egyptian Arabic
+    var shouldShowArabiziOption: Bool {
+        guard let language = effectiveTranscriptionLanguage else { return false }
+        return language == .arabic || language == .egyptianArabic
     }
 
     @Published var isTranslationEnabled: Bool = false {
@@ -449,6 +497,171 @@ class MacSettings: ObservableObject {
         }
     }
 
+    // MARK: - Apple Intelligence (Phase 10f)
+
+    /// Apple Intelligence on-device text processing configuration
+    @Published var appleIntelligenceConfig: AppleIntelligenceConfig = .default {
+        didSet {
+            saveAppleIntelligenceConfig()
+        }
+    }
+
+    /// Whether Apple Intelligence is ready to use
+    var isAppleIntelligenceReady: Bool {
+        appleIntelligenceConfig.isAvailable && appleIntelligenceConfig.isEnabled
+    }
+
+    /// Whether any local formatting provider is available
+    var hasLocalFormatting: Bool {
+        isAppleIntelligenceReady
+    }
+
+    private func loadAppleIntelligenceConfig() {
+        // Load saved config (preserves isEnabled setting)
+        var config: AppleIntelligenceConfig
+        if let data = defaults?.data(forKey: "appleIntelligenceConfig"),
+           let savedConfig = try? JSONDecoder().decode(AppleIntelligenceConfig.self, from: data) {
+            config = savedConfig
+        } else {
+            config = AppleIntelligenceConfig.default
+        }
+
+        // Always re-check device capability (OS might have been updated)
+        // Apple Intelligence requires macOS 26.0+ and Apple Silicon
+        if #available(macOS 26.0, *) {
+            // Check for Apple Silicon (all M-series chips support Apple Intelligence)
+            var isAppleSilicon = false
+            var size = 0
+            sysctlbyname("hw.optional.arm64", nil, &size, nil, 0)
+            if size > 0 {
+                var value: Int32 = 0
+                sysctlbyname("hw.optional.arm64", &value, &size, nil, 0)
+                isAppleSilicon = value == 1
+            }
+
+            if isAppleSilicon {
+                config.isAvailable = true
+                config.unavailableReason = nil
+            } else {
+                config.isAvailable = false
+                config.unavailableReason = "Requires Mac with Apple Silicon (M1 or later)"
+            }
+        } else {
+            config.isAvailable = false
+            config.unavailableReason = "Requires macOS 26.0 or later"
+        }
+
+        appleIntelligenceConfig = config
+    }
+
+    private func saveAppleIntelligenceConfig() {
+        if let data = try? JSONEncoder().encode(appleIntelligenceConfig) {
+            defaults?.set(data, forKey: "appleIntelligenceConfig")
+        }
+    }
+
+    // MARK: - WhisperKit (Phase 10f)
+
+    /// WhisperKit on-device transcription configuration
+    @Published var whisperKitConfig: WhisperKitSettings = .default {
+        didSet {
+            saveWhisperKitConfig()
+        }
+    }
+
+    /// Whether WhisperKit is ready to use
+    var isWhisperKitReady: Bool {
+        whisperKitConfig.status == .ready && whisperKitConfig.isEnabled
+    }
+
+    private func loadWhisperKitConfig() {
+        if let data = defaults?.data(forKey: "whisperKitConfig"),
+           let config = try? JSONDecoder().decode(WhisperKitSettings.self, from: data) {
+            whisperKitConfig = config
+        }
+    }
+
+    private func saveWhisperKitConfig() {
+        if let data = try? JSONEncoder().encode(whisperKitConfig) {
+            defaults?.set(data, forKey: "whisperKitConfig")
+        }
+    }
+
+    // MARK: - Apple Translation (Phase 10f)
+
+    /// Apple Translation on-device translation configuration
+    @Published var appleTranslationConfig: AppleTranslationConfig = .default {
+        didSet {
+            saveAppleTranslationConfig()
+        }
+    }
+
+    /// Whether local translation is available
+    var hasLocalTranslation: Bool {
+        appleTranslationConfig.isAvailable && !appleTranslationConfig.downloadedLanguages.isEmpty
+    }
+
+    private func loadAppleTranslationConfig() {
+        var config: AppleTranslationConfig
+        if let data = defaults?.data(forKey: "appleTranslationConfig"),
+           let savedConfig = try? JSONDecoder().decode(AppleTranslationConfig.self, from: data) {
+            config = savedConfig
+        } else {
+            config = AppleTranslationConfig.default
+        }
+
+        // Check availability (macOS 14.4+)
+        if #available(macOS 14.4, *) {
+            config.isAvailable = true
+        } else {
+            config.isAvailable = false
+        }
+
+        appleTranslationConfig = config
+    }
+
+    private func saveAppleTranslationConfig() {
+        if let data = try? JSONEncoder().encode(appleTranslationConfig) {
+            defaults?.set(data, forKey: "appleTranslationConfig")
+        }
+    }
+
+    // MARK: - Self-Hosted LLM
+
+    /// Get the self-hosted LLM configuration (Ollama, LM Studio)
+    var selfHostedLLMConfig: LocalProviderConfig? {
+        getAIProviderConfig(for: .local)?.localConfig
+    }
+
+    // MARK: - Local Model Storage
+
+    /// Calculate total storage used by local models in bytes
+    var localModelStorageBytes: Int {
+        var total = 0
+
+        if whisperKitConfig.status == .ready {
+            total += whisperKitConfig.selectedModel.sizeBytes
+        }
+
+        for lang in appleTranslationConfig.downloadedLanguages where !lang.isSystem {
+            total += lang.sizeBytes
+        }
+
+        return total
+    }
+
+    /// Formatted string of storage used
+    var localModelStorageFormatted: String {
+        let bytes = Double(localModelStorageBytes)
+        if bytes < 1024 * 1024 {
+            return String(format: "%.0f KB", bytes / 1024)
+        } else if bytes < 1024 * 1024 * 1024 {
+            return String(format: "%.1f MB", bytes / (1024 * 1024))
+        } else {
+            return String(format: "%.1f GB", bytes / (1024 * 1024 * 1024))
+        }
+    }
+
     // MARK: - Vocabulary
 
     @Published var vocabulary: [VocabularyEntry] = [] {
@@ -681,6 +894,11 @@ class MacSettings: ObservableObject {
             selectedTranslationProvider = provider
         }
 
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedFormattingProvider),
+           let provider = AIProvider(rawValue: providerRaw) {
+            selectedFormattingProvider = provider
+        }
+
         if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedPowerModeProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedPowerModeProvider = provider
@@ -799,6 +1017,7 @@ class MacSettings: ObservableObject {
         // Sync primitive values
         iCloud?.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
         iCloud?.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
+        iCloud?.set(selectedFormattingProvider.rawValue, forKey: iCloudKeys.selectedFormattingProvider)
         iCloud?.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
         iCloud?.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
         iCloud?.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
@@ -873,6 +1092,11 @@ class MacSettings: ObservableObject {
             selectedTranslationProvider = provider
         }
 
+        if let providerRaw = defaults?.string(forKey: "selectedFormattingProvider"),
+           let provider = AIProvider(rawValue: providerRaw) {
+            selectedFormattingProvider = provider
+        }
+
         if let providerRaw = defaults?.string(forKey: "selectedPowerModeProvider"),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedPowerModeProvider = provider
@@ -886,6 +1110,11 @@ class MacSettings: ObservableObject {
         if let langRaw = defaults?.string(forKey: "selectedDictationLanguage"),
            let lang = Language(rawValue: langRaw) {
             selectedDictationLanguage = lang
+        }
+
+        // Load Arabizi output setting
+        if defaults?.object(forKey: "outputArabizi") != nil {
+            outputArabizi = defaults?.bool(forKey: "outputArabizi") ?? false
         }
 
         if let langRaw = defaults?.string(forKey: "selectedTargetLanguage"),
@@ -904,6 +1133,7 @@ class MacSettings: ObservableObject {
         // Load contexts and power modes
         loadContexts()
         loadPowerModes()
+        loadProviderDefaults()
         loadGlobalPowerModeHotkey()
         loadPowerModeHotkeys()
         loadContextHotkeys()
@@ -914,6 +1144,9 @@ class MacSettings: ObservableObject {
         loadVocabulary()
         loadObsidianVaults()
         loadObsidianAPIConfig()
+        loadAppleIntelligenceConfig()
+        loadWhisperKitConfig()
+        loadAppleTranslationConfig()
 
         // Load active context
         if let contextIdString = defaults?.string(forKey: "activeContextId"),
@@ -1027,6 +1260,19 @@ class MacSettings: ObservableObject {
         syncToiCloud()
     }
 
+    private func loadProviderDefaults() {
+        if let data = defaults?.data(forKey: "providerDefaults"),
+           let config = try? JSONDecoder().decode(ProviderDefaults.self, from: data) {
+            providerDefaults = config
+        }
+    }
+
+    private func saveProviderDefaults() {
+        if let data = try? JSONEncoder().encode(providerDefaults) {
+            defaults?.set(data, forKey: "providerDefaults")
+        }
+    }
+
     func addAIProvider(_ config: AIProviderConfig) {
         guard !configuredAIProviders.contains(where: { $0.provider == config.provider }) else { return }
         configuredAIProviders.append(config)
@@ -1049,6 +1295,11 @@ class MacSettings: ObservableObject {
         if selectedTranslationProvider == provider {
             if let first = translationProviders.first {
                 selectedTranslationProvider = first.provider
+            }
+        }
+        if selectedFormattingProvider == provider {
+            if let first = formattingProviders.first {
+                selectedFormattingProvider = first.provider
             }
         }
         if selectedPowerModeProvider == provider {
@@ -1075,6 +1326,11 @@ class MacSettings: ObservableObject {
 
     var translationProviders: [AIProviderConfig] {
         configuredAIProviders.filter { $0.isConfiguredForTranslation }
+    }
+
+    /// Formatting providers (for Context AI formatting) - same as powerMode providers
+    var formattingProviders: [AIProviderConfig] {
+        configuredAIProviders.filter { $0.isConfiguredForPowerMode }
     }
 
     var powerModeProviders: [AIProviderConfig] {
@@ -1477,6 +1733,21 @@ extension MacSettings: ContextProviderManager {
     // - effectiveTranscriptionProvider: ProviderSelection
     // - effectiveTranslationProvider: ProviderSelection
     // - effectiveAIProvider: ProviderSelection
+}
+
+// MARK: - LocalModelSettingsProvider Conformance
+
+extension MacSettings: LocalModelSettingsProvider {
+    // Protocol requirements are already implemented in MacSettings:
+    // - whisperKitConfig: WhisperKitSettings
+    // - appleIntelligenceConfig: AppleIntelligenceConfig
+    // - appleTranslationConfig: AppleTranslationConfig
+    // - selfHostedLLMConfig: LocalProviderConfig?
+    // - isWhisperKitReady: Bool
+    // - isAppleIntelligenceReady: Bool
+    // - hasLocalTranslation: Bool
+    // - localModelStorageBytes: Int
+    // - localModelStorageFormatted: String
 }
 
 // MARK: - Programmable Button Action (Phase 16)

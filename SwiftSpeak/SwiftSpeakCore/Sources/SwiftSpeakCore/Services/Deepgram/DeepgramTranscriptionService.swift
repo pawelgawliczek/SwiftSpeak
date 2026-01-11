@@ -43,7 +43,9 @@ public final class DeepgramTranscriptionService: TranscriptionProvider {
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "model", value: modelName),
             URLQueryItem(name: "punctuate", value: "true"),
-            URLQueryItem(name: "smart_format", value: "true")
+            URLQueryItem(name: "smart_format", value: "true"),
+            URLQueryItem(name: "paragraphs", value: "true"),       // Add paragraph breaks
+            URLQueryItem(name: "filler_words", value: "false")     // Remove "um", "uh", etc.
         ]
 
         if let language = language {

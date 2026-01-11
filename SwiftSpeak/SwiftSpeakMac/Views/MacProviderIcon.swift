@@ -119,7 +119,7 @@ extension AIProvider {
         case .azure: return "azure"
         case .elevenLabs: return "elevenlabs"
         case .assemblyAI: return nil
-        case .local: return nil
+        case .local: return nil  // Uses SF Symbol (Apple logo for Apple Intelligence)
         case .appleSpeech: return nil  // Uses SF Symbol
         }
     }
@@ -131,7 +131,7 @@ extension AIProvider {
         case .google: return "brain"
         case .elevenLabs: return "waveform"
         case .deepgram: return "mic.fill"
-        case .local: return "desktopcomputer"
+        case .local: return "apple.logo"  // Apple Intelligence
         case .assemblyAI: return "waveform.circle.fill"
         case .deepL: return "character.book.closed.fill"
         case .azure: return "cloud.fill"

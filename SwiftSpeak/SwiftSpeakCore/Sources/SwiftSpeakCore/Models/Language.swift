@@ -184,6 +184,26 @@ public enum Language: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// ElevenLabs Scribe uses ISO 639-3 codes for improved dialect accuracy
+    /// Arabic dialects (Egyptian, Levantine, Gulf) all use "ara" code
+    public var elevenLabsCode: String {
+        switch self {
+        case .english: return "eng"
+        case .spanish: return "spa"
+        case .french: return "fra"
+        case .german: return "deu"
+        case .italian: return "ita"
+        case .portuguese: return "por"
+        case .chinese: return "cmn"  // Mandarin Chinese
+        case .japanese: return "jpn"
+        case .korean: return "kor"
+        case .arabic: return "ara"
+        case .egyptianArabic: return "ara"  // ElevenLabs detects dialect automatically
+        case .russian: return "rus"
+        case .polish: return "pol"
+        }
+    }
+
     /// Google STT models supported by this language
     /// Reference: https://cloud.google.com/speech-to-text/docs/v1/speech-to-text-supported-languages
     public var googleSTTSupportedModels: [String] {

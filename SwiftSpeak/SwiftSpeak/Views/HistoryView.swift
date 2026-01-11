@@ -1640,13 +1640,13 @@ private struct PromptConfigRow: View {
                     .frame(width: 32, height: 32)
 
                 // Handle emoji icons vs SF Symbols
-                if icon.count <= 2 && !icon.contains(".") {
-                    Text(icon)
-                        .font(.system(size: 14))
-                } else {
+                if icon.isSFSymbolName {
                     Image(systemName: icon)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(iconColor)
+                } else {
+                    Text(icon)
+                        .font(.system(size: 14))
                 }
             }
 

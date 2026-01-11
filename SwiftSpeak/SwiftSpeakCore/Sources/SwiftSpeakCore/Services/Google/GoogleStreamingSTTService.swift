@@ -79,6 +79,21 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
     private var messagesReceived: Int = 0
     private var lastAudioStatsLog: Date?
 
+    // MARK: - Stability-Aware Transcript Accumulation
+
+    /// Confirmed transcript (from high-stability results that won't change)
+    private var confirmedTranscript: String = ""
+    /// Tentative transcript (low stability, may be revised)
+    private var tentativeTranscript: String = ""
+    /// Word-level data with confidence for revision tracking
+    private var wordConfidences: [(word: String, confidence: Float, startTime: Double, endTime: Double)] = []
+    /// Minimum stability threshold to consider text "confirmed"
+    private let stabilityThreshold: Float = 0.8
+    /// Minimum confidence for a word to be considered reliable
+    private let confidenceThreshold: Float = 0.85
+    /// Track if we've received any final results (to know when to use accumulated data)
+    private var hasFinalResults: Bool = false
+
     /// Google Cloud Speech gRPC endpoint
     private static let speechEndpoint = "speech.googleapis.com"
     private static let speechPort = 443
@@ -121,6 +136,12 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
         audioBytesTotal = 0
         messagesReceived = 0
         lastAudioStatsLog = nil
+
+        // Reset stability-aware accumulation state
+        confirmedTranscript = ""
+        tentativeTranscript = ""
+        wordConfidences = []
+        hasFinalResults = false
 
         // Create event loop group
         let group = MultiThreadedEventLoopGroup(numberOfThreads: 1)
@@ -177,6 +198,12 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
             config.languageCode = language?.googleSTTCode ?? "en-US"
             config.enableAutomaticPunctuation = true
 
+            // Enable word-level data for confidence-based revision
+            config.enableWordTimeOffsets = true
+            config.enableWordConfidence = true
+            // Request multiple alternatives so we can select the best one
+            config.maxAlternatives = 3
+
             // Determine effective model for this language
             if let lang = language, !lang.googleSTTSupportedModels.contains(modelName) {
                 config.model = lang.googleSTTBestModel
@@ -186,20 +213,47 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
 
             // Add speech contexts for vocabulary boost
             // Best practice: boost values 10-20 for important terms (Google recommends 0-20 range)
+            var speechContexts: [Google_Cloud_Speech_V1_SpeechContext] = []
+
+            // Class tokens for common patterns (helps recognize phone numbers, dates, etc.)
+            // These are built-in Google patterns that improve recognition of structured data
+            var classContext = Google_Cloud_Speech_V1_SpeechContext()
+            classContext.phrases = [
+                "$PHONENUM",      // Phone numbers
+                "$TIME",          // Time expressions
+                "$DATE",          // Date expressions
+                "$MONEY",         // Currency amounts
+                "$PERCENT",       // Percentages
+                "$ADDRESSNUM",    // Street numbers
+                "$OPERAND"        // Numbers in general
+            ]
+            classContext.boost = 10.0  // Moderate boost for class tokens
+            speechContexts.append(classContext)
+
+            // Custom vocabulary from transcription prompt
             if let prompt = transcriptionPrompt, !prompt.isEmpty {
                 let keywords = extractKeywords(from: prompt)
                 if !keywords.isEmpty {
-                    var context = Google_Cloud_Speech_V1_SpeechContext()
-                    context.phrases = keywords
-                    context.boost = 15.0  // Strong boost for custom vocabulary (0-20 range)
-                    config.speechContexts = [context]
-                    print("[GoogleSTT] 📝 Speech context with \(keywords.count) phrases, boost=15")
+                    var vocabContext = Google_Cloud_Speech_V1_SpeechContext()
+                    vocabContext.phrases = keywords
+                    vocabContext.boost = 15.0  // Strong boost for custom vocabulary
+                    speechContexts.append(vocabContext)
+                    print("[GoogleSTT] 📝 Speech context with \(keywords.count) custom phrases, boost=15")
                 }
             }
 
+            config.speechContexts = speechContexts
+            print("[GoogleSTT] 📝 Added \(speechContexts.count) speech contexts (including class tokens)")
+
             var streamingConfig = Google_Cloud_Speech_V1_StreamingRecognitionConfig()
             streamingConfig.config = config
-            streamingConfig.interimResults = true  // Enable partial results
+            streamingConfig.interimResults = true  // Enable partial results for real-time feedback
+            // CRITICAL: Keep single_utterance false to maintain full session context
+            // When true, Google stops processing after first silence - losing cross-phrase context
+            streamingConfig.singleUtterance = false
+            // Voice Activity Detection: Don't let Google auto-segment on silence
+            // This keeps the full audio in one semantic context for better correction
+            streamingConfig.enableVoiceActivityEvents = false
 
             var configRequest = Google_Cloud_Speech_V1_StreamingRecognizeRequest()
             configRequest.streamingConfig = streamingConfig
@@ -217,6 +271,8 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
                 case .success(let status):
                     print("[GoogleSTT] 🏁 Stream completed - status: \(status.code), message: \(status.message ?? "none")")
                     if status.isOk {
+                        // Finalize transcript with all accumulated context before signaling end
+                        self.finalizeTranscript()
                         self.sessionEndedSubject.send(())
                     } else {
                         let error = TranscriptionError.serverError(statusCode: Int(status.code.rawValue), message: status.message)
@@ -360,22 +416,124 @@ public final class GoogleStreamingSTTService: NSObject, StreamingTranscriptionPr
             return
         }
 
-        // Process results
+        // Process results with stability-aware accumulation
         for result in response.results {
-            guard let alternative = result.alternatives.first else { continue }
+            // Find the best alternative (highest confidence)
+            let bestAlternative = result.alternatives.max(by: { $0.confidence < $1.confidence }) ?? result.alternatives.first
+            guard let alternative = bestAlternative else { continue }
 
             let transcript = alternative.transcript
+            let stability = result.stability  // 0.0-1.0, only set for interim results
+            let confidence = alternative.confidence
+
+            // Extract word-level confidence data for potential revision
+            processWordConfidences(from: alternative)
 
             if result.isFinal {
-                print("[GoogleSTT] 📝 Final: \"\(transcript.prefix(50))...\"")
-                fullTranscript += transcript + " "
-                finalTranscriptSubject.send(transcript)
-                delegate?.didReceiveFinalTranscript(transcript)
+                // Final result - accumulate but DON'T send as final yet
+                // We'll finalize everything when stream ends for full context
+                hasFinalResults = true
+                updateConfirmedTranscript(transcript, confidence: confidence)
+
+                print("[GoogleSTT] 📝 Final (accumulated): \"\(transcript.prefix(50))...\" confidence: \(String(format: "%.2f", confidence))")
+
+                // Send combined transcript as partial (still may receive more finals)
+                let currentFull = buildCurrentTranscript()
+                partialTranscriptSubject.send(currentFull)
+                delegate?.didReceivePartialTranscript(currentFull)
             } else {
-                print("[GoogleSTT] 📝 Partial: \"\(transcript.prefix(50))...\"")
-                partialTranscriptSubject.send(transcript)
-                delegate?.didReceivePartialTranscript(transcript)
+                // Interim result - use stability to decide how to handle
+                if stability >= stabilityThreshold {
+                    // High stability - unlikely to change, treat as semi-confirmed
+                    print("[GoogleSTT] 📝 High-stability partial: \"\(transcript.prefix(50))...\" stability: \(String(format: "%.2f", stability))")
+                    tentativeTranscript = transcript
+                } else {
+                    // Low stability - may change significantly
+                    print("[GoogleSTT] 📝 Low-stability partial: \"\(transcript.prefix(50))...\" stability: \(String(format: "%.2f", stability))")
+                    tentativeTranscript = transcript
+                }
+
+                // Send combined transcript
+                let currentFull = buildCurrentTranscript()
+                partialTranscriptSubject.send(currentFull)
+                delegate?.didReceivePartialTranscript(currentFull)
             }
+        }
+    }
+
+    /// Process word-level confidence data from alternative
+    private func processWordConfidences(from alternative: Google_Cloud_Speech_V1_SpeechRecognitionAlternative) {
+        guard !alternative.words.isEmpty else { return }
+
+        for wordInfo in alternative.words {
+            let word = wordInfo.word
+            let confidence = wordInfo.confidence
+            let startTime = Double(wordInfo.startTime.seconds) + Double(wordInfo.startTime.nanos) / 1_000_000_000
+            let endTime = Double(wordInfo.endTime.seconds) + Double(wordInfo.endTime.nanos) / 1_000_000_000
+
+            // Check if we have an existing word at this time position
+            if let existingIndex = wordConfidences.firstIndex(where: { abs($0.startTime - startTime) < 0.1 }) {
+                // Update if new confidence is higher
+                if confidence > wordConfidences[existingIndex].confidence {
+                    let oldWord = wordConfidences[existingIndex]
+                    wordConfidences[existingIndex] = (word: word, confidence: confidence, startTime: startTime, endTime: endTime)
+                    print("[GoogleSTT] 🔄 Revised '\(oldWord.word)' -> '\(word)' (confidence: \(String(format: "%.2f", oldWord.confidence)) -> \(String(format: "%.2f", confidence)))")
+                }
+            } else {
+                wordConfidences.append((word: word, confidence: confidence, startTime: startTime, endTime: endTime))
+            }
+        }
+
+        // Keep sorted by time
+        wordConfidences.sort { $0.startTime < $1.startTime }
+    }
+
+    /// Update confirmed transcript with new final result
+    private func updateConfirmedTranscript(_ transcript: String, confidence: Float) {
+        // If we have word-level data, reconstruct from that for best accuracy
+        if !wordConfidences.isEmpty {
+            confirmedTranscript = wordConfidences.map { $0.word }.joined(separator: " ")
+        } else {
+            // Fall back to appending transcript
+            if confirmedTranscript.isEmpty {
+                confirmedTranscript = transcript
+            } else {
+                confirmedTranscript += " " + transcript
+            }
+        }
+        // Clear tentative since we got a final
+        tentativeTranscript = ""
+    }
+
+    /// Build the current best transcript from confirmed + tentative
+    private func buildCurrentTranscript() -> String {
+        let confirmed = confirmedTranscript.trimmingCharacters(in: .whitespaces)
+        let tentative = tentativeTranscript.trimmingCharacters(in: .whitespaces)
+
+        if tentative.isEmpty {
+            return confirmed
+        } else if confirmed.isEmpty {
+            return tentative
+        } else {
+            // Avoid duplication: if tentative starts with confirmed content, just use tentative
+            // This happens when partials include the full context
+            if tentative.hasPrefix(confirmed) {
+                return tentative
+            }
+            return confirmed + " " + tentative
+        }
+    }
+
+    /// Finalize the transcript when stream ends
+    func finalizeTranscript() {
+        let finalTranscript = buildCurrentTranscript().trimmingCharacters(in: .whitespacesAndNewlines)
+        print("[GoogleSTT] 🏁 Finalizing transcript: \"\(finalTranscript.prefix(80))...\"")
+        print("[GoogleSTT] 📊 Word confidences tracked: \(wordConfidences.count) words")
+
+        if !finalTranscript.isEmpty {
+            fullTranscript = finalTranscript
+            finalTranscriptSubject.send(finalTranscript)
+            delegate?.didReceiveFinalTranscript(finalTranscript)
         }
     }
 

@@ -681,7 +681,7 @@ struct AIProviderEditorSheet: View {
         switch category {
         case .transcription: return .blue
         case .translation: return .purple
-        case .powerMode: return .orange
+        case .formatting, .powerMode: return .orange
         }
     }
 
@@ -691,7 +691,7 @@ struct AIProviderEditorSheet: View {
             return $transcriptionModel
         case .translation:
             return $translationModel
-        case .powerMode:
+        case .formatting, .powerMode:
             return $powerModeModel
         }
     }
@@ -877,7 +877,7 @@ struct AIProviderEditorSheet: View {
             case .transcription:
                 let whisperModels = cachedModels.filter { $0.lowercased().contains("whisper") }
                 return whisperModels.isEmpty ? cachedModels : whisperModels
-            case .translation, .powerMode:
+            case .translation, .formatting, .powerMode:
                 let llmModels = cachedModels.filter { !$0.lowercased().contains("whisper") }
                 return llmModels.isEmpty ? cachedModels : llmModels
             }
@@ -887,7 +887,7 @@ struct AIProviderEditorSheet: View {
         switch category {
         case .transcription:
             return refreshedSTTModels ?? config.provider.availableSTTModels
-        case .translation, .powerMode:
+        case .translation, .formatting, .powerMode:
             return refreshedLLMModels ?? config.provider.availableLLMModels
         }
     }

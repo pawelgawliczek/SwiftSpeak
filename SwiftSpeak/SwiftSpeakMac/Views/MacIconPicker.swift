@@ -192,7 +192,7 @@ struct MacIconPicker: View {
                         .frame(width: 100, height: 100)
                 }
 
-                if selectedIcon.contains(".") {
+                if selectedIcon.isSFSymbolName {
                     Image(systemName: selectedIcon)
                         .font(.system(size: 48))
                         .foregroundStyle(selectedColor.gradient)
@@ -391,4 +391,15 @@ struct MacColorPickerRow: View {
         showBackgroundColorPicker: true,
         backgroundColor: .constant(.orange)
     )
+}
+
+// MARK: - String Extension for SF Symbol Detection
+
+extension String {
+    /// Returns true if this string appears to be an SF Symbol name (ASCII-only, not empty)
+    /// SF Symbol names are always ASCII (e.g., "bolt.fill", "star", "chevron.right")
+    /// Emojis contain non-ASCII Unicode characters
+    var isSFSymbolName: Bool {
+        !isEmpty && unicodeScalars.allSatisfy { $0.isASCII }
+    }
 }

@@ -103,7 +103,7 @@ struct ProviderLanguageCapability: Identifiable {
     func supportLevel(for capability: ProviderUsageCategory) -> LanguageSupportLevel {
         switch capability {
         case .transcription: return transcriptionSupport
-        case .translation, .powerMode: return translationSupport
+        case .translation, .formatting, .powerMode: return translationSupport
         }
     }
 }

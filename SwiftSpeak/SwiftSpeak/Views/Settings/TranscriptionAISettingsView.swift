@@ -15,6 +15,8 @@ struct TranscriptionAISettingsView: View {
     @State private var showPaywall = false
     @State private var showAddAIProvider = false
     @State private var showAddLocalModel = false
+    @State private var showAppleTranslationSetup = false
+    @State private var showSelfHostedLLMSetup = false
     @State private var editingAIProviderConfig: AIProviderConfig?
     @State private var isAddingNewAIProvider = false
 
@@ -165,6 +167,31 @@ struct TranscriptionAISettingsView: View {
         .sheet(isPresented: $showAddLocalModel) {
             AddLocalModelSheet()
         }
+        .sheet(isPresented: $showAppleTranslationSetup) {
+            NavigationStack {
+                AppleTranslationSetupView()
+            }
+        }
+        .sheet(isPresented: $showSelfHostedLLMSetup) {
+            NavigationStack {
+                AIProviderEditorSheet(
+                    config: settings.getAIProviderConfig(for: .local) ?? AIProviderConfig(provider: .local),
+                    isEditing: settings.getAIProviderConfig(for: .local) != nil,
+                    onSave: { updatedConfig in
+                        if settings.getAIProviderConfig(for: .local) != nil {
+                            settings.updateAIProvider(updatedConfig)
+                        } else {
+                            settings.addAIProvider(updatedConfig)
+                        }
+                        showSelfHostedLLMSetup = false
+                    },
+                    onDelete: settings.getAIProviderConfig(for: .local) != nil ? {
+                        settings.removeAIProvider(.local)
+                        showSelfHostedLLMSetup = false
+                    } : nil
+                )
+            }
+        }
         .sheet(item: $editingAIProviderConfig) { config in
             AIProviderEditorSheet(
                 config: config,
@@ -287,143 +314,114 @@ struct TranscriptionAISettingsView: View {
 
     private var localModelsSection: some View {
         Section {
-            if settings.subscriptionTier == .power {
-                // Only show WhisperKit if configured (ready or downloading)
-                if settings.whisperKitConfig.status == .ready || settings.whisperKitConfig.status == .downloading {
-                    NavigationLink {
-                        WhisperKitSetupView()
-                    } label: {
-                        LocalModelRow(
-                            type: .whisperKit,
-                            status: settings.whisperKitConfig.status,
-                            subtitle: whisperKitSubtitle,
-                            colorScheme: colorScheme
-                        ) { }
-                    }
-                    .listRowBackground(rowBackground)
+            // WhisperKit Card
+            WhisperKitCard(
+                settings: settings,
+                onDownload: { model in
+                    startWhisperKitDownload(model: model)
+                },
+                onDelete: {
+                    deleteWhisperKitModel()
+                },
+                onCancelDownload: {
+                    cancelWhisperKitDownload()
                 }
+            )
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
-                // Only show Apple Intelligence if enabled
-                if settings.appleIntelligenceConfig.isEnabled {
-                    NavigationLink {
-                        AppleIntelligenceSetupView()
-                    } label: {
-                        LocalModelRow(
-                            type: .appleIntelligence,
-                            status: appleIntelligenceStatus,
-                            subtitle: appleIntelligenceSubtitle,
-                            colorScheme: colorScheme
-                        ) { }
-                    }
-                    .listRowBackground(rowBackground)
+            // Apple Intelligence Card
+            AppleIntelligenceCard(settings: settings)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+
+            // Apple Translation Card
+            AppleTranslationCard(
+                settings: settings,
+                onManageLanguages: {
+                    showAppleTranslationSetup = true
                 }
+            )
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
 
-                // Only show Apple Translation if there are downloaded languages
-                if !settings.appleTranslationConfig.downloadedLanguages.isEmpty {
-                    NavigationLink {
-                        AppleTranslationSetupView()
-                    } label: {
-                        LocalModelRow(
-                            type: .appleTranslation,
-                            status: appleTranslationStatus,
-                            subtitle: appleTranslationSubtitle,
-                            colorScheme: colorScheme
-                        ) { }
-                    }
-                    .listRowBackground(rowBackground)
+            // Self-Hosted LLM Card
+            SelfHostedLLMCard(
+                settings: settings,
+                onConfigure: {
+                    showSelfHostedLLMSetup = true
                 }
-
-                // Ollama/LM Studio (if configured)
-                if let localConfig = settings.getAIProviderConfig(for: .local)?.localConfig {
-                    LocalModelRow(
-                        type: localModelTypeFromConfig(localConfig),
-                        status: .ready,
-                        subtitle: localConfig.baseURL,
-                        colorScheme: colorScheme
-                    ) {
-                        isAddingNewAIProvider = false
-                        editingAIProviderConfig = settings.getAIProviderConfig(for: .local)
-                    }
-                    .listRowBackground(rowBackground)
-                }
-
-                // Add Local Model button
-                Button(action: {
-                    showAddLocalModel = true
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "plus.circle.fill")
-                            .font(.title2)
-                            .foregroundStyle(.green)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Add Local Model")
-                                .font(.callout.weight(.medium))
-                                .foregroundStyle(.primary)
-
-                            Text("WhisperKit, Apple Intelligence, Ollama")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-                    }
-                }
-                .listRowBackground(rowBackground)
-            } else {
-                // Locked state for non-Power users
-                Button(action: {
-                    showPaywall = true
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "cpu")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(Color.secondary.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text("Local Models")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-
-                                TierBadge(tier: .power)
-                            }
-
-                            Text("On-device AI for privacy and offline use")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .listRowBackground(rowBackground)
-            }
+            )
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         } header: {
-            Text("Local Models")
+            HStack {
+                Text("Local Models")
+                Spacer()
+                Text("Free")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.green)
+            }
         } footer: {
-            if settings.subscriptionTier == .power {
-                VStack(alignment: .leading, spacing: 4) {
-                    if hasAnyLocalModel {
-                        Text("Process data on-device for privacy. No internet required once downloaded.")
-                        if settings.localModelStorageBytes > 0 {
-                            Text("Storage used: \(settings.localModelStorageFormatted)")
-                                .fontWeight(.medium)
-                        }
-                    } else {
-                        Text("Add on-device models for privacy and offline use.")
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Process data on-device for privacy. No internet required once downloaded.")
+                if settings.localModelStorageBytes > 0 {
+                    Text("Storage used: \(settings.localModelStorageFormatted)")
+                        .fontWeight(.medium)
                 }
-            } else {
-                Text("Upgrade to Power to use on-device AI for privacy and offline transcription.")
             }
         }
+    }
+
+    // MARK: - WhisperKit Actions
+
+    private func startWhisperKitDownload(model: WhisperModel) {
+        var config = settings.whisperKitConfig
+        config.selectedModel = model
+        config.status = .downloading
+        config.downloadProgress = 0
+        settings.whisperKitConfig = config
+
+        // TODO: Connect to actual WhisperKit download
+        // For now, simulate download progress
+        Task { @MainActor in
+            while settings.whisperKitConfig.downloadProgress < 1.0 && settings.whisperKitConfig.status == .downloading {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                var config = settings.whisperKitConfig
+                config.downloadProgress += 0.02
+                config.downloadedBytes = Int(Double(model.sizeBytes) * config.downloadProgress)
+                settings.whisperKitConfig = config
+            }
+
+            if settings.whisperKitConfig.status == .downloading {
+                var config = settings.whisperKitConfig
+                config.status = .ready
+                config.downloadProgress = 1.0
+                config.downloadedBytes = model.sizeBytes
+                config.lastDownloadDate = Date()
+                settings.whisperKitConfig = config
+                HapticManager.success()
+            }
+        }
+    }
+
+    private func cancelWhisperKitDownload() {
+        var config = settings.whisperKitConfig
+        config.status = .notConfigured
+        config.downloadProgress = 0
+        config.downloadedBytes = 0
+        settings.whisperKitConfig = config
+    }
+
+    private func deleteWhisperKitModel() {
+        var config = settings.whisperKitConfig
+        config.status = .notConfigured
+        config.isEnabled = false
+        config.downloadProgress = 0
+        config.downloadedBytes = 0
+        config.lastDownloadDate = nil
+        settings.whisperKitConfig = config
+        HapticManager.lightTap()
     }
 
     // MARK: - Defaults Section

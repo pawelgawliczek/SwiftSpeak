@@ -172,7 +172,7 @@ private struct LanguageSupportRow: View {
             switch capability {
             case .transcription:
                 guard provider.supportsTranscription else { return nil }
-            case .translation, .powerMode:
+            case .translation, .formatting, .powerMode:
                 guard provider.supportsTranslation else { return nil }
             }
             let level = ProviderLanguageDatabase.supportLevel(
@@ -281,7 +281,7 @@ struct LanguageDetailSheet: View {
             switch capability {
             case .transcription:
                 guard provider.supportsTranscription else { return nil }
-            case .translation, .powerMode:
+            case .translation, .formatting, .powerMode:
                 guard provider.supportsTranslation else { return nil }
             }
             let level = ProviderLanguageDatabase.supportLevel(

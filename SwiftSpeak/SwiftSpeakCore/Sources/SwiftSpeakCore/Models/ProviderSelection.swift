@@ -121,17 +121,20 @@ public extension ProviderType {
 public struct ProviderDefaults: Codable, Equatable {
     public var transcription: ProviderSelection?
     public var translation: ProviderSelection?
-    public var powerMode: ProviderSelection?
+    public var formatting: ProviderSelection?   // AI formatting for contexts
+    public var powerMode: ProviderSelection?    // AI-powered voice workflows (Power Modes)
     public var useLocalWhenOffline: Bool
 
     public init(
         transcription: ProviderSelection? = nil,
         translation: ProviderSelection? = nil,
+        formatting: ProviderSelection? = nil,
         powerMode: ProviderSelection? = nil,
         useLocalWhenOffline: Bool = true
     ) {
         self.transcription = transcription
         self.translation = translation
+        self.formatting = formatting
         self.powerMode = powerMode
         self.useLocalWhenOffline = useLocalWhenOffline
     }

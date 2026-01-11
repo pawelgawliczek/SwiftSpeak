@@ -31,6 +31,7 @@ struct ContextEditorSheet: View {
     @State private var newJargonText: String = ""
     @State private var inputLanguage: Language? = nil
     @State private var useCustomInputLanguage: Bool = false
+    @State private var outputArabizi: Bool? = nil
 
     // MARK: - Formatting State
     @State private var examples: [String] = []
@@ -43,6 +44,10 @@ struct ContextEditorSheet: View {
     @State private var contextMemory: String = ""
     @State private var memoryLimit: Int = 2000
 
+    // MARK: - Recent Messages Context State
+    @State private var includeRecentMessages: Bool = false
+    @State private var recentMessagesCount: Int = 5
+
     // MARK: - Keyboard Behavior State
     @State private var autoSendAfterInsert: Bool = false
     @State private var enterKeyBehavior: EnterKeyBehavior = .defaultNewLine
@@ -50,6 +55,7 @@ struct ContextEditorSheet: View {
     // MARK: - Provider Overrides State
     @State private var transcriptionProviderOverride: ProviderSelection? = nil
     @State private var translationProviderOverride: ProviderSelection? = nil
+    @State private var formattingProviderOverride: ProviderSelection? = nil
     @State private var aiProviderOverride: ProviderSelection? = nil
 
     // MARK: - System State
@@ -80,6 +86,7 @@ struct ContextEditorSheet: View {
         _customJargon = State(initialValue: context.customJargon)
         _inputLanguage = State(initialValue: context.defaultInputLanguage)
         _useCustomInputLanguage = State(initialValue: context.defaultInputLanguage != nil)
+        _outputArabizi = State(initialValue: context.outputArabizi)
         _examples = State(initialValue: context.examples)
         _selectedInstructions = State(initialValue: context.selectedInstructions)
         _customInstructions = State(initialValue: context.customInstructions ?? "")
@@ -87,10 +94,13 @@ struct ContextEditorSheet: View {
         _useContextMemory = State(initialValue: context.useContextMemory)
         _contextMemory = State(initialValue: context.contextMemory ?? "")
         _memoryLimit = State(initialValue: context.memoryLimit)
+        _includeRecentMessages = State(initialValue: context.includeRecentMessages)
+        _recentMessagesCount = State(initialValue: context.recentMessagesCount)
         _autoSendAfterInsert = State(initialValue: context.autoSendAfterInsert)
         _enterKeyBehavior = State(initialValue: context.enterKeyBehavior)
         _transcriptionProviderOverride = State(initialValue: context.transcriptionProviderOverride)
         _translationProviderOverride = State(initialValue: context.translationProviderOverride)
+        _formattingProviderOverride = State(initialValue: context.formattingProviderOverride)
         _aiProviderOverride = State(initialValue: context.aiProviderOverride)
         _appAssignment = State(initialValue: context.appAssignment)
     }
@@ -116,6 +126,9 @@ struct ContextEditorSheet: View {
 
                     sectionHeader("MEMORY")
                     memorySection
+
+                    sectionHeader("CONTEXT AWARENESS")
+                    recentMessagesSection
 
                     sectionHeader("KEYBOARD BEHAVIOR")
                     keyboardBehaviorSection
@@ -198,7 +211,7 @@ struct ContextEditorSheet: View {
                             .fill(color.color.opacity(0.15))
                             .frame(width: 80, height: 80)
 
-                        if icon.contains(".") {
+                        if icon.isSFSymbolName {
                             Image(systemName: icon)
                                 .font(.system(size: 40))
                                 .foregroundStyle(color.gradient)
@@ -337,10 +350,51 @@ struct ContextEditorSheet: View {
                 }
                 .padding(.leading, 52)
             }
+
+            // Show Arabizi option for Arabic/Egyptian Arabic
+            if showArabiziOption {
+                Divider()
+                    .padding(.vertical, 8)
+
+                HStack(spacing: 12) {
+                    Image(systemName: "character.textbox")
+                        .font(.title2)
+                        .foregroundStyle(outputArabizi == true ? color.color : .secondary)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Franco-Arabic output")
+                            .font(.subheadline.weight(.medium))
+                        Text("Convert Arabic to Latin letters (e.g., 3=ع, 7=ح)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: Binding(
+                        get: { outputArabizi ?? settings.outputArabizi },
+                        set: { outputArabizi = $0 }
+                    ))
+                    .labelsHidden()
+                    .tint(color.color)
+                }
+            }
         }
         .padding(16)
         .background(Color.primary.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
+    /// Show Arabizi option when effective language is Arabic or Egyptian Arabic
+    private var showArabiziOption: Bool {
+        // If context has custom language, check that
+        if useCustomInputLanguage, let lang = inputLanguage {
+            return lang == .arabic || lang == .egyptianArabic
+        }
+        // Otherwise check global setting
+        guard let globalLang = settings.selectedDictationLanguage else { return false }
+        return globalLang == .arabic || globalLang == .egyptianArabic
     }
 
     // MARK: - Domain Jargon Section
@@ -884,6 +938,79 @@ struct ContextEditorSheet: View {
         }
     }
 
+    // MARK: - Recent Messages Context Section
+
+    private var recentMessagesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Include recent messages toggle
+            HStack(spacing: 12) {
+                Image(systemName: "text.bubble")
+                    .font(.title2)
+                    .foregroundStyle(includeRecentMessages ? color.color : .secondary)
+                    .frame(width: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Include recent messages")
+                        .font(.subheadline.weight(.medium))
+                    Text("Send recent conversation context to improve accuracy")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $includeRecentMessages)
+                    .labelsHidden()
+                    .tint(color.color)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Message count selector (when enabled)
+            if includeRecentMessages {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Number of messages")
+                            .font(.subheadline.weight(.medium))
+                        Spacer()
+                        Text("\(recentMessagesCount)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+
+                    Slider(
+                        value: Binding(
+                            get: { Double(recentMessagesCount) },
+                            set: { recentMessagesCount = Int($0) }
+                        ),
+                        in: 1...10,
+                        step: 1
+                    )
+                    .tint(color.color)
+
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(color.color)
+                            .font(.caption)
+                        Text("Only messages from the last hour will be included. If no recent messages exist, nothing is sent.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 14)
+                .background(color.color.opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+            }
+        }
+        .padding(16)
+        .background(Color.primary.opacity(0.05))
+        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+    }
+
     // MARK: - Keyboard Behavior Section
 
     private var keyboardBehaviorSection: some View {
@@ -967,6 +1094,15 @@ struct ContextEditorSheet: View {
         settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranslation }
     }
 
+    private var configuredFormattingProviders: [AIProvider] {
+        var providers = settings.configuredAIProviders.map(\.provider).filter { $0.supportsPowerMode }
+        // Include Apple Intelligence if available
+        if settings.isAppleIntelligenceReady {
+            providers.insert(.local, at: 0)
+        }
+        return providers
+    }
+
     private var configuredPowerModeProviders: [AIProvider] {
         settings.configuredAIProviders.map(\.provider).filter { $0.supportsPowerMode }
     }
@@ -975,12 +1111,15 @@ struct ContextEditorSheet: View {
         ProviderOverridesSection(
             transcriptionOverride: $transcriptionProviderOverride,
             translationOverride: $translationProviderOverride,
+            formattingOverride: $formattingProviderOverride,
             aiOverride: $aiProviderOverride,
             transcriptionProviders: configuredTranscriptionProviders,
             translationProviders: configuredTranslationProviders,
+            formattingProviders: configuredFormattingProviders,
             aiProviders: configuredPowerModeProviders,
             globalTranscription: settings.selectedTranscriptionProvider,
             globalTranslation: settings.selectedTranslationProvider,
+            globalFormatting: settings.selectedFormattingProvider,
             globalAI: settings.selectedPowerModeProvider,
             isStreamingEnabled: settings.transcriptionStreamingEnabled
         )
@@ -1041,11 +1180,15 @@ struct ContextEditorSheet: View {
             contextMemory: contextMemory.isEmpty ? nil : contextMemory,
             memoryLimit: memoryLimit,
             lastMemoryUpdate: context.lastMemoryUpdate,
+            includeRecentMessages: includeRecentMessages,
+            recentMessagesCount: recentMessagesCount,
             autoSendAfterInsert: autoSendAfterInsert,
             enterKeyBehavior: enterKeyBehavior,
             defaultInputLanguage: useCustomInputLanguage ? inputLanguage : nil,
+            outputArabizi: outputArabizi,
             transcriptionProviderOverride: transcriptionProviderOverride,
             translationProviderOverride: translationProviderOverride,
+            formattingProviderOverride: formattingProviderOverride,
             aiProviderOverride: aiProviderOverride,
             isActive: context.isActive,
             appAssignment: appAssignment,

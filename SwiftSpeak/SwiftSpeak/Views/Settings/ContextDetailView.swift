@@ -103,7 +103,7 @@ struct ContextDetailView: View {
                     .fill(context.color.color.opacity(0.15))
                     .frame(width: 80, height: 80)
 
-                if context.icon.contains(".") {
+                if context.icon.isSFSymbolName {
                     Image(systemName: context.icon)
                         .font(.system(size: 40))
                         .foregroundStyle(context.color.gradient)

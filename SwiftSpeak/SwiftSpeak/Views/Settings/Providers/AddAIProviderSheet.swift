@@ -318,7 +318,7 @@ struct AddAIProviderSheet: View {
         switch category {
         case .transcription: return .blue
         case .translation: return .purple
-        case .powerMode: return .orange
+        case .formatting, .powerMode: return .orange
         }
     }
 }

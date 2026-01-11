@@ -327,7 +327,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         let languageItem = NSMenuItem(title: "Target Language", action: nil, keyEquivalent: "")
         let languageSubmenu = NSMenu()
         for language in Language.allCases {
-            let item = NSMenuItem(title: language.displayName,
+            let item = NSMenuItem(title: "\(language.flag) \(language.displayName)",
                                   action: #selector(selectTargetLanguage(_:)),
                                   keyEquivalent: "")
             item.target = self
@@ -353,7 +353,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         inputLanguageSubmenu.addItem(.separator())
 
         for language in Language.allCases {
-            let item = NSMenuItem(title: language.displayName,
+            let item = NSMenuItem(title: "\(language.flag) \(language.displayName)",
                                   action: #selector(selectInputLanguage(_:)),
                                   keyEquivalent: "")
             item.target = self
@@ -1457,14 +1457,17 @@ struct ProvidersSettingsTab: View {
 
                 // Tab Picker
                 Picker("", selection: $selectedTab) {
-                    Text("AI Providers").tag(0)
-                    Text("Recording").tag(1)
+                    Text("Cloud Providers").tag(0)
+                    Text("Local Models").tag(1)
+                    Text("Recording").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 300)
+                .frame(maxWidth: 400)
 
                 if selectedTab == 0 {
                     aiProvidersContent
+                } else if selectedTab == 1 {
+                    localModelsContent
                 } else {
                     recordingSettingsContent
                 }
@@ -1672,6 +1675,12 @@ struct ProvidersSettingsTab: View {
                     }
                 }
             }
+    }
+
+    // MARK: - Local Models Tab Content
+
+    private var localModelsContent: some View {
+        MacLocalModelsView(settings: settings)
     }
 
     // MARK: - Recording Settings Tab Content
@@ -2816,7 +2825,7 @@ struct GeneralSettingsTab: View {
                     set: { settings.selectedDictationLanguage = $0 }
                 )) {
                     ForEach(Language.allCases, id: \.self) { language in
-                        Text(language.displayName).tag(language)
+                        Text("\(language.flag) \(language.displayName)").tag(language)
                     }
                 }
 
@@ -2825,14 +2834,6 @@ struct GeneralSettingsTab: View {
                     set: { if $0 { settings.selectedDictationLanguage = nil } else { settings.selectedDictationLanguage = .english } }
                 ))
                 .help("When enabled, Whisper will automatically detect the spoken language. Disable for more accurate transcription.")
-            }
-
-            Section("Default Mode") {
-                Picker("Mode", selection: $settings.selectedMode) {
-                    ForEach(FormattingMode.allCases, id: \.self) { mode in
-                        Text(mode.displayName).tag(mode)
-                    }
-                }
             }
 
             Toggle("Auto-return to previous app", isOn: .constant(true))

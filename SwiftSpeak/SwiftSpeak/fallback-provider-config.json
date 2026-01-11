@@ -225,15 +225,17 @@
       "transcription": {
         "enabled": true,
         "models": [
-          {"id": "scribe_v1", "name": "Scribe v1", "isDefault": true}
+          {"id": "scribe_v2", "name": "Scribe v2", "isDefault": true},
+          {"id": "scribe_v1", "name": "Scribe v1"}
         ],
         "languages": {
           "en": "excellent", "es": "excellent", "fr": "excellent",
           "de": "excellent", "ja": "good", "zh": "good",
           "ko": "good", "pl": "good", "pt": "excellent",
-          "ru": "good", "it": "excellent"
+          "ru": "good", "it": "excellent", "ar": "excellent",
+          "arz": "excellent"
         },
-        "features": ["speakerDiarization"]
+        "features": ["speakerDiarization", "keytermPrompting", "audioEventTagging", "timestamps"]
       },
       "translation": {
         "enabled": false
@@ -242,9 +244,10 @@
         "enabled": false
       },
       "pricing": {
+        "scribe_v2": {"unit": "minute", "cost": 0.01},
         "scribe_v1": {"unit": "minute", "cost": 0.01}
       },
-      "notes": "Primarily known for TTS, transcription is secondary",
+      "notes": "Best-in-class Arabic/Egyptian Arabic transcription (3.1% WER). Supports keyterm prompting for technical terms.",
       "apiKeyUrl": "https://elevenlabs.io/app/settings/api-keys"
     },
     "deepL": {

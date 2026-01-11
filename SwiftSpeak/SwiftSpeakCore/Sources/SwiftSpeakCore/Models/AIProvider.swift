@@ -423,6 +423,7 @@ public enum AzureRegion: String, Codable, CaseIterable, Identifiable {
 public enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
     case transcription = "transcription"
     case translation = "translation"
+    case formatting = "formatting"
     case powerMode = "power_mode"
 
     public var id: String { rawValue }
@@ -431,6 +432,7 @@ public enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .transcription: return "Transcription"
         case .translation: return "Translation"
+        case .formatting: return "Formatting"
         case .powerMode: return "Power Mode"
         }
     }
@@ -439,6 +441,7 @@ public enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .transcription: return "waveform"
         case .translation: return "globe"
+        case .formatting: return "text.badge.checkmark"
         case .powerMode: return "bolt.fill"
         }
     }
@@ -447,6 +450,7 @@ public enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .transcription: return "Speech-to-text processing"
         case .translation: return "Text translation between languages"
+        case .formatting: return "AI text formatting for contexts"
         case .powerMode: return "AI-powered voice workflows"
         }
     }
@@ -455,6 +459,7 @@ public enum ProviderUsageCategory: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .transcription: return .blue
         case .translation: return .purple
+        case .formatting: return .teal
         case .powerMode: return .orange
         }
     }

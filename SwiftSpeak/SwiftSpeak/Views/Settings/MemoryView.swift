@@ -644,7 +644,7 @@ struct MemoryRowView: View {
                         .fill(iconColor.opacity(0.15))
                         .frame(width: 40, height: 40)
 
-                    if icon.contains(".") {
+                    if icon.isSFSymbolName {
                         Image(systemName: icon)
                             .font(.body)
                             .foregroundStyle(iconColor)

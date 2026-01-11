@@ -115,13 +115,26 @@ final class StreamingTranscriptionOrchestrator: ObservableObject {
         appLog("StreamingOrch.startStreaming: settings.activeContextId=\(settings.activeContextId?.uuidString.prefix(8) ?? "nil")", category: "Context", level: .debug)
         appLog("StreamingOrch.startStreaming: settings.activeContext='\(settings.activeContext?.name ?? "nil")'", category: "Context", level: .debug)
 
+        // Get recent records for this context (for context injection if enabled)
+        let recentRecords: [TranscriptionRecord]
+        if let contextId = settings.activeContextId {
+            recentRecords = settings.transcriptionHistory(forContextId: contextId)
+        } else {
+            recentRecords = []
+        }
+
         let promptContext = PromptContext.from(
             context: settings.activeContext,
             powerMode: nil,
             globalMemory: settings.globalMemory,
-            vocabularyEntries: settings.vocabularyEntries
+            vocabularyEntries: settings.vocabularyEntries,
+            recentRecords: recentRecords
         )
         let transcriptionPrompt = promptContext.buildTranscriptionHint()
+
+        if promptContext.recentMessagesContext != nil {
+            appLog("Including recent messages context for improved accuracy", category: "StreamingOrch")
+        }
 
         if let hint = transcriptionPrompt {
             appLog("Connecting to streaming service with domain hint: \(hint.prefix(60))...", category: "StreamingOrch")

@@ -25,6 +25,7 @@ public enum Constants {
         public static let configuredAIProviders = "configuredAIProviders"
         public static let selectedTranscriptionProvider = "selectedTranscriptionProvider"
         public static let selectedTranslationProvider = "selectedTranslationProvider"
+        public static let selectedFormattingProvider = "selectedFormattingProvider"
         public static let selectedPowerModeProvider = "selectedPowerModeProvider"
         public static let openAIAPIKey = "openAIAPIKey"
         public static let anthropicAPIKey = "anthropicAPIKey"

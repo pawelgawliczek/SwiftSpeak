@@ -44,8 +44,8 @@ struct ProviderRemoteConfig: Codable, Equatable {
             return transcription?.enabled ?? false
         case .translation:
             return translation?.enabled ?? false
-        case .powerMode:
-            return powerMode?.enabled ?? false
+        case .formatting, .powerMode:
+            return powerMode?.enabled ?? false  // Formatting uses same LLM providers as powerMode
         }
     }
 
@@ -54,7 +54,7 @@ struct ProviderRemoteConfig: Codable, Equatable {
         switch type {
         case .transcription: return transcription
         case .translation: return translation
-        case .powerMode: return powerMode
+        case .formatting, .powerMode: return powerMode  // Formatting uses same config as powerMode
         }
     }
 }

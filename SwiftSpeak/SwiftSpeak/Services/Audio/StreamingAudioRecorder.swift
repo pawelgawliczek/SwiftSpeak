@@ -50,9 +50,11 @@ final class StreamingAudioRecorder: NSObject, ObservableObject {
     private var accumulatedAudioData = Data()
     private let audioDataLock = NSLock()
 
-    /// Buffer size in samples (50ms chunks at given sample rate)
+    /// Buffer size in samples (100ms chunks at given sample rate)
+    /// AssemblyAI recommends 100-450ms for optimal accuracy
+    /// Larger chunks provide better context per chunk for the STT model
     private var bufferSize: AVAudioFrameCount {
-        AVAudioFrameCount(Double(sampleRate) * 0.05) // 50ms chunks
+        AVAudioFrameCount(Double(sampleRate) * 0.1) // 100ms chunks (was 50ms)
     }
 
     // MARK: - Initialization

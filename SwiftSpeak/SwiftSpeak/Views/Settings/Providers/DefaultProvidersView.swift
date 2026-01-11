@@ -71,6 +71,28 @@ struct DefaultProvidersView: View {
                     Text("Provider used for translating text between languages.")
                 }
 
+                // Formatting Section (for Contexts)
+                Section {
+                    ProviderPickerRow(
+                        category: .formatting,
+                        selection: Binding(
+                            get: { settings.providerDefaults.formatting },
+                            set: { settings.providerDefaults.formatting = $0 }
+                        ),
+                        availableProviders: availableProviders(for: .formatting),
+                        colorScheme: colorScheme
+                    )
+                    .listRowBackground(rowBackground)
+                } header: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "text.badge.checkmark")
+                            .foregroundStyle(.teal)
+                        Text("Formatting")
+                    }
+                } footer: {
+                    Text("Provider used for AI text formatting in Contexts. Individual contexts can override this setting.")
+                }
+
                 // Power Mode Section
                 Section {
                     ProviderPickerRow(
@@ -90,7 +112,7 @@ struct DefaultProvidersView: View {
                         Text("Power Mode")
                     }
                 } footer: {
-                    Text("Provider used for AI formatting and Power Mode execution. Individual Power Modes can override this setting.")
+                    Text("Provider used for Power Mode voice workflows. Individual Power Modes can override this setting.")
                 }
 
                 // Fallback Settings
@@ -123,12 +145,15 @@ struct DefaultProvidersView: View {
         var selections: [ProviderSelection] = []
 
         // Add configured cloud providers that support this category
+        // Note: For formatting, we check powerMode category since formatting uses LLM providers
+        let categoryToCheck = category == .formatting ? .powerMode : category
         for config in settings.configuredAIProviders {
-            if config.usageCategories.contains(category) {
+            if config.usageCategories.contains(categoryToCheck) {
                 let model: String?
                 switch category {
                 case .transcription: model = config.transcriptionModel
                 case .translation: model = config.translationModel
+                case .formatting: model = config.formattingModel
                 case .powerMode: model = config.powerModeModel
                 }
                 selections.append(ProviderSelection(providerType: .cloud(config.provider), model: model))
@@ -147,6 +172,18 @@ struct DefaultProvidersView: View {
         case .translation:
             if settings.hasLocalTranslation {
                 selections.append(ProviderSelection(providerType: .local(.appleTranslation)))
+            }
+        case .formatting:
+            // Formatting can use Apple Intelligence or Ollama
+            if settings.isAppleIntelligenceReady {
+                selections.append(ProviderSelection(providerType: .local(.appleIntelligence)))
+            }
+            if let localConfig = settings.getAIProviderConfig(for: .local),
+               localConfig.usageCategories.contains(.powerMode) {
+                selections.append(ProviderSelection(
+                    providerType: .local(.ollama),
+                    model: localConfig.powerModeModel
+                ))
             }
         case .powerMode:
             if settings.isAppleIntelligenceReady {
@@ -177,6 +214,7 @@ struct ProviderPickerRow: View {
         switch category {
         case .transcription: return .blue
         case .translation: return .purple
+        case .formatting: return .teal
         case .powerMode: return .orange
         }
     }

@@ -59,8 +59,8 @@ struct ProviderFactory {
             return SwiftSpeakCore.AppleSpeechTranscriptionService()
 
         case .elevenLabs:
-            // TODO: Implement ElevenLabs transcription (Phase 3 scope but lower priority)
-            return nil
+            guard !config.apiKey.isEmpty else { return nil }
+            return SwiftSpeakCore.ElevenLabsTranscriptionService(config: config)
 
         case .anthropic, .deepL, .azure:
             // These providers don't support transcription
@@ -283,7 +283,7 @@ struct ProviderFactory {
 
     /// Create formatting provider using effective provider (respects context overrides)
     func createEffectiveFormattingProvider() -> FormattingProvider? {
-        createFormattingProvider(for: settings.effectiveAIProvider)
+        createFormattingProvider(for: settings.effectiveFormattingProvider)
     }
 
     /// Create a formatting provider for text formatting (uses translation provider setting)
@@ -341,7 +341,7 @@ struct ProviderFactory {
                 return provider.supportsTranscription && isProviderConfigured(provider, for: category)
             case .translation:
                 return provider.supportsTranslation && isProviderConfigured(provider, for: category)
-            case .powerMode:
+            case .formatting, .powerMode:
                 return provider.supportsPowerMode && isProviderConfigured(provider, for: category)
             }
         }

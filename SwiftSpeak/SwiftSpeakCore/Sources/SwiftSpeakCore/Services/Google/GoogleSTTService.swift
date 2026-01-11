@@ -45,6 +45,14 @@ public final class GoogleSTTService: TranscriptionProvider {
         // Build speech contexts from prompt hints
         // This allows boosting recognition of specific words/phrases from the context
         var speechContexts: [[String: Any]] = []
+
+        // Add class tokens for common patterns (phone numbers, dates, addresses, etc.)
+        // These are built-in Google patterns that improve recognition of structured data
+        speechContexts.append([
+            "phrases": ["$PHONENUM", "$TIME", "$DATE", "$MONEY", "$PERCENT", "$ADDRESSNUM", "$OPERAND"],
+            "boost": 10
+        ])
+
         if let hint = promptHint, !hint.isEmpty {
             let phrases = hint.components(separatedBy: CharacterSet(charactersIn: ",;.\n"))
                 .map { $0.trimmingCharacters(in: .whitespaces) }

@@ -202,6 +202,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // Phase 10: Provider override (nil = use global default)
     public var providerOverride: ProviderSelection?
 
+    // Arabizi output (nil = use global default)
+    public var outputArabizi: Bool?
+
     // Phase 13.11: AI autocorrection when processing text
     public var aiAutocorrectEnabled: Bool
 
@@ -399,6 +402,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         appAssignment: AppAssignment = AppAssignment(),
         enabledWebhookIds: [UUID] = [],
         providerOverride: ProviderSelection? = nil,
+        outputArabizi: Bool? = nil,
         aiAutocorrectEnabled: Bool = false,
         enterSendsMessage: Bool = true,
         enterRunsContext: Bool = false,
@@ -434,6 +438,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.appAssignment = appAssignment
         self.enabledWebhookIds = enabledWebhookIds
         self.providerOverride = providerOverride
+        self.outputArabizi = outputArabizi
         self.aiAutocorrectEnabled = aiAutocorrectEnabled
         self.enterSendsMessage = enterSendsMessage
         self.enterRunsContext = enterRunsContext
@@ -557,7 +562,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         case memoryEnabled, memory, memoryLimit, lastMemoryUpdate
         case knowledgeDocumentIds, ragConfiguration
         case isArchived, appAssignment, enabledWebhookIds
-        case providerOverride, aiAutocorrectEnabled
+        case providerOverride, outputArabizi, aiAutocorrectEnabled
         case enterSendsMessage, enterRunsContext
         case obsidianVaultIds, includeWindowContext, maxObsidianChunks, obsidianAction, defaultObsidianSearchQuery
         case obsidianMinSimilarity, obsidianAutoSelectThreshold
@@ -600,6 +605,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
         enabledWebhookIds = try container.decodeIfPresent([UUID].self, forKey: .enabledWebhookIds) ?? []
         providerOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .providerOverride)
+        outputArabizi = try container.decodeIfPresent(Bool.self, forKey: .outputArabizi)
         aiAutocorrectEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiAutocorrectEnabled) ?? false
         enterSendsMessage = try container.decodeIfPresent(Bool.self, forKey: .enterSendsMessage) ?? true
         enterRunsContext = try container.decodeIfPresent(Bool.self, forKey: .enterRunsContext) ?? false
@@ -668,6 +674,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         try container.encode(appAssignment, forKey: .appAssignment)
         try container.encode(enabledWebhookIds, forKey: .enabledWebhookIds)
         try container.encodeIfPresent(providerOverride, forKey: .providerOverride)
+        try container.encodeIfPresent(outputArabizi, forKey: .outputArabizi)
         try container.encode(aiAutocorrectEnabled, forKey: .aiAutocorrectEnabled)
         try container.encode(enterSendsMessage, forKey: .enterSendsMessage)
         try container.encode(enterRunsContext, forKey: .enterRunsContext)

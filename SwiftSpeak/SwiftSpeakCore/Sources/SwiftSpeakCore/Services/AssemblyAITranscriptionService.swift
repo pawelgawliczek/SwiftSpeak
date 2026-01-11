@@ -379,7 +379,9 @@ public final class AssemblyAITranscriptionService: TranscriptionProvider, Diariz
     private func createTranscript(audioURL: String, language: Language?, promptHint: String?) async throws -> String {
         // Build request body
         var body: [String: Any] = [
-            "audio_url": audioURL
+            "audio_url": audioURL,
+            "punctuate": true,      // Enable automatic punctuation
+            "format_text": true     // Enable smart text formatting (numerals, abbreviations)
         ]
 
         // Add language if provided and supported

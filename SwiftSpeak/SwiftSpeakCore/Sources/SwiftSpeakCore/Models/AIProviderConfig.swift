@@ -160,6 +160,7 @@ public struct AIProviderConfig: Codable, Identifiable, Equatable {
     // Model per capability - allows different models for each use case
     public var transcriptionModel: String?    // STT model (e.g., whisper-1)
     public var translationModel: String?      // LLM model for translation (e.g., gpt-4o-mini)
+    public var formattingModel: String?       // LLM model for context formatting (e.g., gpt-4o-mini)
     public var powerModeModel: String?        // LLM model for power mode (e.g., gpt-4o)
 
     // Local provider configuration (only used when provider == .local)
@@ -179,6 +180,7 @@ public struct AIProviderConfig: Codable, Identifiable, Equatable {
         usageCategories: Set<ProviderUsageCategory>? = nil,
         transcriptionModel: String? = nil,
         translationModel: String? = nil,
+        formattingModel: String? = nil,
         powerModeModel: String? = nil,
         localConfig: LocalProviderConfig? = nil,
         cachedModels: [String]? = nil,
@@ -193,6 +195,7 @@ public struct AIProviderConfig: Codable, Identifiable, Equatable {
         // Default models per capability
         self.transcriptionModel = transcriptionModel ?? provider.defaultSTTModel
         self.translationModel = translationModel ?? provider.defaultLLMModel
+        self.formattingModel = formattingModel ?? provider.defaultLLMModel
         self.powerModeModel = powerModeModel ?? provider.defaultLLMModel
         // Local config - create default if this is a local provider
         if provider.isLocalProvider {
@@ -253,6 +256,7 @@ public struct AIProviderConfig: Codable, Identifiable, Equatable {
         switch category {
         case .transcription: return transcriptionModel
         case .translation: return translationModel
+        case .formatting: return formattingModel
         case .powerMode: return powerModeModel
         }
     }
@@ -267,7 +271,7 @@ public struct AIProviderConfig: Codable, Identifiable, Equatable {
                 // Filter whisper models for STT
                 let whisperModels = cached.filter { $0.lowercased().contains("whisper") }
                 return whisperModels.isEmpty ? cached : whisperModels
-            case .translation, .powerMode:
+            case .translation, .formatting, .powerMode:
                 // Filter out whisper models for LLM
                 let llmModels = cached.filter { !$0.lowercased().contains("whisper") }
                 return llmModels.isEmpty ? cached : llmModels
@@ -277,7 +281,7 @@ public struct AIProviderConfig: Codable, Identifiable, Equatable {
         // Default models from provider
         switch category {
         case .transcription: return provider.availableSTTModels
-        case .translation, .powerMode: return provider.availableLLMModels
+        case .translation, .formatting, .powerMode: return provider.availableLLMModels
         }
     }
 

@@ -314,7 +314,7 @@ struct CostCalculator {
                     model: defaultModel.id,
                     durationSeconds: durationMinutes * 60
                 )
-            case .translation, .powerMode:
+            case .translation, .formatting, .powerMode:
                 // Estimate ~100 tokens per minute of speech
                 cost = llmCost(
                     provider: provider,

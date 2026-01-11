@@ -496,7 +496,14 @@ struct MacPowerModeEditorSheet: View {
     @State private var inputActions: [InputAction] = []
     @State private var outputActions: [OutputAction] = []
 
-    private let iconOptions = ["bolt.fill", "magnifyingglass.circle.fill", "envelope.fill", "calendar", "brain.head.profile", "text.bubble.fill", "doc.text.fill", "chart.bar.fill", "star.fill", "lightbulb.fill"]
+    // UI state
+    @State private var showingIconPicker = false
+
+    /// Check if Arabizi option should be visible (based on global language)
+    private var showArabiziOption: Bool {
+        guard let globalLang = settings.selectedDictationLanguage else { return false }
+        return globalLang == .arabic || globalLang == .egyptianArabic
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -520,35 +527,96 @@ struct MacPowerModeEditorSheet: View {
 
             // Form
             Form {
-                // Basic Info
-                Section("Identity") {
-                    TextField("Name", text: $powerMode.name)
+                // Icon and Color Section
+                Section("Icon & Colors") {
+                    HStack(spacing: 16) {
+                        // Icon preview button
+                        Button(action: { showingIconPicker = true }) {
+                            VStack(spacing: 6) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .fill(powerMode.iconBackgroundColor.color.opacity(0.15))
+                                        .frame(width: 64, height: 64)
+
+                                    if powerMode.icon.isSFSymbolName {
+                                        Image(systemName: powerMode.icon)
+                                            .font(.system(size: 32))
+                                            .foregroundStyle(powerMode.iconColor.gradient)
+                                    } else {
+                                        Text(powerMode.icon)
+                                            .font(.system(size: 32))
+                                    }
+                                }
+
+                                Text("Change Icon")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+
+                        VStack(alignment: .leading, spacing: 12) {
+                            // Icon color picker
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Icon Color")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                HStack(spacing: 8) {
+                                    ForEach(PowerModeColorPreset.allCases) { colorPreset in
+                                        Button(action: {
+                                            powerMode.iconColor = colorPreset
+                                        }) {
+                                            Circle()
+                                                .fill(colorPreset.gradient)
+                                                .frame(width: 22, height: 22)
+                                                .overlay(
+                                                    Circle()
+                                                        .strokeBorder(powerMode.iconColor == colorPreset ? Color.white : Color.clear, lineWidth: 2)
+                                                )
+                                                .scaleEffect(powerMode.iconColor == colorPreset ? 1.1 : 1.0)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+
+                            // Background color picker
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Background")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+
+                                HStack(spacing: 8) {
+                                    ForEach(PowerModeColorPreset.allCases) { colorPreset in
+                                        Button(action: {
+                                            powerMode.iconBackgroundColor = colorPreset
+                                        }) {
+                                            Circle()
+                                                .fill(colorPreset.gradient)
+                                                .frame(width: 22, height: 22)
+                                                .overlay(
+                                                    Circle()
+                                                        .strokeBorder(powerMode.iconBackgroundColor == colorPreset ? Color.white : Color.clear, lineWidth: 2)
+                                                )
+                                                .scaleEffect(powerMode.iconBackgroundColor == colorPreset ? 1.1 : 1.0)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+
+                // Name Section
+                Section("Name") {
+                    TextField("Mode Name", text: $powerMode.name)
 
                     Text("The name defines the AI's role (e.g., \"Email Writer\" → AI becomes an Email Writer assistant)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-
-                    Picker("Icon", selection: $powerMode.icon) {
-                        ForEach(iconOptions, id: \.self) { icon in
-                            HStack {
-                                Image(systemName: icon)
-                                Text(icon)
-                            }
-                            .tag(icon)
-                        }
-                    }
-
-                    Picker("Color", selection: $powerMode.iconColor) {
-                        ForEach(PowerModeColorPreset.allCases) { color in
-                            HStack {
-                                Circle()
-                                    .fill(color.color)
-                                    .frame(width: 12, height: 12)
-                                Text(color.displayName)
-                            }
-                            .tag(color)
-                        }
-                    }
                 }
 
                 // Instruction
@@ -560,6 +628,27 @@ struct MacPowerModeEditorSheet: View {
                     TextEditor(text: $powerMode.instruction)
                         .frame(minHeight: 100)
                         .font(.body)
+                }
+
+                // Arabizi output option - only visible when global language is Arabic/Egyptian Arabic
+                if showArabiziOption {
+                    Section {
+                        Toggle(isOn: Binding(
+                            get: { powerMode.outputArabizi ?? settings.outputArabizi },
+                            set: { powerMode.outputArabizi = $0 }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Franco-Arabic Output")
+                                Text("Convert Arabic to Latin letters (e.g., 3=ع, 7=ح)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Output Format")
+                    } footer: {
+                        Text("When enabled, Arabic script in output will be converted to Latin letters with numbers (Arabizi)")
+                    }
                 }
 
                 // MARK: - Context Sources (Phase 17 unified)
@@ -591,6 +680,14 @@ struct MacPowerModeEditorSheet: View {
         .sheet(isPresented: $showingVaultsSettings) {
             MacVaultsSettingsView(settings: settings)
                 .frame(width: 600, height: 500)
+        }
+        .sheet(isPresented: $showingIconPicker) {
+            MacIconPicker(
+                selectedIcon: $powerMode.icon,
+                selectedColor: $powerMode.iconColor,
+                showBackgroundColorPicker: true,
+                backgroundColor: $powerMode.iconBackgroundColor
+            )
         }
     }
 

@@ -75,6 +75,17 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
     /// Last time we logged audio stats
     private var lastAudioStatsLog: Date?
 
+    // MARK: - Confidence-Aware Transcript Accumulation
+
+    /// Confirmed transcript segments (high confidence, won't change)
+    private var confirmedTranscript: String = ""
+    /// Current tentative transcript (may be revised with more context)
+    private var tentativeTranscript: String = ""
+    /// Word-level confidence data for potential revision
+    private var wordConfidences: [(word: String, confidence: Double, start: Double, end: Double)] = []
+    /// Minimum confidence threshold to consider a word "confirmed"
+    private let confidenceThreshold: Double = 0.85
+
     /// WebSocket endpoint
     private static let streamingEndpoint = "wss://streaming.assemblyai.com/v3/ws"
 
@@ -109,9 +120,17 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         var components = URLComponents(string: Self.streamingEndpoint)!
         var queryItems: [URLQueryItem] = [
             URLQueryItem(name: "sample_rate", value: String(sampleRate)),
+            URLQueryItem(name: "encoding", value: "pcm_s16le"),  // Explicit PCM16 encoding
             URLQueryItem(name: "format_turns", value: "true"),  // Request formatted final transcripts
             URLQueryItem(name: "disable_partial_transcripts", value: "false"), // Keep partials for real-time feedback
-            URLQueryItem(name: "end_of_turn_silence_threshold", value: "600")  // Increased from default ~400ms for better phrase detection
+            // HOTKEY USE CASE: User explicitly starts/stops recording
+            // Disable automatic turn detection to keep full semantic context
+            // Set confidence threshold to 1.0 = never trigger semantic end-of-turn
+            URLQueryItem(name: "end_of_turn_confidence_threshold", value: "1.0"),
+            // Very high max silence = rely on user's explicit stop (via Terminate message)
+            URLQueryItem(name: "max_turn_silence", value: "30000"),  // 30 seconds
+            // Keep end_of_turn_silence_threshold high as backup
+            URLQueryItem(name: "end_of_turn_silence_threshold", value: "30000")
         ]
 
         // AssemblyAI v3 supports language detection or specific language
@@ -152,6 +171,11 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         fullTranscript = ""
         isFinishing = false
         sessionId = nil
+
+        // Reset confidence-aware accumulation state
+        confirmedTranscript = ""
+        tentativeTranscript = ""
+        wordConfidences = []
 
         // Create URL request with auth header
         var request = URLRequest(url: url)
@@ -364,8 +388,17 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
             handleTurnMessage(json)
 
         case "Termination":
-            // Session ended - server has processed all audio
-            print("[AssemblyAI] 🛑 Termination received - total messages: \(messagesReceived)")
+            // Session ended - NOW finalize the full transcript with all context
+            let finalTranscript = buildCurrentTranscript().trimmingCharacters(in: .whitespacesAndNewlines)
+            print("[AssemblyAI] 🛑 Termination - finalizing transcript: \"\(finalTranscript.prefix(80))...\"")
+            print("[AssemblyAI] 📊 Word confidences: \(wordConfidences.count) words tracked")
+
+            if !finalTranscript.isEmpty {
+                fullTranscript = finalTranscript
+                finalTranscriptSubject.send(finalTranscript)
+                delegate?.didReceiveFinalTranscript(finalTranscript)
+            }
+
             sessionEndedSubject.send(())
             disconnect()
 
@@ -390,17 +423,118 @@ public final class AssemblyAIStreamingService: NSObject, StreamingTranscriptionP
         let endOfTurn = json["end_of_turn"] as? Bool ?? false
         let turnIsFormatted = json["turn_is_formatted"] as? Bool ?? false
 
+        // Extract word-level confidence data for intelligent revision
+        if let words = json["words"] as? [[String: Any]] {
+            processWordConfidences(words, isFormatted: turnIsFormatted)
+        }
+
         if turnIsFormatted {
-            // Formatted final - this is the high-quality output we want
-            fullTranscript += transcript + " "
-            finalTranscriptSubject.send(transcript)
-            delegate?.didReceiveFinalTranscript(transcript)
+            // Formatted final - but DON'T fragment! Accumulate for full context
+            // Only truly finalize when session ends (Terminate message)
+            updateTranscriptWithRevision(transcript, isFinal: true)
+
+            // Send as partial since we may still revise with more context
+            let currentFull = buildCurrentTranscript()
+            partialTranscriptSubject.send(currentFull)
+            delegate?.didReceivePartialTranscript(currentFull)
+
+            print("[AssemblyAI] 📝 Accumulated formatted turn (not finalized): \"\(transcript.prefix(50))...\"")
         } else if endOfTurn {
-            // Unformatted end-of-turn - skip this, wait for formatted version
+            // Unformatted end-of-turn - still useful for word confidence updates
+            updateTranscriptWithRevision(transcript, isFinal: false)
         } else {
-            // Partial/interim result
-            partialTranscriptSubject.send(transcript)
-            delegate?.didReceivePartialTranscript(transcript)
+            // Partial/interim result - update tentative transcript
+            tentativeTranscript = transcript
+            let currentFull = buildCurrentTranscript()
+            partialTranscriptSubject.send(currentFull)
+            delegate?.didReceivePartialTranscript(currentFull)
+        }
+    }
+
+    /// Process word-level confidence data to enable intelligent revision
+    private func processWordConfidences(_ words: [[String: Any]], isFormatted: Bool) {
+        var newWordConfidences: [(word: String, confidence: Double, start: Double, end: Double)] = []
+
+        for wordData in words {
+            guard let word = wordData["text"] as? String else { continue }
+            let confidence = wordData["confidence"] as? Double ?? 0.0
+            let start = wordData["start"] as? Double ?? 0.0
+            let end = wordData["end"] as? Double ?? 0.0
+
+            newWordConfidences.append((word: word, confidence: confidence, start: start, end: end))
+        }
+
+        // If this is a formatted result, it may have better confidence scores
+        // Compare and update where the new result has higher confidence
+        if isFormatted && !newWordConfidences.isEmpty {
+            mergeWordConfidences(newWordConfidences)
+        } else if !newWordConfidences.isEmpty {
+            // For partials, only update if we have overlapping timestamps with better confidence
+            updateWordConfidencesIfBetter(newWordConfidences)
+        }
+    }
+
+    /// Merge new word confidences, preferring higher confidence scores
+    private func mergeWordConfidences(_ newWords: [(word: String, confidence: Double, start: Double, end: Double)]) {
+        // For formatted turns, these are generally higher quality - replace matching time ranges
+        var merged = wordConfidences
+
+        for newWord in newWords {
+            // Find if there's an existing word in a similar time range (within 100ms)
+            if let existingIndex = merged.firstIndex(where: { abs($0.start - newWord.start) < 0.1 }) {
+                // Replace if new confidence is higher OR if it's a formatted result
+                if newWord.confidence >= merged[existingIndex].confidence {
+                    merged[existingIndex] = newWord
+                }
+            } else {
+                // New word, add it
+                merged.append(newWord)
+            }
+        }
+
+        // Sort by start time
+        wordConfidences = merged.sorted { $0.start < $1.start }
+    }
+
+    /// Update word confidences only if the new data has better confidence
+    private func updateWordConfidencesIfBetter(_ newWords: [(word: String, confidence: Double, start: Double, end: Double)]) {
+        for newWord in newWords {
+            if let existingIndex = wordConfidences.firstIndex(where: { abs($0.start - newWord.start) < 0.1 }) {
+                if newWord.confidence > wordConfidences[existingIndex].confidence {
+                    let oldWord = wordConfidences[existingIndex]
+                    wordConfidences[existingIndex] = newWord
+                    print("[AssemblyAI] 🔄 Revised '\(oldWord.word)' -> '\(newWord.word)' (confidence: \(String(format: "%.2f", oldWord.confidence)) -> \(String(format: "%.2f", newWord.confidence)))")
+                }
+            } else {
+                wordConfidences.append(newWord)
+            }
+        }
+        wordConfidences.sort { $0.start < $1.start }
+    }
+
+    /// Update transcript with potential revision of earlier low-confidence portions
+    private func updateTranscriptWithRevision(_ newTranscript: String, isFinal: Bool) {
+        if isFinal {
+            // Formatted turn - this has better quality, use it but allow further revision
+            // Build transcript from word confidences if available
+            if !wordConfidences.isEmpty {
+                let reconstructed = wordConfidences.map { $0.word }.joined(separator: " ")
+                confirmedTranscript = reconstructed
+            } else {
+                confirmedTranscript = newTranscript
+            }
+            tentativeTranscript = ""
+        }
+    }
+
+    /// Build the current best transcript from confirmed + tentative
+    private func buildCurrentTranscript() -> String {
+        if tentativeTranscript.isEmpty {
+            return confirmedTranscript
+        } else if confirmedTranscript.isEmpty {
+            return tentativeTranscript
+        } else {
+            return confirmedTranscript + " " + tentativeTranscript
         }
     }
 

@@ -230,6 +230,15 @@ final class TranscriptionOrchestrator: ObservableObject {
                     appLog("Translation complete (\(formattedText.count) chars)", category: "Transcription")
                 }
 
+                // Apply Arabizi formatting if enabled for Arabic/Egyptian Arabic
+                if settings.effectiveOutputArabizi {
+                    let effectiveLang = sourceLanguage ?? settings.effectiveTranscriptionLanguage
+                    if effectiveLang == .arabic || effectiveLang == .egyptianArabic {
+                        appLog("Applying Arabizi (Franco-Arabic) formatting", category: "Transcription")
+                        formattedText = ArabiziFormatter.toArabizi(formattedText)
+                    }
+                }
+
                 // Save to history
                 saveToHistory()
             }
@@ -319,12 +328,21 @@ final class TranscriptionOrchestrator: ObservableObject {
 
     /// Build PromptContext from current settings and active context/power mode
     private func buildPromptContext() -> PromptContext {
+        // Get recent records for context injection (if enabled)
+        let recentRecords: [TranscriptionRecord]
+        if let contextId = activeContext?.id {
+            recentRecords = settings.transcriptionHistory(forContextId: contextId)
+        } else {
+            recentRecords = []
+        }
+
         // Use the factory method on PromptContext
         return PromptContext.from(
             context: activeContext,
             powerMode: activePowerMode,
             globalMemory: settings.globalMemory,
-            vocabularyEntries: settings.vocabularyEntries
+            vocabularyEntries: settings.vocabularyEntries,
+            recentRecords: recentRecords
         )
     }
 

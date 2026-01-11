@@ -772,6 +772,16 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             }
         }
 
+        // Apply Arabizi formatting if enabled for Arabic/Egyptian Arabic
+        if settings.effectiveOutputArabizi {
+            let effectiveLang = inputLanguage ?? settings.selectedDictationLanguage
+            if effectiveLang == .arabic || effectiveLang == .egyptianArabic {
+                processedText = ArabiziFormatter.toArabizi(processedText)
+                self.transcribedText = processedText
+                macLog("Applied Arabizi formatting", category: "Transcribe")
+            }
+        }
+
         state = .complete
 
         // Build processing metadata
@@ -982,6 +992,16 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 state = .formatting
                 transcribedText = try await translateText(transcribedText)
                 self.transcribedText = transcribedText
+            }
+
+            // Apply Arabizi formatting if enabled for Arabic/Egyptian Arabic
+            if settings.effectiveOutputArabizi {
+                let effectiveLang = inputLanguage ?? settings.selectedDictationLanguage
+                if effectiveLang == .arabic || effectiveLang == .egyptianArabic {
+                    transcribedText = ArabiziFormatter.toArabizi(transcribedText)
+                    self.transcribedText = transcribedText
+                    macLog("Applied Arabizi formatting", category: "Transcribe")
+                }
             }
 
             state = .complete

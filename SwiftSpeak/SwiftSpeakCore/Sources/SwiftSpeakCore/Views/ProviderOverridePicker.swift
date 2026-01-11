@@ -17,14 +17,17 @@ import SwiftUI
 public struct ProviderOverridesSection: View {
     @Binding public var transcriptionOverride: ProviderSelection?
     @Binding public var translationOverride: ProviderSelection?
+    @Binding public var formattingOverride: ProviderSelection?
     @Binding public var aiOverride: ProviderSelection?
 
     public let transcriptionProviders: [AIProvider]
     public let translationProviders: [AIProvider]
+    public let formattingProviders: [AIProvider]
     public let aiProviders: [AIProvider]
 
     public let globalTranscription: AIProvider
     public let globalTranslation: AIProvider
+    public let globalFormatting: AIProvider
     public let globalAI: AIProvider
 
     public let isStreamingEnabled: Bool
@@ -35,23 +38,29 @@ public struct ProviderOverridesSection: View {
     public init(
         transcriptionOverride: Binding<ProviderSelection?>,
         translationOverride: Binding<ProviderSelection?>,
+        formattingOverride: Binding<ProviderSelection?>,
         aiOverride: Binding<ProviderSelection?>,
         transcriptionProviders: [AIProvider],
         translationProviders: [AIProvider],
+        formattingProviders: [AIProvider],
         aiProviders: [AIProvider],
         globalTranscription: AIProvider,
         globalTranslation: AIProvider,
+        globalFormatting: AIProvider,
         globalAI: AIProvider,
         isStreamingEnabled: Bool
     ) {
         self._transcriptionOverride = transcriptionOverride
         self._translationOverride = translationOverride
+        self._formattingOverride = formattingOverride
         self._aiOverride = aiOverride
         self.transcriptionProviders = transcriptionProviders
         self.translationProviders = translationProviders
+        self.formattingProviders = formattingProviders
         self.aiProviders = aiProviders
         self.globalTranscription = globalTranscription
         self.globalTranslation = globalTranslation
+        self.globalFormatting = globalFormatting
         self.globalAI = globalAI
         self.isStreamingEnabled = isStreamingEnabled
 
@@ -59,6 +68,7 @@ public struct ProviderOverridesSection: View {
         _useCustomProviders = State(initialValue:
             transcriptionOverride.wrappedValue != nil ||
             translationOverride.wrappedValue != nil ||
+            formattingOverride.wrappedValue != nil ||
             aiOverride.wrappedValue != nil
         )
     }
@@ -81,6 +91,7 @@ public struct ProviderOverridesSection: View {
                     // Clear all overrides when disabled
                     transcriptionOverride = nil
                     translationOverride = nil
+                    formattingOverride = nil
                     aiOverride = nil
                 }
             }
@@ -120,9 +131,19 @@ public struct ProviderOverridesSection: View {
                         globalDefault: globalTranslation
                     )
 
+                    // Formatting (Context AI)
+                    ProviderDropdown(
+                        label: "Formatting",
+                        icon: "text.badge.checkmark",
+                        color: .teal,
+                        selection: $formattingOverride,
+                        providers: formattingProviders,
+                        globalDefault: globalFormatting
+                    )
+
                     // AI / Power Mode
                     ProviderDropdown(
-                        label: "AI / Power Mode",
+                        label: "Power Mode",
                         icon: "bolt.fill",
                         color: .orange,
                         selection: $aiOverride,
@@ -217,12 +238,15 @@ struct ProviderOverridesSection_Previews: PreviewProvider {
                 ProviderOverridesSection(
                     transcriptionOverride: .constant(nil),
                     translationOverride: .constant(nil),
+                    formattingOverride: .constant(nil),
                     aiOverride: .constant(nil),
                     transcriptionProviders: [.openAI, .deepgram, .assemblyAI],
                     translationProviders: [.openAI, .deepL, .azure],
+                    formattingProviders: [.openAI, .anthropic, .google, .local],
                     aiProviders: [.openAI, .anthropic, .google],
                     globalTranscription: .assemblyAI,
                     globalTranslation: .openAI,
+                    globalFormatting: .openAI,
                     globalAI: .openAI,
                     isStreamingEnabled: false
                 )

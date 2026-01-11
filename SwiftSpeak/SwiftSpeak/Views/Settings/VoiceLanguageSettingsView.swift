@@ -124,10 +124,27 @@ struct VoiceLanguageSettingsView: View {
                 )
             }
             .listRowBackground(rowBackground)
+
+            // Show Arabizi option only for Arabic/Egyptian Arabic
+            if settings.shouldShowArabiziOption {
+                Toggle(isOn: $settings.outputArabizi) {
+                    SettingsRow(
+                        icon: "character.textbox",
+                        iconColor: .green,
+                        title: "Franco-Arabic Output",
+                        subtitle: "Convert Arabic to Latin letters"
+                    )
+                }
+                .listRowBackground(rowBackground)
+            }
         } header: {
             Text("Dictation")
         } footer: {
-            Text("Set your primary speaking language for more accurate transcription. Auto-detect works best for multilingual speakers.")
+            if settings.shouldShowArabiziOption && settings.outputArabizi {
+                Text("Set your primary speaking language for more accurate transcription. Franco-Arabic (Arabizi) converts Arabic script to Latin letters with numbers (e.g., 3=ع, 7=ح).")
+            } else {
+                Text("Set your primary speaking language for more accurate transcription. Auto-detect works best for multilingual speakers.")
+            }
         }
     }
 

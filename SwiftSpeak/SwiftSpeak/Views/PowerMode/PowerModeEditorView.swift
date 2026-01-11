@@ -41,6 +41,9 @@ struct PowerModeEditorView: View {
     // Phase 10: Provider override
     @State private var providerOverride: ProviderSelection?
 
+    // Arabizi output override
+    @State private var outputArabizi: Bool? = nil
+
     // Phase 13.11: AI Autocorrect
     @State private var aiAutocorrectEnabled: Bool = false
 
@@ -84,6 +87,7 @@ struct PowerModeEditorView: View {
             appAssignment: appAssignment,
             enabledWebhookIds: enabledWebhookIds,
             providerOverride: providerOverride,
+            outputArabizi: outputArabizi,
             aiAutocorrectEnabled: aiAutocorrectEnabled,
             enterSendsMessage: enterSendsMessage,
             enterRunsContext: enterRunsContext,
@@ -116,6 +120,7 @@ struct PowerModeEditorView: View {
             _knowledgeDocumentIds = State(initialValue: mode.knowledgeDocumentIds)
             _enabledWebhookIds = State(initialValue: mode.enabledWebhookIds)
             _providerOverride = State(initialValue: mode.providerOverride)
+            _outputArabizi = State(initialValue: mode.outputArabizi)
             _aiAutocorrectEnabled = State(initialValue: mode.aiAutocorrectEnabled)
             _enterSendsMessage = State(initialValue: mode.enterSendsMessage)
             _enterRunsContext = State(initialValue: mode.enterRunsContext)
@@ -134,8 +139,11 @@ struct PowerModeEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Icon and name section
-                    iconAndNameSection
+                    // Icon and color section
+                    iconAndColorSection
+
+                    // Name section
+                    nameSection
 
                     // Instruction section
                     instructionSection
@@ -151,6 +159,11 @@ struct PowerModeEditorView: View {
 
                     // Provider override section (Phase 10)
                     providerOverrideSection
+
+                    // Arabizi output section (only for Arabic/Egyptian Arabic)
+                    if showArabiziOption {
+                        arabiziSection
+                    }
 
                     // AI Autocorrect section (Phase 13.11)
                     aiAutocorrectSection
@@ -191,48 +204,114 @@ struct PowerModeEditorView: View {
         }
     }
 
-    // MARK: - Icon and Name Section
+    // MARK: - Icon and Color Section
 
-    private var iconAndNameSection: some View {
-        VStack(spacing: 20) {
-            // Icon button
+    private var iconAndColorSection: some View {
+        VStack(spacing: 16) {
             Button(action: {
                 HapticManager.selection()
                 showingIconPicker = true
             }) {
                 VStack(spacing: 8) {
-                    Image(systemName: icon)
-                        .font(.system(size: 40))
-                        .foregroundStyle(iconColor.gradient)
-                        .frame(width: 80, height: 80)
-                        .background(iconBackgroundColor.color.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+                    ZStack {
+                        RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
+                            .fill(iconBackgroundColor.color.opacity(0.15))
+                            .frame(width: 80, height: 80)
 
-                    Text("Tap to change icon & colors")
+                        if icon.isSFSymbolName {
+                            Image(systemName: icon)
+                                .font(.system(size: 40))
+                                .foregroundStyle(iconColor.gradient)
+                        } else {
+                            Text(icon)
+                                .font(.system(size: 40))
+                        }
+                    }
+
+                    Text("Tap to change icon")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
 
-            // Name field
-            VStack(spacing: 8) {
-                TextField("Mode Name", text: $name)
-                    .font(.title3.weight(.semibold))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color.primary.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
-
-                Text("The name defines the AI's role (e.g., \"Email Writer\" → AI becomes an Email Writer assistant)")
-                    .font(.caption)
+            // Icon color picker
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Icon Color")
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(PowerModeColorPreset.allCases) { colorPreset in
+                            Button(action: {
+                                HapticManager.selection()
+                                iconColor = colorPreset
+                            }) {
+                                Circle()
+                                    .fill(colorPreset.gradient)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(iconColor == colorPreset ? Color.white : Color.clear, lineWidth: 2)
+                                    )
+                                    .scaleEffect(iconColor == colorPreset ? 1.1 : 1.0)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Background color picker
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Background Color")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(PowerModeColorPreset.allCases) { colorPreset in
+                            Button(action: {
+                                HapticManager.selection()
+                                iconBackgroundColor = colorPreset
+                            }) {
+                                Circle()
+                                    .fill(colorPreset.gradient)
+                                    .frame(width: 32, height: 32)
+                                    .overlay(
+                                        Circle()
+                                            .strokeBorder(iconBackgroundColor == colorPreset ? Color.white : Color.clear, lineWidth: 2)
+                                    )
+                                    .scaleEffect(iconBackgroundColor == colorPreset ? 1.1 : 1.0)
+                            }
+                        }
+                    }
+                }
             }
         }
         .padding(20)
+        .frame(maxWidth: .infinity)
         .background(Color.primary.opacity(0.03))
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusLarge, style: .continuous))
+    }
+
+    // MARK: - Name Section
+
+    private var nameSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("NAME")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            TextField("Mode Name", text: $name)
+                .font(.body)
+                .padding(12)
+                .background(Color.primary.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            Text("The name defines the AI's role (e.g., \"Email Writer\" → AI becomes an Email Writer assistant)")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
     }
 
     // MARK: - Instruction Section
@@ -752,6 +831,54 @@ struct PowerModeEditorView: View {
         }
     }
 
+    // MARK: - Arabizi Output Section
+
+    /// Show Arabizi option when global language is Arabic or Egyptian Arabic
+    private var showArabiziOption: Bool {
+        guard let globalLang = settings.selectedDictationLanguage else { return false }
+        return globalLang == .arabic || globalLang == .egyptianArabic
+    }
+
+    private var arabiziSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("ARABIC OUTPUT")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            HStack(spacing: 12) {
+                Image(systemName: "character.textbox")
+                    .font(.title2)
+                    .foregroundStyle(outputArabizi == true ? AppTheme.powerAccent : .secondary)
+                    .frame(width: 40)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Franco-Arabic output")
+                        .font(.subheadline.weight(.medium))
+                    Text("Convert Arabic to Latin letters (e.g., 3=ع, 7=ح)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: Binding(
+                    get: { outputArabizi ?? settings.outputArabizi },
+                    set: { outputArabizi = $0 }
+                ))
+                .labelsHidden()
+                .tint(AppTheme.powerAccent)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            Text("Override the global Arabizi setting for this Power Mode. When enabled, Arabic output is converted to Latin letters with number substitutions.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
     private var availableProviderSelections: [ProviderSelection] {
         var selections: [ProviderSelection] = []
 
@@ -929,6 +1056,7 @@ struct PowerModeEditorView: View {
             appAssignment: appAssignment,
             enabledWebhookIds: enabledWebhookIds,
             providerOverride: providerOverride,
+            outputArabizi: outputArabizi,
             aiAutocorrectEnabled: aiAutocorrectEnabled,
             enterSendsMessage: enterSendsMessage,
             enterRunsContext: enterRunsContext,

@@ -40,6 +40,7 @@ class SharedSettings: ObservableObject {
         static let globalMemoryLimit = "icloud_globalMemoryLimit"
         static let selectedTranscriptionProvider = "icloud_selectedTranscriptionProvider"
         static let selectedTranslationProvider = "icloud_selectedTranslationProvider"
+        static let selectedFormattingProvider = "icloud_selectedFormattingProvider"
         static let selectedPowerModeProvider = "icloud_selectedPowerModeProvider"
         static let selectedMode = "icloud_selectedMode"
         static let selectedTargetLanguage = "icloud_selectedTargetLanguage"
@@ -89,6 +90,13 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    @Published var selectedFormattingProvider: AIProvider = .openAI {
+        didSet {
+            defaults?.set(selectedFormattingProvider.rawValue, forKey: Constants.Keys.selectedFormattingProvider)
+            syncToiCloud()
+        }
+    }
+
     @Published var selectedPowerModeProvider: AIProvider = .openAI {
         didSet {
             defaults?.set(selectedPowerModeProvider.rawValue, forKey: Constants.Keys.selectedPowerModeProvider)
@@ -130,6 +138,35 @@ class SharedSettings: ObservableObject {
         }
         // Fall back to global setting (nil = auto-detect)
         return selectedDictationLanguage
+    }
+
+    /// Output transcription in Arabizi (Franco-Arabic) format
+    /// Converts Arabic script to Latin alphabet with number substitutions (e.g., 3=ع, 7=ح)
+    /// Only applies when language is Arabic or Egyptian Arabic
+    @Published var outputArabizi: Bool = false {
+        didSet {
+            defaults?.set(outputArabizi, forKey: "outputArabizi")
+            syncToiCloud()
+        }
+    }
+
+    /// Effective Arabizi output setting: context override > global setting
+    /// Use this to determine if Arabizi formatting should be applied
+    /// Note: Power mode override is handled by the orchestrator when a power mode is active
+    var effectiveOutputArabizi: Bool {
+        // Check active context override
+        if let contextArabizi = activeContext?.outputArabizi {
+            return contextArabizi
+        }
+        // Fall back to global setting
+        return outputArabizi
+    }
+
+    /// Check if Arabizi output option should be visible
+    /// Only show when effective language is Arabic or Egyptian Arabic
+    var shouldShowArabiziOption: Bool {
+        guard let language = effectiveTranscriptionLanguage else { return false }
+        return language == .arabic || language == .egyptianArabic
     }
 
     @Published var isTranslationEnabled: Bool = false {
@@ -625,6 +662,12 @@ class SharedSettings: ObservableObject {
         getAIProviderConfig(for: .local)?.localConfig
     }
 
+    /// Get the self-hosted LLM configuration (Ollama, LM Studio)
+    /// Alias for localProviderConfig, used by LocalModelSettingsProvider protocol
+    var selfHostedLLMConfig: LocalProviderConfig? {
+        localProviderConfig
+    }
+
     var lastTranscription: String? {
         get { defaults?.string(forKey: Constants.Keys.lastTranscription) }
         set { defaults?.set(newValue, forKey: Constants.Keys.lastTranscription) }
@@ -853,6 +896,11 @@ class SharedSettings: ObservableObject {
             selectedTranslationProvider = provider
         }
 
+        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedFormattingProvider),
+           let provider = AIProvider(rawValue: providerRaw) {
+            selectedFormattingProvider = provider
+        }
+
         if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedPowerModeProvider),
            let provider = AIProvider(rawValue: providerRaw) {
             selectedPowerModeProvider = provider
@@ -965,6 +1013,7 @@ class SharedSettings: ObservableObject {
         // Sync primitive values
         iCloud?.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
         iCloud?.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
+        iCloud?.set(selectedFormattingProvider.rawValue, forKey: iCloudKeys.selectedFormattingProvider)
         iCloud?.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
         iCloud?.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
         iCloud?.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
@@ -1083,6 +1132,9 @@ class SharedSettings: ObservableObject {
 
         // Load translation enabled
         isTranslationEnabled = defaults?.bool(forKey: Constants.Keys.isTranslationEnabled) ?? false
+
+        // Load Arabizi output setting (default: false)
+        outputArabizi = defaults?.bool(forKey: "outputArabizi") ?? false
 
         // Load auto-return enabled (default: true)
         if defaults?.object(forKey: Constants.Keys.autoReturnEnabled) != nil {
@@ -1208,6 +1260,11 @@ class SharedSettings: ObservableObject {
         if let translationProviderRaw = defaults?.string(forKey: Constants.Keys.selectedTranslationProvider),
            let provider = AIProvider(rawValue: translationProviderRaw) {
             selectedTranslationProvider = provider
+        }
+
+        if let formattingProviderRaw = defaults?.string(forKey: Constants.Keys.selectedFormattingProvider),
+           let provider = AIProvider(rawValue: formattingProviderRaw) {
+            selectedFormattingProvider = provider
         }
 
         if let powerModeProviderRaw = defaults?.string(forKey: Constants.Keys.selectedPowerModeProvider),
@@ -1351,6 +1408,11 @@ class SharedSettings: ObservableObject {
                 selectedTranslationProvider = first.provider
             }
         }
+        if selectedFormattingProvider == provider {
+            if let first = formattingProviders.first {
+                selectedFormattingProvider = first.provider
+            }
+        }
         if selectedPowerModeProvider == provider {
             if let first = powerModeProviders.first {
                 selectedPowerModeProvider = first.provider
@@ -1375,6 +1437,11 @@ class SharedSettings: ObservableObject {
 
     var translationProviders: [AIProviderConfig] {
         configuredAIProviders.filter { $0.isConfiguredForTranslation }
+    }
+
+    /// Formatting providers (for Context AI formatting) - same as powerMode providers
+    var formattingProviders: [AIProviderConfig] {
+        configuredAIProviders.filter { $0.isConfiguredForPowerMode }
     }
 
     var powerModeProviders: [AIProviderConfig] {
@@ -2526,6 +2593,21 @@ extension SharedSettings: ContextProviderManager {
     // - effectiveTranscriptionProvider: ProviderSelection
     // - effectiveTranslationProvider: ProviderSelection
     // - effectiveAIProvider: ProviderSelection
+}
+
+// MARK: - LocalModelSettingsProvider Conformance
+
+extension SharedSettings: LocalModelSettingsProvider {
+    // Protocol requirements are already implemented in SharedSettings:
+    // - whisperKitConfig: WhisperKitSettings
+    // - appleIntelligenceConfig: AppleIntelligenceConfig
+    // - appleTranslationConfig: AppleTranslationConfig
+    // - selfHostedLLMConfig: LocalProviderConfig?
+    // - isWhisperKitReady: Bool
+    // - isAppleIntelligenceReady: Bool
+    // - hasLocalTranslation: Bool
+    // - localModelStorageBytes: Int
+    // - localModelStorageFormatted: String
 }
 
 /// Memory tier for update tracking

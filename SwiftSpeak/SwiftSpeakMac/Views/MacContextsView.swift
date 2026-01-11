@@ -316,7 +316,7 @@ private struct ContextCard: View {
                 .fill(context.color.color.opacity(0.2))
                 .frame(width: 40, height: 40)
 
-            if context.icon.contains(".") {
+            if context.icon.isSFSymbolName {
                 Image(systemName: context.icon)
                     .font(.system(size: 18))
                     .foregroundStyle(context.color.gradient)
@@ -628,6 +628,21 @@ struct MacContextEditorSheet: View {
         return bundleId.components(separatedBy: ".").last ?? bundleId
     }
 
+    /// Provider options for Formatting, including Apple Intelligence when available
+    private var formattingProviderOptions: [AIProvider] {
+        var providers = settings.configuredAIProviders.map(\.provider).filter { $0.supportsPowerMode }
+        if settings.appleIntelligenceConfig.isAvailable {
+            providers.insert(.local, at: 0)
+        }
+        return providers
+    }
+
+    /// Check if Arabizi option should be visible
+    private var showArabiziOption: Bool {
+        let effectiveLanguage = context.defaultInputLanguage ?? settings.selectedDictationLanguage
+        return effectiveLanguage == .arabic || effectiveLanguage == .egyptianArabic
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Header
@@ -655,11 +670,14 @@ struct MacContextEditorSheet: View {
                             useGlobalMemory: context.useGlobalMemory,
                             useContextMemory: context.useContextMemory,
                             memoryLimit: context.memoryLimit,
+                            includeRecentMessages: context.includeRecentMessages,
+                            recentMessagesCount: context.recentMessagesCount,
                             autoSendAfterInsert: context.autoSendAfterInsert,
                             enterKeyBehavior: context.enterKeyBehavior,
                             defaultInputLanguage: context.defaultInputLanguage,
                             transcriptionProviderOverride: context.transcriptionProviderOverride,
                             translationProviderOverride: context.translationProviderOverride,
+                            formattingProviderOverride: context.formattingProviderOverride,
                             aiProviderOverride: context.aiProviderOverride,
                             appAssignment: context.appAssignment,
                             isPreset: false
@@ -687,7 +705,7 @@ struct MacContextEditorSheet: View {
                                         .fill(context.color.color.opacity(0.15))
                                         .frame(width: 80, height: 80)
 
-                                    if context.icon.contains(".") {
+                                    if context.icon.isSFSymbolName {
                                         Image(systemName: context.icon)
                                             .font(.system(size: 36))
                                             .foregroundStyle(context.color.gradient)
@@ -762,6 +780,21 @@ struct MacContextEditorSheet: View {
                                     Text(lang.displayName)
                                 }
                                 .tag(lang)
+                            }
+                        }
+                    }
+
+                    // Arabizi output option - only visible for Arabic/Egyptian Arabic
+                    if showArabiziOption {
+                        Toggle(isOn: Binding(
+                            get: { context.outputArabizi ?? settings.outputArabizi },
+                            set: { context.outputArabizi = $0 }
+                        )) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Franco-Arabic Output")
+                                Text("Convert Arabic to Latin letters (e.g., 3=ع, 7=ح)")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -896,6 +929,24 @@ struct MacContextEditorSheet: View {
                     }
                 }
 
+                // Context Awareness - Recent Messages
+                Section {
+                    Toggle("Include Recent Messages", isOn: $context.includeRecentMessages)
+
+                    if context.includeRecentMessages {
+                        Stepper("Number of messages: \(context.recentMessagesCount)",
+                                value: $context.recentMessagesCount,
+                                in: 1...10,
+                                step: 1)
+                    }
+                } header: {
+                    Text("Context Awareness")
+                } footer: {
+                    if context.includeRecentMessages {
+                        Text("Recent messages from this context (last hour only) will be sent to improve transcription accuracy.")
+                    }
+                }
+
                 // Keyboard Behavior
                 Section("Keyboard Behavior") {
                     Toggle("Auto-send after insert", isOn: $context.autoSendAfterInsert)
@@ -916,12 +967,15 @@ struct MacContextEditorSheet: View {
                     ProviderOverridesSection(
                         transcriptionOverride: $context.transcriptionProviderOverride,
                         translationOverride: $context.translationProviderOverride,
+                        formattingOverride: $context.formattingProviderOverride,
                         aiOverride: $context.aiProviderOverride,
                         transcriptionProviders: settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranscription },
                         translationProviders: settings.configuredAIProviders.map(\.provider).filter { $0.supportsTranslation },
+                        formattingProviders: formattingProviderOptions,
                         aiProviders: settings.configuredAIProviders.map(\.provider).filter { $0.supportsPowerMode },
                         globalTranscription: settings.selectedTranscriptionProvider,
                         globalTranslation: settings.selectedTranslationProvider,
+                        globalFormatting: settings.selectedFormattingProvider,
                         globalAI: settings.selectedPowerModeProvider,
                         isStreamingEnabled: settings.transcriptionStreamingEnabled
                     )
@@ -1188,7 +1242,7 @@ private struct HiddenContextRow: View {
                     .fill(context.color.color.opacity(0.15))
                     .frame(width: 36, height: 36)
 
-                if context.icon.contains(".") {
+                if context.icon.isSFSymbolName {
                     Image(systemName: context.icon)
                         .font(.system(size: 16))
                         .foregroundStyle(context.color.gradient)
@@ -1312,7 +1366,7 @@ private struct ContextHotkeyRow: View {
                     .fill(context.color.color.opacity(0.2))
                     .frame(width: 32, height: 32)
 
-                if context.icon.contains(".") {
+                if context.icon.isSFSymbolName {
                     Image(systemName: context.icon)
                         .font(.system(size: 14))
                         .foregroundStyle(context.color.gradient)

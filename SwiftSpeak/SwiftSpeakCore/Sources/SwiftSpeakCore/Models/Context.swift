@@ -329,17 +329,26 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     public var memoryLimit: Int                    // Character limit for context memory (500-2000)
     public var lastMemoryUpdate: Date?
 
+    // MARK: - Recent Messages Context
+    /// Include recent messages from this context when sending to STT/formatting providers
+    /// This helps providers understand conversation context for better accuracy
+    public var includeRecentMessages: Bool         // Toggle for including recent messages
+    public var recentMessagesCount: Int            // Max number of messages to include (default 5)
+    // Note: Only includes messages from the last hour - if none exist, nothing is sent
+
     // MARK: - Keyboard Behavior
     public var autoSendAfterInsert: Bool           // Auto-tap send after voice input
     public var enterKeyBehavior: EnterKeyBehavior  // What Enter key does
 
     // MARK: - Language Settings
     public var defaultInputLanguage: Language?     // Override system dictation language (nil = auto)
+    public var outputArabizi: Bool?                // Output in Franco-Arabic format (nil = use global)
 
     // MARK: - Provider Overrides (nil = use global default)
     public var transcriptionProviderOverride: ProviderSelection?
     public var translationProviderOverride: ProviderSelection?
-    public var aiProviderOverride: ProviderSelection?
+    public var formattingProviderOverride: ProviderSelection?  // For Context formatting
+    public var aiProviderOverride: ProviderSelection?  // For Power Mode
 
     // MARK: - System
     public var isActive: Bool                      // Currently selected context
@@ -366,11 +375,15 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         contextMemory: String? = nil,
         memoryLimit: Int = 2000,
         lastMemoryUpdate: Date? = nil,
+        includeRecentMessages: Bool = false,
+        recentMessagesCount: Int = 5,
         autoSendAfterInsert: Bool = false,
         enterKeyBehavior: EnterKeyBehavior = .defaultNewLine,
         defaultInputLanguage: Language? = nil,
+        outputArabizi: Bool? = nil,
         transcriptionProviderOverride: ProviderSelection? = nil,
         translationProviderOverride: ProviderSelection? = nil,
+        formattingProviderOverride: ProviderSelection? = nil,
         aiProviderOverride: ProviderSelection? = nil,
         isActive: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
@@ -393,11 +406,15 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.contextMemory = contextMemory
         self.memoryLimit = memoryLimit
         self.lastMemoryUpdate = lastMemoryUpdate
+        self.includeRecentMessages = includeRecentMessages
+        self.recentMessagesCount = recentMessagesCount
         self.autoSendAfterInsert = autoSendAfterInsert
         self.enterKeyBehavior = enterKeyBehavior
         self.defaultInputLanguage = defaultInputLanguage
+        self.outputArabizi = outputArabizi
         self.transcriptionProviderOverride = transcriptionProviderOverride
         self.translationProviderOverride = translationProviderOverride
+        self.formattingProviderOverride = formattingProviderOverride
         self.aiProviderOverride = aiProviderOverride
         self.isActive = isActive
         self.appAssignment = appAssignment
@@ -448,6 +465,71 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         }
 
         return words
+    }
+
+    // MARK: - Recent Messages Context
+
+    /// Build a context string from recent transcription records for STT/LLM providers
+    /// Only includes messages from the last hour
+    /// - Parameter records: Array of TranscriptionRecord from this context
+    /// - Returns: Formatted context string, or nil if no recent messages within the last hour
+    public func buildRecentMessagesContext(from records: [TranscriptionRecord]) -> String? {
+        guard includeRecentMessages else { return nil }
+
+        let oneHourAgo = Date().addingTimeInterval(-3600)
+
+        // Filter to messages from last hour, sort by timestamp (oldest first)
+        let recentMessages = records
+            .filter { $0.timestamp > oneHourAgo }
+            .sorted { $0.timestamp < $1.timestamp }
+            .prefix(recentMessagesCount)
+
+        guard !recentMessages.isEmpty else { return nil }
+
+        // Format as context string
+        let messageTexts = recentMessages.map { record in
+            // Use the formatted text if available, otherwise raw
+            record.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        .filter { !$0.isEmpty }
+
+        guard !messageTexts.isEmpty else { return nil }
+
+        // Build context string - this format works well for STT vocabulary boosting
+        // and LLM context understanding
+        return "Recent conversation context:\n" + messageTexts.joined(separator: "\n---\n")
+    }
+
+    /// Extract vocabulary/keywords from recent messages for STT word boosting
+    /// - Parameter records: Array of TranscriptionRecord from this context
+    /// - Returns: Array of unique words/phrases to boost in transcription
+    public func extractRecentMessagesVocabulary(from records: [TranscriptionRecord]) -> [String] {
+        guard includeRecentMessages else { return [] }
+
+        let oneHourAgo = Date().addingTimeInterval(-3600)
+
+        let recentTexts = records
+            .filter { $0.timestamp > oneHourAgo }
+            .prefix(recentMessagesCount)
+            .map { $0.text }
+
+        // Extract meaningful words (proper nouns, technical terms, etc.)
+        // Simple heuristic: words that are capitalized mid-sentence or unusual length
+        var vocabulary: Set<String> = []
+
+        for text in recentTexts {
+            let words = text.components(separatedBy: .whitespacesAndNewlines)
+            for word in words {
+                let cleaned = word.trimmingCharacters(in: .punctuationCharacters)
+                // Include capitalized words (potential proper nouns)
+                // Include longer words (potential technical terms)
+                if cleaned.count >= 4 && (cleaned.first?.isUppercase == true || cleaned.count >= 8) {
+                    vocabulary.insert(cleaned)
+                }
+            }
+        }
+
+        return Array(vocabulary).prefix(50).map { $0 }  // Limit to 50 terms
     }
 
     // MARK: - Static Properties
@@ -514,8 +596,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         case id, name, icon, color, description
         case domainJargon, customJargon, examples, selectedInstructions, customInstructions
         case useGlobalMemory, useContextMemory, contextMemory, memoryLimit, lastMemoryUpdate
-        case autoSendAfterInsert, enterKeyBehavior, defaultInputLanguage
-        case transcriptionProviderOverride, translationProviderOverride, aiProviderOverride
+        case includeRecentMessages, recentMessagesCount
+        case autoSendAfterInsert, enterKeyBehavior, defaultInputLanguage, outputArabizi
+        case transcriptionProviderOverride, translationProviderOverride, formattingProviderOverride, aiProviderOverride
         case isActive, appAssignment, isPreset, createdAt, updatedAt
         // Legacy
         case systemPrompt  // Migrate to customInstructions
@@ -548,11 +631,17 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         memoryLimit = try container.decodeIfPresent(Int.self, forKey: .memoryLimit) ?? 2000
         lastMemoryUpdate = try container.decodeIfPresent(Date.self, forKey: .lastMemoryUpdate)
 
+        // Recent messages context - defaults to disabled
+        includeRecentMessages = try container.decodeIfPresent(Bool.self, forKey: .includeRecentMessages) ?? false
+        recentMessagesCount = try container.decodeIfPresent(Int.self, forKey: .recentMessagesCount) ?? 5
+
         autoSendAfterInsert = try container.decodeIfPresent(Bool.self, forKey: .autoSendAfterInsert) ?? false
         enterKeyBehavior = try container.decodeIfPresent(EnterKeyBehavior.self, forKey: .enterKeyBehavior) ?? .defaultNewLine
         defaultInputLanguage = try container.decodeIfPresent(Language.self, forKey: .defaultInputLanguage)
+        outputArabizi = try container.decodeIfPresent(Bool.self, forKey: .outputArabizi)
         transcriptionProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .transcriptionProviderOverride)
         translationProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .translationProviderOverride)
+        formattingProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .formattingProviderOverride)
         aiProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .aiProviderOverride)
         isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
         appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
@@ -579,11 +668,15 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         try container.encodeIfPresent(contextMemory, forKey: .contextMemory)
         try container.encode(memoryLimit, forKey: .memoryLimit)
         try container.encodeIfPresent(lastMemoryUpdate, forKey: .lastMemoryUpdate)
+        try container.encode(includeRecentMessages, forKey: .includeRecentMessages)
+        try container.encode(recentMessagesCount, forKey: .recentMessagesCount)
         try container.encode(autoSendAfterInsert, forKey: .autoSendAfterInsert)
         try container.encode(enterKeyBehavior, forKey: .enterKeyBehavior)
         try container.encodeIfPresent(defaultInputLanguage, forKey: .defaultInputLanguage)
+        try container.encodeIfPresent(outputArabizi, forKey: .outputArabizi)
         try container.encodeIfPresent(transcriptionProviderOverride, forKey: .transcriptionProviderOverride)
         try container.encodeIfPresent(translationProviderOverride, forKey: .translationProviderOverride)
+        try container.encodeIfPresent(formattingProviderOverride, forKey: .formattingProviderOverride)
         try container.encodeIfPresent(aiProviderOverride, forKey: .aiProviderOverride)
         try container.encode(isActive, forKey: .isActive)
         try container.encode(appAssignment, forKey: .appAssignment)

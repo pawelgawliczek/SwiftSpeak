@@ -307,6 +307,7 @@ private struct ProviderComparisonRow: View {
         switch category {
         case .transcription: return .blue
         case .translation: return .purple
+        case .formatting: return .teal
         case .powerMode: return .orange
         }
     }

@@ -18,8 +18,11 @@ public protocol ContextProviderManager: AnyObject {
     /// All available conversation contexts
     var contexts: [ConversationContext] { get }
 
-    /// Currently active context ID
+    /// Currently active context ID (user's manual selection)
     var activeContextId: UUID? { get set }
+
+    /// Provider defaults including default context
+    var providerDefaults: ProviderDefaults { get }
 
     /// Whether streaming transcription is enabled
     /// When true, transcription provider overrides are ignored
@@ -28,13 +31,14 @@ public protocol ContextProviderManager: AnyObject {
     // Global default providers
     var selectedTranscriptionProvider: AIProvider { get }
     var selectedTranslationProvider: AIProvider { get }
+    var selectedFormattingProvider: AIProvider { get }
     var selectedPowerModeProvider: AIProvider { get }
 }
 
 // MARK: - Default Implementation
 
 public extension ContextProviderManager {
-    /// Get the currently active context
+    /// Get the currently active context (user's manual selection only)
     var activeContext: ConversationContext? {
         guard let id = activeContextId else { return nil }
         return contexts.first { $0.id == id }
@@ -53,6 +57,11 @@ public extension ContextProviderManager {
     /// Returns effective translation provider (context override or global)
     var effectiveTranslationProvider: ProviderSelection {
         return activeContext?.translationProviderOverride ?? ProviderSelection(providerType: .cloud(selectedTranslationProvider))
+    }
+
+    /// Returns effective formatting provider for Context AI formatting (context override or global)
+    var effectiveFormattingProvider: ProviderSelection {
+        return activeContext?.formattingProviderOverride ?? ProviderSelection(providerType: .cloud(selectedFormattingProvider))
     }
 
     /// Returns effective AI/LLM provider for Power Mode (context override or global)

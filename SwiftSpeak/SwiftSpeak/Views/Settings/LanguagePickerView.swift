@@ -77,7 +77,7 @@ struct DictationLanguagePickerView: View {
     /// Languages supported by both OpenAI Whisper and Google Gemini
     private let supportedLanguages: [Language] = [
         .english, .spanish, .french, .german, .italian, .portuguese,
-        .chinese, .japanese, .korean, .arabic, .russian, .polish
+        .chinese, .japanese, .korean, .arabic, .egyptianArabic, .russian, .polish
     ]
 
     var body: some View {

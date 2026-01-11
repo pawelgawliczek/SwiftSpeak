@@ -649,12 +649,19 @@ final class PowerModeOrchestrator: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        // Build prompt hint from context (domain jargon, vocabulary)
+        // Build prompt hint from context (domain jargon, vocabulary, recent messages)
+        let recentRecords: [TranscriptionRecord]
+        if let contextId = activeContext?.id {
+            recentRecords = settings.transcriptionHistory(forContextId: contextId)
+        } else {
+            recentRecords = []
+        }
         let promptContext = PromptContext.from(
             context: activeContext,
             powerMode: powerMode,
             globalMemory: settings.globalMemory,
-            vocabularyEntries: settings.vocabularyEntries
+            vocabularyEntries: settings.vocabularyEntries,
+            recentRecords: recentRecords
         )
         let promptHint = promptContext.buildTranscriptionHint()
 
@@ -667,12 +674,20 @@ final class PowerModeOrchestrator: ObservableObject {
 
     /// Build transcription hint from vocabulary and context
     private func buildTranscriptionHint() -> String? {
+        // Get recent records for context injection
+        let recentRecords: [TranscriptionRecord]
+        if let contextId = activeContext?.id {
+            recentRecords = settings.transcriptionHistory(forContextId: contextId)
+        } else {
+            recentRecords = []
+        }
         // Use PromptContext for consistent hint building
         let promptContext = PromptContext.from(
             context: activeContext,
             powerMode: powerMode,
             globalMemory: settings.globalMemory,
-            vocabularyEntries: settings.vocabularyEntries
+            vocabularyEntries: settings.vocabularyEntries,
+            recentRecords: recentRecords
         )
         return promptContext.buildTranscriptionHint()
     }
@@ -862,11 +877,18 @@ final class PowerModeOrchestrator: ObservableObject {
     /// Build PromptContext for transcription hints
     /// Note: This still uses PromptContext for transcription, not Power Mode execution
     private func buildTranscriptionPromptContext() -> PromptContext {
+        let recentRecords: [TranscriptionRecord]
+        if let contextId = activeContext?.id {
+            recentRecords = settings.transcriptionHistory(forContextId: contextId)
+        } else {
+            recentRecords = []
+        }
         return PromptContext.from(
             context: activeContext,
             powerMode: powerMode,
             globalMemory: settings.globalMemory,
-            vocabularyEntries: settings.vocabularyEntries
+            vocabularyEntries: settings.vocabularyEntries,
+            recentRecords: recentRecords
         )
     }
 

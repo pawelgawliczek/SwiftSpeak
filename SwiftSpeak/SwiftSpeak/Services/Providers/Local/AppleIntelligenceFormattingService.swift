@@ -203,7 +203,14 @@ final class AppleIntelligenceFormattingService: FormattingProvider, StreamingFor
 
     private func buildSystemInstructions(mode: FormattingMode, context: PromptContext?) -> String {
         var instructions = """
-        You are a helpful writing assistant that formats and improves text while preserving its meaning.
+        You are a professional writing assistant. Your task is to improve and format text while:
+        - Preserving the original meaning and intent exactly
+        - Fixing grammar, spelling, and punctuation errors
+        - Maintaining the speaker's voice and style
+        - Keeping technical terms, proper nouns, and names unchanged
+        - Never adding new information or opinions
+
+        Output ONLY the formatted text. Do not add explanations, commentary, or notes.
         """
 
         // Add context-specific instructions
@@ -247,18 +254,30 @@ final class AppleIntelligenceFormattingService: FormattingProvider, StreamingFor
             return text // No formatting needed
         case .email:
             modeInstructions = """
-            Format the following text as a professional email. Include appropriate greeting and closing.
-            Keep the core message intact but improve clarity and professionalism.
+            Format this as a professional email:
+            - Add appropriate greeting (Dear/Hi/Hello based on formality)
+            - Structure the body with clear paragraphs
+            - Add appropriate closing (Best regards/Thanks/Sincerely)
+            - Fix any grammar or spelling errors
+            - Keep the original message and intent intact
             """
         case .formal:
             modeInstructions = """
-            Rewrite the following text in a formal, professional tone.
-            Improve grammar, punctuation, and clarity while preserving the original meaning.
+            Rewrite this in formal, professional language:
+            - Use complete sentences with proper structure
+            - Avoid contractions (don't → do not)
+            - Use precise, professional vocabulary
+            - Fix grammar, spelling, and punctuation
+            - Maintain the original meaning exactly
             """
         case .casual:
             modeInstructions = """
-            Rewrite the following text in a casual, friendly tone.
-            Keep it natural and conversational while preserving the meaning.
+            Rewrite this in a casual, conversational tone:
+            - Use natural, everyday language
+            - Contractions are fine (I'm, don't, won't)
+            - Keep it friendly and approachable
+            - Fix obvious errors but maintain casual feel
+            - Preserve the original meaning
             """
         }
 
