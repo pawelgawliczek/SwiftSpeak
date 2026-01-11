@@ -64,6 +64,13 @@ public struct PromptContext: Sendable {
     /// Domain-specific jargon type for transcription accuracy
     public let domainJargon: DomainJargon
 
+    /// Recent messages context string for STT/LLM providers
+    /// Built from recent messages in the active context (last hour only)
+    public let recentMessagesContext: String?
+
+    /// Vocabulary extracted from recent messages for STT word boosting
+    public let recentMessagesVocabulary: [String]
+
     // MARK: - Initialization
 
     public init(
@@ -76,7 +83,9 @@ public struct PromptContext: Sendable {
         selectedInstructions: Set<String> = [],
         customInstructions: String? = nil,
         vocabularyWords: [String] = [],
-        domainJargon: DomainJargon = .none
+        domainJargon: DomainJargon = .none,
+        recentMessagesContext: String? = nil,
+        recentMessagesVocabulary: [String] = []
     ) {
         self.globalMemory = globalMemory
         self.contextMemory = contextMemory
@@ -88,6 +97,8 @@ public struct PromptContext: Sendable {
         self.customInstructions = customInstructions
         self.vocabularyWords = vocabularyWords
         self.domainJargon = domainJargon
+        self.recentMessagesContext = recentMessagesContext
+        self.recentMessagesVocabulary = recentMessagesVocabulary
     }
 
     // MARK: - Factory Methods
@@ -98,6 +109,7 @@ public struct PromptContext: Sendable {
     ///   - powerMode: Active power mode (if in Power Mode)
     ///   - globalMemory: Global memory string (if enabled)
     ///   - vocabularyEntries: Vocabulary entries for transcription hints
+    ///   - recentRecords: Recent transcription records for this context (for context injection)
     /// - Returns: Configured PromptContext
     ///
     /// Note: Context memory is NOT included here - this is intentional.
@@ -108,7 +120,8 @@ public struct PromptContext: Sendable {
         context: ConversationContext?,
         powerMode: PowerMode? = nil,
         globalMemory: String? = nil,
-        vocabularyEntries: [VocabularyEntry] = []
+        vocabularyEntries: [VocabularyEntry] = [],
+        recentRecords: [TranscriptionRecord] = []
     ) -> PromptContext {
         // Collect vocabulary words for transcription hints from multiple sources:
         // 1. Global vocabulary entries (from Settings)
@@ -138,6 +151,22 @@ public struct PromptContext: Sendable {
         // Note: Context memory intentionally NOT included here
         // Power Mode uses PowerModePromptBuilder which handles all memory tiers
 
+        // Build recent messages context and vocabulary (if enabled in context settings)
+        let recentContext = context?.buildRecentMessagesContext(from: recentRecords)
+        let recentVocab = context?.extractRecentMessagesVocabulary(from: recentRecords) ?? []
+
+        // Add recent vocabulary to vocab words (deduplicated)
+        if !recentVocab.isEmpty {
+            let combined = vocabWords + recentVocab
+            var seenRecent = Set<String>()
+            vocabWords = combined.filter { word in
+                let lowercased = word.lowercased()
+                if seenRecent.contains(lowercased) { return false }
+                seenRecent.insert(lowercased)
+                return true
+            }
+        }
+
         return PromptContext(
             globalMemory: globalMem,
             contextMemory: nil,  // Simplified: context memory removed
@@ -148,7 +177,9 @@ public struct PromptContext: Sendable {
             selectedInstructions: context?.selectedInstructions ?? [],
             customInstructions: context?.customInstructions,
             vocabularyWords: vocabWords,
-            domainJargon: context?.domainJargon ?? .none
+            domainJargon: context?.domainJargon ?? .none,
+            recentMessagesContext: recentContext,
+            recentMessagesVocabulary: recentVocab
         )
     }
 
@@ -297,29 +328,90 @@ public struct PromptContext: Sendable {
     }
 
     /// Build transcription hint for STT providers (Whisper, etc.)
-    /// - Returns: Hint string for transcription, or nil if no hints available
+    ///
+    /// Optimized for Whisper's ~224 token limit (~800 chars).
+    /// Uses only language-agnostic extraction methods to support all languages.
+    /// Prioritizes: context name > custom vocabulary > acronyms > domain terms
+    ///
+    /// - Returns: Compact hint string for transcription, or nil if no hints available
     public func buildTranscriptionHint() -> String? {
-        var hints: [String] = []
+        // Target budget: ~800 characters (Whisper truncates beyond ~224 tokens)
+        let maxLength = 800
+        var components: [String] = []
+        var currentLength = 0
 
-        // Domain-specific jargon (provides terminology context)
-        if domainJargon != .none, let domainHint = domainJargon.transcriptionHint {
-            hints.append(domainHint)
-        }
-
-        // Vocabulary/proper nouns (limit to 50 - streaming providers can handle 100-500)
-        if !vocabularyWords.isEmpty {
-            let words = vocabularyWords.prefix(50).joined(separator: ", ")
-            hints.append("Common names and terms: \(words)")
-        }
-
-        // Context name as potential vocabulary
-        if let name = contextName, !name.isEmpty {
-            if !hints.contains(where: { $0.contains(name) }) {
-                hints.append("Context: \(name)")
+        // Helper to add component if within budget
+        func addIfFits(_ text: String, separator: String = " ") {
+            let addition = components.isEmpty ? text : separator + text
+            if currentLength + addition.count <= maxLength {
+                components.append(text)
+                currentLength += addition.count
             }
         }
 
-        return hints.isEmpty ? nil : hints.joined(separator: ". ") + "."
+        // 1. Context sentence (~50 chars) - highest priority
+        // Context name is user-defined and language-appropriate
+        if let name = contextName, !name.isEmpty {
+            let domainName = domainJargon != .none ? domainJargon.displayName : nil
+            let contextSentence: String
+            if let domain = domainName {
+                contextSentence = "\(name). \(domain) discussion."
+            } else {
+                contextSentence = "\(name)."
+            }
+            addIfFits(contextSentence)
+        }
+
+        // 2. Custom vocabulary - user-defined terms (highest value, ~300 chars)
+        // vocabularyWords contains custom jargon + global vocabulary (user controls these)
+        // Also includes vocabulary extracted from recent messages
+        let customTerms = vocabularyWords.prefix(20)
+        if !customTerms.isEmpty {
+            let termsStr = "Key terms: " + customTerms.joined(separator: ", ") + "."
+            addIfFits(termsStr)
+        }
+
+        // 3. Acronyms from domain or recent context (~150 chars)
+        // Acronyms (2-6 uppercase letters) are language-agnostic
+        var acronyms = extractAcronyms(from: recentMessagesContext)
+        if let domainHint = domainJargon.transcriptionHint {
+            acronyms = extractAcronyms(from: domainHint) + acronyms
+        }
+        let uniqueAcronyms = Array(Set(acronyms)).sorted().prefix(15)
+        if !uniqueAcronyms.isEmpty {
+            let acronymsStr = "Acronyms: " + uniqueAcronyms.joined(separator: ", ") + "."
+            addIfFits(acronymsStr)
+        }
+
+        // 4. Domain-specific terminology if space remains (~200 chars)
+        // Domain jargon contains predefined technical terms
+        if currentLength < maxLength - 100 {
+            if let domainHint = domainJargon.transcriptionHint {
+                // Use the full domain hint which contains relevant vocabulary
+                addIfFits(domainHint)
+            }
+        }
+
+        guard !components.isEmpty else { return nil }
+        return components.joined(separator: " ")
+    }
+
+    // MARK: - Vocabulary Extraction Helpers
+
+    /// Extract acronyms (2-6 uppercase letters) from text
+    /// This is language-agnostic and works across all supported languages
+    private func extractAcronyms(from text: String?) -> [String] {
+        guard let text = text else { return [] }
+        let pattern = "\\b[A-Z]{2,6}\\b"
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+
+        let range = NSRange(text.startIndex..., in: text)
+        let matches = regex.matches(in: text, range: range)
+
+        return matches.compactMap { match in
+            guard let range = Range(match.range, in: text) else { return nil }
+            return String(text[range])
+        }
     }
 
     /// Infer formality level from selected instructions
