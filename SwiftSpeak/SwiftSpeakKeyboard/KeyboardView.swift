@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import Combine
+import SwiftSpeakCore
 
 // MARK: - Picker Mode
 enum KeyboardPickerMode {

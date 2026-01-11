@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct SwiftSpeakBar: View {
     @ObservedObject var viewModel: KeyboardViewModel

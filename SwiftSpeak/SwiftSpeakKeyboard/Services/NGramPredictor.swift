@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 /// N-gram data for a specific language
 struct NGramData {

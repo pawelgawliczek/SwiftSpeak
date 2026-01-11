@@ -400,7 +400,20 @@ struct ContentView: View {
             return
         }
 
-        // Extract mode
+        // Extract contextId (new system - replaces mode)
+        if let contextIdString = queryItems.first(where: { $0.name == "contextId" })?.value,
+           let contextId = UUID(uuidString: contextIdString) {
+            // Find context by ID (checks user contexts and presets)
+            if let context = settings.contexts.first(where: { $0.id == contextId })
+                ?? ConversationContext.presets.first(where: { $0.id == contextId }) {
+                settings.setActiveContext(context)
+            } else {
+                // Context ID not found - clear active context
+                settings.setActiveContext(nil)
+            }
+        }
+
+        // Legacy: Extract mode (for backward compatibility)
         if let modeString = queryItems.first(where: { $0.name == "mode" })?.value,
            let mode = FormattingMode(rawValue: modeString) {
             settings.selectedMode = mode

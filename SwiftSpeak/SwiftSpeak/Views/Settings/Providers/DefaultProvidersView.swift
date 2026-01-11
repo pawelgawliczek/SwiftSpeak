@@ -33,7 +33,15 @@ struct DefaultProvidersView: View {
                         category: .transcription,
                         selection: Binding(
                             get: { settings.providerDefaults.transcription },
-                            set: { settings.providerDefaults.transcription = $0 }
+                            set: { newSelection in
+                                settings.providerDefaults.transcription = newSelection
+                                // Auto-enable WhisperKit when selected as default
+                                if case .local(.whisperKit) = newSelection?.providerType {
+                                    var config = settings.whisperKitConfig
+                                    config.isEnabled = true
+                                    settings.whisperKitConfig = config
+                                }
+                            }
                         ),
                         availableProviders: availableProviders(for: .transcription),
                         colorScheme: colorScheme
@@ -163,7 +171,8 @@ struct DefaultProvidersView: View {
         // Add local providers
         switch category {
         case .transcription:
-            if settings.isWhisperKitReady {
+            // Show WhisperKit if model is downloaded (ready), regardless of isEnabled toggle
+            if settings.whisperKitConfig.status == .ready {
                 selections.append(ProviderSelection(
                     providerType: .local(.whisperKit),
                     model: settings.whisperKitConfig.selectedModel.displayName

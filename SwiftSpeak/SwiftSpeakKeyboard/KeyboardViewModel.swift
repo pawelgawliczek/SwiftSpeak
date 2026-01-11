@@ -8,6 +8,7 @@
 import SwiftUI
 import UIKit
 import Combine
+import SwiftSpeakCore
 
 // MARK: - ViewModel
 class KeyboardViewModel: ObservableObject {
@@ -1050,7 +1051,10 @@ class KeyboardViewModel: ObservableObject {
         }
         defaults?.synchronize()
 
-        var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=\(translate)"
+        var urlString = "swiftspeak://record?translate=\(translate)"
+        if let context = activeContext {
+            urlString += "&contextId=\(context.id.uuidString)"
+        }
         if translate {
             urlString += "&target=\(selectedLanguage.rawValue)"
         }
@@ -1111,7 +1115,10 @@ class KeyboardViewModel: ObservableObject {
         saveSettings()
         keyboardLog("Translation requested", category: "Action")
 
-        var urlString = "swiftspeak://record?mode=\(selectedMode.rawValue)&translate=true&target=\(selectedLanguage.rawValue)"
+        var urlString = "swiftspeak://record?translate=true&target=\(selectedLanguage.rawValue)"
+        if let context = activeContext {
+            urlString += "&contextId=\(context.id.uuidString)"
+        }
         if let templateId = selectedCustomTemplateId {
             urlString += "&template=\(templateId.uuidString)"
         }
