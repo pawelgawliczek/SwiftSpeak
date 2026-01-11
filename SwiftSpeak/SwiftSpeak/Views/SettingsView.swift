@@ -68,15 +68,12 @@ struct SettingsView: View {
         return "Contexts, memory, apps"
     }
 
-    private var behaviorSubtitle: String {
-        var parts: [String] = []
-        if settings.autoReturnEnabled {
-            parts.append("Auto-return")
+    private var powerModeSubtitle: String {
+        let powerModeCount = settings.activePowerModes.count
+        if powerModeCount > 0 {
+            return "\(powerModeCount) active"
         }
-        if settings.powerModeStreamingEnabled {
-            parts.append("Streaming")
-        }
-        return parts.isEmpty ? "Auto-return, streaming, webhooks" : parts.joined(separator: ", ")
+        return "AI agents, RAG"
     }
 
     private var securitySubtitle: String {
@@ -265,15 +262,15 @@ struct SettingsView: View {
             }
             .listRowBackground(rowBackground)
 
-            // Behavior
+            // Power Mode
             NavigationLink {
                 BehaviorSettingsView()
             } label: {
                 SettingsRow(
                     icon: "bolt.fill",
                     iconColor: .yellow,
-                    title: "Behavior",
-                    subtitle: behaviorSubtitle
+                    title: "Power Mode",
+                    subtitle: powerModeSubtitle
                 )
             }
             .listRowBackground(rowBackground)

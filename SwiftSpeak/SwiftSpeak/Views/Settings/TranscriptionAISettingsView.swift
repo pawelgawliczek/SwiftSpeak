@@ -88,6 +88,22 @@ struct TranscriptionAISettingsView: View {
         return parts.joined(separator: ", ")
     }
 
+    /// Check if the current transcription provider supports streaming
+    private var isStreamingProviderSelected: Bool {
+        let provider = settings.selectedTranscriptionProvider
+        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
+    }
+
+    private var networkQualityColor: Color {
+        let quality = NetworkQualityMonitor.shared.recommendedQuality
+        switch quality {
+        case .high: return .green
+        case .standard: return .yellow
+        case .lowBandwidth: return .orange
+        case .auto: return .green
+        }
+    }
+
     private func localModelTypeFromConfig(_ config: LocalProviderConfig) -> LocalModelType {
         switch config.type {
         case .ollama: return .ollama
@@ -117,6 +133,9 @@ struct TranscriptionAISettingsView: View {
 
                 // Defaults Section
                 defaultsSection
+
+                // Recording Section
+                recordingSection
 
                 // Provider Data Section
                 providerDataSection
@@ -454,6 +473,94 @@ struct TranscriptionAISettingsView: View {
             } else {
                 Text("Choose which provider to use for each capability. Power Modes can override these settings.")
             }
+        }
+    }
+
+    // MARK: - Recording Section
+
+    private var recordingSection: some View {
+        Section {
+            // Transcription Streaming
+            Toggle(isOn: $settings.transcriptionStreamingEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text("Stream transcriptions")
+                            .font(.callout)
+                        Text("Beta")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(AppTheme.accent.opacity(0.8))
+                            .clipShape(Capsule())
+                    }
+                    Text("Show transcription in real-time as you speak")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
+                        Text("Current provider doesn't support streaming")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            // Auto-return
+            Toggle(isOn: $settings.autoReturnEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Auto-return after transcription")
+                        .font(.callout)
+                    Text("Automatically dismiss after copying to clipboard")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            // Audio Quality
+            Picker(selection: $settings.audioQuality) {
+                ForEach(AudioQualityMode.allCases, id: \.self) { mode in
+                    Text(mode.displayName).tag(mode)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Recording Quality")
+                        .font(.callout)
+                    Text(settings.audioQuality.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .pickerStyle(.menu)
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            if settings.audioQuality == .auto {
+                HStack(spacing: 8) {
+                    Image(systemName: "wifi")
+                        .font(.callout)
+                        .foregroundStyle(networkQualityColor)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Network Status")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(NetworkQualityMonitor.shared.networkStatusDescription)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                        Text("Current: \(NetworkQualityMonitor.shared.recommendedQuality.displayName)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            Text("Recording")
+        } footer: {
+            Text("Configure how audio is recorded and transcriptions are delivered.")
         }
     }
 

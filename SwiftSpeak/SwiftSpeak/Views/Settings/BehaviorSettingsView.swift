@@ -2,7 +2,7 @@
 //  BehaviorSettingsView.swift
 //  SwiftSpeak
 //
-//  Behavior settings subpage - auto-return, streaming, retry, webhooks, and advanced options
+//  Power Mode settings subpage - streaming, retry, webhooks, and advanced options
 //
 
 import SwiftUI
@@ -22,12 +22,6 @@ struct BehaviorSettingsView: View {
         colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
     }
 
-    /// Check if the current transcription provider supports streaming
-    private var isStreamingProviderSelected: Bool {
-        let provider = settings.selectedTranscriptionProvider
-        return provider == .openAI || provider == .deepgram || provider == .assemblyAI || provider == .google || provider == .appleSpeech
-    }
-
     private var webhooksSubtitle: String {
         let count = settings.webhooks.count
         if count == 0 {
@@ -42,12 +36,6 @@ struct BehaviorSettingsView: View {
             backgroundColor.ignoresSafeArea()
 
             List {
-                // After Transcription Section
-                afterTranscriptionSection
-
-                // Audio Quality Section
-                audioQualitySection
-
                 // Streaming Section
                 streamingSection
 
@@ -63,87 +51,10 @@ struct BehaviorSettingsView: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
         }
-        .navigationTitle("Behavior")
+        .navigationTitle("Power Mode")
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showPaywall) {
             PaywallView()
-        }
-    }
-
-    // MARK: - After Transcription Section
-
-    private var afterTranscriptionSection: some View {
-        Section {
-            Toggle(isOn: $settings.autoReturnEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Auto-return after transcription")
-                        .font(.callout)
-                    Text("Automatically dismiss after copying to clipboard")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tint(AppTheme.accent)
-            .listRowBackground(rowBackground)
-        } header: {
-            Text("After Transcription")
-        }
-    }
-
-    // MARK: - Audio Quality Section
-
-    private var audioQualitySection: some View {
-        Section {
-            Picker(selection: $settings.audioQuality) {
-                ForEach(AudioQualityMode.allCases, id: \.self) { mode in
-                    Text(mode.displayName).tag(mode)
-                }
-            } label: {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Recording Quality")
-                        .font(.callout)
-                    Text(settings.audioQuality.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .pickerStyle(.menu)
-            .tint(AppTheme.accent)
-            .listRowBackground(rowBackground)
-
-            if settings.audioQuality == .auto {
-                HStack(spacing: 8) {
-                    Image(systemName: "wifi")
-                        .font(.callout)
-                        .foregroundStyle(networkQualityColor)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Network Status")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text(NetworkQualityMonitor.shared.networkStatusDescription)
-                            .font(.caption)
-                            .foregroundStyle(.primary)
-                        Text("Current: \(NetworkQualityMonitor.shared.recommendedQuality.displayName)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .listRowBackground(rowBackground)
-            }
-        } header: {
-            Text("Audio Quality")
-        } footer: {
-            Text("Lower quality reduces file size for faster uploads on slow networks.")
-        }
-    }
-
-    private var networkQualityColor: Color {
-        let quality = NetworkQualityMonitor.shared.recommendedQuality
-        switch quality {
-        case .high: return .green
-        case .standard: return .yellow
-        case .lowBandwidth: return .orange
-        case .auto: return .green
         }
     }
 
@@ -162,36 +73,10 @@ struct BehaviorSettingsView: View {
             }
             .tint(AppTheme.powerAccent)
             .listRowBackground(rowBackground)
-
-            Toggle(isOn: $settings.transcriptionStreamingEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Text("Stream transcriptions")
-                            .font(.callout)
-                        Text("Beta")
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
-                            .background(AppTheme.accent.opacity(0.8))
-                            .clipShape(Capsule())
-                    }
-                    Text("Show transcription in real-time as you speak")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    if settings.transcriptionStreamingEnabled && !isStreamingProviderSelected {
-                        Text("Current provider doesn't support streaming")
-                            .font(.caption)
-                            .foregroundStyle(.orange)
-                    }
-                }
-            }
-            .tint(AppTheme.accent)
-            .listRowBackground(rowBackground)
         } header: {
             Text("Streaming")
         } footer: {
-            Text("Streaming shows results progressively instead of waiting for completion.")
+            Text("Streaming shows AI responses progressively instead of waiting for completion.")
         }
     }
 
