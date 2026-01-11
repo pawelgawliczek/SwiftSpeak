@@ -42,6 +42,21 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
     /// Callback for audio level updates - called on main queue
     var onAudioLevel: ((Float) -> Void)?
 
+    // MARK: - Pre-Buffering Properties
+
+    /// When true, audio chunks are stored in preBuffer instead of sent via callback
+    /// Use this to capture audio while provider is still connecting
+    private(set) var isBuffering: Bool = false
+
+    /// Buffer holding audio chunks captured before provider was ready
+    private var preBuffer: [Data] = []
+
+    /// Maximum pre-buffer duration in seconds (to prevent memory issues)
+    private let maxPreBufferSeconds: Double = 5.0
+
+    /// Lock for thread-safe pre-buffer access
+    private let preBufferLock = NSLock()
+
     /// Publisher for audio level (alternative to callback for SwiftUI/Combine integration)
     let audioLevelSubject = PassthroughSubject<Float, Never>()
 
@@ -181,6 +196,13 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         finalizeBackupFile()
 
         isRecording = false
+
+        // Clear pre-buffer
+        preBufferLock.lock()
+        preBuffer.removeAll()
+        isBuffering = false
+        preBufferLock.unlock()
+
         macLog("[MacStreamingAudioRecorder] Recording stopped, duration: \(String(format: "%.1f", duration))s", category: "StreamingRecorder")
 
         // Reset stats for next session
@@ -195,6 +217,54 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         stopRecording()
         duration = 0
         currentLevel = 0
+    }
+
+    // MARK: - Pre-Buffering Control
+
+    /// Start recording with pre-buffering enabled
+    /// Audio chunks will be stored in memory until `stopBuffering()` is called
+    func startRecordingWithPreBuffering() async throws {
+        preBufferLock.lock()
+        preBuffer.removeAll()
+        isBuffering = true
+        preBufferLock.unlock()
+
+        macLog("[MacStreamingAudioRecorder] Starting with pre-buffering enabled", category: "StreamingRecorder")
+        try await startRecording()
+    }
+
+    /// Stop buffering and flush all buffered chunks via onAudioChunk callback
+    /// Call this once the provider is connected and ready to receive audio
+    func stopBufferingAndFlush() {
+        preBufferLock.lock()
+        let bufferedChunks = preBuffer
+        preBuffer.removeAll()
+        isBuffering = false
+        preBufferLock.unlock()
+
+        guard !bufferedChunks.isEmpty else {
+            macLog("[MacStreamingAudioRecorder] No buffered chunks to flush", category: "StreamingRecorder")
+            return
+        }
+
+        let totalBytes = bufferedChunks.reduce(0) { $0 + $1.count }
+        let durationMs = Double(bufferedChunks.count) * 50.0 // Each chunk is ~50ms
+        macLog("[MacStreamingAudioRecorder] Flushing \(bufferedChunks.count) buffered chunks (\(String(format: "%.0f", durationMs))ms, \(totalBytes) bytes)", category: "StreamingRecorder")
+
+        // Send all buffered chunks to the provider
+        for chunk in bufferedChunks {
+            onAudioChunk?(chunk)
+        }
+    }
+
+    /// Get current pre-buffer status
+    var preBufferStatus: (chunkCount: Int, byteCount: Int, estimatedDurationMs: Double) {
+        preBufferLock.lock()
+        defer { preBufferLock.unlock() }
+        let count = preBuffer.count
+        let bytes = preBuffer.reduce(0) { $0 + $1.count }
+        let durationMs = Double(count) * 50.0
+        return (count, bytes, durationMs)
     }
 
     // MARK: - Private Methods
@@ -242,16 +312,37 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
             lastStatsLog = now
         }
 
-        // Send chunk via callback
+        // Send chunk via callback or buffer if pre-buffering is enabled
         if !data.isEmpty {
-            if onAudioChunk != nil {
+            preBufferLock.lock()
+            let shouldBuffer = isBuffering
+            preBufferLock.unlock()
+
+            if shouldBuffer {
+                // Pre-buffering mode: store chunk in memory
+                preBufferLock.lock()
+                preBuffer.append(data)
+
+                // Check if buffer is getting too large (prevent memory issues)
+                let maxChunks = Int(maxPreBufferSeconds / 0.05) // 0.05 = 50ms per chunk
+                if preBuffer.count > maxChunks {
+                    // Remove oldest chunks if we exceed max buffer
+                    let overflow = preBuffer.count - maxChunks
+                    preBuffer.removeFirst(overflow)
+                    if chunksGenerated % 20 == 0 { // Log occasionally
+                        macLog("[MacStreamingAudioRecorder] Pre-buffer overflow, dropping oldest \(overflow) chunks", category: "StreamingRecorder", level: .warning)
+                    }
+                }
+                preBufferLock.unlock()
+            } else if onAudioChunk != nil {
+                // Normal mode: send directly to provider
                 onAudioChunk?(data)
             } else if chunksGenerated == 1 {
                 // Log once if callback is nil
                 macLog("[MacStreamingAudioRecorder] ⚠️ onAudioChunk callback is nil!", category: "StreamingRecorder", level: .warning)
             }
 
-            // Write to backup file for fallback
+            // Write to backup file for fallback (always, regardless of buffering mode)
             writeToBackupFile(data)
         }
     }

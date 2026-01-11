@@ -435,7 +435,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         // Setup provider subscriptions
         setupStreamingSubscriptions(provider)
 
-        // Setup audio chunk forwarding
+        // Setup audio chunk forwarding (used after pre-buffer is flushed)
         streamRecorder.onAudioChunk = { [weak provider] data in
             provider?.sendAudio(data)
         }
@@ -458,17 +458,17 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             }
             .store(in: &streamingCancellables)
 
-        // Connect to streaming service
-        try await provider.connect(
-            language: inputLanguage,
-            sampleRate: sampleRate,
-            transcriptionPrompt: transcriptionPrompt
-        )
+        // ============================================================
+        // PRE-BUFFERING: Start recording IMMEDIATELY while connecting
+        // This ensures no audio is lost during WebSocket connection delay
+        // ============================================================
 
-        // Start streaming audio recorder
-        try await streamRecorder.startRecording()
+        // Start recording with pre-buffering enabled (captures audio to memory buffer)
+        macLog("Starting audio recording with pre-buffering while provider connects...", category: "Transcribe")
+        try await streamRecorder.startRecordingWithPreBuffering()
 
-        // NOW audio is actually being captured - switch to recording state
+        // NOW audio is being captured to buffer - switch to recording state
+        // User sees the recording indicator immediately
         state = .recording
 
         // Play start sound
@@ -483,6 +483,28 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 guard let self = self else { return }
                 self.recordingDuration = Date().timeIntervalSince(startTime)
             }
+        }
+
+        // Connect to streaming service (this takes 500ms-2s typically)
+        // Audio is being captured to buffer during this time
+        do {
+            try await provider.connect(
+                language: inputLanguage,
+                sampleRate: sampleRate,
+                transcriptionPrompt: transcriptionPrompt
+            )
+
+            // Provider is now connected - flush buffered audio and switch to direct streaming
+            let bufferStatus = streamRecorder.preBufferStatus
+            macLog("Provider connected! Flushing \(bufferStatus.chunkCount) pre-buffered chunks (\(String(format: "%.0f", bufferStatus.estimatedDurationMs))ms of audio)", category: "Transcribe")
+            streamRecorder.stopBufferingAndFlush()
+
+        } catch {
+            // Provider connection failed - stop recording and rethrow
+            macLog("Provider connection failed: \(error)", category: "Transcribe", level: .error)
+            streamRecorder.stopRecording()
+            state = .idle
+            throw error
         }
 
     }
