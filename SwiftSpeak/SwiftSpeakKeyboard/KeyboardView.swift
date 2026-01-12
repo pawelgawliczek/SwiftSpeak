@@ -121,6 +121,8 @@ struct KeyboardView: View {
                         if let lang = lang {
                             viewModel.selectedLanguage = lang
                         }
+                        // Persist translation state to shared defaults (syncs with iOS/macOS)
+                        viewModel.saveSettings()
                         withAnimation(.spring(response: 0.3)) {
                             activePicker = .none
                         }

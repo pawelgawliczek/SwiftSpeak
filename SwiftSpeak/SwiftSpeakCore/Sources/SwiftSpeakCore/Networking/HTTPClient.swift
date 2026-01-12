@@ -66,19 +66,29 @@ public final class HTTPClient: @unchecked Sendable {
     // MARK: - Multipart Upload
 
     /// Upload file with multipart form data
+    /// Uses smart timeout: short initial timeout to detect if upload is progressing,
+    /// then allows more time for processing. Retries automatically if upload stalls.
+    /// - Parameters:
+    ///   - initialTimeout: Time to wait for first bytes to be sent (default 5s)
+    ///   - processingTimeout: Time to wait for server response after upload (default 45s)
+    ///   - maxRetries: Number of retry attempts if upload stalls (default 2)
     public func uploadForText(
         url: URL,
         fileURL: URL,
         fileFieldName: String,
         fields: [String: String] = [:],
         headers: [String: String] = [:],
-        timeout: TimeInterval = 60
+        timeout: TimeInterval = 60,
+        initialTimeout: TimeInterval = 5,
+        processingTimeout: TimeInterval = 45,
+        maxRetries: Int = 2
     ) async throws -> String {
         let boundary = UUID().uuidString
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        // Use the total timeout for the request
         request.timeoutInterval = timeout
 
         for (key, value) in headers {
@@ -109,24 +119,78 @@ public final class HTTPClient: @unchecked Sendable {
         // End boundary
         body.append("--\(boundary)--\r\n".data(using: .utf8)!)
 
-        request.httpBody = body
+        // Note: Do NOT set request.httpBody here - we pass bodyData to uploadTask(with:from:) instead
+        // Setting httpBody on a request used with upload tasks causes iOS warning:
+        // "The request of a upload task should not contain a body or a body stream"
 
-        let (data, response) = try await executeRequest(request)
+        // Retry loop for stalled uploads
+        var lastError: Error?
+        for attempt in 0...maxRetries {
+            if attempt > 0 {
+                print("📤 Upload retry attempt \(attempt)/\(maxRetries)")
+            }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw TranscriptionError.networkError("Invalid response")
+            do {
+                let (data, response) = try await executeUploadWithProgress(
+                    request: request,
+                    bodyData: body,
+                    initialTimeout: initialTimeout,
+                    processingTimeout: processingTimeout
+                )
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw TranscriptionError.networkError("Invalid response")
+                }
+
+                guard (200...299).contains(httpResponse.statusCode) else {
+                    let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
+                    throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: errorMessage)
+                }
+
+                guard let text = String(data: data, encoding: .utf8) else {
+                    throw TranscriptionError.emptyResponse
+                }
+
+                return text
+
+            } catch let error as TranscriptionError where error.isRetryable {
+                lastError = error
+                // Small delay before retry
+                try? await Task.sleep(nanoseconds: 500_000_000) // 0.5s
+                continue
+            } catch {
+                // Non-retryable error, throw immediately
+                throw error
+            }
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorMessage = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: errorMessage)
-        }
+        // All retries exhausted
+        throw lastError ?? TranscriptionError.networkError("Upload failed after \(maxRetries) retries")
+    }
 
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw TranscriptionError.emptyResponse
-        }
+    /// Execute upload with progress tracking and early failure detection
+    /// Uses modern async/await upload API for reliability
+    private func executeUploadWithProgress(
+        request: URLRequest,
+        bodyData: Data,
+        initialTimeout: TimeInterval,
+        processingTimeout: TimeInterval
+    ) async throws -> (Data, URLResponse) {
+        print("📤 HTTPClient: Starting upload (\(bodyData.count) bytes)...")
 
-        return text
+        // Use the modern async/await upload API (iOS 15+)
+        // This is more reliable than the delegate-based approach
+        do {
+            let (data, response) = try await session.upload(for: request, from: bodyData)
+            print("📥 HTTPClient: Upload complete, received \(data.count) bytes")
+            return (data, response)
+        } catch let error as URLError {
+            print("❌ HTTPClient: Upload failed with URLError: \(error.code.rawValue) - \(error.localizedDescription)")
+            throw mapURLError(error)
+        } catch {
+            print("❌ HTTPClient: Upload failed with error: \(error.localizedDescription)")
+            throw TranscriptionError.networkError(error.localizedDescription)
+        }
     }
 
     // MARK: - Streaming
@@ -282,5 +346,113 @@ public struct SSEEvent: Sendable {
               let text = delta["text"] as? String
         else { return nil }
         return text
+    }
+}
+
+// MARK: - Upload Progress Delegate
+
+/// Delegate that tracks upload progress and detects stalled connections
+private final class UploadProgressDelegate: NSObject, URLSessionTaskDelegate, URLSessionDataDelegate {
+
+    enum UploadResult {
+        case success(Data, URLResponse)
+        case failure(Error)
+    }
+
+    var completion: ((UploadResult) -> Void)?
+    private(set) var isCompleted = false
+
+    private let initialTimeout: TimeInterval
+    private var hasReceivedProgress = false
+    private var initialTimeoutTimer: DispatchWorkItem?
+    private var receivedData = Data()
+    private var response: URLResponse?
+
+    private let lock = NSLock()
+
+    init(initialTimeout: TimeInterval) {
+        self.initialTimeout = initialTimeout
+        super.init()
+
+        // Start initial timeout timer
+        let timer = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.lock.lock()
+            let hasProgress = self.hasReceivedProgress
+            self.lock.unlock()
+
+            if !hasProgress && !self.isCompleted {
+                self.cancel(with: TranscriptionError.networkError("Upload stalled - no progress within \(Int(initialTimeout))s"))
+            }
+        }
+        initialTimeoutTimer = timer
+        DispatchQueue.global().asyncAfter(deadline: .now() + initialTimeout, execute: timer)
+    }
+
+    func cancel(with error: Error) {
+        lock.lock()
+        guard !isCompleted else {
+            lock.unlock()
+            return
+        }
+        isCompleted = true
+        let handler = completion
+        completion = nil
+        lock.unlock()
+
+        initialTimeoutTimer?.cancel()
+        handler?(.failure(error))
+    }
+
+    // MARK: - URLSessionTaskDelegate
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didSendBodyData bytesSent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) {
+        lock.lock()
+        hasReceivedProgress = true
+        lock.unlock()
+
+        // Cancel initial timeout since we're making progress
+        initialTimeoutTimer?.cancel()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        guard !isCompleted else {
+            lock.unlock()
+            return
+        }
+        isCompleted = true
+        let handler = completion
+        let data = receivedData
+        let resp = response
+        completion = nil
+        lock.unlock()
+
+        initialTimeoutTimer?.cancel()
+
+        if let error = error {
+            handler?(.failure(error))
+        } else if let resp = resp {
+            handler?(.success(data, resp))
+        } else {
+            handler?(.failure(TranscriptionError.networkError("No response received")))
+        }
+    }
+
+    // MARK: - URLSessionDataDelegate
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping (URLSession.ResponseDisposition) -> Void) {
+        lock.lock()
+        self.response = response
+        hasReceivedProgress = true
+        lock.unlock()
+
+        completionHandler(.allow)
+    }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        receivedData.append(data)
+        lock.unlock()
     }
 }

@@ -326,6 +326,19 @@ struct SettingsView: View {
                 )
             }
             .listRowBackground(rowBackground)
+
+            // Diagnostics & Logs
+            NavigationLink {
+                DiagnosticsView()
+            } label: {
+                SettingsRow(
+                    icon: "stethoscope",
+                    iconColor: .teal,
+                    title: "Diagnostics & Logs",
+                    subtitle: "View and export logs"
+                )
+            }
+            .listRowBackground(rowBackground)
         }
     }
 

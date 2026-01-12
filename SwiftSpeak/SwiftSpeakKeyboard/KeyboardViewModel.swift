@@ -140,7 +140,9 @@ class KeyboardViewModel: ObservableObject {
 
         // Observe result ready
         darwinManager.observeResultReady { [weak self] in
+            print("⌨️ Keyboard: Darwin notification received - resultReady!")
             DispatchQueue.main.async {
+                print("⌨️ Keyboard: Calling handleSwiftLinkResult...")
                 self?.handleSwiftLinkResult()
             }
         }
@@ -211,6 +213,8 @@ class KeyboardViewModel: ObservableObject {
     }
 
     private func handleSwiftLinkResult() {
+        print("⌨️ Keyboard: handleSwiftLinkResult ENTERED")
+
         // Cancel any pending timeout - we got a response
         cancelSwiftLinkTimeout()
 
@@ -218,14 +222,16 @@ class KeyboardViewModel: ObservableObject {
         isWaitingForResult = false
 
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        print("⌨️ Keyboard: defaults suite loaded: \(defaults != nil)")
 
         // Force sync to ensure we have latest data from main app
         defaults?.synchronize()
 
-        let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? ""
+        let status = defaults?.string(forKey: Constants.Keys.swiftLinkProcessingStatus) ?? "(nil)"
+        let resultText = defaults?.string(forKey: Constants.Keys.swiftLinkTranscriptionResult) ?? "(nil)"
         let wasEdit = defaults?.bool(forKey: Constants.EditMode.lastResultWasEdit) ?? false
 
-        keyboardLog("SwiftLink result received (status: \(status), wasEdit: \(wasEdit))", category: "SwiftLink")
+        print("⌨️ Keyboard: status='\(status)', result='\(resultText.prefix(50))...' (\(resultText.count) chars), wasEdit=\(wasEdit)")
 
         // DON'T update swiftLinkProcessingStatus yet - keep showing "processing" overlay
         // until text is inserted (better UX - no jarring disappearance)
@@ -706,6 +712,9 @@ class KeyboardViewModel: ObservableObject {
             selectedLanguage = lang
         }
 
+        // Load translation enabled state from shared settings (syncs with iOS and macOS)
+        isTranslationEnabled = defaults?.bool(forKey: Constants.Keys.isTranslationEnabled) ?? false
+
         lastTranscription = defaults?.string(forKey: Constants.Keys.lastTranscription)
 
         if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier) {
@@ -946,6 +955,8 @@ class KeyboardViewModel: ObservableObject {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
         defaults?.set(selectedMode.rawValue, forKey: Constants.Keys.selectedMode)
         defaults?.set(selectedLanguage.rawValue, forKey: Constants.Keys.selectedTargetLanguage)
+        // Save translation state to shared defaults (syncs with iOS and macOS via iCloud)
+        defaults?.set(isTranslationEnabled, forKey: Constants.Keys.isTranslationEnabled)
     }
 
     func selectMode(value: String) {

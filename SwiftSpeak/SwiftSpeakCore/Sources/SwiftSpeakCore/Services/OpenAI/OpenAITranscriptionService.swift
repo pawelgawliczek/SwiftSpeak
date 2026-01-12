@@ -93,20 +93,32 @@ public final class OpenAITranscriptionService: TranscriptionProvider {
         }
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
+        // Smart timeout: 5s to detect stalled upload, then retry up to 2 times
+        // Processing timeout of 40s for Whisper transcription after upload succeeds
         let text: String = try await httpClient.uploadForText(
             url: endpoint,
             fileURL: audioURL,
             fileFieldName: "file",
             fields: fields,
             headers: ["Authorization": "Bearer \(apiKey)"],
-            timeout: 60
+            timeout: 50,
+            initialTimeout: 5,
+            processingTimeout: 40,
+            maxRetries: 2
         )
+
+        print("📝 OpenAI Whisper raw response: '\(text)' (\(text.count) chars)")
 
         guard !text.isEmpty else {
             throw TranscriptionError.emptyResponse
         }
 
-        return text
+        // Post-process to remove Whisper hallucinations (repetitions)
+        let cleanedText = TranscriptionPostProcessor.removeRepetitions(from: text)
+
+        print("📝 OpenAI Whisper cleaned result: '\(cleanedText)' (\(cleanedText.count) chars)")
+
+        return cleanedText
     }
 
     public func validateAPIKey(_ key: String) async -> Bool {

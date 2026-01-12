@@ -941,14 +941,25 @@ final class SwiftLinkSessionManager: ObservableObject {
                 }
             }
 
-            // Apply translation if enabled
-            if settings.isTranslationEnabled {
+            // Apply translation if enabled AND source != target language
+            // Translation is non-fatal - transcription should still work if translation fails
+            let sourceLanguage = settings.effectiveTranscriptionLanguage ?? settings.selectedDictationLanguage
+            let targetLanguage = settings.selectedTargetLanguage
+            let shouldTranslate = settings.isTranslationEnabled && sourceLanguage != targetLanguage
+
+            if shouldTranslate {
                 if let translationProvider = providerFactory.createSelectedTranslationProvider() {
-                    processedText = try await translationProvider.translate(
-                        text: processedText,
-                        from: settings.selectedDictationLanguage,
-                        to: settings.selectedTargetLanguage
-                    )
+                    do {
+                        processedText = try await translationProvider.translate(
+                            text: processedText,
+                            from: sourceLanguage,
+                            to: targetLanguage
+                        )
+                        appLog("Translation successful: \(sourceLanguage?.displayName ?? "auto") → \(targetLanguage.displayName)", category: "SwiftLink")
+                    } catch {
+                        // Translation failed - log but continue with untranslated text
+                        appLog("Translation failed (continuing with original text): \(error.localizedDescription)", category: "SwiftLink", level: .warning)
+                    }
                 }
             }
 
@@ -1143,7 +1154,7 @@ final class SwiftLinkSessionManager: ObservableObject {
 
             segmentFile = try AVAudioFile(forWriting: url, settings: settings)
 
-            appLog("Started segment recording to: \(LogSanitizer.sanitizeFile(url: url))", category: "SwiftLink")
+            print("🎙️ SwiftLink: Started segment recording - sampleRate: \(format.sampleRate), channels: \(format.channelCount), file: \(url.lastPathComponent)")
 
         } catch {
             appLog("Failed to create segment file: \(error.localizedDescription)", category: "SwiftLink", level: .error)
@@ -1157,7 +1168,9 @@ final class SwiftLinkSessionManager: ObservableObject {
         recordingURL = nil
 
         if let url = url {
-            appLog("Stopped segment recording", category: "SwiftLink")
+            // Check file size to verify audio was written
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            print("🎙️ SwiftLink: Stopped segment recording - file: \(url.lastPathComponent), size: \(fileSize) bytes")
         }
 
         return url
@@ -1186,12 +1199,16 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
 
         // Otherwise, write to file for batch processing
-        guard let file = segmentFile else { return }
+        guard let file = segmentFile else {
+            // This should not happen during recording!
+            print("⚠️ SwiftLink: handleAudioBuffer - segmentFile is nil! Audio buffer dropped!")
+            return
+        }
 
         do {
             try file.write(from: buffer)
         } catch {
-            // Log but don't interrupt - we'll handle errors when processing
+            print("❌ SwiftLink: Failed to write audio buffer: \(error)")
         }
     }
 
@@ -1392,13 +1409,21 @@ final class SwiftLinkSessionManager: ObservableObject {
             guard let transcriptionProvider = providerFactory.createSelectedTranscriptionProvider() else {
                 throw SwiftLinkError.recordingFailed("No transcription provider configured")
             }
+
+            // Check audio file before sending
+            let fileSize = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+            print("🔗 SwiftLink: Sending audio to transcription - file: \(url.lastPathComponent), size: \(fileSize) bytes")
+
             let rawText = try await transcriptionProvider.transcribe(
                 audioURL: url,
                 language: settings.effectiveTranscriptionLanguage
             )
 
+            print("🔗 SwiftLink: Raw transcription: '\(rawText)' (\(rawText.count) chars)")
+
             // Step 2: Apply vocabulary
             var processedText = settings.applyVocabulary(to: rawText)
+            print("🔗 SwiftLink: After vocabulary: '\(processedText)' (\(processedText.count) chars)")
 
             // Phase 12: Handle edit mode differently
             if wasEditMode {
@@ -1426,53 +1451,73 @@ final class SwiftLinkSessionManager: ObservableObject {
                 // 3. Context is active with content (memory, tone, instructions)
                 let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasContent
 
+                print("🔗 SwiftLink: Needs formatting: \(needsFormatting), mode: \(mode.rawValue), hasContext: \(promptContext.hasContent)")
+
                 if needsFormatting {
                     if let formattingProvider = providerFactory.createSelectedTextFormattingProvider() {
+                        print("🔗 SwiftLink: Calling formatting provider...")
                         processedText = try await formattingProvider.format(
                             text: processedText,
                             mode: mode,
                             customPrompt: customTemplate?.prompt,
                             context: promptContext
                         )
+                        print("🔗 SwiftLink: After formatting: '\(processedText)' (\(processedText.count) chars)")
+                    } else {
+                        print("🔗 SwiftLink: No formatting provider available!")
                     }
                 }
 
-                // Translate if enabled (not in edit mode)
+                // Translate if enabled AND source != target language (not in edit mode)
                 // Translation is always a separate step after formatting
-                if settings.isTranslationEnabled {
+                // Non-fatal - transcription should still work if translation fails
+                let sourceLanguage = settings.effectiveTranscriptionLanguage ?? settings.selectedDictationLanguage
+                let targetLanguage = settings.selectedTargetLanguage
+                let shouldTranslate = settings.isTranslationEnabled && sourceLanguage != targetLanguage
+
+                if shouldTranslate {
                     if let translationProvider = providerFactory.createSelectedTranslationProvider() {
-                        processedText = try await translationProvider.translate(
-                            text: processedText,
-                            from: settings.selectedDictationLanguage,
-                            to: settings.selectedTargetLanguage
-                        )
+                        do {
+                            processedText = try await translationProvider.translate(
+                                text: processedText,
+                                from: sourceLanguage,
+                                to: targetLanguage
+                            )
+                            appLog("Translation successful: \(sourceLanguage?.displayName ?? "auto") → \(targetLanguage.displayName)", category: "SwiftLink")
+                        } catch {
+                            appLog("Translation failed (continuing with original text): \(error.localizedDescription)", category: "SwiftLink", level: .warning)
+                        }
                     }
                 }
             }
 
             // Store result in App Groups
+            print("🔗 SwiftLink: Storing final result: '\(processedText)' (\(processedText.count) chars)")
             sharedDefaults?.set(processedText, forKey: Constants.Keys.swiftLinkTranscriptionResult)
             sharedDefaults?.set("complete", forKey: Constants.Keys.swiftLinkProcessingStatus)
 
             // Force sync before notifying keyboard
             sharedDefaults?.synchronize()
+            print("🔗 SwiftLink: Result saved to App Groups, notifying keyboard...")
 
             // Also update lastTranscription for consistency
             settings.lastTranscription = processedText
 
-            // Copy to clipboard
+            // Copy to clipboard (may fail if app is in background - that's OK)
             UIPasteboard.general.string = processedText
 
-            appLog("Audio segment processed successfully (\(processedText.count) chars, edit: \(wasEditMode))", category: "SwiftLink")
+            print("🔗 SwiftLink: Audio segment processed successfully (\(processedText.count) chars, edit: \(wasEditMode))")
 
             // Notify keyboard that result is ready (after sync)
+            print("🔗 SwiftLink: Posting Darwin notification (resultReady)...")
             DarwinNotificationManager.shared.postResultReady()
+            print("🔗 SwiftLink: Darwin notification posted!")
 
             // Clean up temp file
             try? FileManager.default.removeItem(at: url)
 
         } catch {
-            appLog("Failed to process audio: \(LogSanitizer.sanitizeError(error))", category: "SwiftLink", level: .error)
+            print("🔗 SwiftLink: ❌ CATCH BLOCK - Failed to process audio: \(error)")
             sharedDefaults?.set("error", forKey: Constants.Keys.swiftLinkProcessingStatus)
             sharedDefaults?.set(error.localizedDescription, forKey: Constants.Keys.swiftLinkTranscriptionResult)
 

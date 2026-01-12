@@ -259,6 +259,21 @@ extension TranscriptionError {
         }
     }
 
+    /// Whether this error is retryable for upload operations (stalled uploads)
+    /// More specific than shouldRetry - only for connection/upload issues
+    public var isRetryable: Bool {
+        switch self {
+        case .networkTimeout:
+            return true
+        case .networkError(let message) where message.contains("stalled") || message.contains("Upload"):
+            return true
+        case .serviceUnavailable:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Icon name for displaying this error
     public var iconName: String {
         switch self {

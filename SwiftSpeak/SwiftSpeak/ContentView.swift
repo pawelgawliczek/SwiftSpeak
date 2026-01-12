@@ -806,7 +806,8 @@ struct HomeView: View {
     @State private var showPaywall = false
     @State private var providerToSetup: AIProvider? = nil
     @State private var showTranslationPicker = false
-    @State private var isTranslationEnabled = false
+    // NOTE: Using settings.isTranslationEnabled directly instead of local state
+    // This ensures translation state is synced via iCloud between iOS and macOS
     @State private var showSwiftLinkQuickStart = false
     @State private var showMeetingRecording = false
 
@@ -878,9 +879,9 @@ struct HomeView: View {
 
                                 // Translate button - 10:30 position (lower-left)
                                 HomeArchButton(
-                                    icon: isTranslationEnabled ? settings.selectedTargetLanguage.flag : "🌐",
-                                    label: isTranslationEnabled ? settings.selectedTargetLanguage.displayName : "Translate",
-                                    isActive: isTranslationEnabled,
+                                    icon: settings.isTranslationEnabled ? settings.selectedTargetLanguage.flag : "🌐",
+                                    label: settings.isTranslationEnabled ? settings.selectedTargetLanguage.displayName : "Translate",
+                                    isActive: settings.isTranslationEnabled,
                                     isLocked: !hasTranslationAccess,
                                     accentColor: .pink
                                 ) {
@@ -922,9 +923,9 @@ struct HomeView: View {
                                 .offset(x: 100, y: 50)
 
                                 // Main transcribe button at center - HERO element
-                                HomeMainActionButton(isTranslationEnabled: isTranslationEnabled) {
+                                HomeMainActionButton(isTranslationEnabled: settings.isTranslationEnabled) {
                                     HapticManager.mediumTap()
-                                    translateOnRecord = isTranslationEnabled
+                                    translateOnRecord = settings.isTranslationEnabled
                                     showRecording = true
                                 }
                             }
@@ -989,7 +990,7 @@ struct HomeView: View {
             }
             .sheet(isPresented: $showTranslationPicker) {
                 TranslationPickerSheet(
-                    isTranslationEnabled: $isTranslationEnabled,
+                    isTranslationEnabled: $settings.isTranslationEnabled,
                     selectedLanguage: $settings.selectedTargetLanguage
                 )
                 .presentationDetents([.medium, .large])

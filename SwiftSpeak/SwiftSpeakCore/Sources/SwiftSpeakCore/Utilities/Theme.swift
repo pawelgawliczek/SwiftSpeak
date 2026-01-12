@@ -122,12 +122,13 @@ public enum KeyboardHaptics {
         let defaults = UserDefaults(suiteName: "group.pawelgawliczek.swiftspeak")
         return (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
     }
-    public static func lightTap() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .light).impactOccurred() }
-    public static func mediumTap() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
-    public static func heavyTap() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .heavy).impactOccurred() }
-    public static func success() { guard isEnabled else { return }; UINotificationFeedbackGenerator().notificationOccurred(.success) }
-    public static func warning() { guard isEnabled else { return }; UINotificationFeedbackGenerator().notificationOccurred(.warning) }
-    public static func error() { guard isEnabled else { return }; UINotificationFeedbackGenerator().notificationOccurred(.error) }
+    // Minimal haptics: soft style with reduced intensity (0.0-1.0)
+    public static func lightTap() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.3) }
+    public static func mediumTap() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5) }
+    public static func heavyTap() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6) }
+    public static func success() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.4) }
+    public static func warning() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.5) }
+    public static func error() { guard isEnabled else { return }; UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.6) }
     public static func selection() { guard isEnabled else { return }; UISelectionFeedbackGenerator().selectionChanged() }
 }
 #elseif os(macOS)

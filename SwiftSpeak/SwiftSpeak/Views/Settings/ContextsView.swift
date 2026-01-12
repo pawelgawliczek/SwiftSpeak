@@ -64,6 +64,7 @@ struct ContextsListContent: View {
                                 PresetContextCard(
                                     context: context,
                                     isActive: settings.activeContextId == context.id,
+                                    availability: settings.localProviderAvailability,
                                     onTap: {
                                         HapticManager.selection()
                                         if settings.activeContextId == context.id {
@@ -118,6 +119,7 @@ struct ContextsListContent: View {
                                 SwipeableContextCard(
                                     context: context,
                                     isActive: settings.activeContextId == context.id,
+                                    availability: settings.localProviderAvailability,
                                     onTap: {
                                         HapticManager.lightTap()
                                         navigateToDetail = context
@@ -358,6 +360,7 @@ struct ContextsListContent: View {
 struct SwipeableContextCard: View {
     let context: ConversationContext
     let isActive: Bool
+    let availability: ConversationContext.LocalProviderAvailability
     let onTap: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
@@ -365,9 +368,19 @@ struct SwipeableContextCard: View {
 
     @State private var offset: CGFloat = 0
     @State private var isSwiping = false
+    @State private var showingUnavailableInfo = false
 
     private let actionButtonWidth: CGFloat = 70
     private let swipeThreshold: CGFloat = 50
+
+    /// Check if this context has unavailable providers on this device
+    private var unavailableProviders: [ConversationContext.UnavailableProvider] {
+        context.unavailableProviders(given: availability)
+    }
+
+    private var isUnavailable: Bool {
+        !unavailableProviders.isEmpty
+    }
 
     var body: some View {
         ZStack {
@@ -387,9 +400,18 @@ struct SwipeableContextCard: View {
             // Main card content (slides)
             cardContent
                 .offset(x: offset)
-                .gesture(swipeGesture)
+                .gesture(isUnavailable ? nil : swipeGesture)  // Disable swipe for unavailable contexts
         }
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
+        .alert("Provider Not Available", isPresented: $showingUnavailableInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let first = unavailableProviders.first {
+                Text("\(first.reason). Edit the context to change the provider, or use a different context.")
+            } else {
+                Text("Some providers used by this context are not available on this device.")
+            }
+        }
     }
 
     // MARK: - Left Action Buttons (Edit)
@@ -431,16 +453,24 @@ struct SwipeableContextCard: View {
     // MARK: - Card Content
 
     private var cardContent: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if isUnavailable {
+                showingUnavailableInfo = true
+            } else {
+                onTap()
+            }
+        }) {
             HStack(spacing: 12) {
                 // Icon
                 ZStack {
                     Circle()
-                        .fill(context.color.color.opacity(0.15))
+                        .fill(context.color.color.opacity(isUnavailable ? 0.08 : 0.15))
                         .frame(width: 56, height: 56)
 
                     Text(context.icon)
                         .font(.title2)
+                        .grayscale(isUnavailable ? 1.0 : 0.0)
+                        .opacity(isUnavailable ? 0.5 : 1.0)
                 }
 
                 // Info
@@ -448,9 +478,13 @@ struct SwipeableContextCard: View {
                     HStack {
                         Text(context.name)
                             .font(.headline)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(isUnavailable ? .secondary : .primary)
 
-                        if isActive {
+                        if isUnavailable {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else if isActive {
                             Text("Active")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(AppTheme.accent)
@@ -461,62 +495,77 @@ struct SwipeableContextCard: View {
                         }
                     }
 
-                    HStack(spacing: 12) {
-                        // History link
-                        Button(action: onShowHistory) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "clock.arrow.circlepath")
-                                    .font(.caption2)
-                                Text("History")
-                                    .font(.caption)
+                    if isUnavailable, let first = unavailableProviders.first {
+                        Text("\(first.providerName) unavailable")
+                            .font(.caption)
+                            .foregroundStyle(.orange.opacity(0.8))
+                            .lineLimit(1)
+                    } else {
+                        HStack(spacing: 12) {
+                            // History link
+                            Button(action: onShowHistory) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .font(.caption2)
+                                    Text("History")
+                                        .font(.caption)
+                                }
+                                .foregroundStyle(.secondary)
                             }
-                            .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
+                            .buttonStyle(.plain)
 
-                        // Memory indicator
-                        if context.useContextMemory {
-                            HStack(spacing: 4) {
-                                Image(systemName: "brain")
-                                    .font(.caption2)
-                                Text("Memory")
-                                    .font(.caption)
+                            // Memory indicator
+                            if context.useContextMemory {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "brain")
+                                        .font(.caption2)
+                                    Text("Memory")
+                                        .font(.caption)
+                                }
+                                .foregroundStyle(.purple.opacity(0.8))
                             }
-                            .foregroundStyle(.purple.opacity(0.8))
-                        }
 
-                        // Domain jargon indicator
-                        if context.domainJargon != .none {
-                            HStack(spacing: 4) {
-                                Image(systemName: context.domainJargon.icon)
-                                    .font(.caption2)
-                                Text(context.domainJargon.displayName)
-                                    .font(.caption)
+                            // Domain jargon indicator
+                            if context.domainJargon != .none {
+                                HStack(spacing: 4) {
+                                    Image(systemName: context.domainJargon.icon)
+                                        .font(.caption2)
+                                    Text(context.domainJargon.displayName)
+                                        .font(.caption)
+                                }
+                                .foregroundStyle(.blue.opacity(0.8))
                             }
-                            .foregroundStyle(.blue.opacity(0.8))
                         }
                     }
                 }
 
                 Spacer()
 
-                // Chevron for navigation
-                Image(systemName: "chevron.right")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+                // Selection indicator or unavailable icon
+                if isUnavailable {
+                    Image(systemName: "info.circle")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                } else {
+                    // Chevron for navigation
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(16)
-            .background(Color.primary.opacity(0.05))
+            .background(Color.primary.opacity(isUnavailable ? 0.03 : 0.05))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .overlay(
             RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
                 .strokeBorder(
-                    isActive ? context.color.color.opacity(0.5) : Color.clear,
+                    isActive && !isUnavailable ? context.color.color.opacity(0.5) : Color.clear,
                     lineWidth: 1.5
                 )
         )
+        .opacity(isUnavailable ? 0.7 : 1.0)
     }
 
     // MARK: - Swipe Gesture
@@ -563,19 +612,39 @@ struct SwipeableContextCard: View {
 struct PresetContextCard: View {
     let context: ConversationContext
     let isActive: Bool
+    let availability: ConversationContext.LocalProviderAvailability
     let onTap: () -> Void
 
+    @State private var showingUnavailableInfo = false
+
+    /// Check if this context has unavailable providers on this device
+    private var unavailableProviders: [ConversationContext.UnavailableProvider] {
+        context.unavailableProviders(given: availability)
+    }
+
+    private var isUnavailable: Bool {
+        !unavailableProviders.isEmpty
+    }
+
     var body: some View {
-        Button(action: onTap) {
+        Button(action: {
+            if isUnavailable {
+                showingUnavailableInfo = true
+            } else {
+                onTap()
+            }
+        }) {
             HStack(spacing: 12) {
                 // Icon
                 ZStack {
                     Circle()
-                        .fill(context.color.color.opacity(0.15))
+                        .fill(context.color.color.opacity(isUnavailable ? 0.08 : 0.15))
                         .frame(width: 48, height: 48)
 
                     Text(context.icon)
                         .font(.title3)
+                        .grayscale(isUnavailable ? 1.0 : 0.0)
+                        .opacity(isUnavailable ? 0.5 : 1.0)
                 }
 
                 // Info
@@ -583,7 +652,7 @@ struct PresetContextCard: View {
                     HStack {
                         Text(context.name)
                             .font(.headline)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(isUnavailable ? .secondary : .primary)
 
                         Text("PRESET")
                             .font(.caption2.weight(.semibold))
@@ -592,35 +661,63 @@ struct PresetContextCard: View {
                             .padding(.vertical, 2)
                             .background(Color.secondary.opacity(0.2))
                             .clipShape(Capsule())
+
+                        if isUnavailable {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        }
                     }
 
-                    Text(context.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    if isUnavailable, let first = unavailableProviders.first {
+                        Text("\(first.providerName) unavailable")
+                            .font(.caption)
+                            .foregroundStyle(.orange.opacity(0.8))
+                            .lineLimit(1)
+                    } else {
+                        Text(context.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
                 }
 
                 Spacer()
 
-                // Selection indicator
-                if isActive {
+                // Selection indicator or unavailable icon
+                if isUnavailable {
+                    Image(systemName: "info.circle")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                } else if isActive {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
                         .foregroundStyle(context.color.color)
                 }
             }
             .padding(14)
-            .background(Color.primary.opacity(0.05))
+            .background(Color.primary.opacity(isUnavailable ? 0.03 : 0.05))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous)
                     .strokeBorder(
-                        isActive ? context.color.color.opacity(0.5) : Color.clear,
+                        isActive && !isUnavailable ? context.color.color.opacity(0.5) : Color.clear,
                         lineWidth: 1.5
                     )
             )
+            .opacity(isUnavailable ? 0.7 : 1.0)
         }
         .buttonStyle(.plain)
+        .disabled(isUnavailable && isActive)  // Prevent deactivating if already active
+        .alert("Provider Not Available", isPresented: $showingUnavailableInfo) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let first = unavailableProviders.first {
+                Text("\(first.reason). Edit the context to change the provider, or use a different context.")
+            } else {
+                Text("Some providers used by this context are not available on this device.")
+            }
+        }
     }
 }
 

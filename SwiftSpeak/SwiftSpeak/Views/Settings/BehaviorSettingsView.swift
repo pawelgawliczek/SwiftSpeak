@@ -180,18 +180,6 @@ struct BehaviorSettingsView: View {
                     )
                 }
                 .listRowBackground(rowBackground)
-
-                NavigationLink {
-                    DiagnosticsView()
-                } label: {
-                    SettingsRow(
-                        icon: "stethoscope",
-                        iconColor: .teal,
-                        title: "Diagnostics",
-                        subtitle: "View and export logs"
-                    )
-                }
-                .listRowBackground(rowBackground)
             } label: {
                 HStack(spacing: 12) {
                     Image(systemName: "gearshape.2.fill")

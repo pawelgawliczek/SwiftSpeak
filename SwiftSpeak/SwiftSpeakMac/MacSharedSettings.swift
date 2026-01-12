@@ -662,6 +662,22 @@ class MacSettings: ObservableObject {
         }
     }
 
+    /// Current device's local provider availability for context compatibility checking
+    /// On macOS, Ollama and LM Studio are available (if configured)
+    var localProviderAvailability: ConversationContext.LocalProviderAvailability {
+        let hasOllama = getAIProviderConfig(for: .local)?.localConfig?.type == .ollama
+        let hasLMStudio = getAIProviderConfig(for: .local)?.localConfig?.type == .lmStudio
+
+        return ConversationContext.LocalProviderAvailability(
+            whisperKitAvailable: whisperKitConfig.status == .ready,
+            appleIntelligenceAvailable: appleIntelligenceConfig.isAvailable,
+            appleIntelligenceReason: appleIntelligenceConfig.unavailableReason,
+            appleTranslationAvailable: appleTranslationConfig.isAvailable,
+            ollamaAvailable: hasOllama,
+            lmStudioAvailable: hasLMStudio
+        )
+    }
+
     // MARK: - Vocabulary
 
     @Published var vocabulary: [VocabularyEntry] = [] {
@@ -883,26 +899,9 @@ class MacSettings: ObservableObject {
             customTemplates = templates
         }
 
-        // Load primitive values
-        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedTranscriptionProvider),
-           let provider = AIProvider(rawValue: providerRaw) {
-            selectedTranscriptionProvider = provider
-        }
-
-        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedTranslationProvider),
-           let provider = AIProvider(rawValue: providerRaw) {
-            selectedTranslationProvider = provider
-        }
-
-        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedFormattingProvider),
-           let provider = AIProvider(rawValue: providerRaw) {
-            selectedFormattingProvider = provider
-        }
-
-        if let providerRaw = iCloud?.string(forKey: iCloudKeys.selectedPowerModeProvider),
-           let provider = AIProvider(rawValue: providerRaw) {
-            selectedPowerModeProvider = provider
-        }
+        // NOTE: Provider defaults (selectedTranscriptionProvider, selectedTranslationProvider, etc.)
+        // are intentionally NOT synced between iOS and macOS because provider availability
+        // differs between platforms (e.g., Ollama/LM Studio only available on macOS)
 
         if let modeRaw = iCloud?.string(forKey: iCloudKeys.selectedMode),
            let mode = FormattingMode(rawValue: modeRaw) {
@@ -1014,11 +1013,11 @@ class MacSettings: ObservableObject {
             iCloud?.set(data, forKey: iCloudKeys.customTemplates)
         }
 
-        // Sync primitive values
-        iCloud?.set(selectedTranscriptionProvider.rawValue, forKey: iCloudKeys.selectedTranscriptionProvider)
-        iCloud?.set(selectedTranslationProvider.rawValue, forKey: iCloudKeys.selectedTranslationProvider)
-        iCloud?.set(selectedFormattingProvider.rawValue, forKey: iCloudKeys.selectedFormattingProvider)
-        iCloud?.set(selectedPowerModeProvider.rawValue, forKey: iCloudKeys.selectedPowerModeProvider)
+        // NOTE: Provider defaults (selectedTranscriptionProvider, selectedTranslationProvider, etc.)
+        // are intentionally NOT synced between iOS and macOS because provider availability
+        // differs between platforms (e.g., Ollama/LM Studio only available on macOS)
+
+        // Sync other primitive values
         iCloud?.set(selectedMode.rawValue, forKey: iCloudKeys.selectedMode)
         iCloud?.set(selectedTargetLanguage.rawValue, forKey: iCloudKeys.selectedTargetLanguage)
         iCloud?.set(isTranslationEnabled, forKey: iCloudKeys.isTranslationEnabled)

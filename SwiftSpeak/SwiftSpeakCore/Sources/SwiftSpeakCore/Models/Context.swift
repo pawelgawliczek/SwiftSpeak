@@ -532,6 +532,144 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         return Array(vocabulary).prefix(50).map { $0 }  // Limit to 50 terms
     }
 
+    // MARK: - Provider Availability
+
+    /// Represents a provider override that is unavailable on the current device
+    public struct UnavailableProvider {
+        public let category: String  // "Transcription", "Translation", "Formatting", etc.
+        public let providerName: String
+        public let reason: String
+
+        public init(category: String, providerName: String, reason: String) {
+            self.category = category
+            self.providerName = providerName
+            self.reason = reason
+        }
+    }
+
+    /// Describes which local providers are available on the current device
+    /// Used to check context provider compatibility across different devices
+    public struct LocalProviderAvailability {
+        public var whisperKitAvailable: Bool
+        public var appleIntelligenceAvailable: Bool
+        public var appleIntelligenceReason: String?  // e.g., "Requires iPhone 15 Pro or newer"
+        public var appleTranslationAvailable: Bool
+        public var ollamaAvailable: Bool  // Only on macOS
+        public var lmStudioAvailable: Bool  // Only on macOS
+
+        public init(
+            whisperKitAvailable: Bool = true,
+            appleIntelligenceAvailable: Bool = false,
+            appleIntelligenceReason: String? = nil,
+            appleTranslationAvailable: Bool = true,
+            ollamaAvailable: Bool = false,
+            lmStudioAvailable: Bool = false
+        ) {
+            self.whisperKitAvailable = whisperKitAvailable
+            self.appleIntelligenceAvailable = appleIntelligenceAvailable
+            self.appleIntelligenceReason = appleIntelligenceReason
+            self.appleTranslationAvailable = appleTranslationAvailable
+            self.ollamaAvailable = ollamaAvailable
+            self.lmStudioAvailable = lmStudioAvailable
+        }
+
+        /// Default availability for iOS devices (older devices without Apple Intelligence)
+        public static var iOSDefault: LocalProviderAvailability {
+            LocalProviderAvailability(
+                whisperKitAvailable: true,
+                appleIntelligenceAvailable: false,
+                appleIntelligenceReason: "Requires iPhone 15 Pro or newer with iOS 18.1+",
+                appleTranslationAvailable: true,
+                ollamaAvailable: false,
+                lmStudioAvailable: false
+            )
+        }
+
+        /// Availability for macOS (has Ollama/LM Studio access)
+        public static var macOSDefault: LocalProviderAvailability {
+            LocalProviderAvailability(
+                whisperKitAvailable: true,
+                appleIntelligenceAvailable: false,  // Updated at runtime
+                appleIntelligenceReason: nil,
+                appleTranslationAvailable: true,
+                ollamaAvailable: true,
+                lmStudioAvailable: true
+            )
+        }
+
+        /// Check if a specific local provider type is available
+        public func isAvailable(_ type: LocalModelType) -> Bool {
+            switch type {
+            case .whisperKit: return whisperKitAvailable
+            case .appleIntelligence: return appleIntelligenceAvailable
+            case .appleTranslation: return appleTranslationAvailable
+            case .ollama: return ollamaAvailable
+            case .lmStudio: return lmStudioAvailable
+            }
+        }
+
+        /// Get the reason why a provider is unavailable
+        public func unavailableReason(for type: LocalModelType) -> String {
+            switch type {
+            case .whisperKit: return "WhisperKit is not available on this device"
+            case .appleIntelligence: return appleIntelligenceReason ?? "Apple Intelligence is not available"
+            case .appleTranslation: return "Apple Translation requires iOS 17.4+"
+            case .ollama: return "Ollama is only available on macOS"
+            case .lmStudio: return "LM Studio is only available on macOS"
+            }
+        }
+    }
+
+    /// Check if any provider overrides in this context are unavailable on the current device
+    /// - Parameter availability: The local provider availability for the current device
+    /// - Returns: A list of unavailable providers with explanations
+    public func unavailableProviders(given availability: LocalProviderAvailability) -> [UnavailableProvider] {
+        var unavailable: [UnavailableProvider] = []
+
+        // Helper to check a provider override
+        func checkOverride(_ override: ProviderSelection?, category: String) {
+            guard let override = override else { return }
+            if case .local(let localType) = override.providerType {
+                if !availability.isAvailable(localType) {
+                    unavailable.append(UnavailableProvider(
+                        category: category,
+                        providerName: localType.displayName,
+                        reason: availability.unavailableReason(for: localType)
+                    ))
+                }
+            }
+        }
+
+        checkOverride(transcriptionProviderOverride, category: "Transcription")
+        checkOverride(translationProviderOverride, category: "Translation")
+        checkOverride(formattingProviderOverride, category: "Formatting")
+        checkOverride(aiProviderOverride, category: "AI Provider")
+
+        return unavailable
+    }
+
+    /// Whether this context has any provider overrides that are unavailable
+    /// - Parameter availability: The local provider availability for the current device
+    public func hasUnavailableProviders(given availability: LocalProviderAvailability) -> Bool {
+        !unavailableProviders(given: availability).isEmpty
+    }
+
+    // MARK: - Legacy Convenience Methods (for iOS)
+
+    /// Check if any provider overrides in this context are unavailable on iOS
+    /// Uses default iOS availability (no Ollama/LM Studio, Apple Intelligence check needed separately)
+    /// - Note: For accurate Apple Intelligence checking, use `unavailableProviders(given:)` instead
+    @available(*, deprecated, message: "Use unavailableProviders(given:) for accurate device-specific checking")
+    public func unavailableProvidersOniOS() -> [UnavailableProvider] {
+        unavailableProviders(given: .iOSDefault)
+    }
+
+    /// Whether this context has any provider overrides that are unavailable on iOS
+    @available(*, deprecated, message: "Use hasUnavailableProviders(given:) for accurate device-specific checking")
+    public var hasUnavailableProvidersOniOS: Bool {
+        !unavailableProvidersOniOS().isEmpty
+    }
+
     // MARK: - Static Properties
 
     public static var empty: ConversationContext {
