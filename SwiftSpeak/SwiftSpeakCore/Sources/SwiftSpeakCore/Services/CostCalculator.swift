@@ -46,7 +46,8 @@ public struct BaseCostCalculator: CostCalculatorProtocol {
         case .elevenLabs: costPerMinute = 0.01
         case .google: costPerMinute = 0.006
         case .azure: costPerMinute = 0.006
-        case .local: costPerMinute = 0            // Free (on-device WhisperKit)
+        case .local: costPerMinute = 0            // Free (on-device)
+        case .whisperKit: costPerMinute = 0       // Free (on-device WhisperKit)
         case .appleSpeech: costPerMinute = 0      // Free (on-device Apple SFSpeechRecognizer)
         default: costPerMinute = 0.006
         }
@@ -81,7 +82,8 @@ public struct BaseCostCalculator: CostCalculatorProtocol {
         case .google:
             // gemini-1.5-flash rates
             rates = (0.075, 0.30)
-        case .local:
+        case .local, .whisperKit, .appleSpeech:
+            // Free (on-device)
             rates = (0, 0)
         default:
             rates = (0.15, 0.60)
@@ -232,6 +234,7 @@ public extension AIProvider {
         case .google: return "latest_long"
         case .azure: return "default"
         case .local: return "whisperkit"
+        case .whisperKit: return "whisperkit"
         case .appleSpeech: return "on-device"
         default: return "default"
         }

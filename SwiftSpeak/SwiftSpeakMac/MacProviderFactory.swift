@@ -14,6 +14,10 @@ import SwiftSpeakCore
 struct ProviderFactory {
     private let settings: MacSettings
 
+    // Cache WhisperKit service to avoid reloading model on each transcription
+    private static var cachedWhisperKitService: WhisperKitTranscriptionService?
+    private static var cachedWhisperKitModel: String?
+
     init(settings: MacSettings) {
         self.settings = settings
     }
@@ -21,11 +25,19 @@ struct ProviderFactory {
     // MARK: - Transcription Providers
 
     func createTranscriptionProvider(for provider: AIProvider) -> TranscriptionProvider? {
-        // Apple Speech doesn't need configuration or API key
-        if provider == .appleSpeech {
+        // Handle local providers first - they don't need AIProviderConfig
+        switch provider {
+        case .whisperKit, .local:
+            // WhisperKit on-device transcription (uses whisperKitConfig, not AIProviderConfig)
+            return createWhisperKitProvider()
+        case .appleSpeech:
+            // On-device Apple Speech Recognition
             return SwiftSpeakCore.AppleSpeechTranscriptionService()
+        default:
+            break
         }
 
+        // Cloud providers need AIProviderConfig
         guard let config = settings.getAIProviderConfig(for: provider) else {
             macLog("Provider \(provider.displayName) not configured", category: "ProviderFactory", level: .error)
             return nil
@@ -189,5 +201,64 @@ struct ProviderFactory {
     /// Create the currently selected formatting provider
     func createSelectedFormattingProvider() -> FormattingProvider? {
         createFormattingProvider(for: settings.selectedFormattingProvider)
+    }
+
+    // MARK: - Local Provider Factory Methods
+
+    /// Create WhisperKit transcription provider (cached for performance)
+    private func createWhisperKitProvider() -> TranscriptionProvider? {
+        guard settings.whisperKitConfig.status == .ready else {
+            macLog("WhisperKit not ready (status: \(settings.whisperKitConfig.status))", category: "ProviderFactory", level: .error)
+            return nil
+        }
+
+        #if canImport(WhisperKit)
+        let currentModel = settings.whisperKitConfig.selectedModel.rawValue
+
+        // Return cached service if model hasn't changed
+        if let cached = Self.cachedWhisperKitService,
+           Self.cachedWhisperKitModel == currentModel {
+            macLog("Using cached WhisperKit service (model: \(currentModel))", category: "ProviderFactory", level: .debug)
+            return cached
+        }
+
+        // Create new service and cache it
+        macLog("Creating new WhisperKit service (model: \(currentModel))", category: "ProviderFactory", level: .info)
+        let service = WhisperKitTranscriptionService(config: settings.whisperKitConfig)
+        Self.cachedWhisperKitService = service
+        Self.cachedWhisperKitModel = currentModel
+        return service
+        #else
+        macLog("WhisperKit framework not available - add WhisperKit to macOS target in Xcode", category: "ProviderFactory", level: .error)
+        return nil
+        #endif
+    }
+
+    /// Clear the cached WhisperKit service (call when model changes or to free memory)
+    static func clearWhisperKitCache() {
+        cachedWhisperKitService?.unloadModel()
+        cachedWhisperKitService = nil
+        cachedWhisperKitModel = nil
+        macLog("WhisperKit cache cleared", category: "ProviderFactory", level: .info)
+    }
+
+    /// Preload WhisperKit model in background (call when recording starts)
+    /// This starts loading the model while user is speaking so it's ready when they finish
+    func preloadWhisperKitModel() async {
+        #if canImport(WhisperKit)
+        guard settings.whisperKitConfig.status == .ready else { return }
+        guard settings.selectedTranscriptionProvider == .whisperKit else { return }
+
+        // Get or create the cached service
+        guard let service = createWhisperKitProvider() as? WhisperKitTranscriptionService else { return }
+
+        do {
+            macLog("Preloading WhisperKit model in background...", category: "ProviderFactory", level: .info)
+            try await service.initialize()
+            macLog("WhisperKit model preloaded successfully", category: "ProviderFactory", level: .info)
+        } catch {
+            macLog("WhisperKit preload failed: \(error)", category: "ProviderFactory", level: .warning)
+        }
+        #endif
     }
 }

@@ -946,6 +946,9 @@ struct AIProviderEditorSheet: View {
         case .appleSpeech:
             // Apple Speech uses on-device model, no API fetch needed
             return (config.provider.availableSTTModels, [])
+        case .whisperKit:
+            // WhisperKit uses on-device models, selection happens in Local Models settings
+            return (config.provider.availableSTTModels, [])
         }
     }
 

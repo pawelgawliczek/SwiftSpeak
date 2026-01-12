@@ -84,9 +84,16 @@ final class WhisperKitTranscriptionService: TranscriptionProvider {
 
         do {
             // Initialize WhisperKit with the selected model
-            let whisperConfig = WhisperKitConfig(model: config.selectedModel.rawValue)
+            // download: false prevents network requests when offline - uses locally cached model
+            let whisperConfig = WhisperKitConfig(
+                model: config.selectedModel.rawValue,
+                download: false  // Use local only - don't try to download/verify from network
+            )
+            appLog("Initializing WhisperKit with model: \(config.selectedModel.rawValue) (local only)", category: "WhisperKit")
             whisperPipe = try await WhisperKit(whisperConfig)
+            appLog("WhisperKit initialized successfully", category: "WhisperKit")
         } catch {
+            appLog("WhisperKit initialization failed: \(error)", category: "WhisperKit")
             throw LocalProviderError.whisperKitInitializationFailed(reason: error.localizedDescription)
         }
         #else
@@ -121,9 +128,16 @@ final class WhisperKitTranscriptionService: TranscriptionProvider {
                 options.language = whisperLanguageCode(for: language)
             }
 
-            // Note: WhisperKit uses promptTokens (tokenized prompt) rather than string prompt
-            // The prompt hint would need to be tokenized first, which requires the tokenizer
-            // For now, we skip the prompt hint - future enhancement could add tokenization
+            // Tokenize and set prompt hint for better accuracy
+            // Prompt hints help with vocabulary, names, technical terms, etc.
+            if let promptHint = promptHint, !promptHint.isEmpty,
+               let tokenizer = pipe.tokenizer {
+                let tokens = tokenizer.encode(text: promptHint)
+                if !tokens.isEmpty {
+                    options.promptTokens = tokens
+                    appLog("Using prompt hint with \(tokens.count) tokens", category: "WhisperKit")
+                }
+            }
 
             // Perform transcription
             let results = try await pipe.transcribe(

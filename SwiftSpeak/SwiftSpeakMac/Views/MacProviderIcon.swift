@@ -121,6 +121,7 @@ extension AIProvider {
         case .assemblyAI: return nil
         case .local: return nil  // Uses SF Symbol (Apple logo for Apple Intelligence)
         case .appleSpeech: return nil  // Uses SF Symbol
+        case .whisperKit: return nil  // Uses SF Symbol
         }
     }
 
@@ -136,6 +137,7 @@ extension AIProvider {
         case .deepL: return "character.book.closed.fill"
         case .azure: return "cloud.fill"
         case .appleSpeech: return "apple.logo"
+        case .whisperKit: return "mic.fill"
         }
     }
 
@@ -151,6 +153,7 @@ extension AIProvider {
         case .deepL: return Color(red: 0.04, green: 0.21, blue: 0.38)
         case .azure: return Color(red: 0.0, green: 0.47, blue: 0.84)
         case .appleSpeech: return Color.gray  // Apple's neutral color
+        case .whisperKit: return Color.green  // On-device local AI
         }
     }
 
@@ -168,6 +171,7 @@ extension AIProvider {
         case .assemblyAI: return "$0.005/min"
         case .local: return "Free (local)"
         case .appleSpeech: return "Free (on-device)"
+        case .whisperKit: return "Free (on-device)"
         }
     }
 }

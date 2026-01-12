@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		830F4F9D2F13D57000A83770 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 830F4F9C2F13D57000A83770 /* WhisperKit */; };
 		8316B8222F102B3E000FC1C2 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8316B8212F102B3E000FC1C2 /* WidgetKit.framework */; };
 		8316B8242F102B3E000FC1C2 /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8316B8232F102B3E000FC1C2 /* SwiftUI.framework */; };
 		8316B8352F102B41000FC1C2 /* SwiftSpeakWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -216,6 +217,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				830F4F9D2F13D57000A83770 /* WhisperKit in Frameworks */,
 				838749832F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */,
 				833363C92F09146C00ACDE90 /* LocalAuthentication.framework in Frameworks */,
 				833363C32F09144C00ACDE90 /* Carbon.framework in Frameworks */,
@@ -361,6 +363,7 @@
 			name = SwiftSpeakMac;
 			packageProductDependencies = (
 				83E117422F014003009B3FD9 /* SwiftSpeakCore */,
+				830F4F9C2F13D57000A83770 /* WhisperKit */,
 			);
 			productName = SwiftSpeakMac;
 			productReference = 833362572F090F3400ACDE90 /* SwiftSpeakMac.app */;
@@ -1436,6 +1439,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		830F4F9C2F13D57000A83770 /* WhisperKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */;
+			productName = WhisperKit;
+		};
 		83E117202F012F3B009B3FD9 /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = RevenueCat;

@@ -1415,6 +1415,16 @@ struct ProvidersSettingsTab: View {
     @State private var editingConfig: AIProviderConfig?
     @State private var selectedTab = 0
 
+    /// Provider options for Transcription, including WhisperKit when available
+    private var transcriptionProviderOptions: [AIProvider] {
+        var options = settings.transcriptionProviders.map { $0.provider }
+        if settings.whisperKitConfig.status == .ready {
+            // Add WhisperKit if model is downloaded and ready
+            options.insert(.whisperKit, at: 0)
+        }
+        return options
+    }
+
     /// Provider options for Formatting, including Apple Intelligence when available
     private var formattingProviderOptions: [AIProvider] {
         var options = settings.formattingProviders.map { $0.provider }
@@ -1582,8 +1592,8 @@ struct ProvidersSettingsTab: View {
                 }
 
                 // Default Provider Selection
-                // Show if any cloud providers configured OR Apple Intelligence is available
-                if !settings.configuredAIProviders.isEmpty || settings.appleIntelligenceConfig.isAvailable {
+                // Show if any cloud providers configured OR local providers are available (WhisperKit, Apple Intelligence)
+                if !settings.configuredAIProviders.isEmpty || settings.appleIntelligenceConfig.isAvailable || settings.whisperKitConfig.status == .ready {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("Default Selection")
                             .font(.headline)
@@ -1591,14 +1601,16 @@ struct ProvidersSettingsTab: View {
 
                         VStack(spacing: 0) {
                             // Transcription
-                            if !settings.transcriptionProviders.isEmpty {
+                            // Include WhisperKit when available + cloud providers
+                            let transcriptionOptions = transcriptionProviderOptions
+                            if !transcriptionOptions.isEmpty {
                                 DefaultProviderRow(
                                     title: "Transcription",
                                     icon: "mic.fill",
                                     color: .blue,
                                     description: "Speech-to-text conversion",
                                     selection: $settings.selectedTranscriptionProvider,
-                                    options: settings.transcriptionProviders.map { $0.provider }
+                                    options: transcriptionOptions
                                 )
                             }
 

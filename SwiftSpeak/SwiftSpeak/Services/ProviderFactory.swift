@@ -17,6 +17,10 @@ struct ProviderFactory {
 
     private let settings: SharedSettings
 
+    // Cache WhisperKit service to avoid reloading model on each transcription
+    private static var cachedWhisperKitService: WhisperKitTranscriptionService?
+    private static var cachedWhisperKitModel: String?
+
     init(settings: SharedSettings? = nil) {
         self.settings = settings ?? SharedSettings.shared
     }
@@ -27,6 +31,19 @@ struct ProviderFactory {
     /// - Parameter provider: The AI provider type
     /// - Returns: A configured TranscriptionProvider, or nil if not configured
     func createTranscriptionProvider(for provider: AIProvider) -> TranscriptionProvider? {
+        // Handle local providers first - they don't need AIProviderConfig
+        switch provider {
+        case .whisperKit, .local:
+            // WhisperKit on-device transcription (uses whisperKitConfig, not AIProviderConfig)
+            return createWhisperKitProvider()
+        case .appleSpeech:
+            // On-device Apple Speech Recognition (SFSpeechRecognizer)
+            return SwiftSpeakCore.AppleSpeechTranscriptionService()
+        default:
+            break
+        }
+
+        // Cloud providers need AIProviderConfig
         guard let config = settings.getAIProviderConfig(for: provider),
               provider.supportsTranscription else {
             return nil
@@ -50,20 +67,16 @@ struct ProviderFactory {
                   !projectId.isEmpty else { return nil }
             return SwiftSpeakCore.GoogleSTTService(config: config)
 
-        case .local:
-            // Phase 10f: WhisperKit on-device transcription
-            return createWhisperKitProvider()
-
-        case .appleSpeech:
-            // On-device Apple Speech Recognition (SFSpeechRecognizer)
-            return SwiftSpeakCore.AppleSpeechTranscriptionService()
-
         case .elevenLabs:
             guard !config.apiKey.isEmpty else { return nil }
             return SwiftSpeakCore.ElevenLabsTranscriptionService(config: config)
 
         case .anthropic, .deepL, .azure:
             // These providers don't support transcription
+            return nil
+
+        case .local, .appleSpeech, .whisperKit:
+            // Already handled above
             return nil
         }
     }
@@ -185,7 +198,7 @@ struct ProviderFactory {
             // Phase 10f: Apple Translation on-device
             return createAppleTranslationProvider()
 
-        case .assemblyAI, .deepgram, .elevenLabs, .appleSpeech:
+        case .assemblyAI, .deepgram, .elevenLabs, .appleSpeech, .whisperKit:
             // These providers don't support translation
             return nil
         }
@@ -252,7 +265,7 @@ struct ProviderFactory {
             // Phase 10f: Apple Intelligence on-device formatting
             return createAppleIntelligenceProvider()
 
-        case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure, .appleSpeech:
+        case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure, .appleSpeech, .whisperKit:
             // These providers don't support power mode
             return nil
         }
@@ -349,10 +362,51 @@ struct ProviderFactory {
 
     // MARK: - Phase 10f: Local Provider Factory Methods
 
-    /// Create WhisperKit transcription provider
+    /// Create WhisperKit transcription provider (cached for performance)
     private func createWhisperKitProvider() -> TranscriptionProvider? {
         guard settings.isWhisperKitReady else { return nil }
-        return WhisperKitTranscriptionService(config: settings.whisperKitConfig)
+
+        let currentModel = settings.whisperKitConfig.selectedModel.rawValue
+
+        // Return cached service if model hasn't changed
+        if let cached = Self.cachedWhisperKitService,
+           Self.cachedWhisperKitModel == currentModel {
+            appLog("Using cached WhisperKit service (model: \(currentModel))", category: "ProviderFactory")
+            return cached
+        }
+
+        // Create new service and cache it
+        appLog("Creating new WhisperKit service (model: \(currentModel))", category: "ProviderFactory")
+        let service = WhisperKitTranscriptionService(config: settings.whisperKitConfig)
+        Self.cachedWhisperKitService = service
+        Self.cachedWhisperKitModel = currentModel
+        return service
+    }
+
+    /// Clear the cached WhisperKit service (call when model changes or to free memory)
+    static func clearWhisperKitCache() {
+        cachedWhisperKitService?.unloadModel()
+        cachedWhisperKitService = nil
+        cachedWhisperKitModel = nil
+        appLog("WhisperKit cache cleared", category: "ProviderFactory")
+    }
+
+    /// Preload WhisperKit model in background (call when recording starts)
+    /// This starts loading the model while user is speaking so it's ready when they finish
+    func preloadWhisperKitModel() async {
+        guard settings.isWhisperKitReady else { return }
+        guard settings.selectedTranscriptionProvider == .whisperKit || settings.selectedTranscriptionProvider == .local else { return }
+
+        // Get or create the cached service
+        guard let service = createWhisperKitProvider() as? WhisperKitTranscriptionService else { return }
+
+        do {
+            appLog("Preloading WhisperKit model in background...", category: "ProviderFactory")
+            try await service.initialize()
+            appLog("WhisperKit model preloaded successfully", category: "ProviderFactory")
+        } catch {
+            appLog("WhisperKit preload failed: \(error)", category: "ProviderFactory")
+        }
     }
 
     /// Create Apple Translation provider

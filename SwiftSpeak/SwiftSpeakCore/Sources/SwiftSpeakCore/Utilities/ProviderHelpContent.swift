@@ -101,6 +101,8 @@ public struct ProviderHelpDatabase {
             return azureGuide
         case .appleSpeech:
             return appleSpeechGuide
+        case .whisperKit:
+            return whisperKitGuide
         }
     }
 
@@ -544,6 +546,46 @@ public struct ProviderHelpDatabase {
         apiKeyURL: nil, // No API key needed
         pricingURL: nil,
         documentationURL: URL(string: "https://developer.apple.com/documentation/speech")
+    )
+
+    public static let whisperKitGuide = ProviderSetupGuide(
+        provider: .whisperKit,
+        steps: [
+            SetupStep(
+                number: 1,
+                title: "Go to Settings → Local Models",
+                description: "Open the Local Models section in SwiftSpeak settings"
+            ),
+            SetupStep(
+                number: 2,
+                title: "Select a WhisperKit model",
+                description: "Choose a model size based on your accuracy and speed needs"
+            ),
+            SetupStep(
+                number: 3,
+                title: "Download the model",
+                description: "The model will be downloaded to your device (requires internet)"
+            ),
+            SetupStep(
+                number: 4,
+                title: "Enable WhisperKit",
+                description: "Toggle on the provider to use it for transcription"
+            )
+        ],
+        tips: [
+            "100% free - no API costs ever",
+            "Complete privacy - all processing on device",
+            "Works completely offline after download",
+            "Larger models are more accurate but slower",
+            "large-v3-turbo offers best balance of speed and accuracy"
+        ],
+        estimatedCost: "Free (on-device)",
+        freeCredits: "Always free",
+        bestFor: ["Privacy", "Offline Use", "Accuracy"],
+        websiteURL: URL(string: "https://github.com/argmaxinc/WhisperKit"),
+        apiKeyURL: nil, // No API key needed
+        pricingURL: nil,
+        documentationURL: URL(string: "https://github.com/argmaxinc/WhisperKit")
     )
 }
 

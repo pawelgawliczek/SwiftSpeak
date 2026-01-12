@@ -375,6 +375,19 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
         macLog("Using recording format: \(audioRecorder.recordingFormat), quality: \(effectiveAudioQuality.displayName)", category: "Transcribe")
 
+        // Preload WhisperKit model in background while user is speaking
+        // This way the model is ready by the time they finish recording
+        if settings.selectedTranscriptionProvider == .whisperKit,
+           settings.whisperKitConfig.status == .ready {
+            // Use detached task WITHOUT @MainActor to start immediately on background thread
+            // The actual initialization will hop to main actor internally when needed
+            Task.detached { [settings] in
+                macLog("Starting WhisperKit model preload...", category: "WhisperKit")
+                let factory = await ProviderFactory(settings: settings)
+                await factory.preloadWhisperKitModel()
+            }
+        }
+
         // Start audio recording (may take time on first call due to audio engine init)
         // We wait for this to complete BEFORE showing "Recording" state
         try await audioRecorder.startRecording()

@@ -247,6 +247,7 @@ enum KeychainKeys {
         case .azure: return azure
         case .local: return local
         case .appleSpeech: return local  // Apple Speech doesn't need API key, use local key
+        case .whisperKit: return local  // WhisperKit doesn't need API key, use local key
         }
     }
 }
