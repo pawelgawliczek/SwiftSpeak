@@ -359,6 +359,17 @@ struct MacInputActionConfigSheet: View {
             Text("Webhooks configured in iOS app and synced via iCloud")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+        case .screenContext:
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Captures visible text from your screen using OCR")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Text("Note: On macOS, window context capture via accessibility is preferred. Screen context is primarily for iOS broadcast extension.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
     }
 
@@ -473,6 +484,7 @@ extension InputActionType {
         case .filePicker: return "doc"
         case .shortcutResult: return "command.square"
         case .webhook: return "link"
+        case .screenContext: return "text.viewfinder"
         }
     }
 
@@ -487,6 +499,7 @@ extension InputActionType {
         case .filePicker: return .orange
         case .shortcutResult: return .pink
         case .webhook: return .orange
+        case .screenContext: return .cyan
         }
     }
 
@@ -510,6 +523,8 @@ extension InputActionType {
             return "Run an Apple Shortcut and use its output"
         case .webhook:
             return "Fetch data from a configured webhook"
+        case .screenContext:
+            return "Capture text from screen via OCR (iOS)"
         }
     }
 }

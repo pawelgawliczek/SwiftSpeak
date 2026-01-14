@@ -371,6 +371,9 @@ struct InputActionConfigSheet: View {
 
         case .webhook:
             webhookConfig
+
+        case .screenContext:
+            screenContextConfig
         }
     }
 
@@ -799,6 +802,74 @@ struct InputActionConfigSheet: View {
                 .foregroundStyle(.tertiary)
         }
     }
+
+    // MARK: - Screen Context Config
+
+    private var screenContextConfig: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Info box
+            HStack(spacing: 12) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.cyan)
+                Text("Captures visible text from your screen using OCR when Power Mode starts")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.cyan.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Requirements
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Requirements")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    requirementRow(
+                        icon: "record.circle",
+                        text: "Screen recording must be active",
+                        isWarning: false
+                    )
+
+                    requirementRow(
+                        icon: "text.viewfinder",
+                        text: "Context Capture enabled in Settings",
+                        isWarning: false
+                    )
+                }
+            }
+
+            // How it works
+            VStack(alignment: .leading, spacing: 8) {
+                Text("How It Works")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("1. Start screen recording via SwiftLink")
+                    Text("2. When Power Mode runs, OCR extracts visible text")
+                    Text("3. Text is included as context for AI processing")
+                }
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
+    private func requirementRow(icon: String, text: String, isWarning: Bool) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.caption)
+                .foregroundStyle(isWarning ? .orange : .cyan)
+                .frame(width: 20)
+
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
 }
 
 // MARK: - InputActionType Extensions
@@ -815,6 +886,7 @@ extension InputActionType {
         case .filePicker: return "doc"
         case .shortcutResult: return "apps.iphone"
         case .webhook: return "link"
+        case .screenContext: return "text.viewfinder"
         }
     }
 
@@ -829,6 +901,7 @@ extension InputActionType {
         case .filePicker: return .orange
         case .shortcutResult: return .pink
         case .webhook: return .orange
+        case .screenContext: return .cyan
         }
     }
 
@@ -852,6 +925,8 @@ extension InputActionType {
             return "Run an Apple Shortcut and use its output"
         case .webhook:
             return "Fetch data from a configured webhook"
+        case .screenContext:
+            return "Capture text from your screen via OCR"
         }
     }
 }

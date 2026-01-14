@@ -199,6 +199,9 @@ final class InputActionExecutor {
 
         case .webhook:
             return await executeWebhook(action: action)
+
+        case .screenContext:
+            return await executeScreenContext(action: action)
         }
     }
 
@@ -385,6 +388,41 @@ final class InputActionExecutor {
         }
 
         return .failure(action: action, error: "Webhook returned no result")
+    }
+
+    // MARK: - Screen Context Action
+
+    private func executeScreenContext(action: InputAction) async -> InputActionResult {
+        let captureManager = ContextCaptureManager.shared
+
+        // Check if context capture is enabled in settings
+        guard settings.contextCaptureEnabled else {
+            return .failure(action: action, error: "Screen context capture is disabled in settings. Enable it in Settings → SwiftLink → Context Capture.")
+        }
+
+        // Refresh state to get latest capture status
+        captureManager.refreshState()
+
+        // Check if broadcast is active
+        guard captureManager.isCapturing else {
+            return .failure(action: action, error: "Screen recording is not active. Start a SwiftLink session with screen recording to capture screen context.")
+        }
+
+        // Request fresh OCR from the broadcast extension (waits for result)
+        let screenText = await captureManager.requestFreshContext(timeout: 8.0)
+
+        if let text = screenText, !text.isEmpty {
+            // Truncate very long content
+            let maxLength = 30000
+            let truncatedContent = text.count > maxLength
+                ? String(text.prefix(maxLength)) + "\n...[truncated]"
+                : text
+
+            appLog("Screen context captured: \(truncatedContent.count) characters", category: "InputAction")
+            return .success(action: action, content: truncatedContent)
+        } else {
+            return .failure(action: action, error: "No text detected on screen. Ensure the screen contains readable text and the broadcast extension is responding.")
+        }
     }
 
     // MARK: - Helpers

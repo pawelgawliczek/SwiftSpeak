@@ -35,6 +35,8 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
     case shortcutResult = "shortcutResult"
     /// Run a configured webhook (contextSource type) to fetch external data
     case webhook = "webhook"
+    /// Capture screen content via OCR (iOS broadcast extension)
+    case screenContext = "screenContext"
 
     public var displayName: String {
         switch self {
@@ -47,6 +49,7 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .filePicker: return "Pick File"
         case .shortcutResult: return "Run Shortcut"
         case .webhook: return "Webhook"
+        case .screenContext: return "Screen Context"
         }
     }
 
@@ -61,6 +64,7 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .filePicker: return "Select a file to include as context"
         case .shortcutResult: return "Run an Apple Shortcut and use its output"
         case .webhook: return "Fetch data from a configured webhook"
+        case .screenContext: return "Capture text from your screen via OCR"
         }
     }
 
@@ -75,6 +79,7 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .filePicker: return "doc"
         case .shortcutResult: return "apps.iphone"
         case .webhook: return "link"
+        case .screenContext: return "text.viewfinder"
         }
     }
 

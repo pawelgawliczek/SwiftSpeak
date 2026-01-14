@@ -16,6 +16,7 @@ struct SwiftLinkQuickStartSheet: View {
     @Environment(\.colorScheme) private var colorScheme
 
     @StateObject private var sessionManager = SwiftLinkSessionManager.shared
+    @StateObject private var contextCaptureManager = ContextCaptureManager.shared
 
     /// Pre-selected app from keyboard URL scheme (optional)
     var preselectedApp: SwiftLinkApp? = nil
@@ -25,6 +26,8 @@ struct SwiftLinkQuickStartSheet: View {
     @State private var isStartingSession = false
     @State private var errorMessage: String?
     @State private var sessionStartedApp: SwiftLinkApp? = nil  // App that session was started for
+    @State private var waitingForBroadcast = false  // Waiting for user to start broadcast
+    @State private var showBroadcastPrompt = false  // Show broadcast prompt sheet
 
     /// Callback when session starts successfully with a URL scheme to open
     var onSessionStarted: ((String?) -> Void)?
@@ -37,10 +40,14 @@ struct SwiftLinkQuickStartSheet: View {
         NavigationStack {
             VStack(spacing: 24) {
                 // Show different content based on session state
-                if let app = sessionStartedApp {
+                // Don't show sessionStartedView while broadcast prompt is showing (it would auto-return to app)
+                if let app = sessionStartedApp, !showBroadcastPrompt {
                     // Session started - show return button
                     sessionStartedView(for: app)
-                } else {
+                } else if showBroadcastPrompt, let app = sessionStartedApp {
+                    // Waiting for broadcast - show minimal waiting UI (sheet is displayed on top)
+                    waitingForBroadcastView(for: app)
+                } else if sessionStartedApp == nil {
                     // Header illustration
                     headerSection
 
@@ -49,6 +56,9 @@ struct SwiftLinkQuickStartSheet: View {
 
                     // Duration info
                     durationInfo
+
+                    // Context capture info
+                    contextCaptureInfo
 
                     // Error message
                     if let error = errorMessage {
@@ -97,6 +107,37 @@ struct SwiftLinkQuickStartSheet: View {
             if selectedApp == nil {
                 selectedApp = preselectedApp ?? sessionManager.getLastUsedApp() ?? settings.swiftLinkApps.first
             }
+
+            // If context capture is enabled but not active, prepare to auto-start when broadcast begins
+            if settings.contextCaptureEnabled && !contextCaptureManager.isCapturing {
+                waitingForBroadcast = true
+            }
+        }
+        // Auto-start SwiftLink when broadcast starts
+        .onChange(of: contextCaptureManager.isCapturing) { _, isCapturing in
+            if isCapturing && settings.contextCaptureEnabled && selectedApp != nil && sessionStartedApp == nil {
+                // Broadcast just started - auto-trigger SwiftLink after a brief delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    if !isStartingSession && sessionStartedApp == nil {
+                        startSession()
+                    }
+                }
+            }
+
+            // If broadcast started while showing broadcast prompt, dismiss and go to app
+            if isCapturing && showBroadcastPrompt {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    showBroadcastPrompt = false
+                    if let app = sessionStartedApp {
+                        returnToApp(app)
+                    }
+                }
+            }
+        }
+        // Broadcast prompt sheet
+        .sheet(isPresented: $showBroadcastPrompt) {
+            BroadcastPromptSheet()
+                .presentationDetents([.medium])
         }
     }
 
@@ -327,6 +368,132 @@ struct SwiftLinkQuickStartSheet: View {
         .padding(.horizontal, 4)
     }
 
+    // MARK: - Context Capture Info
+
+    private var contextCaptureInfo: some View {
+        Group {
+            if contextCaptureManager.isCapturing {
+                // Already capturing - show status
+                HStack(spacing: 8) {
+                    Image(systemName: "text.viewfinder")
+                        .foregroundStyle(.green)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 4) {
+                            Text("Screen Context")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+
+                            Text("Active")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.green)
+                                .clipShape(Capsule())
+                        }
+
+                        Text("AI will use screen text for smarter predictions")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.green.opacity(0.1))
+                )
+            } else if settings.contextCaptureEnabled {
+                // Context capture enabled but not active - show broadcast picker
+                // The entire row is tappable and triggers the broadcast picker
+                ZStack {
+                    // Visual content
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.blue.opacity(0.15))
+                                .frame(width: 50, height: 50)
+
+                            Image(systemName: "record.circle")
+                                .font(.title2)
+                                .foregroundStyle(.blue)
+                        }
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Start Screen Recording")
+                                .font(.subheadline.weight(.medium))
+
+                            Text("Tap here to enable screen context")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(12)
+
+                    // Tappable broadcast picker overlay
+                    TappableBroadcastPicker(
+                        broadcastExtensionBundleId: "pawelgawliczek.SwiftSpeak.SwiftSpeakBroadcast"
+                    )
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.blue.opacity(0.1))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                        )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                // Context capture disabled - offer to enable it
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.orange.opacity(0.15))
+                            .frame(width: 50, height: 50)
+
+                        Image(systemName: "text.viewfinder")
+                            .font(.title2)
+                            .foregroundStyle(.orange)
+                    }
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Screen Context")
+                            .font(.subheadline.weight(.medium))
+
+                        Text("Enable for smarter AI predictions")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button(action: {
+                        HapticManager.lightTap()
+                        settings.contextCaptureEnabled = true
+                    }) {
+                        Text("Enable")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.orange)
+                            .clipShape(Capsule())
+                    }
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.orange.opacity(0.1))
+                )
+            }
+        }
+    }
+
     // MARK: - Start Button
 
     private var startButton: some View {
@@ -350,6 +517,48 @@ struct SwiftLinkQuickStartSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .disabled(selectedApp == nil || isStartingSession)
+    }
+
+    // MARK: - Waiting for Broadcast View
+
+    private func waitingForBroadcastView(for app: SwiftLinkApp) -> some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Loading indicator
+            ZStack {
+                Circle()
+                    .fill(Color.blue.opacity(0.15))
+                    .frame(width: 100, height: 100)
+
+                Image(systemName: "record.circle")
+                    .font(.system(size: 50))
+                    .foregroundStyle(.blue)
+            }
+
+            // Waiting message
+            VStack(spacing: 8) {
+                Text("Start Screen Recording")
+                    .font(.title2.weight(.bold))
+
+                Text("Enable screen capture to get smarter AI predictions based on what's on your screen")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            Spacer()
+
+            // Skip button
+            Button(action: {
+                showBroadcastPrompt = false
+                // sessionStartedApp is already set, so view will switch to sessionStartedView
+            }) {
+                Text("Skip and Continue")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     // MARK: - Session Started View
@@ -538,6 +747,9 @@ struct SwiftLinkQuickStartSheet: View {
         errorMessage = nil
         HapticManager.mediumTap()
 
+        // Check if we should prompt for broadcast after session starts
+        let shouldPromptForBroadcast = settings.contextCaptureEnabled && !contextCaptureManager.isCapturing
+
         Task {
             do {
                 _ = try await sessionManager.startSession(targetApp: app)
@@ -545,10 +757,16 @@ struct SwiftLinkQuickStartSheet: View {
                 await MainActor.run {
                     isStartingSession = false
                     HapticManager.success()
-                    // Show the session started view with return button
-                    // instead of auto-dismissing (which wasn't reliable)
-                    withAnimation(.spring(response: 0.3)) {
-                        sessionStartedApp = app
+
+                    // Store the app for later use
+                    sessionStartedApp = app
+
+                    // If context capture is enabled but not active, show broadcast prompt
+                    if shouldPromptForBroadcast {
+                        showBroadcastPrompt = true
+                    } else {
+                        // Go directly to app
+                        returnToApp(app)
                     }
                 }
             } catch {

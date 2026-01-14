@@ -189,6 +189,11 @@ final class MacInputActionExecutor {
 
         case .webhook:
             return await executeWebhook(action: action)
+
+        case .screenContext:
+            // Screen context is primarily for iOS broadcast extension
+            // On macOS, use selectedText or window context capture instead
+            return .failure(action: action, error: "Screen context capture is an iOS feature. On macOS, use 'Selected Text' or window context capture instead.")
         }
     }
 

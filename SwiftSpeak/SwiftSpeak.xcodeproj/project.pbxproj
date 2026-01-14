@@ -15,6 +15,10 @@
 		833363C52F09145800ACDE90 /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C42F09145800ACDE90 /* ApplicationServices.framework */; };
 		833363C72F09146100ACDE90 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C62F09146100ACDE90 /* UserNotifications.framework */; };
 		833363C92F09146C00ACDE90 /* LocalAuthentication.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C82F09146C00ACDE90 /* LocalAuthentication.framework */; };
+		837CF8EB2F16B35A00CF438B /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8EA2F16B35900CF438B /* ReplayKit.framework */; };
+		837CF8F22F16B35A00CF438B /* SwiftSpeakBroadcast.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		837CF8F92F16B3C900CF438B /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8F82F16B3C900CF438B /* Vision.framework */; };
+		837CF8FB2F16B3D400CF438B /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8FA2F16B3D400CF438B /* CoreMedia.framework */; };
 		838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117402F014001009B3FD9 /* SwiftSpeakCore */; };
 		838749822F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117412F014002009B3FD9 /* SwiftSpeakCore */; };
 		838749832F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117422F014003009B3FD9 /* SwiftSpeakCore */; };
@@ -45,6 +49,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 833362562F090F3400ACDE90;
 			remoteInfo = SwiftSpeakMac;
+		};
+		837CF8F02F16B35A00CF438B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83ED790D2EFE4CB900880604 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 837CF8E82F16B35900CF438B;
+			remoteInfo = SwiftSpeakBroadcast;
 		};
 		83ED792C2EFE4D8F00880604 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -78,6 +89,7 @@
 			files = (
 				83ED792E2EFE4D8F00880604 /* SwiftSpeakKeyboard.appex in Embed Foundation Extensions */,
 				8316B8352F102B41000FC1C2 /* SwiftSpeakWidgetExtension.appex in Embed Foundation Extensions */,
+				837CF8F22F16B35A00CF438B /* SwiftSpeakBroadcast.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -95,6 +107,10 @@
 		833363C42F09145800ACDE90 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk/System/Library/Frameworks/ApplicationServices.framework; sourceTree = DEVELOPER_DIR; };
 		833363C62F09146100ACDE90 /* UserNotifications.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UserNotifications.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk/System/Library/Frameworks/UserNotifications.framework; sourceTree = DEVELOPER_DIR; };
 		833363C82F09146C00ACDE90 /* LocalAuthentication.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = LocalAuthentication.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.2.sdk/System/Library/Frameworks/LocalAuthentication.framework; sourceTree = DEVELOPER_DIR; };
+		837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakBroadcast.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		837CF8EA2F16B35900CF438B /* ReplayKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReplayKit.framework; path = System/Library/Frameworks/ReplayKit.framework; sourceTree = SDKROOT; };
+		837CF8F82F16B3C900CF438B /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
+		837CF8FA2F16B3D400CF438B /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		83ED79152EFE4CB900880604 /* SwiftSpeak.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftSpeak.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED7A112EFECCE900880604 /* SwiftSpeakTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftSpeakTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -122,6 +138,13 @@
 				Shared/SharedLogManager.swift,
 			);
 			target = 83ED7A102EFECCE900880604 /* SwiftSpeakTests */;
+		};
+		837CF8F62F16B35A00CF438B /* Exceptions for "SwiftSpeakBroadcast" folder in "SwiftSpeakBroadcast" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */;
 		};
 		83ED792F2EFE4D8F00880604 /* Exceptions for "SwiftSpeakKeyboard" folder in "SwiftSpeakKeyboard" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -170,6 +193,14 @@
 		8333629E2F09117100ACDE90 /* SwiftSpeakMac */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SwiftSpeakMac;
+			sourceTree = "<group>";
+		};
+		837CF8EC2F16B35A00CF438B /* SwiftSpeakBroadcast */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				837CF8F62F16B35A00CF438B /* Exceptions for "SwiftSpeakBroadcast" folder in "SwiftSpeakBroadcast" target */,
+			);
+			path = SwiftSpeakBroadcast;
 			sourceTree = "<group>";
 		};
 		83ED79172EFE4CB900880604 /* SwiftSpeak */ = {
@@ -240,6 +271,16 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		837CF8E62F16B35900CF438B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				837CF8FB2F16B3D400CF438B /* CoreMedia.framework in Frameworks */,
+				837CF8F92F16B3C900CF438B /* Vision.framework in Frameworks */,
+				837CF8EB2F16B35A00CF438B /* ReplayKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		83ED79122EFE4CB900880604 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -279,12 +320,15 @@
 		833363C12F09144B00ACDE90 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				837CF8FA2F16B3D400CF438B /* CoreMedia.framework */,
+				837CF8F82F16B3C900CF438B /* Vision.framework */,
 				833363C82F09146C00ACDE90 /* LocalAuthentication.framework */,
 				833363C62F09146100ACDE90 /* UserNotifications.framework */,
 				833363C42F09145800ACDE90 /* ApplicationServices.framework */,
 				833363C22F09144C00ACDE90 /* Carbon.framework */,
 				8316B8212F102B3E000FC1C2 /* WidgetKit.framework */,
 				8316B8232F102B3E000FC1C2 /* SwiftUI.framework */,
+				837CF8EA2F16B35900CF438B /* ReplayKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -300,6 +344,7 @@
 				833362662F090F3800ACDE90 /* SwiftSpeakMacTests */,
 				833362702F090F3800ACDE90 /* SwiftSpeakMacUITests */,
 				8316B8252F102B3F000FC1C2 /* SwiftSpeakWidget */,
+				837CF8EC2F16B35A00CF438B /* SwiftSpeakBroadcast */,
 				833363C12F09144B00ACDE90 /* Frameworks */,
 				83ED79162EFE4CB900880604 /* Products */,
 			);
@@ -316,6 +361,7 @@
 				833362632F090F3800ACDE90 /* SwiftSpeakMacTests.xctest */,
 				8333626D2F090F3800ACDE90 /* SwiftSpeakMacUITests.xctest */,
 				8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */,
+				837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -415,6 +461,28 @@
 			productReference = 8333626D2F090F3800ACDE90 /* SwiftSpeakMacUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 837CF8F32F16B35A00CF438B /* Build configuration list for PBXNativeTarget "SwiftSpeakBroadcast" */;
+			buildPhases = (
+				837CF8E52F16B35900CF438B /* Sources */,
+				837CF8E62F16B35900CF438B /* Frameworks */,
+				837CF8E72F16B35900CF438B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				837CF8EC2F16B35A00CF438B /* SwiftSpeakBroadcast */,
+			);
+			name = SwiftSpeakBroadcast;
+			packageProductDependencies = (
+			);
+			productName = SwiftSpeakBroadcast;
+			productReference = 837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		83ED79142EFE4CB900880604 /* SwiftSpeak */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 83ED79202EFE4CBD00880604 /* Build configuration list for PBXNativeTarget "SwiftSpeak" */;
@@ -429,6 +497,7 @@
 			dependencies = (
 				83ED792D2EFE4D8F00880604 /* PBXTargetDependency */,
 				8316B8342F102B41000FC1C2 /* PBXTargetDependency */,
+				837CF8F12F16B35A00CF438B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				83ED79172EFE4CB900880604 /* SwiftSpeak */,
@@ -537,6 +606,9 @@
 						CreatedOnToolsVersion = 26.2;
 						TestTargetID = 833362562F090F3400ACDE90;
 					};
+					837CF8E82F16B35900CF438B = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					83ED79142EFE4CB900880604 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -581,6 +653,7 @@
 				833362622F090F3800ACDE90 /* SwiftSpeakMacTests */,
 				8333626C2F090F3800ACDE90 /* SwiftSpeakMacUITests */,
 				8316B81F2F102B3E000FC1C2 /* SwiftSpeakWidgetExtension */,
+				837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */,
 			);
 		};
 /* End PBXProject section */
@@ -608,6 +681,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		8333626B2F090F3800ACDE90 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		837CF8E72F16B35900CF438B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -673,6 +753,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		837CF8E52F16B35900CF438B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		83ED79112EFE4CB900880604 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -718,6 +805,11 @@
 			isa = PBXTargetDependency;
 			target = 833362562F090F3400ACDE90 /* SwiftSpeakMac */;
 			targetProxy = 8333626E2F090F3800ACDE90 /* PBXContainerItemProxy */;
+		};
+		837CF8F12F16B35A00CF438B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */;
+			targetProxy = 837CF8F02F16B35A00CF438B /* PBXContainerItemProxy */;
 		};
 		83ED792D2EFE4D8F00880604 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -816,7 +908,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = BSDVBGN72H;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -863,7 +955,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = BSDVBGN72H;
-				ENABLE_APP_SANDBOX = YES;
+				ENABLE_APP_SANDBOX = NO;
 				ENABLE_FILE_ACCESS_DOWNLOADS_FOLDER = readwrite;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_INCOMING_NETWORK_CONNECTIONS = NO;
@@ -982,6 +1074,68 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TEST_TARGET_NAME = SwiftSpeakMac;
+			};
+			name = Release;
+		};
+		837CF8F42F16B35A00CF438B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakBroadcast/SwiftSpeakBroadcast.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakBroadcast/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakBroadcast;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak.SwiftSpeakBroadcast;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		837CF8F52F16B35A00CF438B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakBroadcast/SwiftSpeakBroadcast.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakBroadcast/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakBroadcast;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak.SwiftSpeakBroadcast;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -1361,6 +1515,15 @@
 			buildConfigurations = (
 				8333627C2F090F3800ACDE90 /* Debug */,
 				8333627D2F090F3800ACDE90 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		837CF8F32F16B35A00CF438B /* Build configuration list for PBXNativeTarget "SwiftSpeakBroadcast" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				837CF8F42F16B35A00CF438B /* Debug */,
+				837CF8F52F16B35A00CF438B /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
