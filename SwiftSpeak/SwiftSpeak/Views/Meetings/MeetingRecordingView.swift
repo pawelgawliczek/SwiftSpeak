@@ -371,19 +371,32 @@ struct MeetingRecordingView: View {
         var providerName = "Default"
         var hasDiarization = false
 
+        // Get selected context if any
+        let selectedContext: ConversationContext? = {
+            if let contextId = selectedContextId ?? orchestrator.settings.contextId {
+                return settings.contexts.first(where: { $0.id == contextId })
+            }
+            return nil
+        }()
+
         // Check if context has a transcription provider override
-        if let contextId = selectedContextId ?? orchestrator.settings.contextId,
-           let context = settings.contexts.first(where: { $0.id == contextId }),
+        if let context = selectedContext,
            let override = context.transcriptionProviderOverride {
 
             switch override.providerType {
             case .cloud(let provider):
                 providerName = provider.displayName
 
-                // AssemblyAI has dedicated meeting service with diarization
+                // AssemblyAI and Google have dedicated meeting services with diarization
                 if provider == .assemblyAI {
                     if let config = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
                        let service = AssemblyAIMeetingService(config: config) {
+                        transcriptionService = service
+                        hasDiarization = true
+                    }
+                } else if provider == .google {
+                    if let config = settings.configuredAIProviders.first(where: { $0.provider == .google && !$0.apiKey.isEmpty }),
+                       let service = GoogleMeetingService(config: config) {
                         transcriptionService = service
                         hasDiarization = true
                     }
@@ -395,9 +408,6 @@ struct MeetingRecordingView: View {
                     }
                 }
 
-                // Apply context settings (language, vocabulary)
-                applyContextSettings(context)
-
             case .local(let localProvider):
                 providerName = localProvider.displayName
 
@@ -406,21 +416,27 @@ struct MeetingRecordingView: View {
                     transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
                     hasDiarization = false
                 }
-
-                // Apply context settings (language, vocabulary)
-                applyContextSettings(context)
             }
         }
 
-        // Fallback to AssemblyAI if no context override or override provider not configured
+        // Fallback to diarization-capable providers (AssemblyAI, Google) if no context override
         if transcriptionService == nil {
+            // Try AssemblyAI first (best diarization)
             if let assemblyConfig = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
                let service = AssemblyAIMeetingService(config: assemblyConfig) {
                 transcriptionService = service
                 providerName = "AssemblyAI"
                 hasDiarization = true
-            } else {
-                // Try any configured transcription provider as last resort
+            }
+            // Try Google Cloud STT (also supports diarization)
+            else if let googleConfig = settings.configuredAIProviders.first(where: { $0.provider == .google && !$0.apiKey.isEmpty }),
+                    let service = GoogleMeetingService(config: googleConfig) {
+                transcriptionService = service
+                providerName = "Google Cloud"
+                hasDiarization = true
+            }
+            // Try any configured transcription provider as last resort (no diarization)
+            else {
                 for config in settings.configuredAIProviders where config.isConfiguredForTranscription {
                     if let underlyingProvider = providerFactory.createTranscriptionProvider(for: config.provider) {
                         transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
@@ -449,13 +465,20 @@ struct MeetingRecordingView: View {
         // iOS always uses microphone-only (no system audio capture)
         orchestrator.settings.audioSource = .microphoneOnly
 
+        // ALWAYS apply context settings if a context is selected (language, vocabulary)
+        // This must happen regardless of whether provider override is set
+        if let context = selectedContext {
+            applyContextSettings(context)
+        }
+
         // Disable diarization if provider doesn't support it
         if !hasDiarization {
             orchestrator.settings.requireDiarization = false
         }
 
         let diarizationStatus = hasDiarization ? "with diarization" : "without diarization"
-        appLog("Meeting recording configured with \(providerName) (\(diarizationStatus))", category: "Meeting")
+        let languageInfo = orchestrator.settings.language ?? "auto"
+        appLog("Meeting recording configured with \(providerName) (\(diarizationStatus)), language: \(languageInfo)", category: "Meeting")
     }
 
     /// Apply context settings to the meeting orchestrator
@@ -467,10 +490,8 @@ struct MeetingRecordingView: View {
         }
 
         // Apply vocabulary/jargon from context
-        // This includes custom jargon, domain jargon terms, and context name
         let vocabulary = context.transcriptionVocabulary
         if !vocabulary.isEmpty {
-            // Merge with existing word boost, avoiding duplicates
             var wordBoost = Set(orchestrator.settings.wordBoost)
             wordBoost.formUnion(vocabulary)
             orchestrator.settings.wordBoost = Array(wordBoost)
@@ -569,16 +590,9 @@ struct MeetingSettingsSheet: View {
                             .tag(nil as UUID?)
 
                         ForEach(contexts) { context in
-                            HStack {
-                                Text(context.icon)
-                                Text(context.name)
-                                if context.domainJargon != .none {
-                                    Text("• \(context.domainJargon.displayName)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .tag(context.id as UUID?)
+                            // Concatenate emoji + name for proper picker display
+                            Text("\(context.icon) \(context.name)\(context.domainJargon != .none ? " • \(context.domainJargon.displayName)" : "")")
+                                .tag(context.id as UUID?)
                         }
                     }
                     .onChange(of: selectedContextId) { _, newValue in
@@ -613,12 +627,15 @@ struct MeetingSettingsSheet: View {
                     Toggle("Require Speaker Diarization", isOn: $settings.requireDiarization)
 
                     if settings.requireDiarization {
-                        Stepper("Expected Speakers: \(settings.expectedSpeakerCount ?? 2)",
-                                value: Binding(
-                                    get: { settings.expectedSpeakerCount ?? 2 },
-                                    set: { settings.expectedSpeakerCount = $0 }
-                                ),
-                                in: 2...10)
+                        Picker("Expected Speakers", selection: Binding(
+                            get: { settings.expectedSpeakerCount },
+                            set: { settings.expectedSpeakerCount = $0 }
+                        )) {
+                            Text("Auto").tag(nil as Int?)
+                            ForEach(1...10, id: \.self) { count in
+                                Text("\(count)").tag(count as Int?)
+                            }
+                        }
                     }
                 }
 
@@ -628,7 +645,7 @@ struct MeetingSettingsSheet: View {
                 }
 
                 Section {
-                    Text("Speaker diarization identifies who said what in the recording. It works best with AssemblyAI.")
+                    Text("Speaker diarization identifies who said what in the recording. Works with AssemblyAI and Google Cloud Speech-to-Text.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

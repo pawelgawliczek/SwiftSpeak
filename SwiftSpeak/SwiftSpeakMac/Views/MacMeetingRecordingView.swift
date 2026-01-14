@@ -327,15 +327,31 @@ struct MacMeetingRecordingView: View {
                 Picker("Context", selection: $selectedContextId) {
                     Text("None").tag(nil as UUID?)
                     ForEach(settings.contexts) { context in
-                        Label {
-                            Text(context.name)
-                        } icon: {
-                            Text(context.icon)
-                        }
-                        .tag(context.id as UUID?)
+                        // Concatenate emoji + name into single string for proper macOS menu display
+                        Text("\(context.icon) \(context.name)")
+                            .tag(context.id as UUID?)
                     }
                 }
                 .labelsHidden()
+                .fixedSize()
+                .onChange(of: selectedContextId) { newContextId in
+                    // When context changes, we need to reconfigure the orchestrator
+                    // to pick up any provider overrides from the new context
+                    if !orchestrator.isRecording && !orchestrator.isProcessing {
+                        macLog("Context changed, reconfiguring orchestrator", category: "Meeting")
+                        configureOrchestrator()
+                    } else {
+                        // During recording, only apply language/vocabulary (can't change provider)
+                        if let contextId = newContextId,
+                           let context = settings.contexts.first(where: { $0.id == contextId }) {
+                            applyContextSettings(context)
+                        } else {
+                            orchestrator.settings.contextId = nil
+                            orchestrator.settings.language = nil
+                            orchestrator.settings.wordBoost = []
+                        }
+                    }
+                }
             }
 
             Divider()
@@ -347,21 +363,17 @@ struct MacMeetingRecordingView: View {
                 iconColor: .teal,
                 label: "Speakers"
             ) {
-                HStack(spacing: 4) {
-                    Text("\(orchestrator.settings.expectedSpeakerCount ?? 2)")
-                        .font(.callout.weight(.medium).monospacedDigit())
-                        .frame(width: 24)
-
-                    Stepper(
-                        "",
-                        value: Binding(
-                            get: { orchestrator.settings.expectedSpeakerCount ?? 2 },
-                            set: { orchestrator.settings.expectedSpeakerCount = $0 }
-                        ),
-                        in: 2...10
-                    )
-                    .labelsHidden()
+                Picker("Speakers", selection: Binding(
+                    get: { orchestrator.settings.expectedSpeakerCount },
+                    set: { orchestrator.settings.expectedSpeakerCount = $0 }
+                )) {
+                    Text("Auto").tag(nil as Int?)
+                    ForEach(1...10, id: \.self) { count in
+                        Text("\(count)").tag(count as Int?)
+                    }
                 }
+                .labelsHidden()
+                .fixedSize()
             }
 
             // Word boost row (only if vocabulary terms exist)
@@ -598,28 +610,160 @@ struct MacMeetingRecordingView: View {
     private func configureOrchestrator() {
         macLog("Configuring meeting orchestrator", category: "Meeting")
 
-        // Get AssemblyAI configuration from settings
-        guard let assemblyAIConfig = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI }),
-              !assemblyAIConfig.apiKey.isEmpty else {
-            configurationError = "AssemblyAI not configured. Please add your AssemblyAI API key in Settings → Providers."
-            macLog("Meeting recording: AssemblyAI not configured", category: "Meeting", level: .error)
-            return
+        // Determine which provider to use based on context override
+        let providerFactory = ProviderFactory(settings: settings)
+        var transcriptionService: MeetingTranscriptionService?
+        var providerName = "Default"
+        var hasDiarization = false
+
+        // Get selected context if any
+        let selectedContext: ConversationContext? = {
+            if let contextId = selectedContextId ?? orchestrator.settings.contextId {
+                return settings.contexts.first(where: { $0.id == contextId })
+            }
+            return nil
+        }()
+
+        // Check if context has a transcription provider override
+        if let context = selectedContext {
+            macLog("Context '\(context.name)' found, transcriptionProviderOverride: \(context.transcriptionProviderOverride?.displayName ?? "nil")", category: "Meeting")
         }
 
-        // Create transcription service from shared Core package
-        let transcriptionService = AssemblyAIMeetingService(
-            apiKey: assemblyAIConfig.apiKey,
-            model: assemblyAIConfig.transcriptionModel ?? "best"
-        )
+        if let context = selectedContext,
+           let override = context.transcriptionProviderOverride {
+
+            switch override.providerType {
+            case .cloud(let provider):
+                providerName = provider.displayName
+
+                // AssemblyAI and Google have dedicated meeting services with diarization
+                if provider == .assemblyAI {
+                    if let config = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
+                       let service = AssemblyAIMeetingService(config: config) {
+                        transcriptionService = service
+                        hasDiarization = true
+                    }
+                } else if provider == .google {
+                    macLog("Google selected, looking for config...", category: "Meeting")
+                    if let config = settings.configuredAIProviders.first(where: { $0.provider == .google && !$0.apiKey.isEmpty }) {
+                        macLog("Google config found: apiKey=\(!config.apiKey.isEmpty), projectId=\(config.googleProjectId ?? "nil")", category: "Meeting")
+                        if let service = GoogleMeetingService(config: config) {
+                            transcriptionService = service
+                            hasDiarization = true
+                            macLog("GoogleMeetingService created successfully", category: "Meeting")
+                        } else {
+                            macLog("GoogleMeetingService init returned nil", category: "Meeting", level: .error)
+                        }
+                    } else {
+                        macLog("No Google config found with API key", category: "Meeting", level: .error)
+                    }
+                } else {
+                    // Use adapter for other providers (no diarization)
+                    if let underlyingProvider = providerFactory.createTranscriptionProvider(for: provider) {
+                        transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
+                        hasDiarization = false
+                    }
+                }
+
+            case .local(let localProvider):
+                providerName = localProvider.displayName
+
+                // Convert LocalModelType to AIProvider for factory
+                let aiProvider: AIProvider? = {
+                    switch localProvider {
+                    case .whisperKit: return .whisperKit
+                    case .appleIntelligence, .appleTranslation, .ollama, .lmStudio: return nil
+                    }
+                }()
+
+                // Use adapter for local providers (no diarization)
+                if let provider = aiProvider,
+                   let underlyingProvider = providerFactory.createTranscriptionProvider(for: provider) {
+                    transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
+                    hasDiarization = false
+                }
+            }
+        }
+
+        // Fallback to diarization-capable providers (AssemblyAI, Google) if no context override
+        if transcriptionService == nil {
+            // Try AssemblyAI first (best diarization)
+            if let assemblyConfig = settings.configuredAIProviders.first(where: { $0.provider == .assemblyAI && !$0.apiKey.isEmpty }),
+               let service = AssemblyAIMeetingService(config: assemblyConfig) {
+                transcriptionService = service
+                providerName = "AssemblyAI"
+                hasDiarization = true
+            }
+            // Try Google Cloud STT (also supports diarization)
+            else if let googleConfig = settings.configuredAIProviders.first(where: { $0.provider == .google && !$0.apiKey.isEmpty }),
+                    let service = GoogleMeetingService(config: googleConfig) {
+                transcriptionService = service
+                providerName = "Google Cloud"
+                hasDiarization = true
+            }
+            // Try any configured transcription provider as last resort (no diarization)
+            else {
+                for config in settings.configuredAIProviders where config.isConfiguredForTranscription {
+                    if let underlyingProvider = providerFactory.createTranscriptionProvider(for: config.provider) {
+                        transcriptionService = TranscriptionProviderMeetingAdapter(provider: underlyingProvider)
+                        providerName = config.provider.displayName
+                        hasDiarization = false
+                        break
+                    }
+                }
+            }
+        }
+
+        // Check if we have a transcription service
+        guard let service = transcriptionService else {
+            configurationError = "No transcription provider configured. Please add an API key in Settings → Providers."
+            macLog("Meeting recording: No transcription provider available", category: "Meeting", level: .error)
+            return
+        }
 
         // Configure orchestrator with services
         orchestrator.configure(
             audioRecorder: audioRecorder,
-            transcriptionService: transcriptionService,
-            notesGenerator: nil  // Optional: could add LLM-based notes generation later
+            transcriptionService: service,
+            notesGenerator: nil
         )
 
-        macLog("Meeting orchestrator configured with AssemblyAI", category: "Meeting")
+        // ALWAYS apply context settings if a context is selected (language, vocabulary)
+        // This must happen regardless of whether provider override is set
+        if let context = selectedContext {
+            applyContextSettings(context)
+        }
+
+        // Disable diarization if provider doesn't support it
+        if !hasDiarization {
+            orchestrator.settings.requireDiarization = false
+        }
+
+        let diarizationStatus = hasDiarization ? "with diarization" : "without diarization"
+        let languageInfo = orchestrator.settings.language ?? "auto"
+        macLog("Meeting orchestrator configured with \(providerName) (\(diarizationStatus)), language: \(languageInfo)", category: "Meeting")
+    }
+
+    /// Apply context settings to the meeting orchestrator
+    /// Includes language, vocabulary, jargon, and other context-specific settings
+    private func applyContextSettings(_ context: ConversationContext) {
+        // Set language from context
+        if let language = context.defaultInputLanguage {
+            orchestrator.settings.language = language.rawValue
+        }
+
+        // Apply vocabulary/jargon from context
+        let vocabulary = context.transcriptionVocabulary
+        if !vocabulary.isEmpty {
+            var wordBoost = Set(orchestrator.settings.wordBoost)
+            wordBoost.formUnion(vocabulary)
+            orchestrator.settings.wordBoost = Array(wordBoost)
+        }
+
+        // Set context ID for the meeting
+        orchestrator.settings.contextId = context.id
+
+        macLog("Applied context settings: language=\(context.defaultInputLanguage?.rawValue ?? "auto"), vocabulary=\(vocabulary.count) words", category: "Meeting")
     }
 
     private func audioLevelForBar(_ index: Int) -> CGFloat {
@@ -701,16 +845,9 @@ struct MacMeetingSettingsSheet: View {
                             .tag(nil as UUID?)
 
                         ForEach(contexts) { context in
-                            HStack {
-                                Text(context.icon)
-                                Text(context.name)
-                                if context.domainJargon != .none {
-                                    Text("• \(context.domainJargon.displayName)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            .tag(context.id as UUID?)
+                            // Concatenate emoji + name for proper macOS menu display
+                            Text("\(context.icon) \(context.name)\(context.domainJargon != .none ? " • \(context.domainJargon.displayName)" : "")")
+                                .tag(context.id as UUID?)
                         }
                     }
                     .onChange(of: selectedContextId) { newValue in

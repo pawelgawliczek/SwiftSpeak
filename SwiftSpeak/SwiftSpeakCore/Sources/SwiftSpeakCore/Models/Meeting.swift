@@ -231,17 +231,23 @@ public struct MeetingSettings: Codable, Equatable, Hashable, Sendable {
 
     // MARK: - Context Integration
 
-    /// Update word boost from a conversation context
+    /// Update settings from a conversation context
     /// Call this when user selects a context for the meeting
+    /// Sets contextId, wordBoost (vocabulary), and language
     /// - Parameters:
     ///   - context: The selected context, or nil to clear
     public mutating func setContext(_ context: ConversationContext?) {
         if let context = context {
             contextId = context.id
             wordBoost = context.transcriptionVocabulary
+            // Set language from context if specified
+            if let inputLanguage = context.defaultInputLanguage {
+                language = inputLanguage.rawValue
+            }
         } else {
             contextId = nil
             wordBoost = []
+            language = nil
         }
     }
 
