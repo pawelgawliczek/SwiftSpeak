@@ -202,6 +202,11 @@ final class InputActionExecutor {
 
         case .screenContext:
             return await executeScreenContext(action: action)
+
+        case .shareAudioImport:
+            // This is a marker action - audio import is handled by ShareImportView
+            // No execution needed, just return success
+            return .success(action: action, content: "")
         }
     }
 

@@ -58,6 +58,8 @@ class SharedSettings: ObservableObject {
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
         // Hidden contexts
         static let hiddenContextIds = "icloud_hiddenContextIds"
+        // Subscription tier
+        static let subscriptionTier = "icloud_subscriptionTier"
     }
 
     // MARK: - Published Properties
@@ -192,6 +194,7 @@ class SharedSettings: ObservableObject {
     @Published var subscriptionTier: SubscriptionTier = .free {
         didSet {
             defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
+            syncToiCloud()
         }
     }
 
@@ -496,6 +499,36 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    // MARK: - Autocomplete Suggestions (Keyboard)
+
+    /// Whether autocomplete suggestions are enabled in keyboard
+    @Published var keyboardQuickSuggestionsEnabled: Bool = false {
+        didSet {
+            defaults?.set(keyboardQuickSuggestionsEnabled, forKey: "keyboardQuickSuggestionsEnabled")
+        }
+    }
+
+    /// Quick actions for generating autocomplete suggestions from screen context
+    @Published var keyboardQuickActions: [QuickAction] = [] {
+        didSet {
+            saveKeyboardQuickActions()
+        }
+    }
+
+    private func saveKeyboardQuickActions() {
+        if let data = try? JSONEncoder().encode(keyboardQuickActions) {
+            defaults?.set(data, forKey: Constants.Keys.keyboardQuickActions)
+        }
+    }
+
+    private func loadKeyboardQuickActions() {
+        guard let data = defaults?.data(forKey: Constants.Keys.keyboardQuickActions),
+              let actions = try? JSONDecoder().decode([QuickAction].self, from: data) else {
+            return
+        }
+        keyboardQuickActions = actions
+    }
+
     /// Reload keyboard settings from App Groups (call when view appears to pick up keyboard changes)
     func reloadKeyboardSettings() {
         if let showBar = defaults?.object(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) as? Bool,
@@ -542,6 +575,14 @@ class SharedSettings: ObservableObject {
     @Published var swiftLinkAutoStart: Bool = true {
         didSet {
             defaults?.set(swiftLinkAutoStart, forKey: Constants.Keys.swiftLinkAutoStart)
+        }
+    }
+
+    /// Enable screen context capture for better transcription formatting
+    /// When enabled, captures screen text during SwiftLink sessions via ReplayKit
+    @Published var contextCaptureEnabled: Bool = false {
+        didSet {
+            defaults?.set(contextCaptureEnabled, forKey: "contextCaptureEnabled")
         }
     }
 
@@ -952,6 +993,13 @@ class SharedSettings: ObservableObject {
                 appLog("loadFromiCloud: Loaded history memory from iCloud", category: "iCloud")
             }
         }
+
+        // Load subscription tier
+        if let tierRaw = iCloud?.string(forKey: iCloudKeys.subscriptionTier),
+           let tier = SubscriptionTier(rawValue: tierRaw) {
+            subscriptionTier = tier
+            appLog("loadFromiCloud: Loaded subscription tier: \(tier.displayName)", category: "iCloud")
+        }
     }
 
     private func syncToiCloud() {
@@ -1034,6 +1082,9 @@ class SharedSettings: ObservableObject {
         } else {
             iCloud?.removeObject(forKey: iCloudKeys.historyMemory)
         }
+
+        // Sync subscription tier
+        iCloud?.set(subscriptionTier.rawValue, forKey: iCloudKeys.subscriptionTier)
 
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
@@ -1214,6 +1265,10 @@ class SharedSettings: ObservableObject {
             keyboardReturnProgrammableAction = returnAction
         }
 
+        // Load Autocomplete Suggestions settings
+        keyboardQuickSuggestionsEnabled = defaults?.bool(forKey: "keyboardQuickSuggestionsEnabled") ?? false
+        loadKeyboardQuickActions()
+
         // Load security settings (Phase 6)
         biometricProtectionEnabled = defaults?.bool(forKey: Constants.Keys.biometricProtectionEnabled) ?? false
         if let retentionRaw = defaults?.string(forKey: Constants.Keys.dataRetentionPeriod),
@@ -1303,6 +1358,9 @@ class SharedSettings: ObservableObject {
         } else {
             swiftLinkAutoStart = true  // Default to enabled
         }
+
+        // Load Context Capture setting (defaults to false)
+        contextCaptureEnabled = defaults?.bool(forKey: "contextCaptureEnabled") ?? false
     }
 
     // MARK: - AI Provider Management
@@ -1489,6 +1547,17 @@ class SharedSettings: ObservableObject {
         CoreDataManager.shared.addTranscription(record)
 
         // Also save a small cache to UserDefaults for keyboard extension
+        saveTranscriptionHistory()
+
+        // Trigger UI update
+        _transcriptionHistoryUpdateTrigger = Date()
+    }
+
+    func removeTranscription(id: UUID) {
+        // Delete from Core Data (syncs to CloudKit automatically)
+        CoreDataManager.shared.deleteTranscription(id: id)
+
+        // Update local cache
         saveTranscriptionHistory()
 
         // Trigger UI update
@@ -1864,8 +1933,12 @@ class SharedSettings: ObservableObject {
 
     func incrementPowerModeUsage(id: UUID) {
         if let index = powerModes.firstIndex(where: { $0.id == id }) {
-            powerModes[index].usageCount += 1
-            powerModes[index].updatedAt = Date()
+            // Create a copy, modify it, and reassign to ensure didSet triggers
+            var updatedMode = powerModes[index]
+            updatedMode.usageCount += 1
+            updatedMode.updatedAt = Date()
+            powerModes[index] = updatedMode
+            appLog("Power Mode '\(updatedMode.name)' usage incremented to \(updatedMode.usageCount)", category: "PowerMode")
         }
     }
 

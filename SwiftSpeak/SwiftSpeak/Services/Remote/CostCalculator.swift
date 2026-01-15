@@ -337,7 +337,7 @@ struct CostCalculator {
         switch provider {
         case .openAI: costPerMinute = 0.006
         case .deepgram: costPerMinute = 0.0043
-        case .assemblyAI: costPerMinute = 0.00025
+        case .assemblyAI: costPerMinute = 0.00617  // $0.37/hour Core tier
         case .elevenLabs: costPerMinute = 0.01
         case .google: costPerMinute = 0.006
         case .local: costPerMinute = 0              // Free (on-device WhisperKit)

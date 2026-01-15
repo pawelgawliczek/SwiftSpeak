@@ -374,6 +374,9 @@ struct InputActionConfigSheet: View {
 
         case .screenContext:
             screenContextConfig
+
+        case .shareAudioImport:
+            infoBox(text: "Marks this Power Mode as available for shared audio import from other apps")
         }
     }
 
@@ -887,6 +890,7 @@ extension InputActionType {
         case .shortcutResult: return "apps.iphone"
         case .webhook: return "link"
         case .screenContext: return "text.viewfinder"
+        case .shareAudioImport: return "waveform.badge.plus"
         }
     }
 
@@ -902,6 +906,7 @@ extension InputActionType {
         case .shortcutResult: return .pink
         case .webhook: return .orange
         case .screenContext: return .cyan
+        case .shareAudioImport: return .teal
         }
     }
 
@@ -927,6 +932,8 @@ extension InputActionType {
             return "Fetch data from a configured webhook"
         case .screenContext:
             return "Capture text from your screen via OCR"
+        case .shareAudioImport:
+            return "Accept audio files shared from other apps"
         }
     }
 }

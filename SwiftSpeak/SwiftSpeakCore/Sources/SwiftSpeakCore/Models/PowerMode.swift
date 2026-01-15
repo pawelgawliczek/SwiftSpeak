@@ -199,8 +199,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // Phase 4f: Enabled webhook IDs (global webhooks enabled for this Power Mode)
     public var enabledWebhookIds: [UUID]
 
-    // Phase 10: Provider override (nil = use global default)
-    public var providerOverride: ProviderSelection?
+    // Phase 10: Provider overrides (nil = use global default)
+    public var providerOverride: ProviderSelection?           // LLM provider for AI processing
+    public var transcriptionProviderOverride: ProviderSelection?  // STT provider for transcription
 
     // Arabizi output (nil = use global default)
     public var outputArabizi: Bool?
@@ -228,6 +229,9 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
     // Phase 17: Input/Output Actions (flexible action system)
     public var inputActions: [InputAction]
     public var outputActions: [OutputAction]
+
+    // Autocomplete Suggestions: Quick actions that generate reply suggestions from screen context
+    public var quickActions: [QuickAction]
 
     // MARK: - Phase 17 Migration
 
@@ -381,6 +385,12 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         return actions
     }
 
+    /// Whether this Power Mode accepts shared audio files via Share Extension
+    /// Returns true if the Power Mode has the shareAudioImport input action enabled
+    public var acceptsSharedAudio: Bool {
+        migratedInputActions.contains { $0.type == .shareAudioImport && $0.isEnabled }
+    }
+
     public init(
         id: UUID = UUID(),
         name: String,
@@ -402,6 +412,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         appAssignment: AppAssignment = AppAssignment(),
         enabledWebhookIds: [UUID] = [],
         providerOverride: ProviderSelection? = nil,
+        transcriptionProviderOverride: ProviderSelection? = nil,
         outputArabizi: Bool? = nil,
         aiAutocorrectEnabled: Bool = false,
         enterSendsMessage: Bool = true,
@@ -416,7 +427,8 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         inputConfig: PowerModeInputConfig = .default,
         outputConfig: PowerModeOutputConfig = .default,
         inputActions: [InputAction] = [],
-        outputActions: [OutputAction] = .defaultActions
+        outputActions: [OutputAction] = .defaultActions,
+        quickActions: [QuickAction] = []
     ) {
         self.id = id
         self.name = name
@@ -438,6 +450,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.appAssignment = appAssignment
         self.enabledWebhookIds = enabledWebhookIds
         self.providerOverride = providerOverride
+        self.transcriptionProviderOverride = transcriptionProviderOverride
         self.outputArabizi = outputArabizi
         self.aiAutocorrectEnabled = aiAutocorrectEnabled
         self.enterSendsMessage = enterSendsMessage
@@ -453,6 +466,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         self.outputConfig = outputConfig
         self.inputActions = inputActions
         self.outputActions = outputActions
+        self.quickActions = quickActions
     }
 
     // MARK: - Meeting Notes Template
@@ -562,14 +576,16 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         case memoryEnabled, memory, memoryLimit, lastMemoryUpdate
         case knowledgeDocumentIds, ragConfiguration
         case isArchived, appAssignment, enabledWebhookIds
-        case providerOverride, outputArabizi, aiAutocorrectEnabled
+        case providerOverride, transcriptionProviderOverride, outputArabizi, aiAutocorrectEnabled
         case enterSendsMessage, enterRunsContext
         case obsidianVaultIds, includeWindowContext, maxObsidianChunks, obsidianAction, defaultObsidianSearchQuery
         case obsidianMinSimilarity, obsidianAutoSelectThreshold
         case inputConfig, outputConfig
         case inputActions, outputActions
+        case quickActions
         // Legacy
         case systemPrompt  // Migrate to instruction
+        case quickSuggestionsEnabled  // Migrate to quickActions
     }
 
     public init(from decoder: Decoder) throws {
@@ -605,6 +621,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
         enabledWebhookIds = try container.decodeIfPresent([UUID].self, forKey: .enabledWebhookIds) ?? []
         providerOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .providerOverride)
+        transcriptionProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .transcriptionProviderOverride)
         outputArabizi = try container.decodeIfPresent(Bool.self, forKey: .outputArabizi)
         aiAutocorrectEnabled = try container.decodeIfPresent(Bool.self, forKey: .aiAutocorrectEnabled) ?? false
         enterSendsMessage = try container.decodeIfPresent(Bool.self, forKey: .enterSendsMessage) ?? true
@@ -649,6 +666,15 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         // Phase 17: Input/Output Actions
         inputActions = try container.decodeIfPresent([InputAction].self, forKey: .inputActions) ?? []
         outputActions = try container.decodeIfPresent([OutputAction].self, forKey: .outputActions) ?? .defaultActions
+
+        // Autocomplete Suggestions (Quick Actions) - migrate from legacy quickSuggestionsEnabled
+        if let decoded = try container.decodeIfPresent([QuickAction].self, forKey: .quickActions) {
+            quickActions = decoded
+        } else {
+            // Migration: if legacy quickSuggestionsEnabled was true, use default actions
+            let legacyEnabled = try container.decodeIfPresent(Bool.self, forKey: .quickSuggestionsEnabled) ?? false
+            quickActions = legacyEnabled ? .defaultActions : []
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -674,6 +700,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         try container.encode(appAssignment, forKey: .appAssignment)
         try container.encode(enabledWebhookIds, forKey: .enabledWebhookIds)
         try container.encodeIfPresent(providerOverride, forKey: .providerOverride)
+        try container.encodeIfPresent(transcriptionProviderOverride, forKey: .transcriptionProviderOverride)
         try container.encodeIfPresent(outputArabizi, forKey: .outputArabizi)
         try container.encode(aiAutocorrectEnabled, forKey: .aiAutocorrectEnabled)
         try container.encode(enterSendsMessage, forKey: .enterSendsMessage)
@@ -689,6 +716,7 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         try container.encode(outputConfig, forKey: .outputConfig)
         try container.encode(inputActions, forKey: .inputActions)
         try container.encode(outputActions, forKey: .outputActions)
+        try container.encode(quickActions, forKey: .quickActions)
     }
 }
 

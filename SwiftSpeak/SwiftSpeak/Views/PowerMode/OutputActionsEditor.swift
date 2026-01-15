@@ -243,10 +243,19 @@ struct OutputActionsEditor: View {
     }
 
     private func deleteAction(_ action: OutputAction) {
-        actions.removeAll { $0.id == action.id }
-        // Renumber remaining actions
-        for (index, _) in actions.enumerated() {
-            actions[index].order = index + 1
+        // If this action is currently being edited, dismiss the sheet first
+        if editingAction?.id == action.id {
+            showingEditSheet = false
+            editingAction = nil
+        }
+
+        // Use DispatchQueue to ensure UI state is updated before mutation
+        DispatchQueue.main.async {
+            self.actions.removeAll { $0.id == action.id }
+            // Renumber remaining actions
+            for (index, _) in self.actions.enumerated() {
+                self.actions[index].order = index + 1
+            }
         }
     }
 }

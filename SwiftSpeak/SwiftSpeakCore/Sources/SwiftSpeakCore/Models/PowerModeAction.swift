@@ -37,6 +37,8 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
     case webhook = "webhook"
     /// Capture screen content via OCR (iOS broadcast extension)
     case screenContext = "screenContext"
+    /// Accept audio files via iOS Share Extension
+    case shareAudioImport = "shareAudioImport"
 
     public var displayName: String {
         switch self {
@@ -50,6 +52,7 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .shortcutResult: return "Run Shortcut"
         case .webhook: return "Webhook"
         case .screenContext: return "Screen Context"
+        case .shareAudioImport: return "Share Audio Import"
         }
     }
 
@@ -65,6 +68,7 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .shortcutResult: return "Run an Apple Shortcut and use its output"
         case .webhook: return "Fetch data from a configured webhook"
         case .screenContext: return "Capture text from your screen via OCR"
+        case .shareAudioImport: return "Accept audio files shared from other apps"
         }
     }
 
@@ -80,6 +84,7 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .shortcutResult: return "apps.iphone"
         case .webhook: return "link"
         case .screenContext: return "text.viewfinder"
+        case .shareAudioImport: return "waveform.badge.plus"
         }
     }
 
@@ -93,7 +98,10 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
 
     /// Whether this action type is available on macOS
     public var availableOnMacOS: Bool {
-        true  // All types available on macOS
+        switch self {
+        case .shareAudioImport: return false  // iOS only (Share Extension)
+        default: return true
+        }
     }
 
     /// Whether this is a built-in context source (vs dynamic)
@@ -680,5 +688,148 @@ public extension Array where Element == OutputAction {
         [
             .clipboard(order: 1, required: true)
         ]
+    }
+}
+
+// MARK: - Quick Action (Autocomplete Suggestions)
+
+/// Types of quick actions that generate autocomplete suggestions
+public enum QuickActionType: String, Codable, CaseIterable, Sendable {
+    /// Positive/agreeable response
+    case positive = "positive"
+    /// Neutral/balanced response
+    case neutral = "neutral"
+    /// Polite decline/disagreement
+    case negative = "negative"
+    /// Summarize the content
+    case summarize = "summarize"
+    /// Custom prompt (user-defined)
+    case custom = "custom"
+
+    public var displayName: String {
+        switch self {
+        case .positive: return "Positive Response"
+        case .neutral: return "Neutral Response"
+        case .negative: return "Decline Politely"
+        case .summarize: return "Summarize"
+        case .custom: return "Custom"
+        }
+    }
+
+    public var description: String {
+        switch self {
+        case .positive: return "Generate an enthusiastic, agreeable reply"
+        case .neutral: return "Generate a balanced, informational reply"
+        case .negative: return "Generate a polite decline or disagreement"
+        case .summarize: return "Summarize the screen content concisely"
+        case .custom: return "Custom prompt for specific responses"
+        }
+    }
+
+    public var icon: String {
+        switch self {
+        case .positive: return "hand.thumbsup.fill"
+        case .neutral: return "hand.raised.fill"
+        case .negative: return "hand.thumbsdown.fill"
+        case .summarize: return "text.alignleft"
+        case .custom: return "sparkles"
+        }
+    }
+
+    public var color: String {
+        switch self {
+        case .positive: return "green"
+        case .neutral: return "orange"
+        case .negative: return "red"
+        case .summarize: return "blue"
+        case .custom: return "purple"
+        }
+    }
+
+    /// Default prompt for this action type
+    public var defaultPrompt: String {
+        switch self {
+        case .positive:
+            return "Generate an enthusiastic and agreeable response that acknowledges the message positively."
+        case .neutral:
+            return "Generate a balanced, informational response that is neither overly positive nor negative."
+        case .negative:
+            return "Generate a polite but firm response that declines or expresses disagreement respectfully."
+        case .summarize:
+            return "Summarize the key points of this content in 1-2 concise sentences."
+        case .custom:
+            return ""
+        }
+    }
+}
+
+/// Represents a configured quick action (autocomplete suggestion) for a Power Mode
+public struct QuickAction: Codable, Identifiable, Equatable, Hashable, Sendable {
+    public let id: UUID
+    public var type: QuickActionType
+    public var isEnabled: Bool
+    public var label: String         // User-facing name (short, for UI chip)
+    public var prompt: String        // Custom prompt (overrides type default if set)
+    public var order: Int            // Display order (0, 1, 2, ...)
+
+    public init(
+        id: UUID = UUID(),
+        type: QuickActionType,
+        isEnabled: Bool = true,
+        label: String? = nil,
+        prompt: String? = nil,
+        order: Int = 0
+    ) {
+        self.id = id
+        self.type = type
+        self.isEnabled = isEnabled
+        self.label = label ?? type.displayName
+        self.prompt = prompt ?? type.defaultPrompt
+        self.order = order
+    }
+
+    /// Get the effective prompt (custom if set, otherwise type default)
+    public var effectivePrompt: String {
+        prompt.isEmpty ? type.defaultPrompt : prompt
+    }
+
+    // MARK: - Convenience Initializers
+
+    public static func positive(order: Int = 0, label: String? = nil) -> QuickAction {
+        QuickAction(type: .positive, label: label, order: order)
+    }
+
+    public static func neutral(order: Int = 1, label: String? = nil) -> QuickAction {
+        QuickAction(type: .neutral, label: label, order: order)
+    }
+
+    public static func negative(order: Int = 2, label: String? = nil) -> QuickAction {
+        QuickAction(type: .negative, label: label, order: order)
+    }
+
+    public static func summarize(order: Int = 0, label: String? = nil) -> QuickAction {
+        QuickAction(type: .summarize, label: label, order: order)
+    }
+
+    public static func custom(order: Int = 0, label: String, prompt: String) -> QuickAction {
+        QuickAction(type: .custom, label: label, prompt: prompt, order: order)
+    }
+}
+
+// MARK: - Default Quick Actions
+
+public extension Array where Element == QuickAction {
+    /// Default quick actions (positive, neutral, negative responses)
+    static var defaultActions: [QuickAction] {
+        [
+            .positive(order: 0),
+            .neutral(order: 1),
+            .negative(order: 2)
+        ]
+    }
+
+    /// Empty quick actions (disabled by default)
+    static var empty: [QuickAction] {
+        []
     }
 }
