@@ -8,6 +8,7 @@
 
 import AVFoundation
 import AudioToolbox
+import Accelerate
 import Combine
 import SwiftSpeakCore
 
@@ -88,6 +89,10 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     /// Audio quality mode - affects file size and upload speed
     var audioQuality: AudioQualityMode = .auto
 
+    /// Microphone gain boost (1.0 = no boost, 2.0 = +6dB, 4.0 = +12dB)
+    /// Applied to audio samples before writing to file
+    var microphoneGain: Float = 1.0
+
     // MARK: - Device Selection
 
     /// Selected audio input device ID (nil = system default)
@@ -101,6 +106,8 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     private(set) var recordingURL: URL?
     private var durationTimer: Timer?
     private var startTime: Date?
+    /// Captured gain value for current recording (thread-safe copy)
+    private var effectiveGain: Float = 1.0
 
     var recordingFileSize: Int? {
         guard let url = recordingURL else { return nil }
@@ -173,11 +180,20 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             }
 
             let inputNode = engine.inputNode
-            let inputFormat = inputNode.outputFormat(forBus: 0)
 
-            print("[MacAudioRecorder] Input format: \(inputFormat.sampleRate)Hz, \(inputFormat.channelCount)ch")
+            // IMPORTANT: On macOS, we must use the hardware format for the tap.
+            // Reading outputFormat(forBus: 0) gives us the native hardware format.
+            // We use nil for installTap format to avoid format mismatch errors.
+            let hardwareFormat = inputNode.outputFormat(forBus: 0)
 
-            // Target format: Float32 for processing - sample rate based on quality setting
+            // Validate the hardware format is usable
+            guard hardwareFormat.sampleRate > 0 && hardwareFormat.channelCount > 0 else {
+                throw TranscriptionError.recordingFailed("Invalid hardware audio format: \(hardwareFormat)")
+            }
+
+            print("[MacAudioRecorder] Hardware format: \(hardwareFormat.sampleRate)Hz, \(hardwareFormat.channelCount)ch")
+
+            // Target format: mono Float32 at quality-determined sample rate for transcription
             guard let targetFormat = AVAudioFormat(
                 commonFormat: .pcmFormatFloat32,
                 sampleRate: targetSampleRate,
@@ -188,12 +204,14 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
             }
             print("[MacAudioRecorder] Target format: \(Int(targetSampleRate))Hz mono Float32, file format: \(format)")
 
-            // Create format converter (input format -> target format)
-            guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
-                throw TranscriptionError.recordingFailed("Failed to create audio format converter")
+            // Create format converter (hardware format -> target format)
+            // The converter handles both sample rate conversion and channel downmixing
+            guard let converter = AVAudioConverter(from: hardwareFormat, to: targetFormat) else {
+                throw TranscriptionError.recordingFailed("Failed to create audio format converter from \(hardwareFormat) to \(targetFormat)")
             }
+            print("[MacAudioRecorder] Format converter: \(hardwareFormat.sampleRate)Hz \(hardwareFormat.channelCount)ch -> \(targetSampleRate)Hz 1ch")
 
-            return (engine, inputFormat, targetFormat, converter)
+            return (engine, hardwareFormat, targetFormat, converter)
         }.value
 
         // Recording settings based on target provider and quality
@@ -215,11 +233,14 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         }
 
         self.formatConverter = converter
-        print("[MacAudioRecorder] Format converter created: \(inputFormat.sampleRate)Hz -> \(targetFormat.sampleRate)Hz")
+        print("[MacAudioRecorder] Format converter ready: \(inputFormat.sampleRate)Hz \(inputFormat.channelCount)ch -> \(targetFormat.sampleRate)Hz \(targetFormat.channelCount)ch")
 
         // Install tap for audio data
+        // IMPORTANT: Use nil for format to let the system use the native hardware format.
+        // This avoids format mismatch errors when the hardware format differs from our expected format.
+        // The buffer will come in the hardware's native format, and we convert it in processAudioBuffer.
         let bufferSize: AVAudioFrameCount = 4096
-        engine.inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: inputFormat) { [weak self] buffer, _ in
+        engine.inputNode.installTap(onBus: 0, bufferSize: bufferSize, format: nil) { [weak self] buffer, _ in
             self?.processAudioBuffer(buffer, targetFormat: targetFormat)
         }
 
@@ -237,6 +258,7 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
         self.isRecording = true
         self.startTime = recordingStartTime  // Use early captured time
         self.error = nil
+        self.effectiveGain = microphoneGain  // Capture gain for this recording session
 
         // Start duration timer
         startDurationTimer()
@@ -247,9 +269,12 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     func stopRecording() throws -> URL {
         stopDurationTimer()
 
-        // Stop audio engine
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
+        // Stop audio engine - must remove tap BEFORE stopping
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            engine.reset()  // Reset engine state to avoid format caching issues
+        }
         audioEngine = nil
         formatConverter = nil
 
@@ -284,8 +309,12 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
     func cancelRecording() {
         stopDurationTimer()
 
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        audioEngine?.stop()
+        // Stop audio engine - must remove tap BEFORE stopping
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+            engine.reset()  // Reset engine state to avoid format caching issues
+        }
         audioEngine = nil
         audioFile = nil
         formatConverter = nil
@@ -371,6 +400,16 @@ final class MacAudioRecorder: NSObject, AudioRecorderProtocol, ObservableObject 
                 }
             }
             return
+        }
+
+        // Apply microphone gain boost if needed
+        if convertedBuffer.frameLength > 0 && effectiveGain != 1.0 {
+            if let channelData = convertedBuffer.floatChannelData?[0] {
+                let frameCount = Int(convertedBuffer.frameLength)
+                var gain = effectiveGain
+                // Use vDSP for efficient in-place scalar multiplication
+                vDSP_vsmul(channelData, 1, &gain, channelData, 1, vDSP_Length(frameCount))
+            }
         }
 
         // Write converted buffer to file

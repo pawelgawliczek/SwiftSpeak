@@ -35,8 +35,28 @@ final class MacTextInsertionService: TextInsertionProtocol {
 
     // MARK: - Public Methods
 
+    /// Bundle IDs of terminal apps that don't properly accept accessibility text insertion
+    private static let terminalBundleIds: Set<String> = [
+        "com.googlecode.iterm2",
+        "com.apple.Terminal",
+        "io.alacritty",
+        "com.github.wez.wezterm",
+        "co.zeit.hyper",
+        "net.kovidgoyal.kitty",
+        "org.tabby"
+    ]
+
     func insertText(_ text: String, replaceSelection: Bool) async -> TextInsertionResult {
-        // Try accessibility first
+        // Check if the frontmost app is a terminal - terminals don't properly accept
+        // accessibility text insertion, so we should use clipboard paste instead
+        if let frontApp = NSWorkspace.shared.frontmostApplication,
+           let bundleId = frontApp.bundleIdentifier,
+           Self.terminalBundleIds.contains(bundleId) {
+            print("[MacTextInsertionService] Terminal detected, using clipboard paste")
+            return copyToClipboard(text)
+        }
+
+        // Try accessibility first for non-terminal apps
         if isAccessibilityAvailable {
             do {
                 try insertViaAccessibility(text, replaceSelection: replaceSelection)
@@ -228,6 +248,10 @@ final class MacTextInsertionService: TextInsertionProtocol {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
 
+        // Small delay to ensure target app is ready to receive keyboard events
+        // This is critical for terminal apps like iTerm2 that need time after focus restoration
+        Thread.sleep(forTimeInterval: 0.1)
+
         // Simulate Cmd+V to paste
         simulatePaste()
 
@@ -247,6 +271,8 @@ final class MacTextInsertionService: TextInsertionProtocol {
         vKeyUp?.flags = .maskCommand
 
         vKeyDown?.post(tap: .cghidEventTap)
+        // Small delay between key down and up for reliable keystroke recognition
+        Thread.sleep(forTimeInterval: 0.02)
         vKeyUp?.post(tap: .cghidEventTap)
     }
 
@@ -259,6 +285,8 @@ final class MacTextInsertionService: TextInsertionProtocol {
         let returnKeyUp = CGEvent(keyboardEventSource: source, virtualKey: 0x24, keyDown: false)
 
         returnKeyDown?.post(tap: .cghidEventTap)
+        // Small delay between key down and up for reliable keystroke recognition
+        Thread.sleep(forTimeInterval: 0.02)
         returnKeyUp?.post(tap: .cghidEventTap)
     }
 }

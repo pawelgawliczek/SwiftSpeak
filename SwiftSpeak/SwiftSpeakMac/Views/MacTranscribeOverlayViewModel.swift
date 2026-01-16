@@ -367,6 +367,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         // Google STT requires WAV (LINEAR16), other providers work with AAC (smaller files)
         audioRecorder.recordingFormat = RecordingFormat.forProvider(settings.selectedTranscriptionProvider)
         audioRecorder.audioQuality = settings.audioQuality
+        audioRecorder.microphoneGain = settings.microphoneGain
 
         // Resolve effective quality for UI display
         effectiveAudioQuality = settings.audioQuality == .auto
@@ -443,6 +444,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
 
         // Create streaming audio recorder
         let streamRecorder = MacStreamingAudioRecorder(sampleRate: sampleRate)
+        streamRecorder.microphoneGain = settings.microphoneGain
         self.streamingAudioRecorder = streamRecorder
 
         // Setup provider subscriptions

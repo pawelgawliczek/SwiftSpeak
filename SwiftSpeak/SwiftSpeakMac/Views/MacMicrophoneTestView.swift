@@ -7,11 +7,14 @@
 
 import SwiftUI
 import AVFoundation
+import Accelerate
+import AudioToolbox
 import Combine
 import SwiftSpeakCore
 
 struct MacMicrophoneTestView: View {
     @ObservedObject var audioDeviceManager: MacAudioDeviceManager
+    @EnvironmentObject var settings: MacSettings
     @StateObject private var tester = MacMicrophoneTester()
     @Environment(\.dismiss) private var dismiss
 
@@ -22,7 +25,7 @@ struct MacMicrophoneTestView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Test Microphone")
                         .font(.title2.bold())
-                    Text("Check your audio input before recording")
+                    Text("Check your audio input and adjust gain")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -121,6 +124,38 @@ struct MacMicrophoneTestView: View {
             .padding()
             .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
 
+            // Input Gain slider
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Input Gain")
+                        .font(.callout.weight(.medium))
+                    Spacer()
+                    Text(gainLabel(for: settings.microphoneGain))
+                        .foregroundStyle(.secondary)
+                        .font(.callout.monospacedDigit())
+                }
+                Slider(value: $settings.microphoneGain, in: 0.5...4.0, step: 0.1) {
+                    Text("Input Gain")
+                } minimumValueLabel: {
+                    Text("-6")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("+12")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .onChange(of: settings.microphoneGain) { newGain in
+                    // Update tester gain in real-time
+                    tester.gain = newGain
+                }
+                Text("Boost microphone volume if your recordings are too quiet")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 12))
+
             // Status
             HStack(spacing: 8) {
                 Circle()
@@ -140,7 +175,7 @@ struct MacMicrophoneTestView: View {
                     if tester.isMonitoring {
                         tester.stopMonitoring()
                     } else {
-                        tester.startMonitoring(deviceID: getSelectedDeviceID())
+                        tester.startMonitoring(deviceID: getSelectedDeviceID(), gain: settings.microphoneGain)
                     }
                 } label: {
                     Label(
@@ -203,10 +238,10 @@ struct MacMicrophoneTestView: View {
             }
         }
         .padding(24)
-        .frame(width: 450, height: 580)
+        .frame(width: 450, height: 680)
         .onAppear {
-            // Auto-start monitoring
-            tester.startMonitoring(deviceID: getSelectedDeviceID())
+            // Auto-start monitoring with current gain
+            tester.startMonitoring(deviceID: getSelectedDeviceID(), gain: settings.microphoneGain)
         }
         .onDisappear {
             tester.cleanup()
@@ -215,9 +250,18 @@ struct MacMicrophoneTestView: View {
             // Restart monitoring with new device
             if tester.isMonitoring {
                 tester.stopMonitoring()
-                tester.startMonitoring(deviceID: getSelectedDeviceID())
+                tester.startMonitoring(deviceID: getSelectedDeviceID(), gain: settings.microphoneGain)
             }
         }
+    }
+
+    /// Convert gain value to dB label
+    private func gainLabel(for gain: Float) -> String {
+        if gain == 1.0 {
+            return "0 dB"
+        }
+        let db = 20 * log10(gain)
+        return String(format: "%+.0f dB", db)
     }
 
     private var levelGradient: LinearGradient {
@@ -259,6 +303,10 @@ class MacMicrophoneTester: ObservableObject {
     @Published var waveformLevels: [Double] = Array(repeating: 0.05, count: 30)
     @Published var recordingDuration: String = "0s"
 
+    /// Microphone gain boost (1.0 = no boost)
+    /// Set this to see the effect of gain on level meters
+    var gain: Float = 1.0
+
     var statusText: String {
         if isPlaying { return "Playing back..." }
         if isRecording { return "Recording... speak now" }
@@ -268,11 +316,12 @@ class MacMicrophoneTester: ObservableObject {
 
     private var audioEngine: AVAudioEngine?
     private var audioPlayer: AVAudioPlayer?
-    private var audioRecorder: AVAudioRecorder?
+    private var audioFile: AVAudioFile?  // For recording with gain
     private var levelTimer: Timer?
     private var peakHoldTimer: Timer?
     private var recordingStartTime: Date?
     private var recordingURL: URL?
+    private var levelUpdateCount: Int = 0  // Track level updates for debug
 
     init() {
         // Create temp directory for recordings
@@ -281,8 +330,11 @@ class MacMicrophoneTester: ObservableObject {
         recordingURL = tempDir.appendingPathComponent("test_recording.m4a")
     }
 
-    func startMonitoring(deviceID: AudioDeviceID?) {
+    func startMonitoring(deviceID: AudioDeviceID?, gain: Float = 1.0) {
         guard !isMonitoring else { return }
+
+        // Store the initial gain
+        self.gain = gain
 
         audioEngine = AVAudioEngine()
         guard let engine = audioEngine else { return }
@@ -315,7 +367,7 @@ class MacMicrophoneTester: ObservableObject {
             try engine.start()
             isMonitoring = true
             startPeakHoldTimer()
-            macLog("Started audio monitoring", category: "MicTest")
+            macLog("Started audio monitoring with gain: \(gain)", category: "MicTest")
         } catch {
             macLog("Failed to start audio engine: \(error)", category: "MicTest", level: .error)
         }
@@ -339,45 +391,84 @@ class MacMicrophoneTester: ObservableObject {
     func startRecording(deviceID: AudioDeviceID?) {
         guard let url = recordingURL else { return }
 
-        // Stop monitoring during recording
+        // Stop monitoring during recording (we'll use the same engine for recording)
         if isMonitoring {
             stopMonitoring()
         }
 
-        let settings: [String: Any] = [
+        // Delete existing recording
+        try? FileManager.default.removeItem(at: url)
+
+        // Create audio engine for recording
+        audioEngine = AVAudioEngine()
+        guard let engine = audioEngine else { return }
+
+        let inputNode = engine.inputNode
+
+        // Set device if specified
+        if let deviceID = deviceID {
+            var mutableDeviceID = deviceID
+            let status = AudioUnitSetProperty(
+                inputNode.audioUnit!,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &mutableDeviceID,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+            if status != noErr {
+                macLog("Failed to set audio device for recording: \(status)", category: "MicTest", level: .warning)
+            }
+        }
+
+        let inputFormat = inputNode.outputFormat(forBus: 0)
+
+        // Create output file with AAC format
+        let fileSettings: [String: Any] = [
             AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44100,
+            AVSampleRateKey: inputFormat.sampleRate,
             AVNumberOfChannelsKey: 1,
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
         do {
-            audioRecorder = try AVAudioRecorder(url: url, settings: settings)
-            audioRecorder?.isMeteringEnabled = true
-            audioRecorder?.record()
+            audioFile = try AVAudioFile(
+                forWriting: url,
+                settings: fileSettings,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+        } catch {
+            macLog("Failed to create audio file: \(error)", category: "MicTest", level: .error)
+            return
+        }
+
+        // Install tap that applies gain and writes to file
+        inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [weak self] buffer, _ in
+            self?.processRecordingBuffer(buffer)
+        }
+
+        do {
+            try engine.start()
             isRecording = true
             recordingStartTime = Date()
             hasRecording = false
-
-            // Start level metering
-            levelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-                Task { @MainActor in
-                    self?.updateRecordingLevels()
-                }
-            }
-
-            macLog("Started test recording", category: "MicTest")
+            macLog("Started test recording with gain: \(gain)", category: "MicTest")
         } catch {
-            macLog("Failed to start recording: \(error)", category: "MicTest", level: .error)
+            macLog("Failed to start recording engine: \(error)", category: "MicTest", level: .error)
+            audioFile = nil
         }
     }
 
     func stopRecording() {
-        audioRecorder?.stop()
-        audioRecorder = nil
+        // Stop engine and remove tap
+        if let engine = audioEngine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        audioEngine = nil
+        audioFile = nil
         isRecording = false
-        levelTimer?.invalidate()
-        levelTimer = nil
 
         if let startTime = recordingStartTime {
             let duration = Date().timeIntervalSince(startTime)
@@ -391,10 +482,48 @@ class MacMicrophoneTester: ObservableObject {
         decibelLevel = -60
         waveformLevels = Array(repeating: 0.05, count: 30)
 
-        // Restart monitoring
-        startMonitoring(deviceID: nil)
+        // Restart monitoring with current gain
+        startMonitoring(deviceID: nil, gain: gain)
 
         macLog("Stopped test recording", category: "MicTest")
+    }
+
+    /// Process recording buffer - apply gain and write to file
+    private func processRecordingBuffer(_ buffer: AVAudioPCMBuffer) {
+        guard let file = audioFile,
+              let channelData = buffer.floatChannelData?[0] else { return }
+
+        let frameLength = Int(buffer.frameLength)
+
+        // Calculate level for display (with gain applied)
+        var sum: Float = 0
+        for i in 0..<frameLength {
+            sum += channelData[i] * channelData[i]
+        }
+        let rms = sqrt(sum / Float(frameLength))
+        let gainedRms = rms * gain
+        let db = 20 * log10(max(gainedRms, 0.000001))
+        let normalized = Double(max(0, min(1, (db + 60) / 60)))
+
+        Task { @MainActor in
+            self.normalizedLevel = normalized
+            self.decibelLevel = Double(db)
+            self.waveformLevels.removeFirst()
+            self.waveformLevels.append(normalized)
+        }
+
+        // Apply gain to buffer before writing (in-place)
+        if gain != 1.0 {
+            var gainValue = gain
+            vDSP_vsmul(channelData, 1, &gainValue, channelData, 1, vDSP_Length(frameLength))
+        }
+
+        // Write to file
+        do {
+            try file.write(from: buffer)
+        } catch {
+            macLog("Failed to write audio buffer: \(error)", category: "MicTest", level: .error)
+        }
     }
 
     func playRecording() {
@@ -455,7 +584,10 @@ class MacMicrophoneTester: ObservableObject {
         }
 
         let rms = sqrt(sum / Float(frameLength))
-        let db = 20 * log10(max(rms, 0.000001))
+
+        // Apply gain to the RMS value to show what the boosted level would be
+        let gainedRms = rms * gain
+        let db = 20 * log10(max(gainedRms, 0.000001))
 
         // Normalize to 0-1 range (assuming -60 to 0 dB range)
         let normalized = Double(max(0, min(1, (db + 60) / 60)))
@@ -473,21 +605,6 @@ class MacMicrophoneTester: ObservableObject {
             self.waveformLevels.removeFirst()
             self.waveformLevels.append(normalized)
         }
-    }
-
-    private func updateRecordingLevels() {
-        guard let recorder = audioRecorder else { return }
-        recorder.updateMeters()
-
-        let db = recorder.averagePower(forChannel: 0)
-        let normalized = Double(max(0, min(1, (db + 60) / 60)))
-
-        normalizedLevel = normalized
-        decibelLevel = Double(db)
-
-        // Update waveform
-        waveformLevels.removeFirst()
-        waveformLevels.append(normalized)
     }
 
     private func startPeakHoldTimer() {

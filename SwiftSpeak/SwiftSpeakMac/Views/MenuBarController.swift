@@ -761,6 +761,11 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             model: assemblyAIConfig.transcriptionModel ?? "best"
         )
 
+        // Set microphone gain for meeting recordings
+        Task {
+            await meetingAudioRecorder.setMicrophoneGain(settings.microphoneGain)
+        }
+
         // Configure orchestrator with meeting-capable audio recorder
         meetingOrchestrator.configure(
             audioRecorder: meetingAudioRecorder,
@@ -2964,6 +2969,18 @@ struct GeneralSettingsTab: View {
                     Label("Test Microphone", systemImage: "waveform.badge.mic")
                 }
 
+                // Microphone gain boost
+                HStack(spacing: 12) {
+                    Text("Input Gain")
+                    Slider(value: $settings.microphoneGain, in: 0.5...4.0, step: 0.1)
+                        .labelsHidden()
+                        .frame(maxWidth: 150)
+                    Text(gainLabel(for: settings.microphoneGain))
+                        .font(.callout.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 50, alignment: .trailing)
+                }
+
                 // Hint for Continuity Camera
                 if #unavailable(macOS 13.0) {
                     Text("iPhone as microphone requires macOS Ventura or later")
@@ -2973,6 +2990,7 @@ struct GeneralSettingsTab: View {
             }
             .sheet(isPresented: $showMicTest) {
                 MacMicrophoneTestView(audioDeviceManager: audioDeviceManager)
+                    .environmentObject(settings)
             }
 
             Section("Dictation Language") {
@@ -3001,6 +3019,16 @@ struct GeneralSettingsTab: View {
             Toggle("Auto-return to previous app", isOn: .constant(true))
                 .disabled(true)
         }
+    }
+
+    /// Convert gain value to dB label
+    private func gainLabel(for gain: Float) -> String {
+        if gain == 1.0 {
+            return "0 dB"
+        }
+        // Calculate dB: dB = 20 * log10(gain)
+        let db = 20 * log10(gain)
+        return String(format: "%+.0f dB", db)
     }
 }
 

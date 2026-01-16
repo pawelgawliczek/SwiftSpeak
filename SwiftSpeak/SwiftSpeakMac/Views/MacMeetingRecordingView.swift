@@ -721,6 +721,11 @@ struct MacMeetingRecordingView: View {
             return
         }
 
+        // Set microphone gain (boosts user's voice, not system audio)
+        Task {
+            await audioRecorder.setMicrophoneGain(settings.microphoneGain)
+        }
+
         // Configure orchestrator with services
         orchestrator.configure(
             audioRecorder: audioRecorder,

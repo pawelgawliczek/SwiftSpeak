@@ -73,6 +73,12 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         AVAudioFrameCount(Double(sampleRate) * 0.05) // 50ms chunks
     }
 
+    // MARK: - Gain Boost
+
+    /// Microphone gain boost (1.0 = no boost, 2.0 = +6dB, 4.0 = +12dB)
+    /// Applied to audio samples before sending/writing
+    var microphoneGain: Float = 1.0
+
     // MARK: - Backup File for Fallback
 
     /// Whether to save audio to file for fallback to batch mode
@@ -297,7 +303,21 @@ final class MacStreamingAudioRecorder: NSObject, ObservableObject {
         // Extract PCM16 data
         guard let channelData = outputBuffer.int16ChannelData else { return }
         let frameLength = Int(outputBuffer.frameLength)
-        let data = Data(bytes: channelData[0], count: frameLength * 2) // 2 bytes per Int16 sample
+
+        // Apply microphone gain boost if needed
+        var data: Data
+        if microphoneGain != 1.0 {
+            // Apply gain to Int16 samples with clamping to prevent overflow
+            var gainedSamples = [Int16](repeating: 0, count: frameLength)
+            for i in 0..<frameLength {
+                let sample = Float(channelData[0][i]) * microphoneGain
+                let clamped = max(Float(Int16.min), min(Float(Int16.max), sample))
+                gainedSamples[i] = Int16(clamped)
+            }
+            data = Data(bytes: &gainedSamples, count: frameLength * 2)
+        } else {
+            data = Data(bytes: channelData[0], count: frameLength * 2) // 2 bytes per Int16 sample
+        }
 
         // Track stats
         chunksGenerated += 1

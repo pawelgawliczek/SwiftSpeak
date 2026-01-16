@@ -9,6 +9,7 @@
 
 import AVFoundation
 import AudioToolbox
+import Accelerate
 import ScreenCaptureKit
 import SwiftSpeakCore
 
@@ -79,6 +80,17 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     private var lastAutoSaveTime: Date?
     /// Backup file URL
     private var backupURL: URL?
+
+    // MARK: - Microphone Gain
+
+    /// Microphone gain boost (1.0 = no boost, 2.0 = +6dB, 4.0 = +12dB)
+    /// Only applied to microphone audio, not system audio
+    private var _microphoneGain: Float = 1.0
+
+    /// Set the microphone gain boost
+    public func setMicrophoneGain(_ gain: Float) {
+        _microphoneGain = max(0.5, min(4.0, gain))
+    }
 
     // MARK: - Device Selection
 
@@ -726,7 +738,14 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     private func processMicrophoneBuffer(_ buffer: AVAudioPCMBuffer, toFile: Bool) {
         guard !_isPaused else { return }
 
-        // Update level
+        // Apply microphone gain boost if needed (in-place modification)
+        if _microphoneGain != 1.0, let channelData = buffer.floatChannelData?[0] {
+            let frameLength = Int(buffer.frameLength)
+            var gain = _microphoneGain
+            vDSP_vsmul(channelData, 1, &gain, channelData, 1, vDSP_Length(frameLength))
+        }
+
+        // Update level (after gain is applied)
         if let channelData = buffer.floatChannelData?[0] {
             let frameLength = Int(buffer.frameLength)
             var sum: Float = 0

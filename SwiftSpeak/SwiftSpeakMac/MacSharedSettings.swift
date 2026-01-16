@@ -767,6 +767,19 @@ class MacSettings: ObservableObject {
         }
     }
 
+    /// Microphone gain boost (1.0 = no boost, 2.0 = +6dB, 4.0 = +12dB)
+    /// Range: 0.5 to 4.0, default 1.0
+    @Published var microphoneGain: Float = 1.0 {
+        didSet {
+            // Clamp to valid range
+            let clamped = min(max(microphoneGain, 0.5), 4.0)
+            if clamped != microphoneGain {
+                microphoneGain = clamped
+            }
+            defaults?.set(microphoneGain, forKey: "microphoneGain")
+        }
+    }
+
     // MARK: - Security & Privacy
 
     @Published var biometricProtectionEnabled: Bool = false {
@@ -1243,6 +1256,11 @@ class MacSettings: ObservableObject {
         if let qualityRaw = defaults?.string(forKey: "audioQuality"),
            let quality = AudioQualityMode(rawValue: qualityRaw) {
             audioQuality = quality
+        }
+
+        // Load microphone gain setting
+        if defaults?.object(forKey: "microphoneGain") != nil {
+            microphoneGain = defaults?.float(forKey: "microphoneGain") ?? 1.0
         }
 
         // Load security & privacy settings
