@@ -12,10 +12,12 @@ import SwiftSpeakCore
 struct SwiftLinkSetupView: View {
     @EnvironmentObject var settings: SharedSettings
     @StateObject private var sessionManager = SwiftLinkSessionManager.shared
+    @StateObject private var contextCaptureManager = ContextCaptureManager.shared
     @Environment(\.colorScheme) var colorScheme
 
     @State private var showAppPicker = false
     @State private var showStartSession = false
+    @State private var showBroadcastPrompt = false
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -52,6 +54,9 @@ struct SwiftLinkSetupView: View {
                 // Session Duration Section
                 sessionDurationSection
 
+                // Context Capture Section
+                contextCaptureSection
+
                 // Apps Section
                 appsSection
 
@@ -83,6 +88,11 @@ struct SwiftLinkSetupView: View {
                     showStartSession = false
                 }
             )
+            .environmentObject(settings)
+        }
+        .sheet(isPresented: $showBroadcastPrompt) {
+            BroadcastPromptSheet()
+                .presentationDetents([.medium])
         }
     }
 
@@ -186,6 +196,55 @@ struct SwiftLinkSetupView: View {
         }
     }
 
+    // MARK: - Context Capture Section
+
+    private var contextCaptureSection: some View {
+        Section {
+            Toggle(isOn: $settings.contextCaptureEnabled) {
+                HStack(spacing: 12) {
+                    Image(systemName: "text.viewfinder")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Context Capture")
+                            .font(.body)
+
+                        Text("Capture screen text for smarter formatting")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .tint(AppTheme.accent)
+
+            // Status when capturing
+            if contextCaptureManager.isCapturing {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 8, height: 8)
+
+                    Text("Capturing active")
+                        .font(.subheadline)
+                        .foregroundStyle(.green)
+
+                    Spacer()
+
+                    if contextCaptureManager.framesCaptured > 0 {
+                        Text("\(contextCaptureManager.framesCaptured) frames")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } header: {
+            Text("Screen Context")
+        } footer: {
+            Text("When enabled, SwiftLink will offer to capture your screen using iOS Screen Recording. This helps AI understand what you're looking at for better transcription formatting. No data is stored or sent anywhere.")
+        }
+    }
+
     // MARK: - Apps Section
 
     @ViewBuilder
@@ -279,14 +338,140 @@ struct SwiftLinkSetupView: View {
 
     private func startSession(with app: SwiftLinkApp) async {
         do {
+            // Check if we need to prompt for screen recording after session starts
+            let shouldPromptForBroadcast = settings.contextCaptureEnabled && !contextCaptureManager.isCapturing
+
             if let urlScheme = try await sessionManager.startSession(targetApp: app) {
-                // Open the target app
-                if let url = URL(string: "\(urlScheme)://") {
-                    await UIApplication.shared.open(url)
+                // If context capture is enabled but not active, show broadcast prompt
+                if shouldPromptForBroadcast {
+                    // Show broadcast prompt sheet
+                    await MainActor.run {
+                        showBroadcastPrompt = true
+                    }
+                } else {
+                    // Open the target app directly
+                    if let url = URL(string: "\(urlScheme)://") {
+                        await UIApplication.shared.open(url)
+                    }
+                }
+            } else if shouldPromptForBroadcast {
+                // Session started but no URL scheme - still prompt for broadcast
+                await MainActor.run {
+                    showBroadcastPrompt = true
                 }
             }
         } catch {
             appLog("Failed to start SwiftLink session: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+        }
+    }
+}
+
+// MARK: - Broadcast Prompt Sheet
+
+struct BroadcastPromptSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var contextCaptureManager = ContextCaptureManager.shared
+    @StateObject private var sessionManager = SwiftLinkSessionManager.shared
+
+    var body: some View {
+        VStack(spacing: 24) {
+            // Header
+            VStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.blue.opacity(0.15))
+                        .frame(width: 80, height: 80)
+
+                    Image(systemName: "text.viewfinder")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.blue)
+                }
+
+                Text("Enable Screen Context")
+                    .font(.title2.bold())
+
+                Text("Start screen recording for smarter AI predictions based on what you're viewing.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+
+            Spacer()
+
+            // Broadcast Picker Button
+            if contextCaptureManager.isCapturing {
+                // Already capturing - show success
+                VStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 50))
+                        .foregroundStyle(.green)
+
+                    Text("Screen Context Active")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                }
+            } else {
+                // Show broadcast picker
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.blue)
+                        .frame(height: 56)
+
+                    HStack {
+                        Image(systemName: "record.circle")
+                        Text("Start Screen Recording")
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundStyle(.white)
+                    .allowsHitTesting(false)
+
+                    // Tappable broadcast picker
+                    TappableBroadcastPicker(
+                        broadcastExtensionBundleId: "pawelgawliczek.SwiftSpeak.SwiftSpeakBroadcast"
+                    )
+                }
+                .padding(.horizontal)
+            }
+
+            Spacer()
+
+            // Continue/Skip button
+            Button(action: {
+                returnToTargetApp()
+            }) {
+                Text(contextCaptureManager.isCapturing ? "Continue to App" : "Skip for Now")
+                    .font(.body)
+                    .foregroundStyle(contextCaptureManager.isCapturing ? .white : .secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(contextCaptureManager.isCapturing ? Color.green : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .padding(.horizontal)
+            .padding(.bottom, 20)
+        }
+        .padding(.top, 32)
+        .onChange(of: contextCaptureManager.isCapturing) { _, isCapturing in
+            if isCapturing {
+                // Auto-continue after a brief delay when capture starts
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    returnToTargetApp()
+                }
+            }
+        }
+        .onAppear {
+            contextCaptureManager.refreshState()
+        }
+    }
+
+    private func returnToTargetApp() {
+        dismiss()
+        // Open the target app
+        if let app = sessionManager.getLastUsedApp(),
+           let urlScheme = app.effectiveURLScheme,
+           let url = URL(string: "\(urlScheme)://") {
+            UIApplication.shared.open(url)
         }
     }
 }
@@ -590,6 +775,8 @@ private struct OverlaySearchView: View {
 
 struct SwiftLinkStartSheet: View {
     @Environment(\.dismiss) var dismiss
+    @EnvironmentObject var settings: SharedSettings
+    @StateObject private var contextCaptureManager = ContextCaptureManager.shared
     let apps: [SwiftLinkApp]
     let onSelectApp: (SwiftLinkApp) -> Void
 
@@ -620,13 +807,24 @@ struct SwiftLinkStartSheet: View {
                         Text("Start SwiftLink Session")
                             .font(.headline)
 
-                        Text("Select an app to return to. You'll be able to dictate from the keyboard without leaving that app.")
+                        Text("SwiftLink enables voice dictation and screen context capture for smarter AI predictions.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 12)
+                }
+
+                // Context Capture Section - always visible
+                Section {
+                    contextCaptureRow
+                } header: {
+                    Text("Screen Context")
+                } footer: {
+                    if settings.contextCaptureEnabled && !contextCaptureManager.isCapturing {
+                        Text("Tap above to start screen capture for context-aware AI predictions.")
+                    }
                 }
 
                 ForEach(groupedApps, id: \.category) { group in
@@ -691,6 +889,111 @@ struct SwiftLinkStartSheet: View {
                     Button("Cancel") {
                         dismiss()
                     }
+                }
+            }
+        }
+        .onAppear {
+            contextCaptureManager.refreshState()
+        }
+    }
+
+    // MARK: - Context Capture Row
+
+    @ViewBuilder
+    private var contextCaptureRow: some View {
+        if contextCaptureManager.isCapturing {
+            // Already capturing - show active status
+            HStack(spacing: 12) {
+                Image(systemName: "text.viewfinder")
+                    .font(.title2)
+                    .foregroundStyle(.green)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text("Screen Context")
+                            .font(.body)
+
+                        Text("Active")
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.green)
+                            .clipShape(Capsule())
+                    }
+
+                    Text("AI will use screen text for predictions")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+        } else if settings.contextCaptureEnabled {
+            // Enabled but not active - show broadcast picker
+            ZStack {
+                HStack(spacing: 12) {
+                    Image(systemName: "record.circle")
+                        .font(.title2)
+                        .foregroundStyle(.blue)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Start Screen Recording")
+                            .font(.body)
+
+                        Text("Tap to enable context-aware AI")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Text("Tap")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .background(Color.blue)
+                        .clipShape(Capsule())
+                }
+
+                // Tappable broadcast picker overlay
+                TappableBroadcastPicker(
+                    broadcastExtensionBundleId: "pawelgawliczek.SwiftSpeak.SwiftSpeakBroadcast"
+                )
+            }
+        } else {
+            // Disabled - offer to enable
+            HStack(spacing: 12) {
+                Image(systemName: "text.viewfinder")
+                    .font(.title2)
+                    .foregroundStyle(.orange)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Screen Context")
+                        .font(.body)
+
+                    Text("Enable for smarter AI predictions")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Button(action: {
+                    HapticManager.lightTap()
+                    settings.contextCaptureEnabled = true
+                }) {
+                    Text("Enable")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.orange)
+                        .clipShape(Capsule())
                 }
             }
         }

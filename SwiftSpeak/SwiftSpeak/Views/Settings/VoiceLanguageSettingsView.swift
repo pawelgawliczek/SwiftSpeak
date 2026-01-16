@@ -154,7 +154,10 @@ struct VoiceLanguageSettingsView: View {
         Section {
             if settings.subscriptionTier != .free {
                 NavigationLink {
-                    LanguagePickerView(selectedLanguage: $settings.selectedTargetLanguage)
+                    LanguagePickerView(
+                        selectedLanguage: $settings.selectedTargetLanguage,
+                        outputArabizi: $settings.outputArabizi
+                    )
                 } label: {
                     SettingsRow(
                         icon: "globe",

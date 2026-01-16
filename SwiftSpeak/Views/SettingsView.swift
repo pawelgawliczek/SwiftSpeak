@@ -173,7 +173,10 @@ struct SettingsView: View {
                     // Language Section
                     Section {
                         NavigationLink {
-                            LanguagePickerView(selectedLanguage: $settings.selectedTargetLanguage)
+                            LanguagePickerView(
+                                selectedLanguage: $settings.selectedTargetLanguage,
+                                outputArabizi: $settings.outputArabizi
+                            )
                         } label: {
                             HStack {
                                 SettingsRow(

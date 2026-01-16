@@ -12,6 +12,7 @@ import SwiftSpeakCore
 
 struct LanguagePickerView: View {
     @Binding var selectedLanguage: Language
+    var outputArabizi: Binding<Bool>? = nil
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
 
@@ -23,6 +24,12 @@ struct LanguagePickerView: View {
         colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
     }
 
+    /// Whether to show Arabizi option (only for Arabic languages)
+    private var shouldShowArabiziOption: Bool {
+        guard outputArabizi != nil else { return false }
+        return selectedLanguage == .arabic || selectedLanguage == .egyptianArabic
+    }
+
     var body: some View {
         ZStack {
             backgroundColor.ignoresSafeArea()
@@ -32,7 +39,6 @@ struct LanguagePickerView: View {
                     Button(action: {
                         HapticManager.selection()
                         selectedLanguage = language
-                        dismiss()
                     }) {
                         HStack {
                             Text(language.flag)
@@ -50,6 +56,36 @@ struct LanguagePickerView: View {
                         }
                     }
                     .listRowBackground(rowBackground)
+                }
+
+                // Arabizi toggle section (only for Arabic languages)
+                if shouldShowArabiziOption, let arabiziBind = outputArabizi {
+                    Section {
+                        Toggle(isOn: arabiziBind) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "character.textbox")
+                                    .font(.callout)
+                                    .foregroundStyle(.green)
+                                    .frame(width: 28, height: 28)
+                                    .background(Color.green.opacity(0.15))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Franco-Arabic Output")
+                                        .font(.callout)
+                                    Text("Convert to Latin letters")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        .tint(AppTheme.accent)
+                        .listRowBackground(rowBackground)
+                    } header: {
+                        Text("Output Format")
+                    } footer: {
+                        Text("Arabizi converts Arabic script to Latin letters with numbers (e.g., 3=ع, 7=ح).")
+                    }
                 }
             }
             .listStyle(.plain)
@@ -153,7 +189,13 @@ struct DictationLanguagePickerView: View {
 
 #Preview("Language Picker") {
     NavigationStack {
-        LanguagePickerView(selectedLanguage: .constant(.english))
+        LanguagePickerView(selectedLanguage: .constant(.english), outputArabizi: .constant(false))
+    }
+}
+
+#Preview("Language Picker - Arabic") {
+    NavigationStack {
+        LanguagePickerView(selectedLanguage: .constant(.arabic), outputArabizi: .constant(false))
     }
 }
 

@@ -26,10 +26,11 @@ enum HotkeyAction: CaseIterable, Hashable {
     case context(UUID)            // Trigger transcribe overlay with specific Context pre-selected
     case transcribeToggle         // Toggle transcribe overlay (opens/closes)
     case transcribePushToTalk     // Push-to-talk transcribe (held down)
+    case testContextCapture       // SPIKE: Test accessibility context capture
 
     // For CaseIterable conformance
     static var allCases: [HotkeyAction] {
-        [.toggleRecording, .cancelRecording, .quickPaste, .openPowerModeOverlay, .transcribeToggle, .transcribePushToTalk]
+        [.toggleRecording, .cancelRecording, .quickPaste, .openPowerModeOverlay, .transcribeToggle, .transcribePushToTalk, .testContextCapture]
     }
 
     // Custom hashable to support associated value
@@ -53,6 +54,8 @@ enum HotkeyAction: CaseIterable, Hashable {
             hasher.combine("transcribeToggle")
         case .transcribePushToTalk:
             hasher.combine("transcribePushToTalk")
+        case .testContextCapture:
+            hasher.combine("testContextCapture")
         }
     }
 
@@ -66,6 +69,7 @@ enum HotkeyAction: CaseIterable, Hashable {
         case (.context(let lhsId), .context(let rhsId)): return lhsId == rhsId
         case (.transcribeToggle, .transcribeToggle): return true
         case (.transcribePushToTalk, .transcribePushToTalk): return true
+        case (.testContextCapture, .testContextCapture): return true
         default: return false
         }
     }

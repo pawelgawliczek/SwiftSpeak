@@ -98,6 +98,9 @@ struct KeyboardSettings {
     /// Default formatting mode
     var defaultMode: String = "raw"
 
+    /// Output Arabizi (Franco-Arabic) - converts Arabic to Latin with numbers
+    var outputArabizi: Bool = false
+
     // MARK: - Translation Settings
 
     /// Auto-translate enabled
@@ -164,6 +167,7 @@ struct KeyboardSettings {
         if let modeRaw = defaults?.string(forKey: Constants.Keys.selectedMode) {
             settings.defaultMode = modeRaw
         }
+        settings.outputArabizi = (defaults?.object(forKey: "outputArabizi") as? Bool) ?? false
 
         // Translation settings
         settings.autoTranslate = (defaults?.object(forKey: Constants.Keys.isTranslationEnabled) as? Bool) ?? false
@@ -210,6 +214,7 @@ struct KeyboardSettings {
         // Voice settings (update main app settings too)
         defaults?.set(spokenLanguage, forKey: Constants.Keys.selectedDictationLanguage)
         defaults?.set(defaultMode, forKey: Constants.Keys.selectedMode)
+        defaults?.set(outputArabizi, forKey: "outputArabizi")
 
         // Translation settings
         defaults?.set(autoTranslate, forKey: Constants.Keys.isTranslationEnabled)

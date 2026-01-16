@@ -492,6 +492,8 @@ struct SettingsView: View {
 
 struct SwiftLinkStatusCard: View {
     @ObservedObject var sessionManager: SwiftLinkSessionManager
+    @ObservedObject var contextCaptureManager = ContextCaptureManager.shared
+    @ObservedObject var settings = SharedSettings.shared
 
     private var targetAppName: String {
         sessionManager.getLastUsedApp()?.name ?? "Unknown App"
@@ -541,15 +543,60 @@ struct SwiftLinkStatusCard: View {
                     .foregroundStyle(.secondary)
             }
 
-            // Recording indicator
-            if sessionManager.isRecording {
+            Divider()
+                .padding(.vertical, 4)
+
+            // Capture status indicators
+            VStack(alignment: .leading, spacing: 6) {
+                // Microphone status
                 HStack(spacing: 8) {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 6, height: 6)
-                    Text("Recording")
+                    Image(systemName: sessionManager.isRecording ? "mic.fill" : "mic.slash.fill")
+                        .font(.caption)
+                        .foregroundStyle(sessionManager.isRecording ? .green : .secondary)
+                    Text("Microphone")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(sessionManager.isRecording ? "Active" : "Inactive")
                         .font(.caption.weight(.medium))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(sessionManager.isRecording ? .green : .secondary)
+                }
+
+                // Screen capture status
+                HStack(spacing: 8) {
+                    Image(systemName: contextCaptureManager.isCapturing ? "rectangle.dashed.badge.record" : "rectangle.dashed")
+                        .font(.caption)
+                        .foregroundStyle(contextCaptureManager.isCapturing ? .green : .secondary)
+                    Text("Screen Context")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    if !settings.contextCaptureEnabled {
+                        Text("Disabled")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    } else if contextCaptureManager.isCapturing {
+                        Text("Active")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.green)
+                    } else {
+                        // Tappable broadcast picker button
+                        ZStack {
+                            Text("Start")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 4)
+                                .background(Color.orange)
+                                .clipShape(Capsule())
+
+                            // Tappable broadcast picker overlay
+                            TappableBroadcastPicker(
+                                broadcastExtensionBundleId: "pawelgawliczek.SwiftSpeak.SwiftSpeakBroadcast"
+                            )
+                        }
+                        .frame(width: 60, height: 24)
+                    }
                 }
             }
 
@@ -569,6 +616,9 @@ struct SwiftLinkStatusCard: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
+        .onAppear {
+            contextCaptureManager.refreshState()
+        }
     }
 }
 

@@ -53,6 +53,8 @@ class MacSettings: ObservableObject {
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
         // Hidden contexts
         static let hiddenContextIds = "icloud_hiddenContextIds"
+        // Subscription tier
+        static let subscriptionTier = "icloud_subscriptionTier"
     }
 
     // MARK: - Published Properties
@@ -194,6 +196,7 @@ class MacSettings: ObservableObject {
     @Published var subscriptionTier: SubscriptionTier = .free {
         didSet {
             defaults?.set(subscriptionTier.rawValue, forKey: "subscriptionTier")
+            syncToiCloud()
         }
     }
 
@@ -298,6 +301,36 @@ class MacSettings: ObservableObject {
         } catch {
             macLog("Failed to load power mode hotkeys: \(error)", category: "Settings", level: .error)
         }
+    }
+
+    // MARK: - Autocomplete Suggestions (Power Mode Overlay)
+
+    /// Whether autocomplete suggestions are enabled on the Power Mode overlay
+    @Published var quickSuggestionsEnabled: Bool = false {
+        didSet {
+            defaults?.set(quickSuggestionsEnabled, forKey: "quickSuggestionsEnabled")
+        }
+    }
+
+    /// Quick actions for generating autocomplete suggestions from screen context
+    @Published var quickActions: [QuickAction] = [] {
+        didSet {
+            saveQuickActions()
+        }
+    }
+
+    private func saveQuickActions() {
+        if let data = try? JSONEncoder().encode(quickActions) {
+            defaults?.set(data, forKey: "quickActions")
+        }
+    }
+
+    private func loadQuickActions() {
+        guard let data = defaults?.data(forKey: "quickActions"),
+              let actions = try? JSONDecoder().decode([QuickAction].self, from: data) else {
+            return
+        }
+        quickActions = actions
     }
 
     // MARK: - Context Hotkeys
@@ -522,8 +555,10 @@ class MacSettings: ObservableObject {
         if let data = defaults?.data(forKey: "appleIntelligenceConfig"),
            let savedConfig = try? JSONDecoder().decode(AppleIntelligenceConfig.self, from: data) {
             config = savedConfig
+            macLog("Loaded Apple Intelligence config: isEnabled=\(savedConfig.isEnabled)", category: "Settings")
         } else {
             config = AppleIntelligenceConfig.default
+            macLog("Using default Apple Intelligence config", category: "Settings")
         }
 
         // Always re-check device capability (OS might have been updated)
@@ -542,16 +577,20 @@ class MacSettings: ObservableObject {
             if isAppleSilicon {
                 config.isAvailable = true
                 config.unavailableReason = nil
+                macLog("Apple Intelligence available: macOS 26.0+ and Apple Silicon detected", category: "Settings")
             } else {
                 config.isAvailable = false
                 config.unavailableReason = "Requires Mac with Apple Silicon (M1 or later)"
+                macLog("Apple Intelligence unavailable: not Apple Silicon", category: "Settings", level: .warning)
             }
         } else {
             config.isAvailable = false
             config.unavailableReason = "Requires macOS 26.0 or later"
+            macLog("Apple Intelligence unavailable: requires macOS 26.0+", category: "Settings", level: .warning)
         }
 
         appleIntelligenceConfig = config
+        macLog("Apple Intelligence final state: isAvailable=\(config.isAvailable), isEnabled=\(config.isEnabled)", category: "Settings")
     }
 
     private func saveAppleIntelligenceConfig() {
@@ -965,6 +1004,13 @@ class MacSettings: ObservableObject {
         if let hiddenStrings = iCloud?.array(forKey: iCloudKeys.hiddenContextIds) as? [String] {
             hiddenContextIds = Set(hiddenStrings.compactMap { UUID(uuidString: $0) })
         }
+
+        // Load subscription tier
+        if let tierRaw = iCloud?.string(forKey: iCloudKeys.subscriptionTier),
+           let tier = SubscriptionTier(rawValue: tierRaw) {
+            subscriptionTier = tier
+            macLog("loadFromiCloud: Loaded subscription tier: \(tier.displayName)", category: "iCloud")
+        }
     }
 
     private func syncToiCloud() {
@@ -1055,6 +1101,9 @@ class MacSettings: ObservableObject {
         let hiddenContextStrings = hiddenContextIds.map { $0.uuidString }
         iCloud?.set(hiddenContextStrings, forKey: iCloudKeys.hiddenContextIds)
 
+        // Sync subscription tier
+        iCloud?.set(subscriptionTier.rawValue, forKey: iCloudKeys.subscriptionTier)
+
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
@@ -1135,6 +1184,8 @@ class MacSettings: ObservableObject {
         loadProviderDefaults()
         loadGlobalPowerModeHotkey()
         loadPowerModeHotkeys()
+        quickSuggestionsEnabled = defaults?.bool(forKey: "quickSuggestionsEnabled") ?? false
+        loadQuickActions()
         loadContextHotkeys()
         loadLastUsedContextPerApp()
         loadHiddenContextIds()
