@@ -577,6 +577,159 @@ final class PowerModeOrchestrator: ObservableObject {
         }
     }
 
+    /// Process existing transcribed text (for Share Extension imports)
+    /// Skips recording and transcription, goes directly to thinking/generation
+    /// - Parameters:
+    ///   - text: The already transcribed text to process
+    ///   - selectedOutputActionIds: Optional set of output action IDs to execute (nil = all enabled)
+    func processExistingText(_ text: String, selectedOutputActionIds: Set<UUID>? = nil) async {
+        // Reset state
+        transcribedText = text
+        errorMessage = nil
+        startTime = Date()
+
+        do {
+            // Apply vocabulary replacements
+            let processedInput = settings.applyVocabulary(to: transcribedText)
+            transcribedText = processedInput
+
+            // Thinking phase
+            state = .thinking
+
+            // Phase 17: Execute input actions (before other context gathering)
+            inputActionResults = []
+            if !powerMode.inputActions.isEmpty {
+                let enabledInputActions = powerMode.inputActions.filter { $0.isEnabled }
+                if !enabledInputActions.isEmpty {
+                    do {
+                        inputActionResults = try await inputActionExecutor.execute(actions: enabledInputActions)
+                        appLog("Executed \(inputActionResults.count) input actions", category: "PowerMode")
+                    } catch {
+                        appLog("Input action failed: \(LogSanitizer.sanitizeError(error))", category: "PowerMode", level: .error)
+                        throw error
+                    }
+                }
+            }
+
+            // Fetch context from webhooks (Phase 4f)
+            webhookContextResults = []
+            if !powerMode.enabledWebhookIds.isEmpty {
+                let contextWebhooks = settings.enabledWebhooks(for: powerMode, ofType: .contextSource)
+                if !contextWebhooks.isEmpty {
+                    webhookContextResults = await webhookExecutor.fetchContext(for: powerMode)
+                }
+            }
+
+            // Query knowledge base if configured (Phase 4e - RAG + Phase 3 - Obsidian)
+            lastRAGResult = nil
+            lastCombinedRAGResult = nil
+
+            if !powerMode.knowledgeDocumentIds.isEmpty || !powerMode.obsidianVaultIds.isEmpty {
+                state = .queryingKnowledge
+                do {
+                    if !ragOrchestrator.isConfigured,
+                       let openAIKey = settings.openAIAPIKey,
+                       !openAIKey.isEmpty {
+                        try ragOrchestrator.configure(openAIApiKey: openAIKey)
+                    }
+
+                    if obsidianQueryService == nil, !powerMode.obsidianVaultIds.isEmpty {
+                        obsidianQueryService = try await ObsidianQueryService.create(from: settings)
+                    }
+
+                    if ragOrchestrator.isConfigured {
+                        lastCombinedRAGResult = try await ragOrchestrator.queryWithObsidian(
+                            query: processedInput,
+                            powerMode: powerMode,
+                            obsidianQueryService: obsidianQueryService
+                        )
+                    }
+                } catch {
+                    appLog("RAG/Obsidian query failed (non-fatal): \(LogSanitizer.sanitizeError(error))", category: "RAG", level: .warning)
+                }
+            }
+
+            // Generate response (streaming or blocking)
+            let output: String = try await withCheckedThrowingContinuation { continuation in
+                generationTask = Task {
+                    do {
+                        if let streamingOutput = try await generateWithStreaming(userInput: processedInput) {
+                            continuation.resume(returning: streamingOutput)
+                        } else {
+                            await MainActor.run { state = .generating }
+                            let result = try await generate(userInput: processedInput)
+                            continuation.resume(returning: result)
+                        }
+                    } catch {
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+
+            // Calculate processing duration
+            let processingDuration = Date().timeIntervalSince(startTime ?? Date())
+
+            // Create result
+            let result = PowerModeResult(
+                powerModeId: powerMode.id,
+                powerModeName: powerMode.name,
+                userInput: processedInput,
+                markdownOutput: output,
+                processingDuration: processingDuration,
+                versionNumber: session.results.count + 1,
+                usedRAG: !powerMode.knowledgeDocumentIds.isEmpty,
+                ragDocumentIds: powerMode.knowledgeDocumentIds,
+                globalMemoryEnabled: settings.globalMemoryEnabled,
+                contextMemoryEnabled: activeContext?.useContextMemory ?? false,
+                powerModeMemoryEnabled: powerMode.memoryEnabled,
+                usedForGlobalMemory: false,
+                usedForContextMemory: false,
+                usedForPowerModeMemory: false
+            )
+
+            // Add to session
+            session.addResult(result)
+
+            // Update usage count
+            settings.incrementPowerModeUsage(id: powerMode.id)
+
+            // Phase 17: Execute output actions (with optional filtering)
+            outputActionResults = []
+            if !powerMode.outputActions.isEmpty {
+                var actionsToRun = powerMode.outputActions.filter { $0.isEnabled }
+
+                // Filter by selected IDs if provided
+                if let selectedIds = selectedOutputActionIds {
+                    actionsToRun = actionsToRun.filter { selectedIds.contains($0.id) }
+                }
+
+                if !actionsToRun.isEmpty {
+                    do {
+                        outputActionResults = try await outputActionExecutor.execute(
+                            actions: actionsToRun,
+                            output: output,
+                            powerMode: powerMode
+                        )
+                        appLog("Executed \(outputActionResults.count) output actions", category: "PowerMode")
+                    } catch {
+                        appLog("Output action failed: \(LogSanitizer.sanitizeError(error))", category: "PowerMode", level: .error)
+                    }
+                }
+            }
+
+            // Always copy to clipboard for Share Extension results
+            UIPasteboard.general.string = output
+
+            // Complete
+            state = .complete(session)
+
+        } catch let error as TranscriptionError {
+            handleError(error)
+        } catch {
+            handleError(.networkError(error.localizedDescription))
+        }
+    }
+
     /// Cancel the current operation
     func cancel() {
         audioRecorder.cancelRecording()

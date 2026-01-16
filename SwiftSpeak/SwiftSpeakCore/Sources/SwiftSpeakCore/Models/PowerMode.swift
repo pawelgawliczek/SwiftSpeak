@@ -391,6 +391,48 @@ public struct PowerMode: Codable, Identifiable, Equatable, Hashable {
         migratedInputActions.contains { $0.type == .shareAudioImport && $0.isEnabled }
     }
 
+    /// Whether this Power Mode accepts shared text content via Share Extension
+    public var acceptsSharedText: Bool {
+        migratedInputActions.contains { $0.type == .shareTextImport && $0.isEnabled }
+    }
+
+    /// Whether this Power Mode accepts shared images via Share Extension (OCR)
+    public var acceptsSharedImages: Bool {
+        migratedInputActions.contains { $0.type == .shareImageImport && $0.isEnabled }
+    }
+
+    /// Whether this Power Mode accepts shared URLs via Share Extension (web fetch)
+    public var acceptsSharedURLs: Bool {
+        migratedInputActions.contains { $0.type == .shareURLImport && $0.isEnabled }
+    }
+
+    /// Whether this Power Mode accepts shared PDFs via Share Extension
+    public var acceptsSharedPDFs: Bool {
+        migratedInputActions.contains { $0.type == .sharePDFImport && $0.isEnabled }
+    }
+
+    /// All content types this Power Mode accepts via Share Extension
+    public var acceptedContentTypes: Set<SharedContentType> {
+        var types = Set<SharedContentType>()
+        for action in migratedInputActions where action.isEnabled {
+            if let contentType = action.type.sharedContentType {
+                types.insert(contentType)
+            }
+        }
+        return types
+    }
+
+    /// Whether this Power Mode accepts a specific content type
+    public func acceptsContentType(_ contentType: SharedContentType) -> Bool {
+        let actionType = InputActionType.shareImportAction(for: contentType)
+        return migratedInputActions.contains { $0.type == actionType && $0.isEnabled }
+    }
+
+    /// Whether this Power Mode accepts any shared content (has at least one share import action enabled)
+    public var acceptsAnySharedContent: Bool {
+        migratedInputActions.contains { $0.type.isShareImport && $0.isEnabled }
+    }
+
     public init(
         id: UUID = UUID(),
         name: String,

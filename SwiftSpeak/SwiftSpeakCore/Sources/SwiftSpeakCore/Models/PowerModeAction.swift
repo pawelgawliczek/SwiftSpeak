@@ -37,8 +37,16 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
     case webhook = "webhook"
     /// Capture screen content via OCR (iOS broadcast extension)
     case screenContext = "screenContext"
-    /// Accept audio files via iOS Share Extension
+    /// Accept audio files via Share Extension
     case shareAudioImport = "shareAudioImport"
+    /// Accept text content via Share Extension
+    case shareTextImport = "shareTextImport"
+    /// Accept images via Share Extension (OCR extraction)
+    case shareImageImport = "shareImageImport"
+    /// Accept URLs via Share Extension (web content fetch)
+    case shareURLImport = "shareURLImport"
+    /// Accept PDFs via Share Extension (text extraction)
+    case sharePDFImport = "sharePDFImport"
 
     public var displayName: String {
         switch self {
@@ -52,7 +60,11 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .shortcutResult: return "Run Shortcut"
         case .webhook: return "Webhook"
         case .screenContext: return "Screen Context"
-        case .shareAudioImport: return "Share Audio Import"
+        case .shareAudioImport: return "Share Audio"
+        case .shareTextImport: return "Share Text"
+        case .shareImageImport: return "Share Image"
+        case .shareURLImport: return "Share URL"
+        case .sharePDFImport: return "Share PDF"
         }
     }
 
@@ -69,6 +81,10 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .webhook: return "Fetch data from a configured webhook"
         case .screenContext: return "Capture text from your screen via OCR"
         case .shareAudioImport: return "Accept audio files shared from other apps"
+        case .shareTextImport: return "Accept text content shared from other apps"
+        case .shareImageImport: return "Accept images and extract text via OCR"
+        case .shareURLImport: return "Accept URLs and fetch web content"
+        case .sharePDFImport: return "Accept PDFs and extract text"
         }
     }
 
@@ -85,6 +101,10 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
         case .webhook: return "link"
         case .screenContext: return "text.viewfinder"
         case .shareAudioImport: return "waveform.badge.plus"
+        case .shareTextImport: return "doc.text.fill"
+        case .shareImageImport: return "photo.badge.plus"
+        case .shareURLImport: return "link.badge.plus"
+        case .sharePDFImport: return "doc.richtext.fill"
         }
     }
 
@@ -98,10 +118,8 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
 
     /// Whether this action type is available on macOS
     public var availableOnMacOS: Bool {
-        switch self {
-        case .shareAudioImport: return false  // iOS only (Share Extension)
-        default: return true
-        }
+        // All share import types are available on both platforms
+        return true
     }
 
     /// Whether this is a built-in context source (vs dynamic)
@@ -111,6 +129,39 @@ public enum InputActionType: String, Codable, CaseIterable, Sendable {
             return true
         default:
             return false
+        }
+    }
+
+    /// Whether this is a share import action type
+    public var isShareImport: Bool {
+        switch self {
+        case .shareAudioImport, .shareTextImport, .shareImageImport, .shareURLImport, .sharePDFImport:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Get the corresponding SharedContentType for share import actions
+    public var sharedContentType: SharedContentType? {
+        switch self {
+        case .shareAudioImport: return .audio
+        case .shareTextImport: return .text
+        case .shareImageImport: return .image
+        case .shareURLImport: return .url
+        case .sharePDFImport: return .pdf
+        default: return nil
+        }
+    }
+
+    /// Get InputActionType for a given SharedContentType
+    public static func shareImportAction(for contentType: SharedContentType) -> InputActionType {
+        switch contentType {
+        case .audio: return .shareAudioImport
+        case .text: return .shareTextImport
+        case .image: return .shareImageImport
+        case .url: return .shareURLImport
+        case .pdf: return .sharePDFImport
         }
     }
 }

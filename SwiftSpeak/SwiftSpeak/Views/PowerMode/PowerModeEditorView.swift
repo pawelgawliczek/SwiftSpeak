@@ -38,8 +38,9 @@ struct PowerModeEditorView: View {
     // Phase 4f: Webhooks
     @State private var enabledWebhookIds: [UUID] = []
 
-    // Phase 10: Provider override
-    @State private var providerOverride: ProviderSelection?
+    // Phase 10: Provider overrides
+    @State private var providerOverride: ProviderSelection?  // LLM for AI processing
+    @State private var transcriptionProviderOverride: ProviderSelection?  // STT for transcription
 
     // Arabizi output override
     @State private var outputArabizi: Bool? = nil
@@ -87,6 +88,7 @@ struct PowerModeEditorView: View {
             appAssignment: appAssignment,
             enabledWebhookIds: enabledWebhookIds,
             providerOverride: providerOverride,
+            transcriptionProviderOverride: transcriptionProviderOverride,
             outputArabizi: outputArabizi,
             aiAutocorrectEnabled: aiAutocorrectEnabled,
             enterSendsMessage: enterSendsMessage,
@@ -120,6 +122,7 @@ struct PowerModeEditorView: View {
             _knowledgeDocumentIds = State(initialValue: mode.knowledgeDocumentIds)
             _enabledWebhookIds = State(initialValue: mode.enabledWebhookIds)
             _providerOverride = State(initialValue: mode.providerOverride)
+            _transcriptionProviderOverride = State(initialValue: mode.transcriptionProviderOverride)
             _outputArabizi = State(initialValue: mode.outputArabizi)
             _aiAutocorrectEnabled = State(initialValue: mode.aiAutocorrectEnabled)
             _enterSendsMessage = State(initialValue: mode.enterSendsMessage)
@@ -157,7 +160,10 @@ struct PowerModeEditorView: View {
                     // DELIVERY ACTIONS section (Phase 17 - unified)
                     OutputActionsEditor(actions: $outputActions)
 
-                    // Provider override section (Phase 10)
+                    // Transcription provider section (for STT)
+                    transcriptionProviderSection
+
+                    // AI Provider section (for LLM processing)
                     providerOverrideSection
 
                     // Arabizi output section (only for Arabic/Egyptian Arabic)
@@ -725,11 +731,117 @@ struct PowerModeEditorView: View {
         )
     }
 
-    // MARK: - Provider Override Section (Phase 10)
+    // MARK: - Transcription Provider Section
+
+    private var transcriptionProviderSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("TRANSCRIPTION PROVIDER")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 8) {
+                // Default option
+                Button(action: {
+                    HapticManager.selection()
+                    transcriptionProviderOverride = nil
+                }) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "waveform")
+                            .font(.title3)
+                            .foregroundStyle(transcriptionProviderOverride == nil ? AppTheme.powerAccent : .secondary)
+                            .frame(width: 40)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Use Default Provider")
+                                .font(.subheadline.weight(.medium))
+                                .foregroundStyle(.primary)
+
+                            Text("Uses the global default from Settings")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Image(systemName: transcriptionProviderOverride == nil ? "checkmark.circle.fill" : "circle")
+                            .font(.title3)
+                            .foregroundStyle(transcriptionProviderOverride == nil ? AppTheme.powerAccent : Color.secondary.opacity(0.3))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 14)
+                    .background(transcriptionProviderOverride == nil ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
+                    .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                }
+                .buttonStyle(.plain)
+
+                // Available transcription providers
+                ForEach(availableTranscriptionSelections, id: \.self) { selection in
+                    Button(action: {
+                        HapticManager.selection()
+                        transcriptionProviderOverride = selection
+                    }) {
+                        HStack(spacing: 12) {
+                            Image(systemName: selection.icon)
+                                .font(.title3)
+                                .foregroundStyle(transcriptionProviderOverride == selection ? .white : (selection.isLocal ? .green : AppTheme.powerAccent))
+                                .frame(width: 40, height: 40)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                        .fill(transcriptionProviderOverride == selection
+                                              ? AppTheme.powerAccent
+                                              : (selection.isLocal ? Color.green.opacity(0.15) : AppTheme.powerAccent.opacity(0.15)))
+                                )
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(spacing: 6) {
+                                    Text(selection.displayName)
+                                        .font(.subheadline.weight(.medium))
+                                        .foregroundStyle(.primary)
+
+                                    if selection.isLocal {
+                                        Text("ON-DEVICE")
+                                            .font(.caption2.weight(.bold))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 1)
+                                            .background(.green)
+                                            .clipShape(Capsule())
+                                    }
+                                }
+
+                                if let model = selection.model {
+                                    Text(model)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+
+                            Spacer()
+
+                            Image(systemName: transcriptionProviderOverride == selection ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundStyle(transcriptionProviderOverride == selection ? AppTheme.powerAccent : Color.secondary.opacity(0.3))
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(transcriptionProviderOverride == selection ? AppTheme.powerAccent.opacity(0.1) : Color.primary.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+
+            Text("Speech-to-text provider for transcribing audio. Use Google Cloud STT for speaker diarization in meetings.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    // MARK: - AI Provider Section (Phase 10)
 
     private var providerOverrideSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("AI PROVIDER")
+            Text("AI PROCESSING PROVIDER")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
 
@@ -825,7 +937,7 @@ struct PowerModeEditorView: View {
                 }
             }
 
-            Text("Override the default provider for this Power Mode. On-device providers keep your data private.")
+            Text("LLM provider for AI text processing (summarization, formatting, etc). On-device providers keep your data private.")
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -879,15 +991,21 @@ struct PowerModeEditorView: View {
         }
     }
 
+    /// All available LLM models for AI processing, sorted by provider
     private var availableProviderSelections: [ProviderSelection] {
         var selections: [ProviderSelection] = []
 
-        // Add configured cloud providers with Power Mode capability
+        // Add ALL LLM models from each configured cloud provider
         for config in settings.configuredAIProviders {
-            if config.usageCategories.contains(.powerMode) {
+            // Only include providers that support Power Mode
+            guard config.usageCategories.contains(.powerMode) else { continue }
+
+            // Get all available LLM models for this provider
+            let models = config.provider.availableLLMModels
+            for model in models {
                 selections.append(ProviderSelection(
                     providerType: .cloud(config.provider),
-                    model: config.powerModeModel
+                    model: model
                 ))
             }
         }
@@ -897,14 +1015,72 @@ struct PowerModeEditorView: View {
             selections.append(ProviderSelection(providerType: .local(.appleIntelligence)))
         }
 
-        // Add Ollama/LM Studio if configured for Power Mode
+        // Add Ollama/LM Studio models if configured
         if let localConfig = settings.getAIProviderConfig(for: .local),
            localConfig.usageCategories.contains(.powerMode) {
             let localType: LocalModelType = localConfig.localConfig?.type == .lmStudio ? .lmStudio : .ollama
-            selections.append(ProviderSelection(
-                providerType: .local(localType),
-                model: localConfig.powerModeModel
-            ))
+            // Use cached models if available, otherwise just show the default
+            if let cachedModels = localConfig.cachedModels {
+                let llmModels = cachedModels.filter { !$0.lowercased().contains("whisper") }
+                for model in llmModels {
+                    selections.append(ProviderSelection(
+                        providerType: .local(localType),
+                        model: model
+                    ))
+                }
+            } else if let model = localConfig.powerModeModel {
+                selections.append(ProviderSelection(
+                    providerType: .local(localType),
+                    model: model
+                ))
+            }
+        }
+
+        return selections
+    }
+
+    /// All available transcription (STT) providers, sorted by provider
+    private var availableTranscriptionSelections: [ProviderSelection] {
+        var selections: [ProviderSelection] = []
+
+        // Add ALL STT models from each configured cloud provider
+        for config in settings.configuredAIProviders {
+            // Only include providers that support transcription
+            guard config.usageCategories.contains(.transcription) else { continue }
+
+            // Get all available STT models for this provider
+            let models = config.provider.availableSTTModels
+            for model in models {
+                selections.append(ProviderSelection(
+                    providerType: .cloud(config.provider),
+                    model: model
+                ))
+            }
+        }
+
+        // Add WhisperKit if available
+        if settings.isWhisperKitReady {
+            selections.append(ProviderSelection(providerType: .local(.whisperKit)))
+        }
+
+        // Add local Whisper models from Ollama if configured
+        if let localConfig = settings.getAIProviderConfig(for: .local),
+           localConfig.usageCategories.contains(.transcription) {
+            let localType: LocalModelType = localConfig.localConfig?.type == .lmStudio ? .lmStudio : .ollama
+            if let cachedModels = localConfig.cachedModels {
+                let whisperModels = cachedModels.filter { $0.lowercased().contains("whisper") }
+                for model in whisperModels {
+                    selections.append(ProviderSelection(
+                        providerType: .local(localType),
+                        model: model
+                    ))
+                }
+            } else if let model = localConfig.transcriptionModel {
+                selections.append(ProviderSelection(
+                    providerType: .local(localType),
+                    model: model
+                ))
+            }
         }
 
         return selections
@@ -1056,6 +1232,7 @@ struct PowerModeEditorView: View {
             appAssignment: appAssignment,
             enabledWebhookIds: enabledWebhookIds,
             providerOverride: providerOverride,
+            transcriptionProviderOverride: transcriptionProviderOverride,
             outputArabizi: outputArabizi,
             aiAutocorrectEnabled: aiAutocorrectEnabled,
             enterSendsMessage: enterSendsMessage,

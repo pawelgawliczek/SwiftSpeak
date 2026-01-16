@@ -63,6 +63,9 @@ struct MacPowerModesView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
+                // Autocomplete Suggestions Section
+                autocompleteSuggestionsSection
+
                 Divider()
                     .padding(.vertical, 4)
 
@@ -207,6 +210,56 @@ struct MacPowerModesView: View {
                 expandedPowerModeId = nil
             } else {
                 expandedPowerModeId = id
+            }
+        }
+    }
+
+    // MARK: - Autocomplete Suggestions Section
+
+    @ViewBuilder
+    private var autocompleteSuggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            Text("Autocomplete Suggestions")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+
+            // Toggle row
+            HStack(spacing: 12) {
+                Image(systemName: "text.bubble")
+                    .font(.title3)
+                    .foregroundStyle(settings.quickSuggestionsEnabled ? .green : .secondary)
+                    .frame(width: 32)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable Autocomplete")
+                        .font(.subheadline.weight(.medium))
+
+                    Text("Generate response suggestions from screen context")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Toggle("", isOn: $settings.quickSuggestionsEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .tint(.green)
+            }
+            .padding(16)
+            .background(settings.quickSuggestionsEnabled ? Color.green.opacity(0.1) : Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            // Quick Actions Editor (only when enabled)
+            if settings.quickSuggestionsEnabled {
+                MacQuickActionsEditor(
+                    actions: $settings.quickActions,
+                    settings: settings
+                )
+                .padding(16)
+                .background(Color.primary.opacity(0.03))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
             }
         }
     }
@@ -668,10 +721,28 @@ struct MacPowerModeEditorSheet: View {
                 } footer: {
                     Text("Choose how to deliver the Power Mode result")
                 }
+
+                // MARK: - Transcription Provider
+                Section {
+                    transcriptionProviderPicker
+                } header: {
+                    Text("Transcription Provider")
+                } footer: {
+                    Text("Speech-to-text provider for transcribing audio. Use Google Cloud STT for speaker diarization.")
+                }
+
+                // MARK: - AI Processing Provider
+                Section {
+                    aiProviderPicker
+                } header: {
+                    Text("AI Processing Provider")
+                } footer: {
+                    Text("LLM provider for AI text processing (summarization, formatting, etc).")
+                }
             }
             .formStyle(.grouped)
         }
-        .frame(width: 550, height: 900)
+        .frame(width: 550, height: 950)
         .onAppear {
             // Initialize actions - use migration if legacy config exists
             inputActions = powerMode.migratedInputActions
@@ -689,6 +760,220 @@ struct MacPowerModeEditorSheet: View {
                 backgroundColor: $powerMode.iconBackgroundColor
             )
         }
+    }
+
+    // MARK: - Transcription Provider Picker
+
+    private var transcriptionProviderPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Default option
+            Button(action: { powerMode.transcriptionProviderOverride = nil }) {
+                HStack {
+                    Image(systemName: "waveform")
+                        .frame(width: 24)
+                        .foregroundStyle(powerMode.transcriptionProviderOverride == nil ? .blue : .secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use Default Provider")
+                            .foregroundStyle(.primary)
+                        Text("Uses global default from Settings")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if powerMode.transcriptionProviderOverride == nil {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.blue)
+                    }
+                }
+                .padding(8)
+                .background(powerMode.transcriptionProviderOverride == nil ? Color.blue.opacity(0.1) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+
+            // Available transcription providers
+            ForEach(availableTranscriptionSelections, id: \.self) { selection in
+                Button(action: { powerMode.transcriptionProviderOverride = selection }) {
+                    HStack {
+                        Image(systemName: selection.icon)
+                            .frame(width: 24)
+                            .foregroundStyle(powerMode.transcriptionProviderOverride == selection ? .blue : (selection.isLocal ? .green : .secondary))
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text(selection.displayName)
+                                    .foregroundStyle(.primary)
+                                if selection.isLocal {
+                                    Text("ON-DEVICE")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(.green)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            if let model = selection.model {
+                                Text(model)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if powerMode.transcriptionProviderOverride == selection {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    .padding(8)
+                    .background(powerMode.transcriptionProviderOverride == selection ? Color.blue.opacity(0.1) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - AI Provider Picker
+
+    private var aiProviderPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // Default option
+            Button(action: { powerMode.providerOverride = nil }) {
+                HStack {
+                    Image(systemName: "brain")
+                        .frame(width: 24)
+                        .foregroundStyle(powerMode.providerOverride == nil ? .blue : .secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Use Default Provider")
+                            .foregroundStyle(.primary)
+                        Text("Uses global default from Settings")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    if powerMode.providerOverride == nil {
+                        Image(systemName: "checkmark")
+                            .foregroundStyle(.blue)
+                    }
+                }
+                .padding(8)
+                .background(powerMode.providerOverride == nil ? Color.blue.opacity(0.1) : Color.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .buttonStyle(.plain)
+
+            // Available LLM providers
+            ForEach(availableLLMSelections, id: \.self) { selection in
+                Button(action: { powerMode.providerOverride = selection }) {
+                    HStack {
+                        Image(systemName: selection.icon)
+                            .frame(width: 24)
+                            .foregroundStyle(powerMode.providerOverride == selection ? .blue : (selection.isLocal ? .green : .secondary))
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 4) {
+                                Text(selection.displayName)
+                                    .foregroundStyle(.primary)
+                                if selection.isLocal {
+                                    Text("ON-DEVICE")
+                                        .font(.caption2)
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 4)
+                                        .padding(.vertical, 1)
+                                        .background(.green)
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            if let model = selection.model {
+                                Text(model)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if powerMode.providerOverride == selection {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                    .padding(8)
+                    .background(powerMode.providerOverride == selection ? Color.blue.opacity(0.1) : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - Available Provider Selections
+
+    /// All available transcription (STT) providers
+    private var availableTranscriptionSelections: [ProviderSelection] {
+        var selections: [ProviderSelection] = []
+
+        // Add ALL STT models from each configured cloud provider
+        for config in settings.configuredAIProviders {
+            guard config.usageCategories.contains(.transcription) else { continue }
+            let models = config.provider.availableSTTModels
+            for model in models {
+                selections.append(ProviderSelection(
+                    providerType: .cloud(config.provider),
+                    model: model
+                ))
+            }
+        }
+
+        // Add WhisperKit if available
+        if settings.isWhisperKitReady {
+            selections.append(ProviderSelection(providerType: .local(.whisperKit)))
+        }
+
+        return selections
+    }
+
+    /// All available LLM models for AI processing
+    private var availableLLMSelections: [ProviderSelection] {
+        var selections: [ProviderSelection] = []
+
+        // Add ALL LLM models from each configured cloud provider
+        for config in settings.configuredAIProviders {
+            guard config.usageCategories.contains(.powerMode) else { continue }
+            let models = config.provider.availableLLMModels
+            for model in models {
+                selections.append(ProviderSelection(
+                    providerType: .cloud(config.provider),
+                    model: model
+                ))
+            }
+        }
+
+        // Add Apple Intelligence if available
+        if settings.isAppleIntelligenceReady {
+            selections.append(ProviderSelection(providerType: .local(.appleIntelligence)))
+        }
+
+        // Add Ollama/LM Studio models if configured
+        if let localConfig = settings.getAIProviderConfig(for: .local),
+           localConfig.usageCategories.contains(.powerMode) {
+            let localType: LocalModelType = localConfig.localConfig?.type == .lmStudio ? .lmStudio : .ollama
+            if let cachedModels = localConfig.cachedModels {
+                let llmModels = cachedModels.filter { !$0.lowercased().contains("whisper") }
+                for model in llmModels {
+                    selections.append(ProviderSelection(
+                        providerType: .local(localType),
+                        model: model
+                    ))
+                }
+            } else if let model = localConfig.powerModeModel {
+                selections.append(ProviderSelection(
+                    providerType: .local(localType),
+                    model: model
+                ))
+            }
+        }
+
+        return selections
     }
 
     private func savePowerMode() {
