@@ -19,7 +19,7 @@ final class MacContentImportWindowController {
     private var window: NSWindow?
     private var viewModel: MacContentImportViewModel?
 
-    func showWindow(contentType: SharedContentType, fileId: String?, sourceURL: String?, settings: MacSettings) {
+    func showWindow(contentType: SharedContentType, fileId: String?, sourceURL: String?, settings: MacSettings, providerFactory: ProviderFactory?) {
         print("[ImportWindow] showWindow called - type: \(contentType.rawValue), fileId: \(fileId ?? "nil")")
 
         // Create view model
@@ -29,6 +29,7 @@ final class MacContentImportWindowController {
             sourceURLString: sourceURL,
             settings: settings
         )
+        vm.providerFactory = providerFactory
         self.viewModel = vm
 
         // Create SwiftUI view
@@ -70,6 +71,16 @@ final class MacContentImportWindowController {
     }
 }
 
+// MARK: - Import View State
+
+enum ImportViewState {
+    case loading
+    case preview
+    case processing
+    case result
+    case error(String)
+}
+
 // MARK: - View Model
 
 final class MacContentImportViewModel: ObservableObject {
@@ -81,7 +92,7 @@ final class MacContentImportViewModel: ObservableObject {
     let sourceURLString: String?
     let settings: MacSettings
 
-    @Published var isLoading = true
+    @Published var viewState: ImportViewState = .loading
     @Published var loadError: String?
     @Published var extractedText: String = ""
     @Published var originalFilename: String?
@@ -96,7 +107,19 @@ final class MacContentImportViewModel: ObservableObject {
     @Published var processedResult: String?
     @Published var processError: String?
 
+    /// Output action results after processing
+    @Published var outputActionResults: [OutputActionResult] = []
+
+    /// Provider factory for LLM access
+    var providerFactory: ProviderFactory?
+
     private let appGroupIdentifier = "group.pawelgawliczek.swiftspeak"
+
+    // Convenience computed for backwards compatibility
+    var isLoading: Bool {
+        if case .loading = viewState { return true }
+        return false
+    }
 
     // MARK: - Computed
 
@@ -137,7 +160,7 @@ final class MacContentImportViewModel: ObservableObject {
 
     @MainActor
     func loadContent() async {
-        isLoading = true
+        viewState = .loading
         loadError = nil
 
         do {
@@ -153,11 +176,11 @@ final class MacContentImportViewModel: ObservableObject {
             case .pdf:
                 try await loadPDFContent()
             }
+            viewState = .preview
         } catch {
             loadError = error.localizedDescription
+            viewState = .error(error.localizedDescription)
         }
-
-        isLoading = false
     }
 
     @MainActor
@@ -372,20 +395,113 @@ final class MacContentImportViewModel: ObservableObject {
 
     @MainActor
     func processThroughPowerMode() async {
-        guard let powerMode = selectedPowerMode else { return }
+        guard let powerMode = selectedPowerMode else {
+            print("[ImportVM] processThroughPowerMode: No power mode selected")
+            return
+        }
         guard !extractedText.isEmpty else {
+            print("[ImportVM] processThroughPowerMode: No text to process")
             processError = "No text to process"
             return
         }
 
+        print("[ImportVM] Starting processing with Power Mode: \(powerMode.name)")
         isProcessing = true
+        viewState = .processing
         processError = nil
+        outputActionResults = []
 
-        // TODO: Integrate with MacPowerModeOrchestrator
-        // For now, just show a placeholder
-        processedResult = "Processing through \(powerMode.name)...\n\n\(extractedText)"
+        do {
+            print("[ImportVM] Building prompt input...")
+            // Build prompt input for the Power Mode
+            let promptInput = PowerModePromptInput(
+                powerMode: powerMode,
+                userInput: extractedText,
+                globalMemory: powerMode.inputConfig.includeGlobalMemory ? settings.globalMemory : nil,
+                contextMemory: nil,
+                powerModeMemory: powerMode.inputConfig.includePowerModeMemory ? powerMode.memory : nil,
+                ragChunks: [],
+                obsidianChunks: []  // Could add Obsidian search in the future
+            )
+
+            // Build system and user prompts
+            print("[ImportVM] Building prompts...")
+            let (systemPrompt, userMessage) = PowerModePromptBuilder.buildPrompt(for: promptInput)
+
+            // Get LLM provider
+            print("[ImportVM] Getting LLM provider for: \(settings.selectedPowerModeProvider.displayName)")
+            guard let provider = providerFactory else {
+                print("[ImportVM] ERROR: No provider factory")
+                throw NSError(domain: "PowerMode", code: 2, userInfo: [NSLocalizedDescriptionKey: "Provider factory not available"])
+            }
+
+            guard let llmService = provider.createFormattingProvider(for: settings.selectedPowerModeProvider) else {
+                print("[ImportVM] ERROR: Could not create LLM service for \(settings.selectedPowerModeProvider.displayName)")
+                throw NSError(domain: "PowerMode", code: 2, userInfo: [NSLocalizedDescriptionKey: "LLM provider not configured. Please set up an LLM provider in Settings."])
+            }
+
+            // Call LLM with streaming disabled for now
+            print("[ImportVM] Calling LLM service...")
+            processedResult = try await llmService.format(
+                text: userMessage,
+                mode: .raw,
+                customPrompt: systemPrompt,
+                context: nil
+            )
+            print("[ImportVM] LLM returned result: \(processedResult?.prefix(100) ?? "nil")...")
+
+            // Execute output actions
+            await executeOutputActions(powerMode: powerMode)
+
+            print("[ImportVM] Setting viewState to .result")
+            viewState = .result
+
+        } catch {
+            print("[ImportVM] ERROR: \(error.localizedDescription)")
+            processError = error.localizedDescription
+            viewState = .preview  // Go back to preview on error
+        }
 
         isProcessing = false
+    }
+
+    /// Execute output actions after LLM processing
+    private func executeOutputActions(powerMode: PowerMode) async {
+        guard !powerMode.outputActions.isEmpty,
+              let result = processedResult else { return }
+
+        let enabledActions = powerMode.outputActions.filter { $0.isEnabled }
+        guard !enabledActions.isEmpty else { return }
+
+        // Create output action executor
+        let executor = MacOutputActionExecutor(settings: settings)
+
+        do {
+            outputActionResults = try await executor.execute(
+                actions: enabledActions,
+                output: result,
+                powerMode: powerMode
+            )
+        } catch {
+            // Don't fail the whole operation - user still has the result
+            processError = "Some output actions failed: \(error.localizedDescription)"
+        }
+    }
+
+    // MARK: - Result Actions
+
+    /// Copy result to clipboard
+    func copyResultToClipboard() {
+        guard let result = processedResult else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(result, forType: .string)
+    }
+
+    /// Insert result at cursor position
+    func insertResultAtCursor() async {
+        guard let result = processedResult else { return }
+        let textInsertion = MacTextInsertionService()
+        _ = await textInsertion.insertText(result, replaceSelection: false)
     }
 
     // MARK: - Cleanup
