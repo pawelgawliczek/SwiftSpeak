@@ -26,6 +26,8 @@
     <string>SwiftSpeak uses on-device speech recognition to transcribe your voice without sending audio to external servers.</string>
     <key>NSAppleEventsUsageDescription</key>
     <string>SwiftSpeak needs accessibility access to insert text into other applications.</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>SwiftSpeak needs accessibility access to read text from other applications for context-aware voice transcription.</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>LSApplicationCategoryType</key>
@@ -38,5 +40,18 @@
     <true/>
     <key>LSFileQuarantineEnabled</key>
     <false/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleURLName</key>
+            <string>SwiftSpeak Mac URL Scheme</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>swiftspeak-mac</string>
+            </array>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+        </dict>
+    </array>
 </dict>
 </plist>

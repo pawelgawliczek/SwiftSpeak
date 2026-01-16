@@ -16,9 +16,11 @@
 		833363C72F09146100ACDE90 /* UserNotifications.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C62F09146100ACDE90 /* UserNotifications.framework */; };
 		833363C92F09146C00ACDE90 /* LocalAuthentication.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 833363C82F09146C00ACDE90 /* LocalAuthentication.framework */; };
 		837CF8EB2F16B35A00CF438B /* ReplayKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8EA2F16B35900CF438B /* ReplayKit.framework */; };
-		837CF8F22F16B35A00CF438B /* SwiftSpeakBroadcast.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		837CF8F92F16B3C900CF438B /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8F82F16B3C900CF438B /* Vision.framework */; };
 		837CF8FB2F16B3D400CF438B /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8FA2F16B3D400CF438B /* CoreMedia.framework */; };
+		837CF9152F17EC0500CF438B /* SwiftSpeakShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		837CF92D2F18F1CB00CF438B /* SwiftSpeakMacShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		837CF9392F18F35500CF438B /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 837CF9382F18F35500CF438B /* SwiftSpeakCore */; };
 		838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117402F014001009B3FD9 /* SwiftSpeakCore */; };
 		838749822F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117412F014002009B3FD9 /* SwiftSpeakCore */; };
 		838749832F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117422F014003009B3FD9 /* SwiftSpeakCore */; };
@@ -57,6 +59,20 @@
 			remoteGlobalIDString = 837CF8E82F16B35900CF438B;
 			remoteInfo = SwiftSpeakBroadcast;
 		};
+		837CF9132F17EC0500CF438B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83ED790D2EFE4CB900880604 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 837CF90A2F17EC0500CF438B;
+			remoteInfo = SwiftSpeakShare;
+		};
+		837CF92B2F18F1CB00CF438B /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83ED790D2EFE4CB900880604 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 837CF9202F18F1CB00CF438B;
+			remoteInfo = SwiftSpeakMacShare;
+		};
 		83ED792C2EFE4D8F00880604 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 83ED790D2EFE4CB900880604 /* Project object */;
@@ -81,6 +97,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		837CF9322F18F1CB00CF438B /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				837CF92D2F18F1CB00CF438B /* SwiftSpeakMacShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		83ED79332EFE4D8F00880604 /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -88,8 +115,8 @@
 			dstSubfolderSpec = 13;
 			files = (
 				83ED792E2EFE4D8F00880604 /* SwiftSpeakKeyboard.appex in Embed Foundation Extensions */,
+				837CF9152F17EC0500CF438B /* SwiftSpeakShare.appex in Embed Foundation Extensions */,
 				8316B8352F102B41000FC1C2 /* SwiftSpeakWidgetExtension.appex in Embed Foundation Extensions */,
-				837CF8F22F16B35A00CF438B /* SwiftSpeakBroadcast.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -111,6 +138,8 @@
 		837CF8EA2F16B35900CF438B /* ReplayKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ReplayKit.framework; path = System/Library/Frameworks/ReplayKit.framework; sourceTree = SDKROOT; };
 		837CF8F82F16B3C900CF438B /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
 		837CF8FA2F16B3D400CF438B /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
+		837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED79152EFE4CB900880604 /* SwiftSpeak.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftSpeak.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED7A112EFECCE900880604 /* SwiftSpeakTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftSpeakTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -139,12 +168,19 @@
 			);
 			target = 83ED7A102EFECCE900880604 /* SwiftSpeakTests */;
 		};
-		837CF8F62F16B35A00CF438B /* Exceptions for "SwiftSpeakBroadcast" folder in "SwiftSpeakBroadcast" target */ = {
+		837CF9192F17EC0500CF438B /* Exceptions for "SwiftSpeakShare" folder in "SwiftSpeakShare" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				Info.plist,
 			);
-			target = 837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */;
+			target = 837CF90A2F17EC0500CF438B /* SwiftSpeakShare */;
+		};
+		837CF9312F18F1CB00CF438B /* Exceptions for "SwiftSpeakMacShare" folder in "SwiftSpeakMacShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 837CF9202F18F1CB00CF438B /* SwiftSpeakMacShare */;
 		};
 		83ED792F2EFE4D8F00880604 /* Exceptions for "SwiftSpeakKeyboard" folder in "SwiftSpeakKeyboard" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -195,12 +231,20 @@
 			path = SwiftSpeakMac;
 			sourceTree = "<group>";
 		};
-		837CF8EC2F16B35A00CF438B /* SwiftSpeakBroadcast */ = {
+		837CF90C2F17EC0500CF438B /* SwiftSpeakShare */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
-				837CF8F62F16B35A00CF438B /* Exceptions for "SwiftSpeakBroadcast" folder in "SwiftSpeakBroadcast" target */,
+				837CF9192F17EC0500CF438B /* Exceptions for "SwiftSpeakShare" folder in "SwiftSpeakShare" target */,
 			);
-			path = SwiftSpeakBroadcast;
+			path = SwiftSpeakShare;
+			sourceTree = "<group>";
+		};
+		837CF9222F18F1CB00CF438B /* SwiftSpeakMacShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				837CF9312F18F1CB00CF438B /* Exceptions for "SwiftSpeakMacShare" folder in "SwiftSpeakMacShare" target */,
+			);
+			path = SwiftSpeakMacShare;
 			sourceTree = "<group>";
 		};
 		83ED79172EFE4CB900880604 /* SwiftSpeak */ = {
@@ -281,6 +325,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		837CF9082F17EC0500CF438B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		837CF91E2F18F1CB00CF438B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				837CF9392F18F35500CF438B /* SwiftSpeakCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		83ED79122EFE4CB900880604 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -344,7 +403,8 @@
 				833362662F090F3800ACDE90 /* SwiftSpeakMacTests */,
 				833362702F090F3800ACDE90 /* SwiftSpeakMacUITests */,
 				8316B8252F102B3F000FC1C2 /* SwiftSpeakWidget */,
-				837CF8EC2F16B35A00CF438B /* SwiftSpeakBroadcast */,
+				837CF90C2F17EC0500CF438B /* SwiftSpeakShare */,
+				837CF9222F18F1CB00CF438B /* SwiftSpeakMacShare */,
 				833363C12F09144B00ACDE90 /* Frameworks */,
 				83ED79162EFE4CB900880604 /* Products */,
 			);
@@ -362,6 +422,8 @@
 				8333626D2F090F3800ACDE90 /* SwiftSpeakMacUITests.xctest */,
 				8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */,
 				837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */,
+				837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */,
+				837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -398,10 +460,12 @@
 				833362532F090F3400ACDE90 /* Sources */,
 				833362542F090F3400ACDE90 /* Frameworks */,
 				833362552F090F3400ACDE90 /* Resources */,
+				837CF9322F18F1CB00CF438B /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				837CF92C2F18F1CB00CF438B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8333629E2F09117100ACDE90 /* SwiftSpeakMac */,
@@ -473,14 +537,56 @@
 			);
 			dependencies = (
 			);
-			fileSystemSynchronizedGroups = (
-				837CF8EC2F16B35A00CF438B /* SwiftSpeakBroadcast */,
-			);
 			name = SwiftSpeakBroadcast;
 			packageProductDependencies = (
 			);
 			productName = SwiftSpeakBroadcast;
 			productReference = 837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		837CF90A2F17EC0500CF438B /* SwiftSpeakShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 837CF9162F17EC0500CF438B /* Build configuration list for PBXNativeTarget "SwiftSpeakShare" */;
+			buildPhases = (
+				837CF9072F17EC0500CF438B /* Sources */,
+				837CF9082F17EC0500CF438B /* Frameworks */,
+				837CF9092F17EC0500CF438B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				837CF90C2F17EC0500CF438B /* SwiftSpeakShare */,
+			);
+			name = SwiftSpeakShare;
+			packageProductDependencies = (
+			);
+			productName = SwiftSpeakShare;
+			productReference = 837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		837CF9202F18F1CB00CF438B /* SwiftSpeakMacShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 837CF92E2F18F1CB00CF438B /* Build configuration list for PBXNativeTarget "SwiftSpeakMacShare" */;
+			buildPhases = (
+				837CF91D2F18F1CB00CF438B /* Sources */,
+				837CF91E2F18F1CB00CF438B /* Frameworks */,
+				837CF91F2F18F1CB00CF438B /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				837CF9222F18F1CB00CF438B /* SwiftSpeakMacShare */,
+			);
+			name = SwiftSpeakMacShare;
+			packageProductDependencies = (
+				837CF9382F18F35500CF438B /* SwiftSpeakCore */,
+			);
+			productName = SwiftSpeakMacShare;
+			productReference = 837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 		83ED79142EFE4CB900880604 /* SwiftSpeak */ = {
@@ -498,6 +604,7 @@
 				83ED792D2EFE4D8F00880604 /* PBXTargetDependency */,
 				8316B8342F102B41000FC1C2 /* PBXTargetDependency */,
 				837CF8F12F16B35A00CF438B /* PBXTargetDependency */,
+				837CF9142F17EC0500CF438B /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				83ED79172EFE4CB900880604 /* SwiftSpeak */,
@@ -609,6 +716,12 @@
 					837CF8E82F16B35900CF438B = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					837CF90A2F17EC0500CF438B = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					837CF9202F18F1CB00CF438B = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					83ED79142EFE4CB900880604 = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -654,6 +767,8 @@
 				8333626C2F090F3800ACDE90 /* SwiftSpeakMacUITests */,
 				8316B81F2F102B3E000FC1C2 /* SwiftSpeakWidgetExtension */,
 				837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */,
+				837CF90A2F17EC0500CF438B /* SwiftSpeakShare */,
+				837CF9202F18F1CB00CF438B /* SwiftSpeakMacShare */,
 			);
 		};
 /* End PBXProject section */
@@ -688,6 +803,20 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		837CF8E72F16B35900CF438B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		837CF9092F17EC0500CF438B /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		837CF91F2F18F1CB00CF438B /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -760,6 +889,20 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		837CF9072F17EC0500CF438B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		837CF91D2F18F1CB00CF438B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		83ED79112EFE4CB900880604 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -810,6 +953,16 @@
 			isa = PBXTargetDependency;
 			target = 837CF8E82F16B35900CF438B /* SwiftSpeakBroadcast */;
 			targetProxy = 837CF8F02F16B35A00CF438B /* PBXContainerItemProxy */;
+		};
+		837CF9142F17EC0500CF438B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 837CF90A2F17EC0500CF438B /* SwiftSpeakShare */;
+			targetProxy = 837CF9132F17EC0500CF438B /* PBXContainerItemProxy */;
+		};
+		837CF92C2F18F1CB00CF438B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 837CF9202F18F1CB00CF438B /* SwiftSpeakMacShare */;
+			targetProxy = 837CF92B2F18F1CB00CF438B /* PBXContainerItemProxy */;
 		};
 		83ED792D2EFE4D8F00880604 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -1136,6 +1289,140 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		837CF9172F17EC0500CF438B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakShare/SwiftSpeakShare.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak.SwiftSpeakShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		837CF9182F17EC0500CF438B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakShare/SwiftSpeakShare.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeakShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeak.SwiftSpeakShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		837CF92F2F18F1CB00CF438B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakMacShare/SwiftSpeakMacShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakMacShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeak;
+				INFOPLIST_KEY_CFBundleIconFile = icon;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeakMac.SwiftSpeakMacShare;
+				PRODUCT_MODULE_NAME = SwiftSpeakMacShare;
+				PRODUCT_NAME = SwiftSpeak;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		837CF9302F18F1CB00CF438B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = SwiftSpeakMacShare/SwiftSpeakMacShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = BSDVBGN72H;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_USER_SELECTED_FILES = readonly;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = SwiftSpeakMacShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = SwiftSpeak;
+				INFOPLIST_KEY_CFBundleIconFile = icon;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = pawelgawliczek.SwiftSpeakMac.SwiftSpeakMacShare;
+				PRODUCT_MODULE_NAME = SwiftSpeakMacShare;
+				PRODUCT_NAME = SwiftSpeak;
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
 		};
@@ -1528,6 +1815,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		837CF9162F17EC0500CF438B /* Build configuration list for PBXNativeTarget "SwiftSpeakShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				837CF9172F17EC0500CF438B /* Debug */,
+				837CF9182F17EC0500CF438B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		837CF92E2F18F1CB00CF438B /* Build configuration list for PBXNativeTarget "SwiftSpeakMacShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				837CF92F2F18F1CB00CF438B /* Debug */,
+				837CF9302F18F1CB00CF438B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		83ED79102EFE4CB900880604 /* Build configuration list for PBXProject "SwiftSpeak" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1606,6 +1911,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */;
 			productName = WhisperKit;
+		};
+		837CF9382F18F35500CF438B /* SwiftSpeakCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 83E1173F2F014000009B3FD9 /* XCLocalSwiftPackageReference "SwiftSpeakCore" */;
+			productName = SwiftSpeakCore;
 		};
 		83E117202F012F3B009B3FD9 /* RevenueCat */ = {
 			isa = XCSwiftPackageProductDependency;
