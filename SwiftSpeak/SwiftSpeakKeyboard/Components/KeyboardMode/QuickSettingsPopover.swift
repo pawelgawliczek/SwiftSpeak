@@ -91,6 +91,14 @@ struct QuickSettingsPopover: View {
                             settings.save()
                             KeyboardHaptics.selection()
                         }
+
+                        // Arabizi toggle (only for Arabic languages)
+                        if shouldShowArabiziOption {
+                            ToggleRow(title: "Franco-Arabic Output", isOn: $settings.outputArabizi) {
+                                settings.save()
+                                KeyboardHaptics.lightTap()
+                            }
+                        }
                     }
 
                     // SECTION 2: Keyboard Behavior
@@ -212,22 +220,28 @@ struct QuickSettingsPopover: View {
 
     private var spokenLanguageOptions: [(String, String)] {
         [
-            ("en", "English"),
-            ("es", "Spanish"),
-            ("fr", "French"),
-            ("de", "German"),
-            ("it", "Italian"),
-            ("pt", "Portuguese"),
-            ("pl", "Polish"),
-            ("nl", "Dutch"),
-            ("ja", "Japanese"),
-            ("ko", "Korean"),
-            ("zh", "Chinese"),
-            ("ru", "Russian"),
-            ("ar", "Arabic"),
-            ("hi", "Hindi"),
-            ("auto", "Auto-detect")
+            ("en", "🇺🇸 English"),
+            ("es", "🇪🇸 Spanish"),
+            ("fr", "🇫🇷 French"),
+            ("de", "🇩🇪 German"),
+            ("it", "🇮🇹 Italian"),
+            ("pt", "🇵🇹 Portuguese"),
+            ("pl", "🇵🇱 Polish"),
+            ("nl", "🇳🇱 Dutch"),
+            ("ja", "🇯🇵 Japanese"),
+            ("ko", "🇰🇷 Korean"),
+            ("zh", "🇨🇳 Chinese"),
+            ("ru", "🇷🇺 Russian"),
+            ("ar", "🇸🇦 Arabic"),
+            ("arz", "🇪🇬 Egyptian Arabic"),
+            ("hi", "🇮🇳 Hindi"),
+            ("auto", "🌐 Auto-detect")
         ]
+    }
+
+    /// Whether to show Arabizi option (only for Arabic languages)
+    private var shouldShowArabiziOption: Bool {
+        settings.spokenLanguage == "ar" || settings.spokenLanguage == "arz"
     }
 
 
