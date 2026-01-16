@@ -2,8 +2,9 @@
 //  ShareImportViewModel.swift
 //  SwiftSpeak
 //
-//  ViewModel for handling shared audio files from Share Extension
-//  Transcribes audio and processes through selected Power Mode
+//  ViewModel for handling shared content from Share Extension
+//  Supports: Audio, Text, Images (OCR), URLs (web fetch), PDFs
+//  Processes content through selected Power Mode
 //
 
 import Combine
@@ -14,8 +15,9 @@ import SwiftSpeakCore
 
 /// State for share import flow
 enum ShareImportState: Equatable {
-    case loading           // Loading audio file info
+    case loading           // Loading content info
     case ready             // Ready to select Power Mode
+    case extracting        // Extracting text from content (OCR, URL, PDF)
     case transcribing      // Transcribing audio
     case selectOutput      // Let user select output actions
     case processing        // Processing through Power Mode
@@ -26,6 +28,7 @@ enum ShareImportState: Equatable {
         switch (lhs, rhs) {
         case (.loading, .loading),
              (.ready, .ready),
+             (.extracting, .extracting),
              (.transcribing, .transcribing),
              (.selectOutput, .selectOutput),
              (.processing, .processing),
@@ -47,12 +50,16 @@ final class ShareImportViewModel: ObservableObject {
 
     @Published var state: ShareImportState = .loading
     @Published var selectedPowerMode: PowerMode?
-    @Published var transcribedText: String = ""
+    @Published var extractedText: String = ""
     @Published var result: PowerModeResult?
     @Published var streamingText: String = ""
 
-    // Audio file info
-    @Published var audioFileName: String = ""
+    // Content info
+    @Published var contentType: SharedContentType = .audio
+    @Published var contentFileName: String = ""
+    @Published var contentPreview: String? = nil
+
+    // Audio-specific
     @Published var audioDuration: TimeInterval = 0
 
     // Output action selection
@@ -61,7 +68,7 @@ final class ShareImportViewModel: ObservableObject {
     // Context selection (for transcription hints, vocabulary, language, formatting)
     @Published var selectedContextId: UUID?
 
-    // Diarization toggle (for AssemblyAI)
+    // Diarization toggle (for AssemblyAI audio)
     @Published var enableDiarization: Bool = false
     @Published var expectedSpeakerCount: Int? = nil
 
@@ -70,6 +77,9 @@ final class ShareImportViewModel: ObservableObject {
     @Published var currentChunk: Int = 0
     @Published var totalChunks: Int = 0
     @Published var transcriptionStartTime: Date?
+
+    // Extraction progress
+    @Published var extractionStatus: String = ""
 
     // Track the saved raw transcription record ID (for potential updates after Power Mode processing)
     private var rawTranscriptionRecordId: UUID?
@@ -130,22 +140,52 @@ final class ShareImportViewModel: ObservableObject {
 
     // MARK: - File Info
 
-    private var audioFileURL: URL?
+    private var contentFileURL: URL?
+    private var sourceURL: URL?  // For URL type
     private let shareId: String
 
     // MARK: - Initialization
 
-    init(shareId: String, settings: SharedSettings = .shared) {
+    init(shareId: String, contentType: SharedContentType? = nil, settings: SharedSettings = .shared) {
         self.shareId = shareId
         self.settings = settings
         self.providerFactory = ProviderFactory(settings: settings)
 
-        loadAudioFile()
+        // Content type can be passed or read from UserDefaults
+        if let type = contentType {
+            self.contentType = type
+        }
+
+        loadContent()
     }
 
-    // MARK: - Audio File Loading
+    // MARK: - Content Loading
 
-    private func loadAudioFile() {
+    private func loadContent() {
+        let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Get content type from UserDefaults if not set
+        if let typeString = userDefaults?.string(forKey: ShareContentConstants.contentTypeKey),
+           let type = SharedContentType(rawValue: typeString) {
+            contentType = type
+        }
+
+        // Load based on content type
+        switch contentType {
+        case .audio:
+            loadAudioContent()
+        case .text:
+            loadTextContent()
+        case .image:
+            loadImageContent()
+        case .url:
+            loadURLContent()
+        case .pdf:
+            loadPDFContent()
+        }
+    }
+
+    private func loadAudioContent() {
         guard let containerURL = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: Constants.appGroupIdentifier
         ) else {
@@ -153,12 +193,12 @@ final class ShareImportViewModel: ObservableObject {
             return
         }
 
-        let sharedDir = containerURL.appendingPathComponent(Constants.ShareExtension.sharedAudioDirectory)
+        let sharedDir = containerURL.appendingPathComponent(ShareContentConstants.sharedContentDirectory)
 
         // Find the audio file with matching ID
         let fileManager = FileManager.default
         guard let files = try? fileManager.contentsOfDirectory(at: sharedDir, includingPropertiesForKeys: nil) else {
-            state = .error("Cannot read shared audio directory")
+            state = .error("Cannot read shared content directory")
             return
         }
 
@@ -167,11 +207,11 @@ final class ShareImportViewModel: ObservableObject {
             return
         }
 
-        audioFileURL = audioFile
+        contentFileURL = audioFile
 
         // Get original filename from UserDefaults
         let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
-        audioFileName = userDefaults?.string(forKey: Constants.ShareExtension.originalFilenameKey) ?? audioFile.lastPathComponent
+        contentFileName = userDefaults?.string(forKey: ShareContentConstants.originalFilenameKey) ?? audioFile.lastPathComponent
 
         // Get audio duration
         let asset = AVURLAsset(url: audioFile)
@@ -191,10 +231,233 @@ final class ShareImportViewModel: ObservableObject {
         }
     }
 
-    // MARK: - Transcription
+    private func loadTextContent() {
+        let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Check if text was stored inline in UserDefaults
+        if let text = userDefaults?.string(forKey: ShareContentConstants.textContentKey), !text.isEmpty {
+            extractedText = text
+            contentFileName = "Shared Text"
+            contentPreview = String(text.prefix(200)) + (text.count > 200 ? "..." : "")
+            state = .ready
+            return
+        }
+
+        // Otherwise, look for file
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Constants.appGroupIdentifier
+        ) else {
+            state = .error("Cannot access App Group container")
+            return
+        }
+
+        let sharedDir = containerURL.appendingPathComponent(ShareContentConstants.sharedContentDirectory)
+        let fileURL = sharedDir.appendingPathComponent("\(shareId).txt")
+
+        do {
+            let text = try String(contentsOf: fileURL, encoding: .utf8)
+            extractedText = text
+            contentFileName = userDefaults?.string(forKey: ShareContentConstants.originalFilenameKey) ?? "Shared Text"
+            contentPreview = String(text.prefix(200)) + (text.count > 200 ? "..." : "")
+            state = .ready
+        } catch {
+            state = .error("Failed to load text: \(error.localizedDescription)")
+        }
+    }
+
+    private func loadImageContent() {
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Constants.appGroupIdentifier
+        ) else {
+            state = .error("Cannot access App Group container")
+            return
+        }
+
+        let sharedDir = containerURL.appendingPathComponent(ShareContentConstants.sharedContentDirectory)
+
+        // Find the image file with matching ID
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(at: sharedDir, includingPropertiesForKeys: nil) else {
+            state = .error("Cannot read shared content directory")
+            return
+        }
+
+        guard let imageFile = files.first(where: { $0.lastPathComponent.hasPrefix(shareId) }) else {
+            state = .error("Image file not found")
+            return
+        }
+
+        contentFileURL = imageFile
+        let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        contentFileName = userDefaults?.string(forKey: ShareContentConstants.originalFilenameKey) ?? imageFile.lastPathComponent
+        state = .ready
+    }
+
+    private func loadURLContent() {
+        let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        guard let urlString = userDefaults?.string(forKey: ShareContentConstants.sourceURLKey),
+              let url = URL(string: urlString) else {
+            state = .error("URL not found")
+            return
+        }
+
+        sourceURL = url
+        contentFileName = url.host ?? url.absoluteString
+        contentPreview = urlString
+        state = .ready
+    }
+
+    private func loadPDFContent() {
+        guard let containerURL = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: Constants.appGroupIdentifier
+        ) else {
+            state = .error("Cannot access App Group container")
+            return
+        }
+
+        let sharedDir = containerURL.appendingPathComponent(ShareContentConstants.sharedContentDirectory)
+
+        // Find the PDF file with matching ID
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(at: sharedDir, includingPropertiesForKeys: nil) else {
+            state = .error("Cannot read shared content directory")
+            return
+        }
+
+        guard let pdfFile = files.first(where: { $0.lastPathComponent.hasPrefix(shareId) }) else {
+            state = .error("PDF file not found")
+            return
+        }
+
+        contentFileURL = pdfFile
+        let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        contentFileName = userDefaults?.string(forKey: ShareContentConstants.originalFilenameKey) ?? pdfFile.lastPathComponent
+
+        // Get PDF page count
+        let extractor = PDFTextExtractor()
+        if let metadata = extractor.metadata(from: pdfFile) {
+            contentPreview = "\(metadata.pageCount) pages"
+            if let title = metadata.title {
+                contentFileName = title
+            }
+        }
+
+        state = .ready
+    }
+
+    // MARK: - Content Extraction
+
+    func startExtraction() async {
+        guard selectedPowerMode != nil else {
+            state = .error("Please select a Power Mode")
+            return
+        }
+
+        switch contentType {
+        case .audio:
+            await startTranscription()
+        case .text:
+            // Text is already extracted, go directly to output selection
+            state = .selectOutput
+            if let powerMode = selectedPowerMode {
+                selectedOutputActions = Set(powerMode.outputActions.filter { $0.isEnabled }.map { $0.id })
+            }
+        case .image:
+            await extractFromImage()
+        case .url:
+            await extractFromURL()
+        case .pdf:
+            await extractFromPDF()
+        }
+    }
+
+    private func extractFromImage() async {
+        guard let imageURL = contentFileURL else {
+            state = .error("No image file loaded")
+            return
+        }
+
+        state = .extracting
+        extractionStatus = "Extracting text via OCR..."
+
+        do {
+            let ocrService = ImageOCRService(languages: [.english])  // TODO: Use context language
+            extractedText = try await ocrService.extractText(from: imageURL)
+
+            if extractedText.isEmpty {
+                state = .error("No text found in image")
+            } else {
+                state = .selectOutput
+                if let powerMode = selectedPowerMode {
+                    selectedOutputActions = Set(powerMode.outputActions.filter { $0.isEnabled }.map { $0.id })
+                }
+            }
+        } catch {
+            state = .error("OCR failed: \(error.localizedDescription)")
+        }
+    }
+
+    private func extractFromURL() async {
+        guard let url = sourceURL else {
+            state = .error("No URL loaded")
+            return
+        }
+
+        state = .extracting
+        extractionStatus = "Fetching web content..."
+
+        do {
+            let fetcher = URLContentFetcher()
+            let (text, title) = try await fetcher.fetchContent(from: url)
+            extractedText = text
+            if let title = title {
+                contentFileName = title
+            }
+
+            if extractedText.isEmpty {
+                state = .error("No content found at URL")
+            } else {
+                state = .selectOutput
+                if let powerMode = selectedPowerMode {
+                    selectedOutputActions = Set(powerMode.outputActions.filter { $0.isEnabled }.map { $0.id })
+                }
+            }
+        } catch {
+            state = .error("Failed to fetch URL: \(error.localizedDescription)")
+        }
+    }
+
+    private func extractFromPDF() async {
+        guard let pdfURL = contentFileURL else {
+            state = .error("No PDF file loaded")
+            return
+        }
+
+        state = .extracting
+        extractionStatus = "Extracting text from PDF..."
+
+        do {
+            let extractor = PDFTextExtractor()
+            extractedText = try extractor.extractText(from: pdfURL)
+
+            if extractedText.isEmpty {
+                state = .error("No text found in PDF")
+            } else {
+                state = .selectOutput
+                if let powerMode = selectedPowerMode {
+                    selectedOutputActions = Set(powerMode.outputActions.filter { $0.isEnabled }.map { $0.id })
+                }
+            }
+        } catch {
+            state = .error("PDF extraction failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Audio Transcription
 
     func startTranscription() async {
-        guard let audioURL = audioFileURL else {
+        guard let audioURL = contentFileURL else {
             state = .error("No audio file loaded")
             return
         }
@@ -238,8 +501,6 @@ final class ShareImportViewModel: ObservableObject {
             }
 
             // Prepare audio for transcription
-            // For non-Google providers: compress large files for faster upload
-            // For all providers: chunk files that exceed size limits (9MB for Google)
             var processedURL = audioURL
 
             // Step 1: Compress if beneficial (skip for Google - encoding issues)
@@ -287,21 +548,17 @@ final class ShareImportViewModel: ObservableObject {
 
                 // Format diarized output with speaker labels
                 if let diarization = result.diarization {
-                    transcribedText = formatDiarizedTranscript(diarization)
+                    extractedText = formatDiarizedTranscript(diarization)
                 } else {
-                    transcribedText = result.text
+                    extractedText = result.text
                 }
                 transcriptionPhase = .complete
             }
             // Step 3: Check if chunking is needed
-            // For Google: only chunk if duration exceeds 55s (sync API has 60s limit)
-            // For others: chunk if file > 5MB
-            // Note: Only split when truly necessary as chunking degrades transcription quality
             else if AudioUtils.needsChunking(url: processedURL) ||
                     (isGoogleProvider && audioDuration > AudioUtils.maxGoogleChunkDuration) {
                 // Split into chunks and transcribe each
                 transcriptionPhase = .splitting
-                // Use WAV for Google (they don't support M4A), enforce 55s max duration
                 let maxDuration: Double? = isGoogleProvider ? AudioUtils.maxGoogleChunkDuration : nil
                 let chunks = try await AudioUtils.splitIntoChunks(
                     sourceURL: processedURL,
@@ -323,13 +580,13 @@ final class ShareImportViewModel: ObservableObject {
                     transcriptions.append(chunkText)
                 }
 
-                // Clean up chunk files (except if it was the original)
+                // Clean up chunk files
                 let chunksToClean = chunks.filter { $0 != processedURL && $0 != audioURL }
                 AudioUtils.cleanupChunks(chunksToClean)
 
                 // Combine transcriptions
                 transcriptionPhase = .combining
-                transcribedText = transcriptions.joined(separator: " ")
+                extractedText = transcriptions.joined(separator: " ")
                 transcriptionPhase = .complete
             } else if isGoogleProvider {
                 // Google with short audio: convert to WAV but no chunking
@@ -337,22 +594,20 @@ final class ShareImportViewModel: ObservableObject {
                 currentChunk = 1
                 transcriptionPhase = .transcribing(chunk: 1, total: 1)
 
-                // Convert to WAV for Google compatibility
                 let wavURL = try await AudioUtils.convertToWAV(sourceURL: processedURL)
-                transcribedText = try await provider.transcribe(
+                extractedText = try await provider.transcribe(
                     audioURL: wavURL,
                     language: language,
                     promptHint: promptHint
                 )
-                // Clean up WAV file
                 try? FileManager.default.removeItem(at: wavURL)
                 transcriptionPhase = .complete
             } else {
-                // Single file transcription (non-Google, no chunking needed)
+                // Single file transcription
                 totalChunks = 1
                 currentChunk = 1
                 transcriptionPhase = .transcribing(chunk: 1, total: 1)
-                transcribedText = try await provider.transcribe(
+                extractedText = try await provider.transcribe(
                     audioURL: processedURL,
                     language: language,
                     promptHint: promptHint
@@ -360,14 +615,13 @@ final class ShareImportViewModel: ObservableObject {
                 transcriptionPhase = .complete
             }
 
-            // Apply vocabulary replacements from settings and context
-            transcribedText = settings.applyVocabulary(to: transcribedText)
+            // Apply vocabulary replacements
+            extractedText = settings.applyVocabulary(to: extractedText)
 
-            // Save raw transcription to history IMMEDIATELY so user doesn't lose work
-            // This ensures even if Power Mode processing fails, the transcription is saved
+            // Save raw transcription to history IMMEDIATELY
             saveRawTranscriptionToHistory()
 
-            // Move to output selection (let user choose which output actions to run)
+            // Move to output selection
             state = .selectOutput
 
             // Pre-select all enabled output actions
@@ -380,17 +634,14 @@ final class ShareImportViewModel: ObservableObject {
         }
     }
 
-    /// Save raw transcription to history immediately (before Power Mode processing)
-    /// This ensures user never loses their transcription even if processing crashes
+    /// Save raw transcription to history immediately
     private func saveRawTranscriptionToHistory() {
         guard let powerMode = selectedPowerMode else { return }
 
         let elapsedTime = transcriptionStartTime.map { Date().timeIntervalSince($0) } ?? 0
 
-        // Calculate transcription cost
         let costCalculator = CostCalculator()
 
-        // Extract cloud provider from override or use default
         let transcriptionProvider: AIProvider
         if let override = powerMode.transcriptionProviderOverride,
            case .cloud(let provider) = override.providerType {
@@ -411,14 +662,14 @@ final class ShareImportViewModel: ObservableObject {
             translationProvider: nil,
             translationModel: nil,
             durationSeconds: audioDuration,
-            textLength: transcribedText.count,
-            text: transcribedText
+            textLength: extractedText.count,
+            text: extractedText
         )
 
         let record = TranscriptionRecord(
             id: UUID(),
-            rawTranscribedText: transcribedText,
-            text: transcribedText,  // Raw text before Power Mode processing
+            rawTranscribedText: extractedText,
+            text: extractedText,
             mode: .raw,
             provider: transcriptionProvider,
             timestamp: Date(),
@@ -458,7 +709,6 @@ final class ShareImportViewModel: ObservableObject {
 
     // MARK: - Diarization Helpers
 
-    /// Format diarized transcript with speaker labels
     private func formatDiarizedTranscript(_ diarization: DiarizedTranscript) -> String {
         var formattedLines: [String] = []
         var currentSpeaker: String? = nil
@@ -482,8 +732,8 @@ final class ShareImportViewModel: ObservableObject {
             return
         }
 
-        guard !transcribedText.isEmpty else {
-            state = .error("No transcribed text")
+        guard !extractedText.isEmpty else {
+            state = .error("No extracted text")
             return
         }
 
@@ -496,9 +746,9 @@ final class ShareImportViewModel: ObservableObject {
                 settings: settings
             )
 
-            // Process the transcribed text through the Power Mode
+            // Process the extracted text through the Power Mode
             await orchestrator?.processExistingText(
-                transcribedText,
+                extractedText,
                 selectedOutputActionIds: selectedOutputActions
             )
 
@@ -524,7 +774,6 @@ final class ShareImportViewModel: ObservableObject {
 
     /// Save the Power Mode result to history for cost tracking
     private func saveToHistory(powerMode: PowerMode, result: PowerModeResult) {
-        // Calculate costs for transcription + LLM processing
         let costCalculator = CostCalculator()
 
         // Extract transcription provider from override or default
@@ -566,7 +815,7 @@ final class ShareImportViewModel: ObservableObject {
 
         let record = TranscriptionRecord(
             id: UUID(),
-            rawTranscribedText: transcribedText,
+            rawTranscribedText: extractedText,
             text: result.markdownOutput,
             mode: .raw,
             provider: transcriptionProvider,
@@ -591,7 +840,7 @@ final class ShareImportViewModel: ObservableObject {
                 webhooksExecuted: nil
             ),
             editContext: nil,
-            source: .app,  // Share extension uses app source type
+            source: .app,
             globalMemoryEnabled: result.globalMemoryEnabled,
             contextMemoryEnabled: result.contextMemoryEnabled,
             powerModeMemoryEnabled: result.powerModeMemoryEnabled,
@@ -601,7 +850,6 @@ final class ShareImportViewModel: ObservableObject {
         )
 
         // Remove the raw transcription record since we now have the full Power Mode result
-        // This prevents duplicate history entries
         if let rawId = rawTranscriptionRecordId {
             settings.removeTranscription(id: rawId)
         }
@@ -612,13 +860,11 @@ final class ShareImportViewModel: ObservableObject {
 
     // MARK: - Power Mode Helpers
 
-    /// Power Modes that accept shared audio files
-    /// Only shows Power Modes with the shareAudioImport input action enabled
-    /// Falls back to all active Power Modes if none have shareAudioImport
+    /// Power Modes that accept the current content type
     var availablePowerModes: [PowerMode] {
-        let sharingModes = settings.activePowerModes.filter { $0.acceptsSharedAudio }
-        // If no Power Modes have shareAudioImport enabled, show all active Power Modes
-        return sharingModes.isEmpty ? settings.activePowerModes : sharingModes
+        let acceptingModes = settings.activePowerModes.filter { $0.acceptsContentType(contentType) }
+        // If no Power Modes have this content type enabled, show all active Power Modes
+        return acceptingModes.isEmpty ? settings.activePowerModes : acceptingModes
     }
 
     // MARK: - Output Action Helpers
@@ -638,16 +884,19 @@ final class ShareImportViewModel: ObservableObject {
     // MARK: - Cleanup
 
     func cleanup() {
-        // Remove the shared audio file
-        if let audioURL = audioFileURL {
-            try? FileManager.default.removeItem(at: audioURL)
+        // Remove the shared content file
+        if let contentURL = contentFileURL {
+            try? FileManager.default.removeItem(at: contentURL)
         }
 
         // Clear pending share from UserDefaults
         let userDefaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
-        userDefaults?.removeObject(forKey: Constants.ShareExtension.pendingShareKey)
-        userDefaults?.removeObject(forKey: Constants.ShareExtension.originalFilenameKey)
-        userDefaults?.removeObject(forKey: Constants.ShareExtension.timestampKey)
+        userDefaults?.removeObject(forKey: ShareContentConstants.pendingShareKey)
+        userDefaults?.removeObject(forKey: ShareContentConstants.contentTypeKey)
+        userDefaults?.removeObject(forKey: ShareContentConstants.originalFilenameKey)
+        userDefaults?.removeObject(forKey: ShareContentConstants.timestampKey)
+        userDefaults?.removeObject(forKey: ShareContentConstants.sourceURLKey)
+        userDefaults?.removeObject(forKey: ShareContentConstants.textContentKey)
     }
 
     // MARK: - Computed Properties
@@ -662,30 +911,53 @@ final class ShareImportViewModel: ObservableObject {
         state == .transcribing
     }
 
+    var isExtracting: Bool {
+        state == .extracting
+    }
+
     var isProcessing: Bool {
         state == .processing
     }
 
     var canProcess: Bool {
-        selectedPowerMode != nil && !transcribedText.isEmpty
+        selectedPowerMode != nil && !extractedText.isEmpty
+    }
+
+    // Button text based on content type
+    var extractButtonText: String {
+        switch contentType {
+        case .audio: return "Transcribe Audio"
+        case .text: return "Process Text"
+        case .image: return "Extract Text (OCR)"
+        case .url: return "Fetch & Extract"
+        case .pdf: return "Extract from PDF"
+        }
+    }
+
+    var extractButtonIcon: String {
+        switch contentType {
+        case .audio: return "waveform.badge.mic"
+        case .text: return "doc.text"
+        case .image: return "text.viewfinder"
+        case .url: return "globe"
+        case .pdf: return "doc.richtext"
+        }
     }
 
     // MARK: - Context Helpers
 
-    /// The currently selected context (nil = no context)
     var selectedContext: ConversationContext? {
         guard let id = selectedContextId else { return nil }
         return settings.contexts.first { $0.id == id }
     }
 
-    /// Available contexts for the picker
     var availableContexts: [ConversationContext] {
         settings.contexts
     }
 
-    /// Whether the selected transcription provider supports diarization
+    /// Whether the selected transcription provider supports diarization (audio only)
     var supportsDiarization: Bool {
-        // Check if AssemblyAI is the selected provider
+        guard contentType == .audio else { return false }
         let transcriptionOverride = selectedPowerMode?.transcriptionProviderOverride
         if let override = transcriptionOverride {
             return override.providerType == .cloud(.assemblyAI)

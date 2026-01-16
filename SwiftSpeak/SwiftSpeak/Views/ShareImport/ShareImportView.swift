@@ -2,7 +2,8 @@
 //  ShareImportView.swift
 //  SwiftSpeak
 //
-//  UI for importing shared audio files and processing through Power Mode
+//  UI for importing shared content and processing through Power Mode
+//  Supports: Audio, Text, Images (OCR), URLs (web fetch), PDFs
 //  Called from Share Extension via URL scheme
 //
 
@@ -14,14 +15,14 @@ struct ShareImportView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.dismiss) private var dismiss
 
-    init(shareId: String) {
-        _viewModel = StateObject(wrappedValue: ShareImportViewModel(shareId: shareId))
+    init(shareId: String, contentType: SharedContentType? = nil) {
+        _viewModel = StateObject(wrappedValue: ShareImportViewModel(shareId: shareId, contentType: contentType))
     }
 
     var body: some View {
         NavigationStack {
             content
-                .navigationTitle("Import Audio")
+                .navigationTitle(navigationTitle)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
@@ -35,6 +36,16 @@ struct ShareImportView: View {
         .preferredColorScheme(.dark)
     }
 
+    private var navigationTitle: String {
+        switch viewModel.contentType {
+        case .audio: return "Import Audio"
+        case .text: return "Import Text"
+        case .image: return "Import Image"
+        case .url: return "Import URL"
+        case .pdf: return "Import PDF"
+        }
+    }
+
     @ViewBuilder
     private var content: some View {
         switch viewModel.state {
@@ -43,6 +54,9 @@ struct ShareImportView: View {
 
         case .ready:
             powerModeSelectionView
+
+        case .extracting:
+            extractingView
 
         case .transcribing:
             transcribingView
@@ -67,7 +81,7 @@ struct ShareImportView: View {
         VStack(spacing: 16) {
             ProgressView()
                 .scaleEffect(1.5)
-            Text("Loading audio file...")
+            Text("Loading content...")
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -79,8 +93,8 @@ struct ShareImportView: View {
     private var powerModeSelectionView: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Audio file info card
-                audioInfoCard
+                // Content info card
+                contentInfoCard
 
                 // Context selection (optional)
                 contextSection
@@ -88,14 +102,14 @@ struct ShareImportView: View {
                 // Power Mode selection
                 powerModeSection
 
-                // Diarization toggle (when AssemblyAI is selected)
+                // Diarization toggle (when AssemblyAI is selected for audio)
                 if viewModel.supportsDiarization {
                     diarizationSection
                 }
 
-                // Transcribe button
+                // Extract/Transcribe button
                 if viewModel.selectedPowerMode != nil {
-                    transcribeButton
+                    extractButton
                 }
             }
             .padding()
@@ -103,25 +117,31 @@ struct ShareImportView: View {
         .background(AppTheme.darkBase.ignoresSafeArea())
     }
 
-    private var audioInfoCard: some View {
+    private var contentInfoCard: some View {
         VStack(spacing: 12) {
             HStack(spacing: 12) {
-                Image(systemName: "waveform")
+                Image(systemName: viewModel.contentType.icon)
                     .font(.title2)
-                    .foregroundStyle(Color.red)
+                    .foregroundStyle(contentTypeColor)
                     .frame(width: 44, height: 44)
-                    .background(Color.red.opacity(0.15))
+                    .background(contentTypeColor.opacity(0.15))
                     .clipShape(RoundedRectangle(cornerRadius: 10))
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(viewModel.audioFileName)
+                    Text(viewModel.contentFileName)
                         .font(.headline)
                         .lineLimit(1)
 
-                    if viewModel.audioDuration > 0 {
+                    // Content-type specific info
+                    if viewModel.contentType == .audio && viewModel.audioDuration > 0 {
                         Text("Duration: \(viewModel.formattedDuration)")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
+                    } else if let preview = viewModel.contentPreview {
+                        Text(preview)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
                     }
                 }
 
@@ -131,6 +151,16 @@ struct ShareImportView: View {
         .padding()
         .background(AppTheme.darkElevated)
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium))
+    }
+
+    private var contentTypeColor: Color {
+        switch viewModel.contentType {
+        case .audio: return .red
+        case .text: return .blue
+        case .image: return .purple
+        case .url: return .green
+        case .pdf: return .orange
+        }
     }
 
     // MARK: - Context Section
@@ -311,10 +341,10 @@ struct ShareImportView: View {
 
                 Spacer()
 
-                // Show info if filtering by share audio
+                // Show info if filtering by content type
                 if !viewModel.availablePowerModes.isEmpty &&
                    viewModel.availablePowerModes.count < settings.activePowerModes.count {
-                    Text("Showing \(viewModel.availablePowerModes.count) with audio import")
+                    Text("Showing \(viewModel.availablePowerModes.count) with \(viewModel.contentType.displayName) import")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -349,26 +379,88 @@ struct ShareImportView: View {
         }
     }
 
-    private var transcribeButton: some View {
+    private var extractButton: some View {
         Button(action: {
             Task {
-                await viewModel.startTranscription()
+                await viewModel.startExtraction()
             }
         }) {
             HStack {
-                Image(systemName: "waveform.badge.mic")
-                Text("Transcribe Audio")
+                Image(systemName: viewModel.extractButtonIcon)
+                Text(viewModel.extractButtonText)
             }
             .font(.headline)
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(Color.red)
+            .background(contentTypeColor)
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium))
         }
     }
 
-    // MARK: - Transcribing View
+    // MARK: - Extracting View (for Image, URL, PDF)
+
+    private var extractingView: some View {
+        VStack(spacing: 32) {
+            Spacer()
+
+            // Animated icon
+            ZStack {
+                Circle()
+                    .fill(contentTypeColor.opacity(0.1))
+                    .frame(width: 120, height: 120)
+
+                Circle()
+                    .fill(contentTypeColor.opacity(0.2))
+                    .frame(width: 90, height: 90)
+
+                Image(systemName: viewModel.extractButtonIcon)
+                    .font(.system(size: 40))
+                    .foregroundStyle(contentTypeColor)
+                    .symbolEffect(.pulse, options: .repeating)
+            }
+
+            // Status
+            VStack(spacing: 8) {
+                Text(viewModel.extractionStatus)
+                    .font(.title3.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                if let modeName = viewModel.selectedPowerMode?.name {
+                    Text("Power Mode: \(modeName)")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Progress indicator
+            ProgressView()
+                .scaleEffect(1.2)
+
+            // Content info
+            VStack(spacing: 4) {
+                Text(viewModel.contentFileName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                Text(viewModel.contentType.displayName)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 12)
+            .background(AppTheme.darkElevated.opacity(0.5))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            Spacer()
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.darkBase.ignoresSafeArea())
+    }
+
+    // MARK: - Transcribing View (for Audio)
 
     private var transcribingView: some View {
         VStack(spacing: 32) {
@@ -437,7 +529,7 @@ struct ShareImportView: View {
 
             // Audio file info
             VStack(spacing: 4) {
-                Text(viewModel.audioFileName)
+                Text(viewModel.contentFileName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -469,8 +561,8 @@ struct ShareImportView: View {
     private var outputSelectionView: some View {
         ScrollView {
             VStack(spacing: 24) {
-                // Transcription preview
-                transcriptionPreview
+                // Extracted content preview
+                extractedContentPreview
 
                 // Output actions selection
                 outputActionsSection
@@ -483,12 +575,20 @@ struct ShareImportView: View {
         .background(AppTheme.darkBase.ignoresSafeArea())
     }
 
-    private var transcriptionPreview: some View {
+    private var extractedContentPreview: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Transcription")
-                .font(.headline)
+            HStack {
+                Text(viewModel.contentType == .audio ? "Transcription" : "Extracted Text")
+                    .font(.headline)
 
-            Text(viewModel.transcribedText)
+                Spacer()
+
+                Text("\(viewModel.extractedText.split(separator: " ").count) words")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Text(viewModel.extractedText)
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
@@ -767,6 +867,6 @@ private struct OutputActionRow: View {
 // MARK: - Preview
 
 #Preview {
-    ShareImportView(shareId: "test-id")
+    ShareImportView(shareId: "test-id", contentType: .text)
         .environmentObject(SharedSettings.shared)
 }
