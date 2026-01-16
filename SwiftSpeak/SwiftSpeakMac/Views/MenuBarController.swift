@@ -337,6 +337,13 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         languageItem.submenu = languageSubmenu
         menu?.addItem(languageItem)
 
+        // Arabizi output option (Franco-Arabic)
+        let arabiziItem = NSMenuItem(title: "Franco-Arabic Output",
+                                     action: #selector(toggleArabizi),
+                                     keyEquivalent: "")
+        arabiziItem.target = self
+        menu?.addItem(arabiziItem)
+
         menu?.addItem(.separator())
 
         // ==================== INPUT LANGUAGE SECTION ====================
@@ -442,6 +449,14 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         // Register default hotkey (Cmd+Shift+D)
         try? hotkeyManager.registerDefaultHotkeys()
 
+        // SPIKE: Register test context capture hotkey (Cmd+Shift+T)
+        let testHotkey = HotkeyCombination(
+            keyCode: 0x11, // 't' key
+            modifiers: UInt(NSEvent.ModifierFlags.command.rawValue | NSEvent.ModifierFlags.shift.rawValue),
+            displayString: "⌘⇧T"
+        )
+        try? hotkeyManager.registerHotkey(testHotkey, for: .testContextCapture)
+
         // Register global power mode hotkey if configured
         if let globalHotkey = settings.globalPowerModeHotkey {
             try? hotkeyManager.registerHotkey(globalHotkey, for: .openPowerModeOverlay)
@@ -496,6 +511,9 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             case .transcribePushToTalk:
                 // Open transcribe overlay in push-to-talk mode
                 self?.openTranscribeOverlay(mode: .pushToTalk, context: context)
+            case .testContextCapture:
+                // SPIKE: Show captured context in notification for testing
+                self?.showContextCaptureTest(context: context)
             }
         }
 
@@ -545,6 +563,14 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
                     item.state = (item.representedObject as? Language) == language ? .on : .off
                 }
             }
+        }
+    }
+
+    @objc private func toggleArabizi() {
+        settings.outputArabizi.toggle()
+        // Update menu item state
+        if let item = menu?.item(withTitle: "Franco-Arabic Output") {
+            item.state = settings.outputArabizi ? .on : .off
         }
     }
 
@@ -997,12 +1023,13 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         showOverlayWithContext(
             powerMode: powerMode,
             windowContext: preCapturedWindowContext,
-            clipboard: preCapturedClipboard
+            clipboard: preCapturedClipboard,
+            sourcePid: capturedPid
         )
     }
 
     /// Internal method to show overlay after context is captured
-    private func showOverlayWithContext(powerMode: PowerMode, windowContext: WindowContext?, clipboard: String?) {
+    private func showOverlayWithContext(powerMode: PowerMode, windowContext: WindowContext?, clipboard: String?, sourcePid: pid_t = 0) {
         // Create overlay controller lazily
         if powerModeOverlayController == nil {
             let obsidianService = MacObsidianQueryService(settings: settings)
@@ -1024,7 +1051,8 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         powerModeOverlayController?.showOverlay(
             for: powerMode,
             windowContext: windowContext,
-            clipboard: clipboard
+            clipboard: clipboard,
+            sourcePid: sourcePid
         )
     }
 
@@ -1136,6 +1164,82 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         )
 
         UNUserNotificationCenter.current().add(request)
+    }
+
+    // MARK: - Context Capture Test (SPIKE)
+
+    /// SPIKE: Log captured context - NO ALERT to avoid focus issues
+    private func showContextCaptureTest(context: HotkeyContext) {
+        // Just log everything - no alert, no focus stealing
+        print("")
+        print("╔══════════════════════════════════════════════════════════════╗")
+        print("║            CONTEXT CAPTURE TEST (⌘⇧T) - NO ALERT             ║")
+        print("╠══════════════════════════════════════════════════════════════╣")
+        print("║ App: \(context.frontmostAppName)")
+        print("║ Bundle: \(context.frontmostAppBundleId)")
+        print("║ PID: \(context.frontmostAppPid)")
+        print("║ Window Title: \(context.windowTitle ?? "(none)")")
+        print("║ Selected Text: \(context.selectedText?.prefix(100) ?? "(none)")")
+        print("╚══════════════════════════════════════════════════════════════╝")
+        print("")
+
+        // Try accessibility capture in background (no UI)
+        Task {
+            let (granted, diagnostics) = await windowContextService.checkAccessibilityWithDiagnostics()
+            print("[SPIKE ASYNC] Permission diagnostics:")
+            print(diagnostics)
+
+            if granted && context.frontmostAppPid > 0 {
+                print("[SPIKE ASYNC] Trying capture from PID \(context.frontmostAppPid)...")
+
+                // Try standard capture
+                do {
+                    let windowContext = try await windowContextService.captureWindowContext(
+                        from: context.frontmostAppPid,
+                        bundleId: context.frontmostAppBundleId,
+                        appName: context.frontmostAppName
+                    )
+                    print("[SPIKE ASYNC] Standard capture result:")
+                    print("  - Selected: \(windowContext.selectedText?.prefix(100) ?? "nil")")
+                    print("  - Visible: \(windowContext.visibleText?.prefix(100) ?? "nil")")
+                } catch {
+                    print("[SPIKE ASYNC] Standard capture error: \(error)")
+                }
+
+                // Try deep traversal (full window)
+                print("[SPIKE ASYNC] Trying deep AX tree traversal (ALL text)...")
+                if let deepText = await windowContextService.captureAllVisibleText(from: context.frontmostAppPid) {
+                    print("[SPIKE ASYNC] Deep traversal SUCCESS:")
+                    print("  \(deepText.prefix(500))")
+                } else {
+                    print("[SPIKE ASYNC] Deep traversal: no text found")
+                }
+
+                // Try targeted conversation capture (filters sidebar, targets active chat)
+                print("[SPIKE ASYNC] Trying TARGETED conversation capture...")
+                if let convText = await windowContextService.captureActiveConversation(from: context.frontmostAppPid, contactName: nil) {
+                    print("[SPIKE ASYNC] ✅ CONVERSATION (no filter):")
+                    print("  \(convText.prefix(800))")
+                }
+
+                // Try with contact filter (e.g., "Meligee")
+                print("[SPIKE ASYNC] Trying conversation with contact filter 'Meligee'...")
+                if let filteredText = await windowContextService.captureActiveConversation(from: context.frontmostAppPid, contactName: "Meligee") {
+                    print("[SPIKE ASYNC] ✅ FILTERED CONVERSATION (Meligee):")
+                    print("  \(filteredText)")
+                } else {
+                    print("[SPIKE ASYNC] No messages matching 'Meligee' found")
+                }
+
+                // Dump accessibility tree structure (limited depth)
+                print("[SPIKE ASYNC] Dumping accessibility tree structure...")
+                await windowContextService.dumpAccessibilityTree(from: context.frontmostAppPid, maxDepth: 6)
+            }
+
+            print("")
+            print("═══════════════════ END SPIKE TEST ═══════════════════")
+            print("")
+        }
     }
 }
 
@@ -1572,7 +1676,7 @@ struct ProvidersSettingsTab: View {
 
                         Divider().padding(.horizontal, 12)
 
-                        // Apple Intelligence
+                        // Apple Intelligence - clickable to toggle enable/disable
                         LocalModelRow(
                             title: "Apple Intelligence",
                             icon: "apple.logo",
@@ -1584,7 +1688,13 @@ struct ProvidersSettingsTab: View {
                             statusText: settings.appleIntelligenceConfig.isAvailable
                                 ? (settings.appleIntelligenceConfig.isEnabled ? "Enabled" : "Disabled")
                                 : "Unavailable",
-                            capabilities: settings.appleIntelligenceConfig.isAvailable ? ["Formatting", "Power Mode"] : []
+                            capabilities: settings.appleIntelligenceConfig.isAvailable ? ["Formatting", "Power Mode"] : [],
+                            isEnabled: settings.appleIntelligenceConfig.isEnabled,
+                            onToggle: settings.appleIntelligenceConfig.isAvailable ? {
+                                var config = settings.appleIntelligenceConfig
+                                config.isEnabled.toggle()
+                                settings.appleIntelligenceConfig = config
+                            } : nil
                         )
                     }
                     .background(Color.primary.opacity(0.03))
@@ -1952,9 +2062,11 @@ private struct LocalModelRow: View {
     let isAvailable: Bool
     let statusText: String
     let capabilities: [String]
+    var isEnabled: Bool = true
+    var onToggle: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 12) {
+        let content = HStack(spacing: 12) {
             // Icon
             ZStack {
                 Circle()
@@ -1970,13 +2082,13 @@ private struct LocalModelRow: View {
                     Text(title)
                         .font(.callout.weight(.medium))
 
-                    // Status badge
+                    // Status badge - different colors for enabled/disabled/unavailable
                     Text(statusText)
                         .font(.caption2)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
-                        .background(isAvailable ? Color.green.opacity(0.15) : Color.orange.opacity(0.15))
-                        .foregroundStyle(isAvailable ? .green : .orange)
+                        .background(statusBadgeBackground)
+                        .foregroundStyle(statusBadgeColor)
                         .clipShape(Capsule())
                 }
 
@@ -2001,9 +2113,41 @@ private struct LocalModelRow: View {
             }
 
             Spacer()
+
+            // Toggle indicator when available and toggleable
+            if isAvailable && onToggle != nil {
+                Image(systemName: isEnabled ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isEnabled ? .green : .secondary)
+                    .font(.title2)
+            }
         }
         .padding(12)
         .opacity(isAvailable ? 1.0 : 0.6)
+
+        // Make clickable if toggleable
+        if let toggle = onToggle, isAvailable {
+            Button(action: toggle) {
+                content
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+        } else {
+            content
+        }
+    }
+
+    private var statusBadgeBackground: Color {
+        if !isAvailable {
+            return Color.orange.opacity(0.15)
+        }
+        return isEnabled ? Color.green.opacity(0.15) : Color.gray.opacity(0.15)
+    }
+
+    private var statusBadgeColor: Color {
+        if !isAvailable {
+            return .orange
+        }
+        return isEnabled ? .green : .secondary
     }
 }
 
@@ -2846,6 +2990,12 @@ struct GeneralSettingsTab: View {
                     set: { if $0 { settings.selectedDictationLanguage = nil } else { settings.selectedDictationLanguage = .english } }
                 ))
                 .help("When enabled, Whisper will automatically detect the spoken language. Disable for more accurate transcription.")
+
+                // Arabizi option (only for Arabic languages)
+                if settings.shouldShowArabiziOption {
+                    Toggle("Franco-Arabic Output", isOn: $settings.outputArabizi)
+                        .help("Convert Arabic script to Latin letters with numbers (e.g., 3=ع, 7=ح)")
+                }
             }
 
             Toggle("Auto-return to previous app", isOn: .constant(true))

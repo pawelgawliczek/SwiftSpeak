@@ -24,6 +24,14 @@ struct ContentView: View {
     @State private var swiftLinkPreselectedApp: SwiftLinkApp? = nil  // Pre-selected app from keyboard
     @State private var showSwiftLinkSetupOverlay = false  // Overlay when setting up SwiftLink for AI (legacy)
     @State private var swiftLinkSetupMessage = ""  // Dynamic message for the overlay (legacy)
+    @State private var showContextCaptureSheet = false  // Context capture picker during SwiftLink start
+    @State private var pendingSwiftLinkReturn: (() -> Void)? = nil  // Callback to return to app after context capture
+    @StateObject private var contextCaptureManager = ContextCaptureManager.shared
+
+    // Share Extension import
+    @State private var pendingShareId: String? = nil
+    @State private var pendingShareContentType: SharedContentType? = nil
+    @State private var showShareImport = false
 
     // Keyboard status tracking
     @State private var keyboardNeedsFullAccess = false
@@ -170,6 +178,26 @@ struct ContentView: View {
                 showSwiftLinkSetupOverlay = false
             }
         }
+        // Context capture sheet during SwiftLink start
+        .sheet(isPresented: $showContextCaptureSheet) {
+            ContextCaptureSheet {
+                // Called when user completes or skips context capture
+                pendingSwiftLinkReturn?()
+                pendingSwiftLinkReturn = nil
+            }
+            .presentationDetents([.medium])
+        }
+        // Share Extension import sheet
+        .sheet(isPresented: $showShareImport) {
+            if let shareId = pendingShareId {
+                ShareImportView(shareId: shareId, contentType: pendingShareContentType)
+                    .environmentObject(settings)
+                    .onDisappear {
+                        pendingShareId = nil
+                        pendingShareContentType = nil
+                    }
+            }
+        }
         } // Close VStack
     }
 
@@ -291,20 +319,40 @@ struct ContentView: View {
                             if let returnURL = URL(string: returnURLString) {
                                 appLog("SwiftLink auto-started, returning to: \(returnURLString)", category: "SwiftLink")
 
-                                // Use completion handler to detect if open failed
-                                await withCheckedContinuation { continuation in
-                                    UIApplication.shared.open(returnURL) { success in
-                                        if success {
-                                            appLog("Successfully returned to \(name)", category: "SwiftLink")
-                                        } else {
-                                            appLog("Failed to open \(returnURLString) - showing return button", category: "SwiftLink", level: .warning)
-                                            // Fall back to showing the quick-start sheet with return button
-                                            DispatchQueue.main.async {
-                                                self.swiftLinkPreselectedApp = targetApp
-                                                self.showSwiftLinkQuickStart = true
+                                // Check if context capture is enabled and not already capturing
+                                let shouldShowContextCapture = settings.contextCaptureEnabled && !contextCaptureManager.isCapturing
+
+                                if shouldShowContextCapture {
+                                    // Show context capture sheet first, then return to app
+                                    appLog("Showing context capture sheet before returning", category: "ContextCapture")
+                                    await MainActor.run {
+                                        pendingSwiftLinkReturn = {
+                                            UIApplication.shared.open(returnURL) { success in
+                                                if success {
+                                                    appLog("Successfully returned to \(name) after context capture", category: "SwiftLink")
+                                                } else {
+                                                    appLog("Failed to open \(returnURLString) after context capture", category: "SwiftLink", level: .warning)
+                                                }
                                             }
                                         }
-                                        continuation.resume()
+                                        showContextCaptureSheet = true
+                                    }
+                                } else {
+                                    // No context capture needed - return immediately
+                                    await withCheckedContinuation { continuation in
+                                        UIApplication.shared.open(returnURL) { success in
+                                            if success {
+                                                appLog("Successfully returned to \(name)", category: "SwiftLink")
+                                            } else {
+                                                appLog("Failed to open \(returnURLString) - showing return button", category: "SwiftLink", level: .warning)
+                                                // Fall back to showing the quick-start sheet with return button
+                                                DispatchQueue.main.async {
+                                                    self.swiftLinkPreselectedApp = targetApp
+                                                    self.showSwiftLinkQuickStart = true
+                                                }
+                                            }
+                                            continuation.resume()
+                                        }
                                     }
                                 }
                             }
@@ -353,6 +401,20 @@ struct ContentView: View {
                 appLog("SwiftLink toggle: showing quick start", category: "SwiftLink")
                 swiftLinkPreselectedApp = nil
                 showSwiftLinkQuickStart = true
+            }
+            return
+        }
+
+        // Handle Share Extension import
+        if url.host == Constants.URLHosts.share {
+            if let fileId = queryItems.first(where: { $0.name == "file" })?.value {
+                // Parse content type (default to audio for backward compatibility)
+                let typeString = queryItems.first(where: { $0.name == "type" })?.value ?? "audio"
+                let contentType = SharedContentType(rawValue: typeString) ?? .audio
+                appLog("Share Extension import requested (type: \(typeString), fileId: \(fileId))", category: "Navigation")
+                pendingShareId = fileId
+                pendingShareContentType = contentType
+                showShareImport = true
             }
             return
         }
@@ -466,19 +528,39 @@ struct ContentView: View {
                             urlScheme: scheme
                         )
 
+                        // Check if context capture is enabled but not active
+                        let shouldShowContextCapture = settings.contextCaptureEnabled && !contextCaptureManager.isCapturing
+
                         // Start SwiftLink session with target app
                         _ = try await SwiftLinkSessionManager.shared.startSession(targetApp: targetApp)
                         appLog("SwiftLink session started for \(name)", category: "SwiftLink")
 
-                        // Return to source app
+                        // Return to source app (after showing context capture if needed)
                         let returnURLString = scheme.contains("://") ? scheme : "\(scheme)://"
                         if let returnURL = URL(string: returnURLString) {
-                            await MainActor.run {
-                                UIApplication.shared.open(returnURL) { success in
-                                    if success {
-                                        appLog("Returned to \(name) - ready for SwiftLink dictation", category: "SwiftLink")
-                                    } else {
-                                        appLog("Failed to return to \(name)", category: "SwiftLink", level: .warning)
+                            if shouldShowContextCapture {
+                                // Show context capture sheet, then return to app
+                                await MainActor.run {
+                                    pendingSwiftLinkReturn = {
+                                        UIApplication.shared.open(returnURL) { success in
+                                            if success {
+                                                appLog("Returned to \(name) after context capture prompt", category: "SwiftLink")
+                                            } else {
+                                                appLog("Failed to return to \(name)", category: "SwiftLink", level: .warning)
+                                            }
+                                        }
+                                    }
+                                    showContextCaptureSheet = true
+                                }
+                            } else {
+                                // Return directly to app
+                                await MainActor.run {
+                                    UIApplication.shared.open(returnURL) { success in
+                                        if success {
+                                            appLog("Returned to \(name) - ready for SwiftLink dictation", category: "SwiftLink")
+                                        } else {
+                                            appLog("Failed to return to \(name)", category: "SwiftLink", level: .warning)
+                                        }
                                     }
                                 }
                             }
@@ -2495,7 +2577,7 @@ struct QuickStatsCard: View {
     @EnvironmentObject var settings: SharedSettings
 
     private var totalPowerModeUsage: Int {
-        PowerMode.presets.reduce(0) { $0 + $1.usageCount }
+        settings.powerModes.reduce(0) { $0 + $1.usageCount }
     }
 
     private var totalWordCount: Int {

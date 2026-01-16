@@ -93,17 +93,18 @@ public final class OpenAITranscriptionService: TranscriptionProvider {
         }
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
-        // Smart timeout: 5s to detect stalled upload, then retry up to 2 times
-        // Processing timeout of 40s for Whisper transcription after upload succeeds
+        // Smart timeout: 30s to detect stalled upload, then retry up to 2 times
+        // Processing timeout of 120s for Whisper transcription after upload succeeds
+        // Total timeout of 300s (5 minutes) to accommodate large files on slow connections
         let text: String = try await httpClient.uploadForText(
             url: endpoint,
             fileURL: audioURL,
             fileFieldName: "file",
             fields: fields,
             headers: ["Authorization": "Bearer \(apiKey)"],
-            timeout: 50,
-            initialTimeout: 5,
-            processingTimeout: 40,
+            timeout: 300,
+            initialTimeout: 30,
+            processingTimeout: 120,
             maxRetries: 2
         )
 

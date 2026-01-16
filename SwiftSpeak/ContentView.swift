@@ -1072,7 +1072,7 @@ struct QuickStatsCard: View {
     @EnvironmentObject var settings: SharedSettings
 
     private var totalPowerModeUsage: Int {
-        PowerMode.presets.reduce(0) { $0 + $1.usageCount }
+        settings.powerModes.reduce(0) { $0 + $1.usageCount }
     }
 
     var body: some View {

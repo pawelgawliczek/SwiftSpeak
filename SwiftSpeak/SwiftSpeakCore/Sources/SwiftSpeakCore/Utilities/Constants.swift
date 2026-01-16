@@ -90,6 +90,7 @@ public enum Constants {
         public static let keyboardProgrammableAction = "keyboardProgrammableAction"
         public static let keyboardShowProgrammableNextToReturn = "keyboardShowProgrammableNextToReturn"
         public static let keyboardReturnProgrammableAction = "keyboardReturnProgrammableAction"
+        public static let keyboardQuickActions = "keyboardQuickActions"
 
         // SwiftLink: Background Dictation Sessions
         public static let swiftLinkApps = "swiftLinkApps"
@@ -175,6 +176,21 @@ public enum Constants {
         public static let swiftlinkToggle = "swiftlink-toggle"
         public static let setup = "setup"
         public static let pending = "pending"
+        public static let share = "share"  // Share Extension import
+    }
+
+    // MARK: - Share Extension
+    public enum ShareExtension {
+        /// Directory in App Group container for shared audio files
+        public static let sharedAudioDirectory = "shared_audio"
+        /// Key for pending share audio file ID in UserDefaults
+        public static let pendingShareKey = "pendingShareAudioId"
+        /// Key for original filename of shared audio
+        public static let originalFilenameKey = "shareOriginalFilename"
+        /// Key for share timestamp
+        public static let timestampKey = "shareTimestamp"
+        /// Bundle ID for Share Extension
+        public static let bundleId = "pawelgawliczek.SwiftSpeak.SwiftSpeakShare"
     }
 
     // MARK: - SwiftLink Darwin Notifications

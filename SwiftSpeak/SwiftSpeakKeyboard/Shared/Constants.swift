@@ -89,6 +89,7 @@ enum Constants {
         static let keyboardProgrammableAction = "keyboardProgrammableAction"
         static let keyboardShowProgrammableNextToReturn = "keyboardShowProgrammableNextToReturn"
         static let keyboardReturnProgrammableAction = "keyboardReturnProgrammableAction"
+        static let keyboardQuickActions = "keyboardQuickActions"
 
         // SwiftLink: Background Dictation Sessions
         static let swiftLinkApps = "swiftLinkApps"

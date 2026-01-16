@@ -26,6 +26,9 @@ protocol ProviderFactoryProtocol {
 
     /// Create formatting provider using effective provider (respects context overrides)
     func createEffectiveFormattingProvider() -> FormattingProvider?
+
+    /// Create transcription provider for a specific provider selection
+    func createTranscriptionProvider(for selection: ProviderSelection) -> TranscriptionProvider?
 }
 
 // MARK: - ProviderFactory Conformance

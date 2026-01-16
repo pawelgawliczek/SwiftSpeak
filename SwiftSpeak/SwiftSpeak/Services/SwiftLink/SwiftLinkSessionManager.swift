@@ -357,8 +357,9 @@ final class SwiftLinkSessionManager: ObservableObject {
 
                 // Connect to streaming service with vocabulary and instructions
                 let settings = SharedSettings.shared
-                // Refresh context from UserDefaults in case keyboard changed it
-                settings.refreshActiveContextFromDefaults()
+                // Refresh all settings from UserDefaults in case keyboard changed them
+                // This picks up language, context, mode, Arabizi changes made by keyboard
+                settings.refreshFromDefaults()
                 // DEBUG: Log context state at dictation start
                 appLog("SwiftLink dictation: activeContextId=\(settings.activeContextId?.uuidString.prefix(8) ?? "nil"), activeContext='\(settings.activeContext?.name ?? "nil")'", category: "Context", level: .debug)
                 let vocabularyPrompt = self.buildVocabularyPrompt(settings: settings)
@@ -927,8 +928,9 @@ final class SwiftLinkSessionManager: ObservableObject {
             // Determine if we need formatting:
             // 1. Custom template selected
             // 2. Mode is not raw
-            // 3. Context is active with content (memory, tone, instructions)
-            let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasContent
+            // 3. Context has formatting config (examples, instructions, memory)
+            // Note: vocabularyWords are for STT hints only, not for LLM formatting
+            let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasFormatting || promptContext.hasMemory
 
             if needsFormatting {
                 if let formattingProvider = providerFactory.createSelectedTextFormattingProvider() {
@@ -1403,6 +1405,9 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         do {
             let settings = SharedSettings.shared
+            // Refresh all settings from UserDefaults in case keyboard changed them
+            // This picks up language, context, mode, Arabizi changes made by keyboard
+            settings.refreshFromDefaults()
             let providerFactory = ProviderFactory(settings: settings)
 
             // Step 1: Transcribe with effective language (context override > global)
@@ -1448,10 +1453,11 @@ final class SwiftLinkSessionManager: ObservableObject {
                 // Determine if we need formatting:
                 // 1. Custom template selected
                 // 2. Mode is not raw
-                // 3. Context is active with content (memory, tone, instructions)
-                let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasContent
+                // 3. Context has formatting config (examples, instructions, memory)
+                // Note: vocabularyWords are for STT hints only, not for LLM formatting
+                let needsFormatting = customTemplate != nil || mode != .raw || promptContext.hasFormatting || promptContext.hasMemory
 
-                print("🔗 SwiftLink: Needs formatting: \(needsFormatting), mode: \(mode.rawValue), hasContext: \(promptContext.hasContent)")
+                print("🔗 SwiftLink: Needs formatting: \(needsFormatting), mode: \(mode.rawValue), hasFormatting: \(promptContext.hasFormatting), hasMemory: \(promptContext.hasMemory)")
 
                 if needsFormatting {
                     if let formattingProvider = providerFactory.createSelectedTextFormattingProvider() {
@@ -1812,12 +1818,35 @@ final class SwiftLinkSessionManager: ObservableObject {
             contextMemory = context.contextMemory ?? ""
         }
 
+        // Get screen context if context capture is enabled and active
+        var screenContext: String? = nil
+        if settings.contextCaptureEnabled {
+            let captureManager = await MainActor.run { ContextCaptureManager.shared }
+            let isCapturing = await MainActor.run { captureManager.isCapturing }
+
+            if isCapturing {
+                appLog("Sentence prediction: Requesting fresh screen context...", category: "SwiftLink")
+                screenContext = await captureManager.requestFreshContext(timeout: 3.0)
+                if let ctx = screenContext {
+                    appLog("Sentence prediction: Got screen context (\(ctx.count) chars)", category: "SwiftLink")
+                    // Debug: Log first 300 chars of captured text to verify OCR quality
+                    let preview = ctx.count > 300 ? String(ctx.prefix(300)) + "..." : ctx
+                    appLog("Sentence prediction: Screen context preview: \(preview)", category: "SwiftLink")
+                } else {
+                    appLog("Sentence prediction: No screen context available", category: "SwiftLink", level: .warning)
+                }
+            } else {
+                appLog("Sentence prediction: Context capture enabled but not active", category: "SwiftLink")
+            }
+        }
+
         // Build the prompt
         let prompt = buildSentencePredictionPrompt(
             typingContext: typingContext,
             globalMemory: globalMemory,
             contextMemory: contextMemory,
-            contextName: activeContextName ?? ""
+            contextName: activeContextName ?? "",
+            screenContext: screenContext
         )
 
         // Get API key from configured providers
@@ -1955,7 +1984,8 @@ final class SwiftLinkSessionManager: ObservableObject {
         typingContext: String,
         globalMemory: String,
         contextMemory: String,
-        contextName: String
+        contextName: String,
+        screenContext: String? = nil
     ) -> String {
         var systemContext = ""
 
@@ -1971,19 +2001,49 @@ final class SwiftLinkSessionManager: ObservableObject {
             ? "The user is starting a new message."
             : "Current text: \"\(typingContext)\""
 
-        return """
-        \(systemContext)\(conversationContext)
+        // Build prompt based on whether we have screen context
+        if let screen = screenContext, !screen.isEmpty {
+            // Truncate to avoid huge prompts
+            let truncated = screen.count > 1500 ? String(screen.prefix(1500)) + "..." : screen
 
-        Generate exactly 4 natural sentence completions or responses the user might want to send next. Each should be a complete, standalone sentence that continues naturally from the context.
+            return """
+            \(systemContext)\(conversationContext)
 
-        Rules:
-        - Make sentences varied in tone and approach
-        - Keep sentences concise (under 20 words each)
-        - Make them contextually appropriate
-        - If starting fresh, provide common greeting/opener options
+            CRITICAL: The user is currently looking at the following content on their screen:
+            ---
+            \(truncated)
+            ---
 
-        Respond with exactly 4 sentences, one per line, no numbering or bullets.
-        """
+            Your predictions MUST be directly relevant to what the user is looking at. For example:
+            - If they're looking at a chat conversation, predict replies to that conversation
+            - If they're looking at an email, predict responses or follow-ups
+            - If they're looking at a document, predict comments or edits related to it
+            - If they're looking at social media, predict reactions or replies to the posts
+
+            Generate exactly 4 natural sentences the user might want to type. Each sentence should:
+            1. Be DIRECTLY related to the screen content they're viewing
+            2. Be a complete, ready-to-send message
+            3. Be concise (under 20 words)
+            4. Offer a varied approach (question, statement, acknowledgment, etc.)
+
+            Respond with exactly 4 sentences, one per line, no numbering or bullets.
+            """
+        } else {
+            // No screen context - use original prompt
+            return """
+            \(systemContext)\(conversationContext)
+
+            Generate exactly 4 natural sentence completions or responses the user might want to send next. Each should be a complete, standalone sentence that continues naturally from the context.
+
+            Rules:
+            - Make sentences varied in tone and approach
+            - Keep sentences concise (under 20 words each)
+            - Make them contextually appropriate
+            - If starting fresh, provide common greeting/opener options
+
+            Respond with exactly 4 sentences, one per line, no numbering or bullets.
+            """
+        }
     }
 
     /// Call AI API for sentence predictions
@@ -2003,7 +2063,7 @@ final class SwiftLinkSessionManager: ObservableObject {
             body = [
                 "model": "gpt-4o-mini",
                 "messages": [
-                    ["role": "system", "content": "You are a helpful assistant that predicts what the user wants to type next. Be concise and natural."],
+                    ["role": "system", "content": "You are a helpful assistant that predicts what the user wants to type next based on their current context. When screen content is provided, your predictions MUST be directly relevant to what the user is viewing. Be concise and natural."],
                     ["role": "user", "content": prompt]
                 ],
                 "max_tokens": 200,
@@ -2023,7 +2083,7 @@ final class SwiftLinkSessionManager: ObservableObject {
                 "messages": [
                     ["role": "user", "content": prompt]
                 ],
-                "system": "You are a helpful assistant that predicts what the user wants to type next. Be concise and natural."
+                "system": "You are a helpful assistant that predicts what the user wants to type next based on their current context. When screen content is provided, your predictions MUST be directly relevant to what the user is viewing. Be concise and natural."
             ]
 
         case .google:

@@ -68,6 +68,12 @@ final class MockProviderFactory: ProviderFactoryProtocol {
         createSelectedTextFormattingProvider()
     }
 
+    func createTranscriptionProvider(for selection: ProviderSelection) -> TranscriptionProvider? {
+        // In tests, return the mock provider regardless of selection
+        createTranscriptionProviderCallCount += 1
+        return mockTranscriptionProvider
+    }
+
     // MARK: - Test Helpers
 
     func reset() {
