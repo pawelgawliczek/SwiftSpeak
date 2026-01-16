@@ -220,7 +220,8 @@ struct RecordingOverlayView: View {
             // Translation toggle with language picker
             TranslationToggleCircle(
                 isEnabled: $viewModel.isTranslationEnabled,
-                selectedLanguage: $viewModel.targetLanguage
+                selectedLanguage: $viewModel.targetLanguage,
+                settings: settings
             )
 
             // Context picker
@@ -436,8 +437,14 @@ extension Language {
 struct TranslationToggleCircle: View {
     @Binding var isEnabled: Bool
     @Binding var selectedLanguage: Language
+    @ObservedObject var settings: MacSettings
 
     @State private var isHovering = false
+
+    /// Whether to show Arabizi option (only for Arabic languages)
+    private var shouldShowArabiziOption: Bool {
+        selectedLanguage == .arabic || selectedLanguage == .egyptianArabic
+    }
 
     var body: some View {
         Menu {
@@ -459,6 +466,21 @@ struct TranslationToggleCircle: View {
                         Text("\(language.flag) \(language.displayName)")
                         Spacer()
                         if isEnabled && selectedLanguage == language {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            }
+
+            // Arabizi option (only for Arabic languages)
+            if shouldShowArabiziOption {
+                Divider()
+
+                Button(action: { settings.outputArabizi.toggle() }) {
+                    HStack {
+                        Label("Franco-Arabic Output", systemImage: "character.textbox")
+                        Spacer()
+                        if settings.outputArabizi {
                             Image(systemName: "checkmark")
                         }
                     }

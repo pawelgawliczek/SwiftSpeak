@@ -14,6 +14,7 @@ import Combine
 public enum PermissionType: String, CaseIterable, Sendable {
     case microphone
     case accessibility
+    case screenRecording
 }
 
 public enum PermissionStatus: String, Sendable {
@@ -37,6 +38,7 @@ public final class MacPermissionManager: PermissionManagerProtocol, ObservableOb
 
     @Published private(set) public var microphoneStatus: PermissionStatus = .notDetermined
     @Published private(set) public var accessibilityStatus: PermissionStatus = .notDetermined
+    @Published private(set) public var screenRecordingStatus: PermissionStatus = .notDetermined
 
     public init() {
         checkAllPermissions()
@@ -50,6 +52,8 @@ public final class MacPermissionManager: PermissionManagerProtocol, ObservableOb
             return checkMicrophonePermission()
         case .accessibility:
             return checkAccessibilityPermission()
+        case .screenRecording:
+            return checkScreenRecordingPermission()
         }
     }
 
@@ -62,6 +66,8 @@ public final class MacPermissionManager: PermissionManagerProtocol, ObservableOb
             // Open System Preferences instead
             openSystemPreferences(for: .accessibility)
             return false
+        case .screenRecording:
+            return requestScreenRecordingPermission()
         }
     }
 
@@ -72,6 +78,8 @@ public final class MacPermissionManager: PermissionManagerProtocol, ObservableOb
             urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
         case .accessibility:
             urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        case .screenRecording:
+            urlString = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
         }
 
         if let url = URL(string: urlString) {
@@ -127,11 +135,52 @@ public final class MacPermissionManager: PermissionManagerProtocol, ObservableOb
         return accessibilityStatus == .authorized
     }
 
+    // MARK: - Screen Recording Permission
+
+    private func checkScreenRecordingPermission() -> PermissionStatus {
+        // CGPreflightScreenCaptureAccess checks without prompting
+        let hasAccess = CGPreflightScreenCaptureAccess()
+        screenRecordingStatus = hasAccess ? .authorized : .denied
+        return screenRecordingStatus
+    }
+
+    private func requestScreenRecordingPermission() -> Bool {
+        // CGRequestScreenCaptureAccess triggers system prompt (only shows once)
+        // After first prompt, user must manually enable in System Preferences
+        let granted = CGRequestScreenCaptureAccess()
+        screenRecordingStatus = granted ? .authorized : .denied
+
+        // If not granted, the system has shown the prompt once
+        // User needs to go to System Preferences to enable
+        return granted
+    }
+
+    /// Prompt for screen recording permission
+    /// Note: The system only shows the prompt once. After that, user must
+    /// manually enable in System Preferences > Privacy & Security > Screen Recording
+    public func promptForScreenRecordingPermission() {
+        if !CGPreflightScreenCaptureAccess() {
+            // This triggers the system prompt (only once per app)
+            _ = CGRequestScreenCaptureAccess()
+
+            // Refresh status after prompting
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                _ = self?.checkScreenRecordingPermission()
+            }
+        }
+    }
+
+    /// Check if screen recording is enabled (convenience for services)
+    public var isScreenRecordingEnabled: Bool {
+        return screenRecordingStatus == .authorized
+    }
+
     // MARK: - Helpers
 
     private func checkAllPermissions() {
         _ = checkMicrophonePermission()
         _ = checkAccessibilityPermission()
+        _ = checkScreenRecordingPermission()
     }
 
     /// Refresh all permission statuses

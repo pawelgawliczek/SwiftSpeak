@@ -391,7 +391,7 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
             let appName = frontmostApp?.localizedName ?? ""
             let clipboard = NSPasteboard.general.string(forType: .string)
 
-            // CRITICAL: Capture selected text by simulating Cmd+C
+            // Capture selected text by simulating Cmd+C
             // This is the reliable method used by Alfred, Raycast, etc.
             // Accessibility APIs fail because focus shifts even in synchronous callbacks
             var selectedText: String?
@@ -419,26 +419,30 @@ final class MacHotkeyManager: HotkeyManagerProtocol, ObservableObject {
             // Read the copied text
             if let copiedText = NSPasteboard.general.string(forType: .string), !copiedText.isEmpty {
                 selectedText = String(copiedText.prefix(5000))
-                print("[HOTKEY] Captured selected text via Cmd+C: \(copiedText.prefix(50))...")
-
-                // Restore original clipboard
-                if let original = originalClipboard {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(original, forType: .string)
-                }
-            } else {
-                print("[HOTKEY] No text was selected (Cmd+C returned empty)")
-                // Restore original clipboard
-                if let original = originalClipboard {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(original, forType: .string)
-                }
             }
 
-            // DEBUG: Print to Xcode console
-            print("[HOTKEY CALLBACK] Captured app: \(appName) (PID: \(pid), bundle: \(bundleId))")
-            print("[HOTKEY CALLBACK] Selected text: \(selectedText?.prefix(50) ?? "nil")")
-            print("[HOTKEY CALLBACK] Thread: \(Thread.isMainThread ? "MAIN" : "BACKGROUND")")
+            // Restore original clipboard
+            if let original = originalClipboard {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(original, forType: .string)
+            }
+
+            // Capture window title via Accessibility API
+            if AXIsProcessTrusted() {
+                let sysWide = AXUIElementCreateSystemWide()
+                var focusedRef: CFTypeRef?
+                if AXUIElementCopyAttributeValue(sysWide, kAXFocusedApplicationAttribute as CFString, &focusedRef) == .success,
+                   let focusedApp = focusedRef {
+                    var windowRef: CFTypeRef?
+                    if AXUIElementCopyAttributeValue(focusedApp as! AXUIElement, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
+                       let window = windowRef {
+                        var titleRef: CFTypeRef?
+                        if AXUIElementCopyAttributeValue(window as! AXUIElement, kAXTitleAttribute as CFString, &titleRef) == .success {
+                            windowTitle = titleRef as? String
+                        }
+                    }
+                }
+            }
 
             let capturedContext = HotkeyContext(
                 frontmostAppPid: pid,

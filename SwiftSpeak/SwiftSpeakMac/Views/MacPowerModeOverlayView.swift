@@ -27,7 +27,7 @@ struct MacPowerModeOverlayView: View {
 
             // Content (changes based on state)
             contentView
-                .frame(minHeight: 250, maxHeight: 600)
+                .frame(minHeight: 250, maxHeight: 800)  // Increased to accommodate expanded suggestions
                 .animation(.easeInOut(duration: 0.3), value: viewModel.state)
 
             // Error banner (if any)
@@ -44,8 +44,144 @@ struct MacPowerModeOverlayView: View {
         .background(overlayBackground)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
-        .task {
-            await viewModel.loadContext()
+        // Note: loadContext() is called from MacPowerModeOverlayController.showOverlay()
+        // Keyboard event handling via NSEvent monitor
+        .background(
+            KeyboardEventMonitor(
+                onArrowUp: { viewModel.handleArrowUp() },
+                onArrowDown: { viewModel.handleArrowDown() },
+                onArrowLeft: { viewModel.handleArrowLeft() },
+                onArrowRight: { viewModel.handleArrowRight() },
+                onReturn: {
+                    if viewModel.selectedSuggestionIndex != nil {
+                        Task {
+                            let success = await viewModel.insertSelectedSuggestion()
+                            if success {
+                                onClose()
+                            }
+                        }
+                        return true
+                    }
+                    return false
+                },
+                onKeyR: {
+                    if viewModel.quickSuggestionsEnabled {
+                        Task {
+                            await viewModel.regenerateQuickSuggestions()
+                        }
+                        return true
+                    }
+                    return false
+                },
+                isActive: viewModel.state == .contextPreview
+            )
+        )
+    }
+
+    // MARK: - Keyboard Event Monitor (NSEvent-based)
+
+    private struct KeyboardEventMonitor: NSViewRepresentable {
+        let onArrowUp: () -> Void
+        let onArrowDown: () -> Void
+        let onArrowLeft: () -> Void
+        let onArrowRight: () -> Void
+        let onReturn: () -> Bool  // Returns true if handled
+        let onKeyR: () -> Bool    // Returns true if handled
+        let isActive: Bool
+
+        func makeNSView(context: Context) -> NSView {
+            let view = KeyboardCaptureView()
+            view.coordinator = context.coordinator
+            return view
+        }
+
+        func updateNSView(_ nsView: NSView, context: Context) {
+            // Update all callbacks and state when view updates
+            context.coordinator.onArrowUp = onArrowUp
+            context.coordinator.onArrowDown = onArrowDown
+            context.coordinator.onArrowLeft = onArrowLeft
+            context.coordinator.onArrowRight = onArrowRight
+            context.coordinator.onReturn = onReturn
+            context.coordinator.onKeyR = onKeyR
+            context.coordinator.isActive = isActive
+        }
+
+        func makeCoordinator() -> Coordinator {
+            Coordinator()
+        }
+
+        class Coordinator {
+            var onArrowUp: () -> Void = {}
+            var onArrowDown: () -> Void = {}
+            var onArrowLeft: () -> Void = {}
+            var onArrowRight: () -> Void = {}
+            var onReturn: () -> Bool = { false }
+            var onKeyR: () -> Bool = { false }
+            var isActive: Bool = false
+        }
+
+        class KeyboardCaptureView: NSView {
+            var coordinator: Coordinator?
+            private var eventMonitor: Any?
+
+            override var acceptsFirstResponder: Bool { true }
+
+            override func viewDidMoveToWindow() {
+                super.viewDidMoveToWindow()
+                if window != nil {
+                    setupEventMonitor()
+                } else {
+                    removeEventMonitor()
+                }
+            }
+
+            private func setupEventMonitor() {
+                removeEventMonitor()
+                eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                    guard let self = self, let coordinator = self.coordinator, coordinator.isActive else {
+                        return event
+                    }
+
+                    switch event.keyCode {
+                    case 126: // Up Arrow
+                        coordinator.onArrowUp()
+                        return nil
+                    case 125: // Down Arrow
+                        coordinator.onArrowDown()
+                        return nil
+                    case 123: // Left Arrow
+                        coordinator.onArrowLeft()
+                        return nil
+                    case 124: // Right Arrow
+                        coordinator.onArrowRight()
+                        return nil
+                    case 36: // Return
+                        if coordinator.onReturn() {
+                            return nil
+                        }
+                    case 15: // R key
+                        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+                            if coordinator.onKeyR() {
+                                return nil
+                            }
+                        }
+                    default:
+                        break
+                    }
+                    return event
+                }
+            }
+
+            private func removeEventMonitor() {
+                if let monitor = eventMonitor {
+                    NSEvent.removeMonitor(monitor)
+                    eventMonitor = nil
+                }
+            }
+
+            deinit {
+                removeEventMonitor()
+            }
         }
     }
 
@@ -56,14 +192,13 @@ struct MacPowerModeOverlayView: View {
             // Power Mode selector with icon and name
             if viewModel.state == .contextPreview && viewModel.availablePowerModes.count > 1 {
                 HStack(spacing: 8) {
-                    Button(action: { viewModel.cycleToPreviousPowerMode() }) {
+                    Button(action: { viewModel.handleArrowLeft() }) {
                         Image(systemName: "chevron.left")
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(viewModel.navigationMode == .powerMode ? .primary : .tertiary)
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
-                    .keyboardShortcut(.leftArrow, modifiers: [])
 
                     // Icon + Name
                     HStack(spacing: 10) {
@@ -80,15 +215,25 @@ struct MacPowerModeOverlayView: View {
                             .font(.headline)
                     }
 
-                    Button(action: { viewModel.cycleToNextPowerMode() }) {
+                    Button(action: { viewModel.handleArrowRight() }) {
                         Image(systemName: "chevron.right")
                             .font(.body.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(viewModel.navigationMode == .powerMode ? .primary : .tertiary)
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
-                    .keyboardShortcut(.rightArrow, modifiers: [])
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(viewModel.navigationMode == .powerMode ? Color.accentColor.opacity(0.15) : Color.clear)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(viewModel.navigationMode == .powerMode ? Color.accentColor.opacity(0.5) : Color.clear, lineWidth: 2)
+                )
+                .animation(.easeInOut(duration: 0.15), value: viewModel.navigationMode)
             } else {
                 // Static icon + name (no cycling)
                 HStack(spacing: 10) {
@@ -108,14 +253,46 @@ struct MacPowerModeOverlayView: View {
 
             Spacer()
 
-            // State indicator
-            Text(stateDescription)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.primary.opacity(0.05))
-                .clipShape(Capsule())
+            // SwiftSpeak Context selector (click or press C to cycle)
+            if viewModel.state == .contextPreview {
+                Button(action: { viewModel.cycleToNextContext() }) {
+                    HStack(spacing: 6) {
+                        if let ctx = viewModel.activeContext {
+                            // Show context icon (emoji or SF Symbol)
+                            if ctx.icon.first?.isEmoji == true {
+                                Text(ctx.icon)
+                                    .font(.caption)
+                            } else {
+                                Image(systemName: ctx.icon)
+                                    .font(.caption)
+                            }
+                            Text(ctx.name)
+                                .font(.caption)
+                        } else {
+                            Image(systemName: "person.circle")
+                                .font(.caption)
+                            Text("Context")
+                                .font(.caption)
+                        }
+                    }
+                    .foregroundStyle(viewModel.activeContext != nil ? .purple : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(viewModel.activeContext != nil ? Color.purple.opacity(0.15) : Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help("Press C to cycle through contexts")
+            } else {
+                // State indicator for non-contextPreview states
+                Text(stateDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(Capsule())
+            }
 
             // Close button
             Button(action: onClose) {
@@ -158,6 +335,11 @@ struct MacPowerModeOverlayView: View {
     private var contextPreviewView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                // QUICK SUGGESTIONS (shown at top when available)
+                if viewModel.quickSuggestionsEnabled {
+                    quickSuggestionsSection
+                }
+
                 // INPUT SECTION
                 inputSection
 
@@ -175,6 +357,258 @@ struct MacPowerModeOverlayView: View {
             }
             .padding(.vertical, 16)
         }
+    }
+
+    // MARK: - Quick Suggestions Section
+
+    private var quickSuggestionsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: "sparkles")
+                    .foregroundStyle(.cyan)
+                    .font(.caption)
+                Text("Quick Replies")
+                    .font(.caption.weight(.semibold))
+
+                Spacer()
+
+                if !viewModel.quickSuggestions.isEmpty {
+                    Text("↑↓ to select, ↩︎ to send")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+
+            // Prediction input field
+            predictionInputField
+                .padding(.horizontal, 16)
+
+            if viewModel.isGeneratingSuggestions || viewModel.isRegeneratingSuggestion {
+                // Currently generating suggestions
+                HStack {
+                    ProgressView()
+                        .scaleEffect(0.6)
+                    Text("Analyzing conversation...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+            } else if let error = viewModel.suggestionsError {
+                // Error generating suggestions (e.g., model refused)
+                HStack {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Retry") {
+                        Task { await viewModel.regenerateQuickSuggestions() }
+                    }
+                    .font(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.blue)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+            } else if viewModel.quickSuggestions.isEmpty {
+                // No suggestions available (no context text captured)
+                HStack {
+                    Image(systemName: "text.bubble")
+                        .foregroundStyle(.tertiary)
+                    Text("Select text for suggestions, or press R to generate")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .padding(.horizontal, 16)
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(Array(viewModel.quickSuggestions.enumerated()), id: \.element.id) { index, suggestion in
+                        quickSuggestionRow(suggestion: suggestion, index: index)
+                    }
+                }
+                .padding(.horizontal, 12)
+            }
+
+            Divider()
+                .padding(.horizontal, 16)
+                .padding(.top, 4)
+        }
+    }
+
+    // MARK: - Prediction Input Field
+
+    /// Text field for steering predictions
+    /// - Empty: normal predictions
+    /// - Starts with "CMD ": instruction mode (e.g., "CMD summarize and decline")
+    /// - Otherwise: use as prefix/start of response
+    private var predictionInputField: some View {
+        HStack(spacing: 8) {
+            // Mode indicator
+            if viewModel.isCommandMode {
+                Text("CMD")
+                    .font(.caption.monospaced().weight(.bold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.orange.opacity(0.2))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+            } else if !viewModel.predictionInputText.isEmpty {
+                Image(systemName: "text.cursor")
+                    .font(.caption)
+                    .foregroundStyle(.cyan)
+            }
+
+            // Text field with space handler
+            PredictionTextField(
+                placeholder: viewModel.isCommandMode ? "Enter instruction..." : "Start typing or CMD to instruct...",
+                text: $viewModel.predictionInputText,
+                isFocused: $viewModel.isInputFieldFocused,
+                onSpacePressed: {
+                    viewModel.handlePredictionInputSpace()
+                }
+            )
+            .font(.callout)
+
+            // Clear button
+            if !viewModel.predictionInputText.isEmpty {
+                Button(action: {
+                    viewModel.clearPredictionInput()
+                }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(viewModel.isCommandMode ? Color.orange.opacity(0.1) :
+                          viewModel.navigationMode == .inputField ? Color.cyan.opacity(0.1) :
+                          Color.primary.opacity(0.05))
+                if viewModel.isCommandMode {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.orange.opacity(0.3), lineWidth: 1)
+                } else if viewModel.navigationMode == .inputField {
+                    RoundedRectangle(cornerRadius: 8)
+                        .strokeBorder(Color.cyan.opacity(0.5), lineWidth: 1)
+                }
+            }
+        )
+    }
+
+    /// Custom text field that triggers callback on space press
+    private struct PredictionTextField: View {
+        let placeholder: String
+        @Binding var text: String
+        @Binding var isFocused: Bool
+        let onSpacePressed: () -> Void
+
+        @State private var previousText: String = ""
+        @FocusState private var fieldFocused: Bool
+
+        var body: some View {
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.plain)
+                .focused($fieldFocused)
+                .onChange(of: isFocused) { shouldFocus in
+                    fieldFocused = shouldFocus
+                }
+                .onChange(of: fieldFocused) { nowFocused in
+                    // Sync back to viewModel when user clicks in/out
+                    if isFocused != nowFocused {
+                        isFocused = nowFocused
+                    }
+                }
+                .onChange(of: text) { newValue in
+                    // Trigger regeneration on space press (if we added a space)
+                    if newValue.hasSuffix(" ") && !previousText.hasSuffix(" ") && newValue.count > previousText.count {
+                        onSpacePressed()
+                    }
+                    previousText = newValue
+                }
+                .onAppear {
+                    previousText = text
+                }
+        }
+    }
+
+    private func quickSuggestionRow(suggestion: QuickSuggestion, index: Int) -> some View {
+        let isSelected = viewModel.selectedSuggestionIndex == index
+        let isRegenerating = isSelected && viewModel.isRegeneratingSuggestion
+
+        return Button(action: {
+            viewModel.selectSuggestion(at: index)
+        }) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 10) {
+                    // Type indicator
+                    Image(systemName: suggestion.type.icon)
+                        .font(.caption)
+                        .foregroundStyle(suggestion.type.color)
+                        .frame(width: 20)
+
+                    // Suggestion text (or loading indicator)
+                    if isRegenerating {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                            Text("Regenerating...")
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        // Show full text when selected, truncated when not
+                        Text(suggestion.text)
+                            .font(.callout)
+                            .foregroundStyle(isSelected ? .primary : .secondary)
+                            .lineLimit(isSelected ? nil : 2)  // Expand when selected
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: isSelected)  // Allow vertical expansion
+                    }
+
+                    Spacer(minLength: 8)
+
+                    // Hints when selected (compact, on same line)
+                    if isSelected && !isRegenerating {
+                        HStack(spacing: 8) {
+                            Text("← shorter")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                            Text("longer →")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+
+                            Image(systemName: "return")
+                                .font(.caption)
+                                .foregroundStyle(.cyan)
+                        }
+                        .layoutPriority(1)  // Prevent hints from being compressed
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isSelected ? Color.cyan.opacity(0.15) : Color.primary.opacity(0.03))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? Color.cyan.opacity(0.5) : Color.clear, lineWidth: 2)
+            )
+            .animation(.easeInOut(duration: 0.15), value: isSelected)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Input Section
@@ -1139,8 +1573,18 @@ struct MacPowerModeOverlayView: View {
             // Keyboard hints
             if viewModel.state == .contextPreview {
                 HStack(spacing: 12) {
-                    keyboardHint(key: "↑↓ / ←→", action: "Switch Mode")
-                    keyboardHint(key: "↩︎", action: "Start")
+                    if viewModel.quickSuggestionsEnabled && !viewModel.quickSuggestions.isEmpty {
+                        keyboardHint(key: "↑↓", action: "Suggestions")
+                        keyboardHint(key: "←→", action: viewModel.navigationMode == .powerMode ? "Mode" : "Size")
+                        if viewModel.navigationMode == .powerMode {
+                            keyboardHint(key: "C", action: "Context")
+                        }
+                        keyboardHint(key: "↩︎", action: viewModel.selectedSuggestionIndex != nil ? "Send" : "Record")
+                    } else {
+                        keyboardHint(key: "←→", action: "Switch Mode")
+                        keyboardHint(key: "C", action: "Context")
+                        keyboardHint(key: "↩︎", action: "Start")
+                    }
                     keyboardHint(key: "Esc", action: "Cancel")
                 }
                 .font(.caption)

@@ -62,7 +62,8 @@ final class MacPowerModeOverlayController: NSObject {
     ///   - powerMode: The Power Mode to execute
     ///   - windowContext: Optional pre-captured window context
     ///   - clipboard: Optional pre-captured clipboard content
-    public func showOverlay(for powerMode: PowerMode, windowContext: WindowContext? = nil, clipboard: String? = nil) {
+    ///   - sourcePid: Optional PID of source app for async text capture
+    public func showOverlay(for powerMode: PowerMode, windowContext: WindowContext? = nil, clipboard: String? = nil, sourcePid: pid_t = 0) {
         // Store the currently active application before showing overlay
         previousApp = NSWorkspace.shared.frontmostApplication
 
@@ -83,7 +84,7 @@ final class MacPowerModeOverlayController: NSObject {
         )
 
         // Set pre-captured context (captured before overlay opens)
-        newViewModel.setPreCapturedContext(windowContext: windowContext, clipboard: clipboard)
+        newViewModel.setPreCapturedContext(windowContext: windowContext, clipboard: clipboard, sourcePid: sourcePid)
 
         viewModel = newViewModel
 
@@ -121,6 +122,11 @@ final class MacPowerModeOverlayController: NSObject {
 
         // Setup keyboard monitoring
         setupKeyboardMonitoring()
+
+        // Explicitly load context (in case .task doesn't re-run on rootView replacement)
+        Task { @MainActor in
+            await newViewModel.loadContext()
+        }
     }
 
     /// Hide the overlay
@@ -259,15 +265,33 @@ final class MacPowerModeOverlayController: NSObject {
                     return nil
                 }
 
-            case 123, 126: // Left Arrow (123) or Up Arrow (126) - Previous power mode
+            case 126: // Up Arrow - Navigate up (power mode or predictions)
                 if self.viewModel?.state == .contextPreview {
-                    self.viewModel?.cycleToPreviousPowerMode()
+                    self.viewModel?.handleArrowUp()
                     return nil
                 }
 
-            case 124, 125: // Right Arrow (124) or Down Arrow (125) - Next power mode
+            case 125: // Down Arrow - Navigate down (power mode or predictions)
                 if self.viewModel?.state == .contextPreview {
-                    self.viewModel?.cycleToNextPowerMode()
+                    self.viewModel?.handleArrowDown()
+                    return nil
+                }
+
+            case 123: // Left Arrow - Previous power mode or shorter suggestion
+                if self.viewModel?.state == .contextPreview {
+                    self.viewModel?.handleArrowLeft()
+                    return nil
+                }
+
+            case 124: // Right Arrow - Next power mode or longer suggestion
+                if self.viewModel?.state == .contextPreview {
+                    self.viewModel?.handleArrowRight()
+                    return nil
+                }
+
+            case 8: // C key - Cycle through SwiftSpeak Contexts (when in power mode row)
+                if self.viewModel?.state == .contextPreview && self.viewModel?.navigationMode == .powerMode {
+                    self.viewModel?.cycleToNextContext()
                     return nil
                 }
 

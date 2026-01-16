@@ -43,8 +43,12 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     // ScreenCaptureKit
     private var stream: SCStream?
     private var streamOutput: SystemAudioStreamOutput?
+    private var videoOutput: DummyVideoStreamOutput?  // Suppress "stream output NOT found" errors
     private var targetApplication: AudioApplication?
     private var isStreamCapturing = false  // Track stream state to avoid double-stop errors
+    /// Dedicated queue for SCStream audio callbacks - must be serial and retained
+    private let systemAudioQueue = DispatchQueue(label: "com.swiftspeak.systemAudio", qos: .userInteractive)
+    private let systemVideoQueue = DispatchQueue(label: "com.swiftspeak.systemVideo", qos: .utility)
 
     // Single-source fallback state
     private var singleSourceMode = false
@@ -100,10 +104,15 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         audioEngine?.stop()
         audioEngine = nil
 
-        // Stop and remove stream output before stopping stream
+        // Stop and remove stream outputs before stopping stream
         if #available(macOS 13.0, *) {
-            if let stream = stream, let output = streamOutput {
-                try? stream.removeStreamOutput(output, type: .audio)
+            if let stream = stream {
+                if let output = streamOutput {
+                    try? stream.removeStreamOutput(output, type: .audio)
+                }
+                if let video = videoOutput {
+                    try? stream.removeStreamOutput(video, type: .screen)
+                }
             }
             // Only stop if actually capturing
             if isStreamCapturing {
@@ -113,6 +122,7 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
         stream = nil
         streamOutput = nil
+        videoOutput = nil
 
         // Close all files
         microphoneFile = nil
@@ -231,10 +241,15 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         audioEngine?.stop()
         audioEngine = nil
 
-        // Remove stream output before stopping to prevent callbacks to deallocated handler
+        // Remove stream outputs before stopping to prevent callbacks to deallocated handler
         if #available(macOS 13.0, *) {
-            if let stream = stream, let output = streamOutput {
-                try? stream.removeStreamOutput(output, type: .audio)
+            if let stream = stream {
+                if let output = streamOutput {
+                    try? stream.removeStreamOutput(output, type: .audio)
+                }
+                if let video = videoOutput {
+                    try? stream.removeStreamOutput(video, type: .screen)
+                }
             }
             // Only stop if actually capturing
             if isStreamCapturing {
@@ -244,6 +259,7 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
         stream = nil
         streamOutput = nil
+        videoOutput = nil
 
         _currentDuration = currentDuration
 
@@ -285,7 +301,8 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
 
         // Clean up auto-save backups (recording succeeded)
-        cleanupBackups()
+        // DISABLED: Keep backups for debugging until dual-source audio is fixed
+        // cleanupBackups()
 
         return url
     }
@@ -433,10 +450,15 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         audioEngine?.stop()
         audioEngine = nil
 
-        // Remove stream output before stopping to prevent callbacks to deallocated handler
+        // Remove stream outputs before stopping to prevent callbacks to deallocated handler
         if #available(macOS 13.0, *) {
-            if let stream = stream, let output = streamOutput {
-                try? stream.removeStreamOutput(output, type: .audio)
+            if let stream = stream {
+                if let output = streamOutput {
+                    try? stream.removeStreamOutput(output, type: .audio)
+                }
+                if let video = videoOutput {
+                    try? stream.removeStreamOutput(video, type: .screen)
+                }
             }
             // Only stop if actually capturing
             if isStreamCapturing {
@@ -446,6 +468,7 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
         stream = nil
         streamOutput = nil
+        videoOutput = nil
 
         _currentDuration = currentDuration
 
@@ -480,7 +503,8 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
 
         // Clean up auto-save backups (recording succeeded)
-        cleanupBackups()
+        // DISABLED: Keep backups for debugging until dual-source audio is fixed
+        // cleanupBackups()
 
         return DualSourceRecordingResult(
             microphoneURL: micURL,
@@ -616,27 +640,25 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
     private func setupSystemAudioCapture(targetApp: AudioApplication?) async throws {
         let content = try await SCShareableContent.current
 
+        macLog("Setting up system audio capture, apps available: \(content.applications.count)", category: "DualAudioRecorder", level: .debug)
+
         // Find target app or capture all system audio
         let filter: SCContentFilter
         if let target = targetApp,
            let app = content.applications.first(where: { "\($0.processID)" == target.id }) {
-            // Capture specific app's audio - find windows belonging to this app
-            let appWindows = content.windows.filter { $0.owningApplication?.processID == app.processID }
-            if let firstWindow = appWindows.first {
-                filter = SCContentFilter(desktopIndependentWindow: firstWindow)
-            } else {
-                // Fallback to display-based capture for this app
-                filter = SCContentFilter(
-                    display: content.displays.first!,
-                    including: [app],
-                    exceptingWindows: []
-                )
-            }
+            macLog("Capturing audio from specific app: \(app.applicationName)", category: "DualAudioRecorder", level: .info)
+            // Capture specific app's audio using display-based filter (more reliable for audio)
+            filter = SCContentFilter(
+                display: content.displays.first!,
+                including: [app],
+                exceptingWindows: []
+            )
         } else {
             // Capture all system audio (excluding our app)
             let excludedApps = content.applications.filter {
                 $0.bundleIdentifier == Bundle.main.bundleIdentifier
             }
+            macLog("Capturing all system audio, excluding \(excludedApps.count) apps", category: "DualAudioRecorder", level: .info)
             filter = SCContentFilter(
                 display: content.displays.first!,
                 excludingApplications: excludedApps,
@@ -644,22 +666,21 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
             )
         }
 
-        // Configure stream for audio only
+        // Configure stream for audio capture
         let config = SCStreamConfiguration()
         config.capturesAudio = true
         config.excludesCurrentProcessAudio = true
         config.sampleRate = 16000
         config.channelCount = 1
 
-        // We don't need video
+        // Minimal video settings (required even for audio-only capture)
         config.width = 2
         config.height = 2
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)  // 1 fps minimum
+        config.showsCursor = false
+        config.queueDepth = 3  // Allow some buffering
 
-        // Create stream
-        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
-
-        // Create output handler
+        // Create output handler FIRST (must be retained)
         let output = SystemAudioStreamOutput { [weak self] buffer in
             Task { [weak self] in
                 await self?.processSystemAudioBuffer(buffer)
@@ -667,11 +688,39 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
         }
         self.streamOutput = output
 
-        try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: .global(qos: .userInteractive))
-
-        try await stream.startCapture()
+        // Create stream with delegate for error reporting
+        let stream = SCStream(filter: filter, configuration: config, delegate: nil)
         self.stream = stream
-        self.isStreamCapturing = true
+
+        // Add output handlers to stream using dedicated serial queues
+        // IMPORTANT: Must use dedicated retained queues, not .global()
+        do {
+            // Add audio output handler
+            try stream.addStreamOutput(output, type: .audio, sampleHandlerQueue: systemAudioQueue)
+            macLog("Added audio stream output with dedicated queue", category: "DualAudioRecorder", level: .debug)
+
+            // Add dummy video output handler to suppress "stream output NOT found" errors
+            let dummyVideo = DummyVideoStreamOutput()
+            self.videoOutput = dummyVideo
+            try stream.addStreamOutput(dummyVideo, type: .screen, sampleHandlerQueue: systemVideoQueue)
+            macLog("Added video stream output (dummy) to suppress errors", category: "DualAudioRecorder", level: .debug)
+        } catch {
+            macLog("Failed to add stream output: \(error)", category: "DualAudioRecorder", level: .error)
+            throw error
+        }
+
+        // Start capture
+        do {
+            try await stream.startCapture()
+            self.isStreamCapturing = true
+            macLog("System audio capture started successfully", category: "DualAudioRecorder", level: .info)
+        } catch {
+            macLog("Failed to start system audio capture: \(error)", category: "DualAudioRecorder", level: .error)
+            // Clean up on failure
+            self.stream = nil
+            self.streamOutput = nil
+            throw error
+        }
     }
 
     private func processMicrophoneBuffer(_ buffer: AVAudioPCMBuffer, toFile: Bool) {
@@ -809,30 +858,54 @@ public actor MacDualSourceAudioRecorder: DualSourceMeetingAudioRecorder {
 @available(macOS 13.0, *)
 private class SystemAudioStreamOutput: NSObject, SCStreamOutput {
     private let handler: (AVAudioPCMBuffer) -> Void
+    private var callbackCount = 0
+    private var lastLogTime: Date?
 
     init(handler: @escaping (AVAudioPCMBuffer) -> Void) {
         self.handler = handler
+        super.init()
+        macLog("SystemAudioStreamOutput initialized", category: "DualAudioRecorder", level: .debug)
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .audio else { return }
+        // Log first callback and periodically
+        callbackCount += 1
+        if callbackCount == 1 {
+            macLog("First SCStream callback received, type: \(type)", category: "DualAudioRecorder", level: .info)
+        } else if callbackCount % 1000 == 0 {
+            macLog("SCStream callbacks received: \(callbackCount)", category: "DualAudioRecorder", level: .debug)
+        }
+
+        guard type == .audio else {
+            // Log video frames being received (we don't need them but they indicate stream is working)
+            if callbackCount <= 5 {
+                macLog("Received non-audio frame type: \(type)", category: "DualAudioRecorder", level: .debug)
+            }
+            return
+        }
 
         // Convert CMSampleBuffer to AVAudioPCMBuffer
         guard let formatDescription = sampleBuffer.formatDescription,
               let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription) else {
+            macLog("Failed to get audio format description", category: "DualAudioRecorder", level: .warning)
             return
         }
 
         guard let format = AVAudioFormat(streamDescription: asbd) else {
+            macLog("Failed to create AVAudioFormat", category: "DualAudioRecorder", level: .warning)
             return
         }
 
         guard let blockBuffer = sampleBuffer.dataBuffer else {
+            macLog("No data buffer in sample", category: "DualAudioRecorder", level: .warning)
             return
         }
 
         let frameCount = CMSampleBufferGetNumSamples(sampleBuffer)
+        guard frameCount > 0 else { return }
+
         guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(frameCount)) else {
+            macLog("Failed to create PCM buffer", category: "DualAudioRecorder", level: .warning)
             return
         }
 
@@ -841,12 +914,31 @@ private class SystemAudioStreamOutput: NSObject, SCStreamOutput {
         // Copy audio data
         var dataPointer: UnsafeMutablePointer<Int8>?
         var length: Int = 0
-        CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
+        let status = CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
 
-        if let source = dataPointer, let destination = pcmBuffer.floatChannelData?[0] {
-            memcpy(destination, source, length)
+        guard status == noErr, let source = dataPointer, length > 0 else {
+            macLog("Failed to get block buffer data: \(status)", category: "DualAudioRecorder", level: .warning)
+            return
+        }
+
+        // Copy data based on format
+        if let destination = pcmBuffer.floatChannelData?[0] {
+            memcpy(destination, source, min(length, Int(pcmBuffer.frameCapacity) * MemoryLayout<Float>.size))
+        } else if let destination = pcmBuffer.int16ChannelData?[0] {
+            memcpy(destination, source, min(length, Int(pcmBuffer.frameCapacity) * MemoryLayout<Int16>.size))
         }
 
         handler(pcmBuffer)
+    }
+}
+
+// MARK: - Dummy Video Stream Output
+
+/// Dummy SCStreamOutput handler for video frames
+/// Only exists to suppress "stream output NOT found" errors - does nothing with the frames
+@available(macOS 13.0, *)
+private class DummyVideoStreamOutput: NSObject, SCStreamOutput {
+    func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
+        // Intentionally empty - we just need to receive the frames to suppress errors
     }
 }
