@@ -362,14 +362,47 @@ struct MacInputActionConfigSheet: View {
 
         case .screenContext:
             VStack(alignment: .leading, spacing: 8) {
-                Text("Captures visible text from your screen using OCR")
+                Text("Captures the active window and extracts text using OCR")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                Text("Note: On macOS, window context capture via accessibility is preferred. Screen context is primarily for iOS broadcast extension.")
+                Text("For messenger apps (WhatsApp, iMessage, etc.), messages are automatically attributed to [YOU] or [OTHER] based on their position.")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 4) {
+                    Image(systemName: "lock.shield")
+                        .foregroundStyle(.green)
+                    Text("All OCR processing happens on-device")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+                }
             }
+
+        case .shareAudioImport:
+            Text("Accept audio files via Share Extension for transcription")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+        case .shareTextImport:
+            Text("Accept text content via Share Extension")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+        case .shareImageImport:
+            Text("Accept images via Share Extension with OCR text extraction")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+        case .shareURLImport:
+            Text("Accept URLs via Share Extension with content fetching")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+        case .sharePDFImport:
+            Text("Accept PDF documents via Share Extension with text extraction")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -485,6 +518,11 @@ extension InputActionType {
         case .shortcutResult: return "command.square"
         case .webhook: return "link"
         case .screenContext: return "text.viewfinder"
+        case .shareAudioImport: return "square.and.arrow.down.on.square"
+        case .shareTextImport: return "doc.text"
+        case .shareImageImport: return "photo"
+        case .shareURLImport: return "link"
+        case .sharePDFImport: return "doc.richtext"
         }
     }
 
@@ -500,6 +538,11 @@ extension InputActionType {
         case .shortcutResult: return .pink
         case .webhook: return .orange
         case .screenContext: return .cyan
+        case .shareAudioImport: return .teal
+        case .shareTextImport: return .blue
+        case .shareImageImport: return .green
+        case .shareURLImport: return .orange
+        case .sharePDFImport: return .red
         }
     }
 
@@ -524,7 +567,17 @@ extension InputActionType {
         case .webhook:
             return "Fetch data from a configured webhook"
         case .screenContext:
-            return "Capture text from screen via OCR (iOS)"
+            return "Capture active window text via OCR"
+        case .shareAudioImport:
+            return "Accept audio files via Share Extension"
+        case .shareTextImport:
+            return "Accept text content via Share Extension"
+        case .shareImageImport:
+            return "Accept images with OCR extraction"
+        case .shareURLImport:
+            return "Accept URLs with content fetching"
+        case .sharePDFImport:
+            return "Accept PDFs with text extraction"
         }
     }
 }

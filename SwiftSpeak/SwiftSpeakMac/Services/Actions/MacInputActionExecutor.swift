@@ -10,6 +10,8 @@ import Foundation
 import SwiftUI
 import AppKit
 import SwiftSpeakCore
+import Vision
+import CoreGraphics
 
 // MARK: - Mac Input Action Executor
 
@@ -191,10 +193,176 @@ final class MacInputActionExecutor {
             return await executeWebhook(action: action)
 
         case .screenContext:
-            // Screen context is primarily for iOS broadcast extension
-            // On macOS, use selectedText or window context capture instead
-            return .failure(action: action, error: "Screen context capture is an iOS feature. On macOS, use 'Selected Text' or window context capture instead.")
+            return await executeScreenContext(action: action)
+
+        case .shareAudioImport:
+            // Share Extension feature - handled via macOS Share Extension or drag-and-drop
+            return .failure(action: action, error: "Share Audio Import is handled via Share Extension or drag-and-drop")
+
+        case .shareTextImport:
+            // Share Extension feature - handled via macOS Share Extension or drag-and-drop
+            return .failure(action: action, error: "Share Text Import is handled via Share Extension or drag-and-drop")
+
+        case .shareImageImport:
+            // Share Extension feature - handled via macOS Share Extension or drag-and-drop
+            return .failure(action: action, error: "Share Image Import is handled via Share Extension or drag-and-drop")
+
+        case .shareURLImport:
+            // Share Extension feature - handled via macOS Share Extension or drag-and-drop
+            return .failure(action: action, error: "Share URL Import is handled via Share Extension or drag-and-drop")
+
+        case .sharePDFImport:
+            // Share Extension feature - handled via macOS Share Extension or drag-and-drop
+            return .failure(action: action, error: "Share PDF Import is handled via Share Extension or drag-and-drop")
         }
+    }
+
+    // MARK: - Screen Context Action (macOS)
+
+    private func executeScreenContext(action: InputAction) async -> InputActionResult {
+        // Check screen recording permission first
+        if !CGPreflightScreenCaptureAccess() {
+            // Request permission (triggers system dialog on first request)
+            let granted = CGRequestScreenCaptureAccess()
+            if !granted {
+                return .failure(
+                    action: action,
+                    error: "Screen Recording permission required. Please enable in System Preferences > Privacy & Security > Screen Recording, then restart the app."
+                )
+            }
+        }
+
+        // Capture the frontmost window as a screenshot and run OCR
+        guard let frontApp = NSWorkspace.shared.frontmostApplication else {
+            return .failure(action: action, error: "No active application found")
+        }
+
+        // Get the window list for the frontmost app
+        let windowList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+
+        // Find the frontmost window belonging to the active app
+        let appPID = frontApp.processIdentifier
+        guard let windowInfo = windowList.first(where: { info in
+            guard let pid = info[kCGWindowOwnerPID as String] as? Int32,
+                  let layer = info[kCGWindowLayer as String] as? Int else {
+                return false
+            }
+            return pid == appPID && layer == 0  // Layer 0 is normal window level
+        }),
+        let windowID = windowInfo[kCGWindowNumber as String] as? CGWindowID else {
+            return .failure(action: action, error: "Could not find active window for \(frontApp.localizedName ?? "app")")
+        }
+
+        // Capture the window as an image
+        guard let cgImage = CGWindowListCreateImage(
+            .null,
+            .optionIncludingWindow,
+            windowID,
+            [.boundsIgnoreFraming, .nominalResolution]
+        ) else {
+            return .failure(action: action, error: "Failed to capture window screenshot")
+        }
+
+        // Run OCR on the captured image
+        do {
+            let screenText = try await performOCRWithAttribution(on: cgImage)
+
+            if screenText.isEmpty {
+                return .failure(action: action, error: "No text detected on screen")
+            }
+
+            // Truncate very long content
+            let maxLength = 30000
+            let truncatedContent = screenText.count > maxLength
+                ? String(screenText.prefix(maxLength)) + "\n...[truncated]"
+                : screenText
+
+            let appName = frontApp.localizedName ?? "Unknown"
+            let header = "[Screen Context from \(appName)]\n"
+
+            return .success(action: action, content: header + truncatedContent)
+        } catch {
+            return .failure(action: action, error: "OCR failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Perform OCR on image with position-based message attribution for messengers
+    private func performOCRWithAttribution(on cgImage: CGImage) async throws -> String {
+        try await withCheckedThrowingContinuation { continuation in
+            let request = VNRecognizeTextRequest { request, error in
+                if let error = error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let observations = request.results as? [VNRecognizedTextObservation] else {
+                    continuation.resume(returning: "")
+                    return
+                }
+
+                // Extract text with position-based attribution
+                let text = self.extractTextWithAttribution(from: observations)
+                continuation.resume(returning: text)
+            }
+
+            request.recognitionLevel = .accurate
+            request.usesLanguageCorrection = true
+
+            let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+            do {
+                try handler.perform([request])
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+
+    /// Extract text with position-based message attribution for messenger apps
+    private func extractTextWithAttribution(from observations: [VNRecognizedTextObservation]) -> String {
+        // Sort observations by vertical position (top to bottom)
+        // Vision coordinates have origin at bottom-left, so higher Y = higher on screen
+        let sortedObservations = observations.sorted { $0.boundingBox.midY > $1.boundingBox.midY }
+
+        // Threshold for determining left vs right (messenger bubble position)
+        let rightThreshold: CGFloat = 0.55
+        let leftThreshold: CGFloat = 0.45
+
+        var formattedLines: [String] = []
+        var lastAttribution: String? = nil
+
+        for observation in sortedObservations {
+            guard let text = observation.topCandidates(1).first?.string,
+                  !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+
+            let midX = observation.boundingBox.midX
+
+            // Determine attribution based on horizontal position
+            let attribution: String?
+            if midX > rightThreshold {
+                attribution = "[YOU]"
+            } else if midX < leftThreshold {
+                attribution = "[OTHER]"
+            } else {
+                attribution = nil
+            }
+
+            // Only add attribution prefix when it changes
+            if let attr = attribution {
+                if attr != lastAttribution {
+                    formattedLines.append("\(attr): \(text)")
+                    lastAttribution = attr
+                } else {
+                    formattedLines.append(text)
+                }
+            } else {
+                formattedLines.append(text)
+                lastAttribution = nil
+            }
+        }
+
+        return formattedLines.joined(separator: "\n")
     }
 
     // MARK: - Memory Action

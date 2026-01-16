@@ -135,7 +135,9 @@ struct ProviderFactory {
     /// Create Apple Intelligence formatting provider
     private func createAppleIntelligenceProvider() -> FormattingProvider? {
         guard settings.isAppleIntelligenceReady else {
-            macLog("Apple Intelligence not ready", category: "ProviderFactory", level: .warning)
+            // Log detailed diagnostics
+            let config = settings.appleIntelligenceConfig
+            macLog("Apple Intelligence not ready - isAvailable: \(config.isAvailable), isEnabled: \(config.isEnabled), reason: \(config.unavailableReason ?? "none")", category: "ProviderFactory", level: .warning)
             return nil
         }
 
@@ -201,6 +203,31 @@ struct ProviderFactory {
     /// Create the currently selected formatting provider
     func createSelectedFormattingProvider() -> FormattingProvider? {
         createFormattingProvider(for: settings.selectedFormattingProvider)
+    }
+
+    /// Create formatting provider from ProviderSelection (for context overrides)
+    func createFormattingProvider(from selection: ProviderSelection) -> FormattingProvider? {
+        switch selection.providerType {
+        case .cloud(let provider):
+            return createFormattingProvider(for: provider)
+        case .local(let localType):
+            switch localType {
+            case .appleIntelligence:
+                return createAppleIntelligenceProvider()
+            case .whisperKit:
+                // WhisperKit is transcription only, not formatting
+                macLog("WhisperKit does not support formatting", category: "ProviderFactory", level: .error)
+                return nil
+            case .appleTranslation:
+                // Apple Translation is translation only, not formatting
+                macLog("Apple Translation does not support formatting", category: "ProviderFactory", level: .error)
+                return nil
+            case .ollama, .lmStudio:
+                // TODO: Implement Ollama/LM Studio formatting support
+                macLog("\(localType.displayName) formatting not yet implemented", category: "ProviderFactory", level: .error)
+                return nil
+            }
+        }
     }
 
     // MARK: - Local Provider Factory Methods

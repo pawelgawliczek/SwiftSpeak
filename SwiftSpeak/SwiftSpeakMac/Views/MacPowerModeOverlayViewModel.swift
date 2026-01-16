@@ -17,6 +17,46 @@ import SwiftSpeakCore
 /// Use shared state enum from SwiftSpeakCore
 typealias OverlayState = PowerModeExecutionState
 
+// MARK: - Quick Suggestion
+
+/// A quick reply suggestion generated from screen context
+struct QuickSuggestion: Identifiable, Equatable {
+    let id = UUID()
+    let type: SuggestionType
+    let text: String
+    let shortLabel: String
+
+    enum SuggestionType: String, CaseIterable {
+        case positive = "positive"
+        case neutral = "neutral"
+        case negative = "negative"
+
+        var icon: String {
+            switch self {
+            case .positive: return "hand.thumbsup.fill"
+            case .neutral: return "hand.raised.fill"
+            case .negative: return "hand.thumbsdown.fill"
+            }
+        }
+
+        var color: Color {
+            switch self {
+            case .positive: return .green
+            case .neutral: return .orange
+            case .negative: return .red
+            }
+        }
+
+        var label: String {
+            switch self {
+            case .positive: return "Positive"
+            case .neutral: return "Neutral"
+            case .negative: return "Decline"
+            }
+        }
+    }
+}
+
 // MARK: - Power Mode Overlay View Model
 
 @MainActor
@@ -28,6 +68,66 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
 
     /// Window context captured from active app
     @Published var windowContext: WindowContext?
+
+    // MARK: - Quick Suggestions State
+
+    /// Whether quick suggestions are enabled (global setting)
+    var quickSuggestionsEnabled: Bool {
+        settings.quickSuggestionsEnabled && !settings.quickActions.filter { $0.isEnabled }.isEmpty
+    }
+
+    /// The configured quick actions (global setting)
+    var configuredQuickActions: [QuickAction] {
+        settings.quickActions.filter { $0.isEnabled }.sorted { $0.order < $1.order }
+    }
+
+    /// Navigation mode for keyboard controls
+    enum NavigationMode {
+        case powerMode      // Left/Right cycles power modes, Down enters input field
+        case inputField     // Typing in prediction input, Down enters predictions, Up goes to power mode
+        case prediction     // Up/Down cycles predictions, Left=shorter, Right=longer
+    }
+
+    /// Current navigation mode
+    @Published var navigationMode: NavigationMode = .powerMode
+
+    /// Whether the prediction input field should be focused
+    @Published var isInputFieldFocused: Bool = false
+
+    /// Active SwiftSpeak Context (for style/formatting) - press C to cycle
+    @Published var activeContext: ConversationContext?
+
+    /// Generated quick suggestions based on screen context
+    @Published var quickSuggestions: [QuickSuggestion] = []
+
+    /// Currently selected suggestion index (nil = none selected, 0+ = selected)
+    @Published var selectedSuggestionIndex: Int? = nil
+
+    /// Input text for prediction steering
+    /// - If empty: generate predictions normally
+    /// - If starts with "CMD ": use rest as instruction to modify predictions
+    /// - Otherwise: use as prefix/start of the response
+    @Published var predictionInputText: String = ""
+
+    /// Whether the prediction input is in command mode (starts with "CMD ")
+    var isCommandMode: Bool {
+        predictionInputText.uppercased().hasPrefix("CMD ")
+    }
+
+    /// The command/instruction text (without "CMD " prefix)
+    var commandText: String {
+        guard isCommandMode else { return "" }
+        return String(predictionInputText.dropFirst(4)).trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Whether suggestions are being generated
+    @Published var isGeneratingSuggestions: Bool = false
+
+    /// Error message for suggestions (e.g., model refused)
+    @Published var suggestionsError: String?
+
+    /// Whether a specific suggestion is being regenerated (shorter/longer)
+    @Published var isRegeneratingSuggestion: Bool = false
 
     /// Obsidian search results
     @Published var obsidianResults: [ObsidianSearchResult] = []
@@ -175,6 +275,9 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         self.windowContextService = windowContextService
         self.audioRecorder = audioRecorder
 
+        // Initialize active context from settings
+        self.activeContext = settings.activeContext
+
         setupBindings()
     }
 
@@ -221,11 +324,14 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
     /// Pre-captured window context (captured before overlay shows)
     private var preCapturedWindowContext: WindowContext?
     private var preCapturedClipboard: String?
+    /// Source app PID for async text capture
+    private var sourcePid: pid_t = 0
 
     /// Set pre-captured context (call BEFORE showing overlay)
-    func setPreCapturedContext(windowContext: WindowContext?, clipboard: String?) {
+    func setPreCapturedContext(windowContext: WindowContext?, clipboard: String?, sourcePid: pid_t = 0) {
         self.preCapturedWindowContext = windowContext
         self.preCapturedClipboard = clipboard
+        self.sourcePid = sourcePid
     }
 
     /// Update visible text async (called after window text capture completes)
@@ -258,15 +364,38 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
     // MARK: - Context Loading
 
     /// Load all context sources based on Power Mode inputConfig
-    func loadContext() async {
+    /// - Parameter regenerateSuggestions: If false, skip suggestion generation (useful when cycling power modes)
+    func loadContext(regenerateSuggestions: Bool = true) async {
         let inputConfig = currentPowerMode.inputConfig
 
         // Use pre-captured window context (captured before overlay opened)
         if inputConfig.includeSelectedText || inputConfig.includeActiveAppText {
             if let preCaptured = preCapturedWindowContext {
                 windowContext = preCaptured
+                print("[CONTEXT] Pre-captured from \(preCaptured.appName), contextText empty: \(preCaptured.contextText.isEmpty), sourcePid: \(sourcePid)")
                 macLog("Using pre-captured window context from \(preCaptured.appName)", category: "PowerMode")
+
+                // If we have no text content and have source PID, try to capture visibleText async (with OCR fallback)
+                if preCaptured.contextText.isEmpty && sourcePid > 0 {
+                    print("[CONTEXT] Trying async capture from PID \(sourcePid)...")
+                    macLog("No context text, trying async capture from PID \(sourcePid) (with OCR fallback)", category: "PowerMode")
+                    if let capturedText = await windowContextService.captureAllVisibleTextWithOCRFallback(from: sourcePid, bundleId: preCaptured.appBundleId) {
+                        windowContext = WindowContext(
+                            appName: preCaptured.appName,
+                            appBundleId: preCaptured.appBundleId,
+                            windowTitle: preCaptured.windowTitle,
+                            selectedText: preCaptured.selectedText,
+                            visibleText: capturedText,
+                            capturedAt: Date()
+                        )
+                        print("[CONTEXT] Async captured: \(capturedText.prefix(100))...")
+                        macLog("Async captured visible text: \(capturedText.prefix(100))...", category: "PowerMode")
+                    } else {
+                        print("[CONTEXT] Async capture returned nil")
+                    }
+                }
             } else {
+                print("[CONTEXT] No pre-captured context!")
                 // Fallback: try to capture (won't work well since overlay is now frontmost)
                 do {
                     windowContext = try await windowContextService.captureWindowContext()
@@ -307,6 +436,42 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         } else {
             obsidianResults = []
         }
+
+        // Generate quick suggestions in background if screen context available
+        // Use contextText (visibleText OR selectedText) as fallback
+        // Only regenerate if explicitly requested (not when cycling power modes)
+        if regenerateSuggestions && quickSuggestionsEnabled && !(windowContext?.contextText.isEmpty ?? true) {
+            Task {
+                await generateQuickSuggestions()
+            }
+        }
+    }
+
+    /// Manually regenerate quick suggestions (called via "R" shortcut)
+    func regenerateQuickSuggestions() async {
+        guard quickSuggestionsEnabled && !(windowContext?.contextText.isEmpty ?? true) else { return }
+        await generateQuickSuggestions()
+    }
+
+    /// Handle space press in prediction input field - triggers regeneration
+    func handlePredictionInputSpace() {
+        // Only regenerate if there's actual content (not just spaces)
+        let trimmed = predictionInputText.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        macLog("Prediction input space pressed: '\(trimmed.prefix(50))...' (CMD mode: \(isCommandMode))", category: "PowerMode")
+
+        Task {
+            await generateQuickSuggestions()
+        }
+    }
+
+    /// Clear prediction input and regenerate fresh suggestions
+    func clearPredictionInput() {
+        predictionInputText = ""
+        Task {
+            await generateQuickSuggestions()
+        }
     }
 
     /// Load Obsidian context in background
@@ -334,6 +499,766 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
             macLog("Failed to query Obsidian: \(error)", category: "PowerMode")
             obsidianResults = []
         }
+    }
+
+    // MARK: - Navigation (Two-Mode System)
+    // Power mode row: Left/Right cycle modes, Up/Down enter quick replies
+    // Quick reply row: Up/Down cycle replies, Left=shorter, Right=longer
+
+    /// Handle arrow down: From powerMode enters predictions, in prediction mode goes to next or wraps to powerMode
+    func handleArrowDown() {
+        switch navigationMode {
+        case .powerMode:
+            // Go to input field if quick suggestions enabled
+            if quickSuggestionsEnabled {
+                navigationMode = .inputField
+                isInputFieldFocused = true
+            }
+        case .inputField:
+            // Go to predictions if we have suggestions
+            isInputFieldFocused = false
+            if !quickSuggestions.isEmpty {
+                navigationMode = .prediction
+                selectedSuggestionIndex = 0
+            } else {
+                // No suggestions - wrap back to power mode
+                navigationMode = .powerMode
+            }
+        case .prediction:
+            // Go to next suggestion or wrap to power mode
+            if let current = selectedSuggestionIndex {
+                if current < quickSuggestions.count - 1 {
+                    selectedSuggestionIndex = current + 1
+                } else {
+                    // At last suggestion - wrap back to power mode
+                    navigationMode = .powerMode
+                    selectedSuggestionIndex = nil
+                }
+            }
+        }
+    }
+
+    /// Handle arrow up: powerMode → predictions (last), prediction → input field → powerMode
+    func handleArrowUp() {
+        switch navigationMode {
+        case .powerMode:
+            // Go to last prediction (skip input field going up)
+            if quickSuggestionsEnabled && !quickSuggestions.isEmpty {
+                navigationMode = .prediction
+                selectedSuggestionIndex = quickSuggestions.count - 1
+            } else if quickSuggestionsEnabled {
+                // No suggestions but quick suggestions enabled - go to input field
+                navigationMode = .inputField
+                isInputFieldFocused = true
+            }
+        case .inputField:
+            // Go back to power mode
+            isInputFieldFocused = false
+            navigationMode = .powerMode
+        case .prediction:
+            // Go to previous suggestion or to input field
+            if let current = selectedSuggestionIndex {
+                if current > 0 {
+                    selectedSuggestionIndex = current - 1
+                } else {
+                    // At first suggestion - go to input field
+                    navigationMode = .inputField
+                    isInputFieldFocused = true
+                    selectedSuggestionIndex = nil
+                }
+            }
+        }
+    }
+
+    /// Handle arrow left: In powerMode cycles power modes, in prediction regenerates shorter
+    func handleArrowLeft() {
+        if navigationMode == .powerMode {
+            cycleToPreviousPowerMode()
+        } else {
+            // Regenerate selected suggestion shorter
+            Task {
+                await regenerateSelectedSuggestion(shorter: true)
+            }
+        }
+    }
+
+    /// Handle arrow right: In powerMode cycles power modes, in prediction regenerates longer
+    func handleArrowRight() {
+        if navigationMode == .powerMode {
+            cycleToNextPowerMode()
+        } else {
+            // Regenerate selected suggestion longer
+            Task {
+                await regenerateSelectedSuggestion(shorter: false)
+            }
+        }
+    }
+
+    /// Cycle to next SwiftSpeak Context (C key when in power mode row)
+    func cycleToNextContext() {
+        let contexts = settings.contexts
+        guard !contexts.isEmpty else { return }
+
+        if let current = activeContext,
+           let index = contexts.firstIndex(where: { $0.id == current.id }) {
+            // If at last context, cycle back to nil
+            if index == contexts.count - 1 {
+                activeContext = nil
+            } else {
+                activeContext = contexts[index + 1]
+            }
+        } else {
+            // No context selected, start with first context
+            activeContext = contexts.first
+        }
+
+        macLog("Context changed to: \(activeContext?.name ?? "None")", category: "PowerMode")
+
+        // Regenerate suggestions with new context style
+        Task {
+            await regenerateQuickSuggestions()
+        }
+    }
+
+    /// Cycle to previous SwiftSpeak Context
+    func cycleToPreviousContext() {
+        let contexts = settings.contexts
+        guard !contexts.isEmpty else { return }
+
+        if let current = activeContext,
+           let index = contexts.firstIndex(where: { $0.id == current.id }) {
+            // If at first context, cycle back to nil
+            if index == 0 {
+                activeContext = nil
+            } else {
+                activeContext = contexts[index - 1]
+            }
+        } else {
+            // No context selected, start with last context
+            activeContext = contexts.last
+        }
+
+        macLog("Context changed to: \(activeContext?.name ?? "None")", category: "PowerMode")
+
+        // Regenerate suggestions with new context style
+        Task {
+            await regenerateQuickSuggestions()
+        }
+    }
+
+    /// Regenerate the selected suggestion (shorter or longer)
+    func regenerateSelectedSuggestion(shorter: Bool) async {
+        macLog("Regenerate suggestion called: shorter=\(shorter), selectedIndex=\(selectedSuggestionIndex ?? -1)", category: "PowerMode")
+
+        guard let index = selectedSuggestionIndex,
+              quickSuggestions.indices.contains(index) else {
+            macLog("No suggestion selected for regeneration", category: "PowerMode")
+            return
+        }
+
+        guard let factory = providerFactory else {
+            macLog("No provider factory for regeneration", category: "PowerMode")
+            return
+        }
+
+        let currentSuggestion = quickSuggestions[index]
+        let screenText = windowContext?.contextText ?? ""
+        guard !screenText.isEmpty else {
+            macLog("Context text empty for regeneration", category: "PowerMode")
+            return
+        }
+
+        isRegeneratingSuggestion = true
+        defer { isRegeneratingSuggestion = false }
+
+        do {
+            // Use context-specific formatting provider if set, otherwise fall back to global
+            let provider: FormattingProvider?
+            if let contextOverride = activeContext?.formattingProviderOverride {
+                provider = factory.createFormattingProvider(from: contextOverride)
+            } else {
+                provider = factory.createSelectedFormattingProvider()
+            }
+
+            guard let provider = provider else {
+                macLog("Could not create formatting provider for regeneration", category: "PowerMode")
+                return
+            }
+
+            let currentLength = currentSuggestion.text.count
+            let targetLength = shorter
+                ? max(10, Int(Double(currentLength) * 0.8))  // 20% shorter, min 10 chars
+                : Int(Double(currentLength) * 1.2)  // 20% longer
+
+            let prompt: String
+            if shorter {
+                prompt = """
+                Shorten this text to EXACTLY \(targetLength) characters or less (currently \(currentLength) chars):
+                "\(currentSuggestion.text)"
+
+                CRITICAL: Your response MUST be shorter than the original. Remove words, simplify phrases.
+                Return ONLY the shortened text.
+                """
+            } else {
+                prompt = """
+                Expand this text to approximately \(targetLength) characters (currently \(currentLength) chars):
+                "\(currentSuggestion.text)"
+
+                Add more detail or context while keeping the same meaning and tone.
+                Return ONLY the expanded text.
+                """
+            }
+
+            macLog("Regenerating suggestion (\(shorter ? "shorter" : "longer")): \(currentLength) chars → target \(targetLength) chars", category: "PowerMode")
+
+            let revisedText = try await provider.format(
+                text: prompt,
+                mode: .raw,
+                customPrompt: "You are revising a quick reply. Return only the revised text."
+            )
+
+            // Update the suggestion in place
+            let trimmed = revisedText.trimmingCharacters(in: .whitespacesAndNewlines)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\""))  // Remove quotes if LLM added them
+            if !trimmed.isEmpty {
+                let newLength = trimmed.count
+                let changePercent = currentLength > 0 ? Int((Double(newLength - currentLength) / Double(currentLength)) * 100) : 0
+                macLog("Regenerated: \(currentLength) → \(newLength) chars (\(changePercent > 0 ? "+" : "")\(changePercent)%)", category: "PowerMode")
+                quickSuggestions[index] = QuickSuggestion(
+                    type: currentSuggestion.type,
+                    text: trimmed,
+                    shortLabel: currentSuggestion.shortLabel
+                )
+            } else {
+                macLog("Regeneration returned empty text", category: "PowerMode")
+            }
+        } catch {
+            macLog("Failed to regenerate suggestion: \(error)", category: "PowerMode")
+        }
+    }
+
+    /// Select suggestion at specific index (for click)
+    func selectSuggestion(at index: Int) {
+        guard quickSuggestions.indices.contains(index) else { return }
+        navigationMode = .prediction
+        selectedSuggestionIndex = index
+    }
+
+    /// Clear suggestion selection and return to power mode navigation
+    func clearSuggestionSelection() {
+        navigationMode = .powerMode
+        selectedSuggestionIndex = nil
+    }
+
+    /// Insert the selected suggestion text
+    func insertSelectedSuggestion() async -> Bool {
+        guard let index = selectedSuggestionIndex,
+              quickSuggestions.indices.contains(index),
+              let textInsertion = textInsertion else {
+            return false
+        }
+
+        let suggestion = quickSuggestions[index]
+        macLog("Inserting quick suggestion: \(suggestion.type.rawValue)", category: "PowerMode")
+
+        do {
+            _ = try await textInsertion.insertText(suggestion.text, replaceSelection: true)
+            return true
+        } catch {
+            macLog("Failed to insert suggestion: \(error)", category: "PowerMode")
+            errorMessage = "Failed to insert: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    /// Generate quick suggestions based on screen context and configured quick actions
+    func generateQuickSuggestions() async {
+        let actions = configuredQuickActions
+        guard !actions.isEmpty,
+              windowContext != nil,
+              let factory = providerFactory else {
+            quickSuggestions = []
+            return
+        }
+
+        // Use window context text (visibleText OR selectedText)
+        let screenText = windowContext?.contextText ?? ""
+        guard !screenText.isEmpty else {
+            macLog("No context text for predictions", category: "PowerMode")
+            quickSuggestions = []
+            return
+        }
+
+        macLog("Generating suggestions: \(screenText.count) chars, context: \(activeContext?.name ?? "None")", category: "PowerMode")
+
+        isGeneratingSuggestions = true
+        suggestionsError = nil  // Clear any previous error
+        defer { isGeneratingSuggestions = false }
+
+        // Build comprehensive context prompt (examples, formatting rules, memory, etc.)
+        let contextPrompt = buildContextPrompt(from: activeContext)
+
+        // Generate suggestions for each configured quick action
+        var suggestions: [QuickSuggestion] = []
+
+        do {
+            // Use context-specific formatting provider if set, otherwise fall back to global
+            let provider: FormattingProvider?
+            let providerName: String
+
+            if let contextOverride = activeContext?.formattingProviderOverride {
+                macLog("Using context-specific formatting provider: \(contextOverride.displayName)", category: "PowerMode")
+                provider = factory.createFormattingProvider(from: contextOverride)
+                providerName = contextOverride.displayName
+            } else {
+                macLog("Using global formatting provider: \(settings.selectedFormattingProvider.displayName)", category: "PowerMode")
+                provider = factory.createSelectedFormattingProvider()
+                providerName = settings.selectedFormattingProvider.displayName
+            }
+
+            guard let provider = provider else {
+                macLog("No formatting provider configured for \(providerName)", category: "PowerMode", level: .warning)
+                quickSuggestions = []
+                return
+            }
+
+            // Build combined prompt for all actions with full context
+            let systemPrompt = buildQuickActionsSystemPrompt(actions: actions, contextPrompt: contextPrompt)
+            let userPrompt = buildQuickActionsUserPrompt(
+                screenText: screenText,
+                appName: windowContext?.appName ?? "Unknown",
+                actions: actions
+            )
+
+            let response = try await provider.format(
+                text: userPrompt,
+                mode: .raw,
+                customPrompt: systemPrompt
+            )
+
+            // Log raw response for debugging
+            macLog("Raw LLM response (\(response.count) chars): \(response.prefix(500))...", category: "PowerMode")
+
+            // Check for model refusal responses
+            // Only consider it a refusal if: (1) response is short AND (2) doesn't contain ACTION_ markers
+            // This avoids false positives when one of the generated suggestions is a "polite decline" type
+            let hasActionMarkers = response.contains("ACTION_")
+            let isShortResponse = response.count < 150
+
+            if !hasActionMarkers || isShortResponse {
+                let refusalPatterns = [
+                    "Sorry, I can't assist",
+                    "I cannot assist",
+                    "I'm not able to",
+                    "I can't help with",
+                    "I cannot help with",
+                    "I apologize, but I cannot",
+                    "I'm unable to"
+                ]
+                let containsRefusal = refusalPatterns.contains { response.lowercased().contains($0.lowercased()) }
+                if containsRefusal && !hasActionMarkers {
+                    macLog("LLM refused to generate suggestions - may be due to content type", category: "PowerMode", level: .warning)
+                    suggestionsError = "Quick replies not available for this content"
+                    quickSuggestions = []
+                    return
+                }
+            }
+
+            // Parse the response into suggestions
+            suggestions = parseQuickActionsResponse(response, actions: actions)
+            macLog("Generated \(suggestions.count) quick suggestions from \(actions.count) actions", category: "PowerMode")
+        } catch {
+            macLog("Failed to generate suggestions: \(error)", category: "PowerMode")
+        }
+
+        quickSuggestions = suggestions
+    }
+
+    /// Build system prompt for quick actions generation
+    private func buildQuickActionsSystemPrompt(actions: [QuickAction], contextPrompt: String) -> String {
+        let actionDescriptions = actions.enumerated().map { idx, action in
+            "ACTION_\(idx + 1) (\(action.label)): \(action.effectivePrompt)"
+        }.joined(separator: "\n")
+
+        // Build user input instruction based on mode
+        let userInputInstruction: String
+        if isCommandMode && !commandText.isEmpty {
+            userInputInstruction = """
+
+            # USER INSTRUCTION (CRITICAL - OVERRIDE)
+            The user has provided a specific instruction: "\(commandText)"
+            You MUST follow this instruction when generating ALL responses.
+            Apply this instruction to each action while still maintaining distinct tones.
+            """
+        } else if !predictionInputText.trimmingCharacters(in: .whitespaces).isEmpty {
+            let prefix = predictionInputText.trimmingCharacters(in: .whitespaces)
+            userInputInstruction = """
+
+            # USER PREFIX (CRITICAL - MUST START WITH THIS)
+            The user has started typing: "\(prefix)"
+            ALL responses MUST start with EXACTLY this text, then continue naturally.
+            Do NOT modify the prefix - use it verbatim as the beginning of each response.
+            Complete the response in a way that flows naturally from this prefix.
+            """
+        } else {
+            userInputInstruction = ""
+        }
+
+        return """
+        You are generating NEW, ORIGINAL quick replies for the user to send.
+
+        # CRITICAL: GENERATE NEW TEXT, DO NOT COPY
+        - You must CREATE original responses - do NOT copy/extract text from the screen
+        - The screen content is for CONTEXT only - to understand what to reply to
+        - Your output must be NEW messages the user would send
+        - NEVER include timestamps, dates, "Sent to", "Received from", "Delivered" - those are UI artifacts
+
+        # CONVERSATION ANALYSIS
+        The screen shows a messaging app. Find the CURRENT conversation:
+        1. Look for the contact name in the HEADER (e.g., "Fatma Kamal")
+        2. Find THEIR last message to you (what you should reply to)
+        3. IGNORE the sidebar - it shows OTHER chats, not the current one
+           - Sidebar items have format: "Name, preview text, time"
+           - These are NOT part of the current conversation
+        4. The MAIN conversation area shows the actual chat with timestamps
+        5. Their messages are on the LEFT, your messages on the RIGHT (with ✓✓)
+
+        # YOUR TASK
+        Generate NEW replies to the OTHER person's LAST message.
+        If their last message is "Have a beautiful day baby!" - reply to THAT.
+        \(userInputInstruction)
+
+        # USER'S WRITING STYLE
+        \(contextPrompt)
+
+        # ACTIONS TO GENERATE
+        \(actionDescriptions)
+
+        # OUTPUT FORMAT
+        Respond with EXACTLY \(actions.count) lines, one per action:
+        \(actions.enumerated().map { "ACTION_\($0.offset + 1): <write your actual reply here>" }.joined(separator: "\n"))
+
+        EXAMPLE (for a message "Hey, how are you?"):
+        ACTION_1: Hey! I'm doing great, thanks for asking! How about you?
+        ACTION_2: I'm good! What's up?
+        ACTION_3: Sorry, can't chat right now - catch up later?
+
+        # CRITICAL RULES
+        - MATCH the user's writing style from examples above
+        - Use the same greeting/closing patterns they use
+        - Match their emoji usage level exactly
+        - Keep their typical message length
+        - Sound natural, like the user actually wrote it
+        - Each action should produce a distinct response
+        - NEVER describe the app or its features - generate ACTUAL replies to the conversation
+        - If you see a name at the top (e.g., "Fatma Kamal"), address your reply to them
+        """
+    }
+
+    /// Build user prompt with screen context
+    private func buildQuickActionsUserPrompt(screenText: String, appName: String, actions: [QuickAction]) -> String {
+        let maxChars = 2000
+        let truncated = screenText.count > maxChars ? String(screenText.prefix(maxChars)) + "..." : screenText
+
+        // Add app-specific hints for better conversation parsing
+        let appHint = getAppSpecificHint(for: appName)
+
+        return """
+        App: \(appName)
+        \(appHint)
+
+        Screen content (may include UI elements - focus on the CONVERSATION only):
+        ---
+        \(truncated)
+        ---
+
+        TASK: Generate \(actions.count) replies to the OTHER person's last message in the conversation.
+        IMPORTANT: These should be YOUR responses to THEM, not descriptions of the app or UI.
+        """
+    }
+
+    /// Get app-specific parsing hints for better conversation detection
+    private func getAppSpecificHint(for appName: String) -> String {
+        let lowered = appName.lowercased()
+
+        if lowered.contains("whatsapp") {
+            return """
+            App Type: Messaging (WhatsApp)
+            - Left sidebar shows chat list (IGNORE this - it's navigation)
+            - Main area shows conversation with the contact named in the header
+            - Messages from contact: LEFT side (gray bubbles)
+            - User's messages: RIGHT side (green bubbles, with checkmarks ✓✓)
+            - Look for the LAST message from the contact to reply to
+            """
+        } else if lowered.contains("message") || lowered.contains("imessage") {
+            return """
+            App Type: Messaging (iMessage/Messages)
+            - Left sidebar shows conversations list (IGNORE this)
+            - Main area shows conversation thread
+            - Contact messages: GRAY bubbles (left side)
+            - User messages: BLUE bubbles (right side)
+            - Reply to the last gray/contact message
+            """
+        } else if lowered.contains("telegram") {
+            return """
+            App Type: Messaging (Telegram)
+            - Left panel shows chat list (IGNORE this)
+            - Main panel shows conversation
+            - Contact messages: LEFT side
+            - User messages: RIGHT side (with delivery indicators)
+            - Reply to the last message from the contact
+            """
+        } else if lowered.contains("slack") {
+            return """
+            App Type: Team Chat (Slack)
+            - Left sidebar shows channels/DMs (IGNORE this)
+            - Main area shows conversation thread
+            - Messages show username before content
+            - Find the last message NOT from you and reply to it
+            """
+        } else if lowered.contains("discord") {
+            return """
+            App Type: Chat (Discord)
+            - Left shows servers/channels (IGNORE this)
+            - Main shows message thread with usernames
+            - Reply to the conversation context
+            """
+        } else if lowered.contains("mail") || lowered.contains("outlook") || lowered.contains("gmail") {
+            return """
+            App Type: Email
+            - Look for the email body content, sender name, subject
+            - Generate appropriate email reply content
+            """
+        } else {
+            return "App Type: General - Look for message/conversation content and generate appropriate response"
+        }
+    }
+
+    /// Parse response into QuickSuggestions based on configured actions
+    private func parseQuickActionsResponse(_ response: String, actions: [QuickAction]) -> [QuickSuggestion] {
+        var suggestions: [QuickSuggestion] = []
+
+        // Placeholder patterns to filter out (model echoed the format instead of generating)
+        let placeholderPatterns = [
+            "[response text]",
+            "[response]",
+            "<write your actual reply here>",
+            "<your reply here>",
+            "<reply>",
+            "[your response]"
+        ]
+
+        // Patterns that indicate the model copied from screen instead of generating
+        let copiedFromScreenPatterns = [
+            "Sent to",
+            "Received from",
+            "Received in",
+            "Delivered",
+            "at\\d{1,2}:\\d{2}",  // timestamps like "at17:40"
+            "\\d{1,2}January",    // dates like "11January"
+            "\\d{1,2}February",
+            "\\d{1,2}March",
+            "\\d{1,2}April",
+            "\\d{1,2}May",
+            "\\d{1,2}June",
+            "\\d{1,2}July",
+            "\\d{1,2}August",
+            "\\d{1,2}September",
+            "\\d{1,2}October",
+            "\\d{1,2}November",
+            "\\d{1,2}December"
+        ]
+
+        for (index, action) in actions.enumerated() {
+            let prefix = "ACTION_\(index + 1):"
+            if let range = response.range(of: prefix, options: .caseInsensitive) {
+                var text = String(response[range.upperBound...])
+                // Take until next ACTION_ or end of string
+                if let nextAction = text.range(of: "ACTION_", options: .caseInsensitive) {
+                    text = String(text[..<nextAction.lowerBound])
+                }
+                text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Filter out placeholder responses
+                let isPlaceholder = placeholderPatterns.contains { text.lowercased().contains($0.lowercased()) }
+                if isPlaceholder {
+                    macLog("Filtered placeholder response for ACTION_\(index + 1): '\(text)'", category: "PowerMode", level: .warning)
+                    continue
+                }
+
+                // Filter out responses copied from screen (contain UI artifacts)
+                let isCopiedFromScreen = copiedFromScreenPatterns.contains { pattern in
+                    if pattern.contains("\\") {
+                        // Regex pattern
+                        return text.range(of: pattern, options: .regularExpression) != nil
+                    } else {
+                        // Simple string match
+                        return text.contains(pattern)
+                    }
+                }
+                if isCopiedFromScreen {
+                    macLog("Filtered copied-from-screen response for ACTION_\(index + 1): '\(text.prefix(50))...'", category: "PowerMode", level: .warning)
+                    continue
+                }
+
+                if !text.isEmpty {
+                    suggestions.append(QuickSuggestion(
+                        type: mapQuickActionTypeToSuggestionType(action.type),
+                        text: text,
+                        shortLabel: action.label
+                    ))
+                }
+            }
+        }
+
+        // If all were filtered out, log warning
+        if suggestions.isEmpty && !actions.isEmpty {
+            macLog("All suggestions filtered as placeholders - LLM may have returned format instead of content", category: "PowerMode", level: .warning)
+        }
+
+        return suggestions
+    }
+
+    /// Map QuickActionType to QuickSuggestion.SuggestionType
+    private func mapQuickActionTypeToSuggestionType(_ actionType: QuickActionType) -> QuickSuggestion.SuggestionType {
+        switch actionType {
+        case .positive: return .positive
+        case .neutral: return .neutral
+        case .negative: return .negative
+        case .summarize, .custom: return .neutral
+        }
+    }
+
+    /// Build a comprehensive context prompt from ConversationContext
+    /// Includes examples, formatting rules, memory, and style guidelines
+    private func buildContextPrompt(from context: ConversationContext?) -> String {
+        guard let context = context else {
+            return "Write in a professional and friendly tone."
+        }
+
+        var parts: [String] = []
+
+        // 1. EXAMPLES (highest priority - few-shot learning)
+        if !context.examples.isEmpty {
+            let examplesText = context.examples.enumerated().map { idx, example in
+                "Example \(idx + 1):\n\"\"\"\n\(example)\n\"\"\""
+            }.joined(separator: "\n\n")
+            parts.append("## Writing Examples (MATCH THIS STYLE EXACTLY)\n\(examplesText)")
+        }
+
+        // 2. FORMATTING INSTRUCTIONS (from selected chips)
+        let instructions = context.formattingInstructions
+        if !instructions.isEmpty {
+            let rulesText = instructions.map { "- \($0.promptText)" }.joined(separator: "\n")
+            parts.append("## Formatting Rules\n\(rulesText)")
+        }
+
+        // 3. EMOJI LEVEL
+        if context.selectedInstructions.contains("emoji_lots") {
+            parts.append("## Emoji Usage\nUse emoji generously throughout - this person loves emoji! 😊🎉✨")
+        } else if context.selectedInstructions.contains("emoji_few") {
+            parts.append("## Emoji Usage\nUse emoji sparingly, only where they enhance the message.")
+        } else if context.selectedInstructions.contains("emoji_never") {
+            parts.append("## Emoji Usage\nDo NOT use any emoji. Keep it text-only.")
+        }
+
+        // 4. CUSTOM INSTRUCTIONS (user's free-form rules)
+        if let custom = context.customInstructions, !custom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("## Custom Instructions\n\(custom)")
+        }
+
+        // 5. CONTEXT MEMORY (facts about this context)
+        if context.useContextMemory, let memory = context.contextMemory, !memory.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("## Context Knowledge\n\(memory)")
+        }
+
+        // 6. DOMAIN INFO
+        if context.domainJargon != .none {
+            parts.append("## Domain\nThis is \(context.domainJargon.displayName.lowercased()) communication. Use appropriate terminology.")
+        }
+
+        // 7. CONTEXT IDENTITY
+        parts.append("## Context\nWriting as/for: \(context.name) (\(context.description))")
+
+        if parts.isEmpty {
+            return "Write in a professional and friendly tone."
+        }
+
+        return parts.joined(separator: "\n\n")
+    }
+
+    /// Legacy: Derive a simple tone description (kept for compatibility)
+    private func deriveToneDescription(from context: ConversationContext?) -> String {
+        guard let context = context else {
+            return "professional and friendly"
+        }
+
+        var toneWords: [String] = []
+
+        if context.selectedInstructions.contains("formal") {
+            toneWords.append("formal")
+            toneWords.append("professional")
+        }
+        if context.selectedInstructions.contains("casual") {
+            toneWords.append("casual")
+            toneWords.append("friendly")
+        }
+        if context.selectedInstructions.contains("concise") {
+            toneWords.append("concise")
+        }
+        if context.selectedInstructions.contains("emoji_lots") {
+            toneWords.append("expressive with emojis")
+        } else if context.selectedInstructions.contains("emoji_never") {
+            toneWords.append("without emojis")
+        }
+
+        return toneWords.isEmpty ? "professional and friendly" : toneWords.joined(separator: ", ")
+    }
+
+    // Legacy prompt building (kept for reference)
+    private func buildSuggestionsPrompt(screenText: String, appName: String, toneHint: String, contextName: String) -> String {
+        let maxChars = 2000
+        let truncated = screenText.count > maxChars ? String(screenText.prefix(maxChars)) + "..." : screenText
+
+        return """
+        App: \(appName)
+        Context: \(contextName)
+        Tone: \(toneHint)
+
+        Recent conversation/content:
+        \(truncated)
+
+        Generate 3 quick replies I could send based on this conversation.
+        """
+    }
+
+    private func parseSuggestionsResponse(_ response: String) -> [QuickSuggestion] {
+        var suggestions: [QuickSuggestion] = []
+
+        let lines = response.components(separatedBy: .newlines)
+
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.hasPrefix("POSITIVE:") {
+                let text = trimmed.replacingOccurrences(of: "POSITIVE:", with: "").trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty {
+                    suggestions.append(QuickSuggestion(type: .positive, text: text, shortLabel: "Yes"))
+                }
+            } else if trimmed.hasPrefix("NEUTRAL:") {
+                let text = trimmed.replacingOccurrences(of: "NEUTRAL:", with: "").trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty {
+                    suggestions.append(QuickSuggestion(type: .neutral, text: text, shortLabel: "Maybe"))
+                }
+            } else if trimmed.hasPrefix("NEGATIVE:") {
+                let text = trimmed.replacingOccurrences(of: "NEGATIVE:", with: "").trimmingCharacters(in: .whitespaces)
+                if !text.isEmpty {
+                    suggestions.append(QuickSuggestion(type: .negative, text: text, shortLabel: "No"))
+                }
+            }
+        }
+
+        return suggestions
     }
 
     /// Build combined memory context based on inputConfig
@@ -569,9 +1494,9 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
             currentPowerMode = first
         }
 
-        // Reload context for new Power Mode
+        // Reload context for new Power Mode (don't regenerate suggestions - user can press R)
         Task {
-            await loadContext()
+            await loadContext(regenerateSuggestions: false)
         }
     }
 
@@ -586,9 +1511,9 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
             currentPowerMode = first
         }
 
-        // Reload context for new Power Mode
+        // Reload context for new Power Mode (don't regenerate suggestions - user can press R)
         Task {
-            await loadContext()
+            await loadContext(regenerateSuggestions: false)
         }
     }
 
@@ -734,6 +1659,13 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         memoryContext = ""
         preCapturedWindowContext = nil
         preCapturedClipboard = nil
+        // Reset navigation state
+        navigationMode = .powerMode
+        selectedSuggestionIndex = nil
+        isInputFieldFocused = false
+        quickSuggestions = []
+        predictionInputText = ""
+        suggestionsError = nil
         // Reset Obsidian search state
         obsidianSearchQuery = ""
         isSearchingObsidian = false
