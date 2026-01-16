@@ -30,6 +30,9 @@ final class MacContentImportWindowController {
             settings: settings
         )
         vm.providerFactory = providerFactory
+        vm.onProcessingComplete = { [weak self] in
+            self?.bringToFront()
+        }
         self.viewModel = vm
 
         // Create SwiftUI view
@@ -68,6 +71,11 @@ final class MacContentImportWindowController {
     func closeWindow() {
         window?.close()
         viewModel = nil
+    }
+
+    func bringToFront() {
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }
 
@@ -112,6 +120,9 @@ final class MacContentImportViewModel: ObservableObject {
 
     /// Provider factory for LLM access
     var providerFactory: ProviderFactory?
+
+    /// Callback when processing completes (to bring window to front)
+    var onProcessingComplete: (() -> Void)?
 
     private let appGroupIdentifier = "group.pawelgawliczek.swiftspeak"
 
@@ -176,6 +187,12 @@ final class MacContentImportViewModel: ObservableObject {
             case .pdf:
                 try await loadPDFContent()
             }
+
+            // Auto-extract text for content types that need extraction
+            if extractedText.isEmpty && contentType != .text {
+                await startExtraction()
+            }
+
             viewState = .preview
         } catch {
             loadError = error.localizedDescription
@@ -455,6 +472,9 @@ final class MacContentImportViewModel: ObservableObject {
 
             print("[ImportVM] Setting viewState to .result")
             viewState = .result
+
+            // Bring window back to front (output actions may have switched focus)
+            onProcessingComplete?()
 
         } catch {
             print("[ImportVM] ERROR: \(error.localizedDescription)")

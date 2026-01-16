@@ -31,7 +31,10 @@ struct MacContentImportView: View {
             case .preview:
                 ScrollView {
                     VStack(spacing: 20) {
-                        contentPreview
+                        // Hide content preview once text is extracted to save space
+                        if viewModel.extractedText.isEmpty {
+                            contentPreview
+                        }
                         extractionSection
                         if !viewModel.extractedText.isEmpty {
                             powerModeSection
@@ -374,8 +377,8 @@ struct MacContentImportView: View {
 
     @ViewBuilder
     private var extractionSection: some View {
-        GroupBox("Extract Text") {
-            VStack(alignment: .leading, spacing: 12) {
+        GroupBox("Extracted Text") {
+            VStack(alignment: .leading, spacing: 8) {
                 if viewModel.isExtracting {
                     HStack {
                         ProgressView()
@@ -384,38 +387,33 @@ struct MacContentImportView: View {
                             .foregroundStyle(.secondary)
                     }
                 } else if viewModel.extractedText.isEmpty {
-                    Button {
-                        Task {
-                            await viewModel.startExtraction()
-                        }
-                    } label: {
-                        Label(viewModel.extractButtonText, systemImage: viewModel.extractButtonIcon)
-                            .frame(maxWidth: .infinity)
+                    HStack {
+                        ProgressView()
+                            .scaleEffect(0.8)
+                        Text("Extracting text...")
+                            .foregroundStyle(.secondary)
                     }
-                    .controlSize(.large)
                 } else {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text("Text extracted")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Text("\(viewModel.extractedText.count) characters")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        ScrollView {
-                            Text(viewModel.extractedText)
-                                .font(.system(.body, design: .monospaced))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .frame(maxHeight: 150)
-                        .padding(8)
-                        .background(Color(nsColor: .textBackgroundColor))
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Ready")
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(viewModel.extractedText.count) characters")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
+
+                    ScrollView {
+                        Text(viewModel.extractedText)
+                            .font(.system(.caption, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 80)
+                    .padding(8)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
