@@ -34,6 +34,9 @@ enum SpellChecker {
 
     /// Correct a potentially misspelled word in the given language
     static func correctWord(_ word: String, language languageCode: String) -> String? {
+        let startTime = CFAbsoluteTimeGetCurrent()
+        keyboardLog("SpellCheck START: '\(word)' lang=\(languageCode)", category: "SpellDebug")
+
         // Safety: Skip empty words
         guard !word.isEmpty else { return nil }
 
@@ -50,20 +53,40 @@ enum SpellChecker {
 
         // Skip words in language-specific ignore list
         if shouldIgnoreWord(lowercased, language: languageCode) {
+            keyboardLog("SpellCheck: '\(word)' in ignore list", category: "SpellDebug")
             return nil
         }
 
         // 1. Check language-specific priority corrections first (fast dictionary lookup)
+        keyboardLog("SpellCheck: checking priority corrections...", category: "SpellDebug")
         if let correction = getPriorityCorrection(lowercased, language: languageCode) {
+            keyboardLog("SpellCheck: priority correction found '\(correction)' in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startTime))s", category: "SpellDebug")
             return preserveCase(original: word, corrected: correction)
         }
 
-        // 2. Use UITextChecker for this language
+        // 2. Use SymSpell for edit-distance based correction (50k word dictionaries)
+        // TEMPORARILY DISABLED FOR DEBUGGING
+        /*
+        keyboardLog("SpellCheck: checking SymSpell...", category: "SpellDebug")
+        let symSpellStart = CFAbsoluteTimeGetCurrent()
+        if let correction = checkWithSymSpell(word, language: languageCode) {
+            keyboardLog("SpellCheck: SymSpell found '\(correction)' in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - symSpellStart))s", category: "SpellDebug")
+            return preserveCase(original: word, corrected: correction)
+        }
+        keyboardLog("SpellCheck: SymSpell done in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - symSpellStart))s", category: "SpellDebug")
+        */
+
+        // 3. Use UITextChecker as fallback (Apple's dictionary)
+        keyboardLog("SpellCheck: checking UITextChecker...", category: "SpellDebug")
+        let uiTextStart = CFAbsoluteTimeGetCurrent()
         if let locale = getLanguageMap()[languageCode],
            let correction = checkWithUITextChecker(word, language: locale) {
+            keyboardLog("SpellCheck: UITextChecker found '\(correction)' in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - uiTextStart))s", category: "SpellDebug")
             return preserveCase(original: word, corrected: correction)
         }
+        keyboardLog("SpellCheck: UITextChecker done in \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - uiTextStart))s", category: "SpellDebug")
 
+        keyboardLog("SpellCheck END: no correction, total \(String(format: "%.3f", CFAbsoluteTimeGetCurrent() - startTime))s", category: "SpellDebug")
         return nil
     }
 
@@ -203,6 +226,42 @@ enum SpellChecker {
         return corrected.lowercased()
     }
 
+    // MARK: - SymSpell Integration
+
+    /// Check word using SymSpell edit-distance algorithm
+    private static func checkWithSymSpell(_ word: String, language languageCode: String) -> String? {
+        // Check if SymSpell supports this language
+        guard SymSpellDictionary.isSupported(languageCode) else { return nil }
+
+        // Normalize word for Arabic languages
+        let normalizedWord: String
+        if SymSpellDictionary.isArabicLanguage(languageCode) {
+            normalizedWord = SymSpellDictionary.normalizeArabic(word)
+        } else {
+            normalizedWord = word.lowercased()
+        }
+
+        // Get SymSpell instance (lazy loads dictionary)
+        guard let symSpell = SymSpellDictionary.getInstance(for: languageCode) else {
+            return nil
+        }
+
+        // Skip if word is known (correctly spelled)
+        if symSpell.isKnownWord(normalizedWord) {
+            return nil
+        }
+
+        // Lookup suggestions
+        let suggestions = symSpell.lookup(normalizedWord, maxResults: 1)
+
+        // Return best suggestion if within edit distance 2
+        if let best = suggestions.first, best.distance <= 2 {
+            return best.word
+        }
+
+        return nil
+    }
+
     // MARK: - UITextChecker Integration
 
     private static func checkWithUITextChecker(_ word: String, language locale: String) -> String? {
@@ -251,11 +310,24 @@ enum SpellChecker {
             language: actualLocale
         )
 
-        // Return top suggestion if available and different
-        if let topGuess = guesses?.first,
-           !topGuess.isEmpty,
-           topGuess.lowercased() != word.lowercased() {
-            return topGuess
+        // Return first VALID suggestion (verify it's a real word)
+        for guess in guesses ?? [] {
+            guard !guess.isEmpty, guess.lowercased() != word.lowercased() else { continue }
+
+            // Verify the suggestion is itself a valid word (not garbage like "dornig")
+            let guessRange = NSRange(location: 0, length: guess.utf16.count)
+            let guessCheck = textChecker.rangeOfMisspelledWord(
+                in: guess,
+                range: guessRange,
+                startingAt: 0,
+                wrap: false,
+                language: actualLocale
+            )
+
+            // If suggestion is NOT misspelled (valid word), use it
+            if guessCheck.location == NSNotFound {
+                return guess
+            }
         }
 
         return nil

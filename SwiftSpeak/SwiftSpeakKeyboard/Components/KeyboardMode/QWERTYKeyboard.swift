@@ -15,6 +15,7 @@ struct QWERTYKeyboard: View {
     var viewModel: KeyboardViewModel?  // Phase 13.6: For predictions
     var showProgrammableNextToReturn: Bool = false  // Phase 16: Programmable button next to Return
     var returnProgrammableAction: ProgrammableButtonAction = .transcribe  // Phase 16: Action for that button
+    var sizing: KeyboardSizing = KeyboardSizing(.normal)  // Dynamic sizing support
 
     @State private var shiftState: ShiftState = .lowercase
     @State private var layoutState: KeyboardLayoutState = .letters
@@ -33,7 +34,7 @@ struct QWERTYKeyboard: View {
     }
 
     var body: some View {
-        VStack(spacing: KeyboardTheme.rowSpacing) {
+        VStack(spacing: sizing.rowSpacing) {
             if layoutState == .letters {
                 letterLayout
             } else {
@@ -43,7 +44,7 @@ struct QWERTYKeyboard: View {
             bottomRow
         }
         .padding(.horizontal, KeyboardTheme.horizontalPadding)
-        .padding(.vertical, 4)
+        .padding(.vertical, sizing.isCompact ? 2 : 4)
         .background(
             GeometryReader { geometry in
                 KeyboardTheme.keyboardBackground
@@ -89,7 +90,7 @@ struct QWERTYKeyboard: View {
     // MARK: - Letter Layout
 
     private var letterLayout: some View {
-        VStack(spacing: KeyboardTheme.rowSpacing) {
+        VStack(spacing: sizing.rowSpacing) {
             // Row 1: Q W E R T Y U I O P
             HStack(spacing: KeyboardTheme.keySpacing) {
                 ForEach(KeyboardLayout.qwertyRow1, id: \.self) { key in
@@ -175,7 +176,7 @@ struct QWERTYKeyboard: View {
     private var numberSymbolLayout: some View {
         let rows = layoutState == .symbols ? symbolRows : numberRows
 
-        return VStack(spacing: KeyboardTheme.rowSpacing) {
+        return VStack(spacing: sizing.rowSpacing) {
             // Row 1: Numbers (have fraction popups) or symbols
             HStack(spacing: KeyboardTheme.keySpacing) {
                 ForEach(rows.0, id: \.self) { key in
@@ -262,6 +263,8 @@ struct QWERTYKeyboard: View {
             SpaceBar(
                 action: {
                     insertText(" ")
+                    // Trigger inline AI prediction on space (if enabled)
+                    triggerInlinePredictionIfEnabled()
                 },
                 textDocumentProxy: textDocumentProxy
             )
@@ -270,9 +273,10 @@ struct QWERTYKeyboard: View {
             if showProgrammableNextToReturn, let vm = viewModel {
                 ReturnProgrammableButton(
                     action: returnProgrammableAction,
-                    viewModel: vm
+                    viewModel: vm,
+                    sizing: sizing
                 )
-                .frame(width: 35)
+                .frame(width: sizing.isCompact ? 30 : 35)
             }
 
             // Return key - Phase 13.11: Check for context processing
@@ -393,6 +397,18 @@ struct QWERTYKeyboard: View {
         viewModel?.updateTypingContext()
     }
 
+    /// Trigger inline AI prediction if setting is enabled
+    private func triggerInlinePredictionIfEnabled() {
+        // Check if inline prediction on space is enabled
+        let settings = KeyboardSettings.load()
+        guard settings.inlinePredictionEnabled && settings.inlinePredictionOnSpace else { return }
+
+        // Trigger the prediction (this internally cancels any pending prediction synchronously)
+        // Note: Don't call dismissInlinePrediction() here as it has an async cancel
+        // that could race with the new prediction result and clear it prematurely
+        viewModel?.triggerInlinePrediction()
+    }
+
     /// Check if autocorrect is enabled
     private var autocorrectEnabled: Bool {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
@@ -476,8 +492,8 @@ struct QWERTYKeyboard: View {
                 return
             }
 
-            // Apply correction
-            for _ in 0..<wordString.count {
+            // Apply correction - use utf16.count to match UITextDocumentProxy's character handling
+            for _ in 0..<wordString.utf16.count {
                 proxy.deleteBackward()
             }
             proxy.insertText(correction)
@@ -673,6 +689,7 @@ struct QWERTYKeyboard: View {
 private struct ReturnProgrammableButton: View {
     let action: ProgrammableButtonAction
     @ObservedObject var viewModel: KeyboardViewModel
+    var sizing: KeyboardSizing = KeyboardSizing(.normal)
 
     var body: some View {
         Button(action: {
@@ -685,7 +702,7 @@ private struct ReturnProgrammableButton: View {
                 .clipShape(RoundedRectangle(cornerRadius: KeyboardTheme.cornerRadiusSmall, style: .continuous))
         }
         .buttonStyle(.plain)
-        .frame(height: KeyboardTheme.keyHeight)
+        .frame(height: sizing.keyHeight)
     }
 
     @ViewBuilder
@@ -694,11 +711,11 @@ private struct ReturnProgrammableButton: View {
         case .transcribe:
             // Use SwiftSpeak logo for transcribe
             SwiftSpeakLogoView()
-                .frame(width: 18, height: 18)
+                .frame(width: sizing.isCompact ? 14 : 18, height: sizing.isCompact ? 14 : 18)
                 .foregroundStyle(iconColor)
         default:
             Image(systemName: action.iconName)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: sizing.isCompact ? 11 : 14, weight: .semibold))
                 .foregroundStyle(iconColor)
         }
     }

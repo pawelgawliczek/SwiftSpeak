@@ -18,10 +18,24 @@ class KeyboardViewController: UIInputViewController {
 
     /// Base heights for different keyboard modes
     private enum HeightConfig {
+        // Voice mode
         static let voiceMode: CGFloat = 260          // Voice mode with corner buttons
-        static let typingModeFull: CGFloat = 350     // Full QWERTY + all bars
-        static let swiftSpeakBarHeight: CGFloat = 50 // SwiftSpeakBar contribution
+
+        // Normal mode heights
+        static let typingModeFull: CGFloat = 313     // Full QWERTY + all bars
+        static let swiftSpeakBarHeight: CGFloat = 60 // SwiftSpeakBar contribution (includes padding)
         static let predictionRowHeight: CGFloat = 36 // PredictionRow contribution
+
+        // Compact mode heights
+        static let typingModeCompact: CGFloat = 263  // Compact QWERTY + all bars
+        static let swiftSpeakBarHeightCompact: CGFloat = 36 // Compact SwiftSpeakBar
+        static let predictionRowHeightCompact: CGFloat = 26 // Compact PredictionRow
+
+        // Inline AI prediction preview (when enabled)
+        // The InlinePredictionPreview view is 52pt, but we reserve additional space
+        // to ensure the full keyboard fits when this feature is enabled
+        static let inlinePredictionHeight: CGFloat = 56 // InlinePredictionPreview contribution (normal mode)
+        static let inlinePredictionHeightCompact: CGFloat = 100 // Compact mode needs extra space to fit all content
     }
 
     /// Current display mode (cached for height calculations)
@@ -168,19 +182,29 @@ class KeyboardViewController: UIInputViewController {
             return HeightConfig.voiceMode
 
         case .typing:
-            // Start with full typing height
-            var height = HeightConfig.typingModeFull
+            // Check theme size setting
+            let themeSizeRaw = sharedDefaults?.string(forKey: "keyboardThemeSize") ?? "normal"
+            let isCompact = themeSizeRaw == "compact"
+
+            // Start with base typing height based on theme
+            var height = isCompact ? HeightConfig.typingModeCompact : HeightConfig.typingModeFull
 
             // Check if SwiftSpeakBar is hidden
             let showSwiftSpeakBar = sharedDefaults?.object(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) as? Bool ?? true
             if !showSwiftSpeakBar {
-                height -= HeightConfig.swiftSpeakBarHeight
+                height -= isCompact ? HeightConfig.swiftSpeakBarHeightCompact : HeightConfig.swiftSpeakBarHeight
             }
 
             // Check if PredictionRow is hidden
             let showPredictionRow = sharedDefaults?.object(forKey: Constants.Keys.keyboardShowPredictionRow) as? Bool ?? true
             if !showPredictionRow {
-                height -= HeightConfig.predictionRowHeight
+                height -= isCompact ? HeightConfig.predictionRowHeightCompact : HeightConfig.predictionRowHeight
+            }
+
+            // Add space for inline AI prediction when enabled (reserves space to avoid jarring height changes)
+            let inlinePredictionEnabled = sharedDefaults?.object(forKey: "keyboardInlinePredictionEnabled") as? Bool ?? false
+            if inlinePredictionEnabled {
+                height += isCompact ? HeightConfig.inlinePredictionHeightCompact : HeightConfig.inlinePredictionHeight
             }
 
             return height
@@ -207,14 +231,14 @@ class KeyboardViewController: UIInputViewController {
     /// Refreshes height based on current settings (call when settings change)
     func refreshHeight() {
         let newHeight = calculateHeight(for: currentDisplayMode)
+        let currentHeight = heightConstraint?.constant ?? 0
 
-        if heightConstraint?.constant != newHeight {
-            keyboardLog("Refreshing height: \(newHeight)pt", category: "Layout")
+        keyboardLog("RefreshHeight called - current: \(currentHeight)pt, new: \(newHeight)pt, mode: \(currentDisplayMode)", category: "Layout")
 
-            UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseInOut) { [weak self] in
-                self?.heightConstraint?.constant = newHeight
-                self?.view.superview?.layoutIfNeeded()
-            }
+        // Always animate to new height (even if same, to handle theme changes)
+        UIView.animate(withDuration: 0.25, delay: 0, options: .curveEaseInOut) { [weak self] in
+            self?.heightConstraint?.constant = newHeight
+            self?.view.superview?.layoutIfNeeded()
         }
     }
 }

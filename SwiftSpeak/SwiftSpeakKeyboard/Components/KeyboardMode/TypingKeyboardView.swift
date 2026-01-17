@@ -20,6 +20,11 @@ struct TypingKeyboardView: View {
 
     @State private var keyboardSettings: KeyboardSettings = .load()
 
+    /// Computed sizing based on current settings
+    private var sizing: KeyboardSizing {
+        KeyboardSizing(keyboardSettings.themeSize)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // Phase 13.12: AI Sentence Prediction Panel (replaces keyboard)
@@ -61,6 +66,29 @@ struct TypingKeyboardView: View {
                 )
                 .transition(.opacity)
             } else {
+                // Inline AI prediction preview (reserves space when enabled to avoid height jumps)
+                if keyboardSettings.inlinePredictionEnabled {
+                    if viewModel.hasInlinePrediction || viewModel.isGeneratingInlinePrediction || viewModel.hasInlinePredictionError {
+                        InlinePredictionPreview(
+                            typedText: viewModel.inlinePredictionTypingContext,
+                            prediction: viewModel.inlinePrediction,
+                            isLoading: viewModel.isGeneratingInlinePrediction,
+                            errorMessage: viewModel.inlinePredictionError,
+                            onAcceptWords: { words in
+                                viewModel.acceptInlinePredictionWords(words)
+                            },
+                            onDismiss: {
+                                viewModel.dismissInlinePrediction()
+                            }
+                        )
+                        .transition(.opacity)
+                    } else {
+                        // Placeholder to reserve space when no prediction is active
+                        Color.clear
+                            .frame(height: 52)
+                    }
+                }
+
                 // SwiftSpeak bar with voice controls (Phase 16: conditionally shown)
                 // NOTE: Recording UI is now handled by SwiftLinkStreamingOverlay in KeyboardView.swift
                 if keyboardSettings.showSwiftSpeakBar {
@@ -75,14 +103,15 @@ struct TypingKeyboardView: View {
                         },
                         onAIProcessTap: {
                             viewModel.processTextWithAI()
-                        }
+                        },
+                        sizing: sizing
                     )
                     .transition(.opacity)
                 }
 
                 // Prediction row (Phase 16: conditionally shown)
                 if keyboardSettings.showPredictionRow {
-                    PredictionRow(viewModel: viewModel, settings: keyboardSettings)
+                    PredictionRow(viewModel: viewModel, settings: keyboardSettings, sizing: sizing)
                 }
 
                 // Main QWERTY keyboard - fills remaining space
@@ -91,11 +120,12 @@ struct TypingKeyboardView: View {
                     onNextKeyboard: onNextKeyboard,
                     viewModel: viewModel,  // Phase 13.6: Pass viewModel for predictions
                     showProgrammableNextToReturn: keyboardSettings.showProgrammableNextToReturn,
-                    returnProgrammableAction: keyboardSettings.returnProgrammableAction
+                    returnProgrammableAction: keyboardSettings.returnProgrammableAction,
+                    sizing: sizing
                 )
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
         .background(KeyboardTheme.keyboardBackground)  // Fill entire area with keyboard background
         // Reload settings on appear to pick up changes from main app
         .onAppear {

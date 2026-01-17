@@ -7,6 +7,28 @@
 
 import Foundation
 
+/// Keyboard theme size options for space optimization
+enum KeyboardThemeSize: String, Codable, CaseIterable, Identifiable {
+    case normal = "normal"
+    case compact = "compact"
+
+    var id: String { rawValue }
+
+    var displayName: String {
+        switch self {
+        case .normal: return "Normal"
+        case .compact: return "Compact"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .normal: return "Standard keyboard size"
+        case .compact: return "Reduced size for more screen space"
+        }
+    }
+}
+
 /// Programmable button actions for the keyboard PredictionRow
 /// The last button in PredictionRow can be assigned any of these actions
 enum ProgrammableButtonAction: String, Codable, CaseIterable, Identifiable {
@@ -49,6 +71,9 @@ enum ProgrammableButtonAction: String, Codable, CaseIterable, Identifiable {
 struct KeyboardSettings {
     // MARK: - Keyboard Layout (Phase 16)
 
+    /// Keyboard theme size - normal or compact
+    var themeSize: KeyboardThemeSize = .normal
+
     /// Show SwiftSpeakBar in typing mode
     var showSwiftSpeakBar: Bool = true
 
@@ -71,6 +96,12 @@ struct KeyboardSettings {
 
     /// Enable/disable AI predictions
     var aiPredictions: Bool = true
+
+    /// Enable inline AI predictions (ghost text preview after space)
+    var inlinePredictionEnabled: Bool = false
+
+    /// Trigger inline predictions on space press
+    var inlinePredictionOnSpace: Bool = true
 
     /// Enable/disable autocorrect
     var autocorrect: Bool = true
@@ -137,6 +168,10 @@ struct KeyboardSettings {
         var settings = KeyboardSettings()
 
         // Phase 16: Keyboard Layout Settings
+        if let themeSizeRaw = defaults?.string(forKey: "keyboardThemeSize"),
+           let themeSize = KeyboardThemeSize(rawValue: themeSizeRaw) {
+            settings.themeSize = themeSize
+        }
         settings.showSwiftSpeakBar = (defaults?.object(forKey: Constants.Keys.keyboardShowSwiftSpeakBar) as? Bool) ?? true
         settings.showPredictionRow = (defaults?.object(forKey: Constants.Keys.keyboardShowPredictionRow) as? Bool) ?? true
         if let actionRaw = defaults?.string(forKey: Constants.Keys.keyboardProgrammableAction),
@@ -153,6 +188,8 @@ struct KeyboardSettings {
         // bool(forKey:) returns false for missing keys, so ?? defaultValue never works
         settings.hapticFeedback = (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
         settings.aiPredictions = (defaults?.object(forKey: "keyboardAIPredictions") as? Bool) ?? true
+        settings.inlinePredictionEnabled = (defaults?.object(forKey: "keyboardInlinePredictionEnabled") as? Bool) ?? false
+        settings.inlinePredictionOnSpace = (defaults?.object(forKey: "keyboardInlinePredictionOnSpace") as? Bool) ?? true
         settings.autocorrect = (defaults?.object(forKey: "keyboardAutocorrect") as? Bool) ?? true
         settings.swipeTyping = (defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) as? Bool) ?? true
         settings.smartPunctuation = (defaults?.object(forKey: "keyboardSmartPunctuation") as? Bool) ?? true
@@ -195,6 +232,7 @@ struct KeyboardSettings {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
 
         // Phase 16: Keyboard Layout Settings
+        defaults?.set(themeSize.rawValue, forKey: "keyboardThemeSize")
         defaults?.set(showSwiftSpeakBar, forKey: Constants.Keys.keyboardShowSwiftSpeakBar)
         defaults?.set(showPredictionRow, forKey: Constants.Keys.keyboardShowPredictionRow)
         defaults?.set(programmableAction.rawValue, forKey: Constants.Keys.keyboardProgrammableAction)
@@ -204,6 +242,8 @@ struct KeyboardSettings {
         // Keyboard behavior
         defaults?.set(hapticFeedback, forKey: "keyboardHapticFeedback")
         defaults?.set(aiPredictions, forKey: "keyboardAIPredictions")
+        defaults?.set(inlinePredictionEnabled, forKey: "keyboardInlinePredictionEnabled")
+        defaults?.set(inlinePredictionOnSpace, forKey: "keyboardInlinePredictionOnSpace")
         defaults?.set(autocorrect, forKey: "keyboardAutocorrect")
         defaults?.set(swipeTyping, forKey: Constants.Keys.swipeTypingEnabled)
         defaults?.set(smartPunctuation, forKey: "keyboardSmartPunctuation")

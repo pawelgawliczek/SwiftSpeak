@@ -71,6 +71,20 @@ class KeyboardViewModel: ObservableObject {
     @Published var isLoadingSentencePredictions = false
     @Published var sentencePredictionError: String?
 
+    // Inline AI Prediction (ghost text preview)
+    @Published var inlinePrediction: String = ""
+    @Published var isGeneratingInlinePrediction: Bool = false
+    @Published var inlinePredictionTypingContext: String = ""  // The context when prediction was triggered
+    @Published var inlinePredictionError: String? = nil  // Error message to display to user
+    private var inlinePredictionTask: Task<Void, Never>?
+    private var inlinePredictionDebounceTask: Task<Void, Never>?
+
+    /// Whether there's an active inline prediction to display
+    var hasInlinePrediction: Bool { !inlinePrediction.isEmpty }
+
+    /// Whether there's an error to show (even with no prediction)
+    var hasInlinePredictionError: Bool { inlinePredictionError != nil }
+
     // Phase 13: Undo Stack (Gboard-style, AI-aware)
     @Published var undoStack: [UndoItem] = []  // Stack of undoable operations
     private let maxUndoItems = 10
@@ -1290,44 +1304,10 @@ class KeyboardViewModel: ObservableObject {
         defaults?.set(true, forKey: Constants.SentencePrediction.isProcessing)
         defaults?.synchronize()
 
-        // Check if SwiftLink session is active
-        if isSwiftLinkSessionActive {
-            keyboardLog("SwiftLink active, posting Darwin notification", category: "AI")
-            darwinManager.post(name: Constants.SwiftLinkNotifications.requestSentencePrediction)
-        } else {
-            // Check if auto-start is enabled
-            let autoStartEnabled = defaults?.bool(forKey: Constants.Keys.swiftLinkAutoStart) ?? true
-
-            if autoStartEnabled {
-                keyboardLog("SwiftLink not active, opening main app (auto-start enabled)", category: "AI")
-
-                // Store source app URL scheme for auto-return (use last used SwiftLink app if available)
-                if let lastAppData = defaults?.data(forKey: "lastUsedSwiftLinkApp"),
-                   let lastApp = try? JSONDecoder().decode(KeyboardSwiftLinkApp.self, from: lastAppData),
-                   let urlScheme = lastApp.urlScheme {
-                    defaults?.set(urlScheme, forKey: Constants.SentencePrediction.sourceAppURLScheme)
-                    keyboardLog("Source app URL scheme stored: \(urlScheme)", category: "AI")
-                }
-
-                // Request auto-return after processing
-                defaults?.set(true, forKey: Constants.SentencePrediction.autoReturnRequested)
-                defaults?.synchronize()
-
-                // Open main app via URL scheme - it will auto-start SwiftLink and process prediction
-                await MainActor.run {
-                    if let url = URL(string: "swiftspeak://sentenceprediction") {
-                        openURL(url)
-                    }
-                }
-            } else {
-                keyboardLog("SwiftLink not active and auto-start disabled", category: "AI", level: .error)
-                await MainActor.run {
-                    isLoadingSentencePredictions = false
-                    sentencePredictionError = "SwiftLink not active. Enable auto-start in Settings or start SwiftLink manually."
-                }
-                return
-            }
-        }
+        // Post Darwin notification to main app - works regardless of SwiftLink state
+        // Main app will receive notification and process the request
+        keyboardLog("Posting Darwin notification for sentence prediction", category: "AI")
+        darwinManager.post(name: Constants.SwiftLinkNotifications.requestSentencePrediction)
 
         // Start polling for results (main app will write to App Groups)
         await pollForSentencePredictionResults()
@@ -1543,6 +1523,122 @@ class KeyboardViewModel: ObservableObject {
         isLoadingSentencePredictions = false
     }
 
+    // MARK: - Inline AI Prediction (Ghost Text)
+
+    /// Trigger inline prediction after space is pressed
+    /// Debounces requests and cancels if user continues typing
+    func triggerInlinePrediction() {
+        // Cancel any pending debounce/prediction
+        inlinePredictionDebounceTask?.cancel()
+        inlinePredictionTask?.cancel()
+
+        // Clear current prediction if user is typing
+        if !inlinePrediction.isEmpty {
+            inlinePrediction = ""
+        }
+
+        // Check if inline predictions are enabled
+        let settings = KeyboardSettings.load()
+        guard settings.inlinePredictionEnabled else { return }
+
+        // Get current typing context
+        updateTypingContext()
+        let typingContext = currentTypingContext
+
+        // Don't trigger for very short context
+        guard typingContext.count >= 3 else { return }
+
+        // Store context for display
+        inlinePredictionTypingContext = typingContext
+
+        // Debounce: wait before actually requesting
+        let debounceMs = Constants.InlinePrediction.debounceDelayMs
+
+        inlinePredictionDebounceTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(debounceMs))
+
+                // Check if task was cancelled during debounce
+                try Task.checkCancellation()
+
+                await self?.performInlinePrediction(typingContext: typingContext)
+            } catch {
+                // Cancelled - ignore
+            }
+        }
+    }
+
+    /// Actually perform the inline prediction request
+    private func performInlinePrediction(typingContext: String) async {
+        await MainActor.run {
+            isGeneratingInlinePrediction = true
+        }
+
+        keyboardLog("Triggering inline prediction for: '\(typingContext.suffix(30))...'", category: "InlinePrediction")
+
+        inlinePredictionTask = Task { [weak self] in
+            do {
+                let result = try await InlinePredictionService.shared.generateContinuation(
+                    typingContext: typingContext,
+                    contextId: self?.activeContext?.id,
+                    contextName: self?.activeContext?.name
+                )
+
+                await MainActor.run {
+                    self?.isGeneratingInlinePrediction = false
+                    self?.inlinePredictionError = nil  // Clear any previous error
+
+                    if let prediction = result, !prediction.isEmpty {
+                        self?.inlinePrediction = prediction
+                        keyboardLog("Inline prediction received: '\(prediction.prefix(30))...'", category: "InlinePrediction")
+                    } else {
+                        self?.inlinePrediction = ""
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self?.isGeneratingInlinePrediction = false
+                    self?.inlinePrediction = ""
+                    // Store error message for display to user
+                    self?.inlinePredictionError = error.localizedDescription
+                    keyboardLog("Inline prediction failed: \(error.localizedDescription)", category: "InlinePrediction", level: .error)
+                }
+            }
+        }
+    }
+
+    /// Accept words from the inline prediction
+    /// - Parameter words: Array of words to insert
+    func acceptInlinePredictionWords(_ words: [String]) {
+        guard !words.isEmpty else { return }
+
+        let text = words.joined(separator: " ") + " "
+        textDocumentProxy?.insertText(text)
+
+        keyboardLog("Accepted inline prediction: \(words.count) words", category: "InlinePrediction")
+
+        // Clear the prediction
+        dismissInlinePrediction()
+
+        // Update context for potential next prediction
+        updateTypingContext()
+    }
+
+    /// Dismiss the inline prediction preview
+    func dismissInlinePrediction() {
+        inlinePredictionDebounceTask?.cancel()
+        inlinePredictionTask?.cancel()
+        inlinePrediction = ""
+        inlinePredictionTypingContext = ""
+        inlinePredictionError = nil  // Clear any error message
+        isGeneratingInlinePrediction = false
+
+        // Note: We intentionally don't call InlinePredictionService.shared.cancel() here
+        // to avoid race conditions where the async cancel clears App Groups data
+        // that a subsequent prediction request needs. The service handles its own
+        // cancellation through the Task cancellation above.
+    }
+
     // MARK: - Phase 13.11: AI Context Processing
 
     /// Process current text through the active context, translation, or both
@@ -1585,31 +1681,10 @@ class KeyboardViewModel: ObservableObject {
         // Set up observer for result first
         setupAIProcessResultObserver()
 
-        // If SwiftLink is active, use Darwin notification (stays in background)
-        // Otherwise, open main app with URL scheme and request SwiftLink start + auto-return
-        if isSwiftLinkSessionActive {
-            keyboardLog("AI Process: Using Darwin notification (SwiftLink active)", category: "AI")
-            darwinManager.post(name: Constants.AIProcess.startProcess)
-        } else {
-            keyboardLog("AI Process: Opening main app with auto-return (SwiftLink not active)", category: "AI")
-
-            // Get source app URL scheme for auto-return (use last used SwiftLink app if available)
-            if let lastAppData = defaults?.data(forKey: "lastUsedSwiftLinkApp"),
-               let lastApp = try? JSONDecoder().decode(KeyboardSwiftLinkApp.self, from: lastAppData),
-               let urlScheme = lastApp.urlScheme {
-                defaults?.set(urlScheme, forKey: Constants.AIProcess.sourceAppURLScheme)
-            }
-
-            // Request SwiftLink to be started so future AI requests work in background
-            defaults?.set(true, forKey: Constants.AIProcess.startSwiftLinkWithProcess)
-            // Request auto-return after processing
-            defaults?.set(true, forKey: Constants.AIProcess.autoReturnRequested)
-            defaults?.synchronize()
-
-            if let url = URL(string: "swiftspeak://aiprocess") {
-                openURL(url)
-            }
-        }
+        // Post Darwin notification to main app - works regardless of SwiftLink state
+        // Main app will receive notification and process the request
+        keyboardLog("AI Process: Posting Darwin notification", category: "AI")
+        darwinManager.post(name: Constants.AIProcess.startProcess)
     }
 
     /// Set up observer for AI process result

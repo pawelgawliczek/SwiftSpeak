@@ -203,8 +203,8 @@ final class InputActionExecutor {
         case .screenContext:
             return await executeScreenContext(action: action)
 
-        case .shareAudioImport:
-            // This is a marker action - audio import is handled by ShareImportView
+        case .shareAudioImport, .shareTextImport, .shareImageImport, .shareURLImport, .sharePDFImport:
+            // These are marker actions - share imports are handled by ShareImportView
             // No execution needed, just return success
             return .success(action: action, content: "")
         }

@@ -121,6 +121,28 @@ struct QuickSettingsPopover: View {
 
                     // SECTION 3: Keyboard Layout (Phase 16)
                     SettingsSection(title: "Layout") {
+                        // Theme size picker (Normal/Compact)
+                        PickerRow(
+                            title: "Keyboard Size",
+                            selection: Binding(
+                                get: { settings.themeSize.rawValue },
+                                set: { newValue in
+                                    if let themeSize = KeyboardThemeSize(rawValue: newValue) {
+                                        settings.themeSize = themeSize
+                                        settings.save()
+                                        // Ensure UserDefaults is synchronized before refreshing height
+                                        UserDefaults(suiteName: Constants.appGroupIdentifier)?.synchronize()
+                                        KeyboardHaptics.selection()
+                                        // Small delay to ensure settings are persisted
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                                            (viewModel.hostViewController as? KeyboardViewController)?.refreshHeight()
+                                        }
+                                    }
+                                }
+                            ),
+                            options: KeyboardThemeSize.allCases.map { ($0.rawValue, $0.displayName) }
+                        )
+
                         ToggleRow(title: "SwiftSpeak Bar", isOn: $settings.showSwiftSpeakBar) {
                             settings.save()
                             KeyboardHaptics.lightTap()
@@ -173,7 +195,24 @@ struct QuickSettingsPopover: View {
                         }
                     }
 
-                    // SECTION 4: System Info
+                    // SECTION 4: AI Features
+                    SettingsSection(title: "AI Features") {
+                        ToggleRow(title: "Inline AI Predictions", isOn: $settings.inlinePredictionEnabled) {
+                            settings.save()
+                            KeyboardHaptics.lightTap()
+                            // Notify height change (adds/removes prediction preview area)
+                            (viewModel.hostViewController as? KeyboardViewController)?.refreshHeight()
+                        }
+
+                        if settings.inlinePredictionEnabled {
+                            ToggleRow(title: "Predict on Space", isOn: $settings.inlinePredictionOnSpace) {
+                                settings.save()
+                                KeyboardHaptics.lightTap()
+                            }
+                        }
+                    }
+
+                    // SECTION 5: System Info
                     SettingsSection(title: "System") {
                         InfoRow(
                             title: "Subscription",

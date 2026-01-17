@@ -12,6 +12,7 @@ import SwiftUI
 struct PredictionRow: View {
     @ObservedObject var viewModel: KeyboardViewModel
     var settings: KeyboardSettings = KeyboardSettings()  // Phase 16: For programmable button
+    var sizing: KeyboardSizing = KeyboardSizing(.normal)  // Dynamic sizing support
     @State private var predictions: [String] = []
     @State private var lastShownPredictions: [String] = []  // For feedback tracking
     @State private var previousWord: String? = nil  // For contextual feedback
@@ -36,9 +37,9 @@ struct PredictionRow: View {
                 viewModel.showQuickSettings = true
             }) {
                 Image(systemName: "gearshape.fill")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: sizing.isCompact ? 11 : 14, weight: .medium))
                     .foregroundStyle(Color.white.opacity(0.5))
-                    .frame(width: 36, height: 36)
+                    .frame(width: sizing.predictionButtonSize, height: sizing.predictionButtonSize)
             }
             .buttonStyle(.plain)
 
@@ -47,7 +48,7 @@ struct PredictionRow: View {
 
             // Show autocorrect undo as first slot if available
             if let undoSuggestion = autocorrectUndoSuggestion {
-                AutocorrectUndoSlot(suggestion: undoSuggestion) {
+                AutocorrectUndoSlot(suggestion: undoSuggestion, sizing: sizing) {
                     handleAutocorrectUndoTap(undoSuggestion)
                 }
 
@@ -57,7 +58,8 @@ struct PredictionRow: View {
                 // Show remaining 2 predictions
                 ForEach(0..<2, id: \.self) { index in
                     PredictionSlot(
-                        text: index < predictions.count ? predictions[index] : ""
+                        text: index < predictions.count ? predictions[index] : "",
+                        sizing: sizing
                     ) {
                         if index < predictions.count {
                             handlePredictionTap(predictions[index])
@@ -73,7 +75,8 @@ struct PredictionRow: View {
                 // Normal 3-slot predictions
                 ForEach(0..<3, id: \.self) { index in
                     PredictionSlot(
-                        text: index < predictions.count ? predictions[index] : ""
+                        text: index < predictions.count ? predictions[index] : "",
+                        sizing: sizing
                     ) {
                         if index < predictions.count {
                             handlePredictionTap(predictions[index])
@@ -93,10 +96,11 @@ struct PredictionRow: View {
             // Phase 16: Programmable button on the right
             ProgrammableButton(
                 action: settings.programmableAction,
-                viewModel: viewModel
+                viewModel: viewModel,
+                sizing: sizing
             )
         }
-        .frame(height: 36)
+        .frame(height: sizing.predictionRowHeight)
         .background(Color(white: 0.08))
         .onAppear {
             Task {
@@ -336,16 +340,17 @@ struct PredictionRow: View {
 // MARK: - Prediction Slot
 private struct PredictionSlot: View {
     let text: String
+    var sizing: KeyboardSizing = KeyboardSizing(.normal)
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(text.isEmpty ? " " : text)
-                .font(.system(size: 14, weight: .regular))
+                .font(.system(size: sizing.predictionFontSize, weight: .regular))
                 .foregroundStyle(text.isEmpty ? .clear : .white.opacity(0.7))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
-                .frame(height: 36)
+                .frame(height: sizing.predictionRowHeight)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -366,24 +371,25 @@ struct AutocorrectUndoSuggestion {
 /// Special prediction slot for autocorrect undo with distinct styling
 private struct AutocorrectUndoSlot: View {
     let suggestion: AutocorrectUndoSuggestion
+    var sizing: KeyboardSizing = KeyboardSizing(.normal)
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 4) {
+            HStack(spacing: sizing.isCompact ? 2 : 4) {
                 // Undo arrow icon
                 Image(systemName: "arrow.uturn.backward")
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: sizing.isCompact ? 8 : 10, weight: .medium))
                     .foregroundStyle(Color.orange.opacity(0.8))
 
                 // Original word with quotes to distinguish from corrections
                 Text("\"\(suggestion.originalWord)\"")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: sizing.predictionFontSize, weight: .medium))
                     .foregroundStyle(Color.orange.opacity(0.9))
                     .lineLimit(1)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 36)
+            .frame(height: sizing.predictionRowHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -396,6 +402,7 @@ private struct AutocorrectUndoSlot: View {
 private struct ProgrammableButton: View {
     let action: ProgrammableButtonAction
     @ObservedObject var viewModel: KeyboardViewModel
+    var sizing: KeyboardSizing = KeyboardSizing(.normal)
 
     var body: some View {
         Button(action: {
@@ -403,7 +410,7 @@ private struct ProgrammableButton: View {
             executeAction()
         }) {
             buttonContent
-                .frame(width: 36, height: 36)
+                .frame(width: sizing.predictionButtonSize, height: sizing.predictionButtonSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -415,11 +422,11 @@ private struct ProgrammableButton: View {
         case .transcribe:
             // Use SwiftSpeak logo for transcribe
             SwiftSpeakLogoView()
-                .frame(width: 20, height: 20)
+                .frame(width: sizing.isCompact ? 14 : 20, height: sizing.isCompact ? 14 : 20)
                 .foregroundStyle(iconGradient)
         default:
             Image(systemName: action.iconName)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: sizing.isCompact ? 11 : 14, weight: .medium))
                 .foregroundStyle(iconGradient)
         }
     }

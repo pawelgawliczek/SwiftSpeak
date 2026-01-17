@@ -54,12 +54,18 @@ class SharedSettings: ObservableObject {
         static let keyboardProgrammableAction = "icloud_keyboard_programmableAction"
         static let keyboardShowProgrammableNextToReturn = "icloud_keyboard_showProgrammableNextToReturn"
         static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
+        // Inline AI Prediction Settings
+        static let keyboardInlinePredictionEnabled = "icloud_keyboard_inlinePredictionEnabled"
+        static let keyboardInlinePredictionOnSpace = "icloud_keyboard_inlinePredictionOnSpace"
         // Streaming settings
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
         // Hidden contexts
         static let hiddenContextIds = "icloud_hiddenContextIds"
         // Subscription tier
         static let subscriptionTier = "icloud_subscriptionTier"
+        // Quick Actions (Autocomplete Suggestions)
+        static let quickSuggestionsEnabled = "icloud_quickSuggestionsEnabled"
+        static let quickActions = "icloud_quickActions"
     }
 
     // MARK: - Published Properties
@@ -234,6 +240,23 @@ class SharedSettings: ObservableObject {
     @Published var powerModes: [PowerMode] = [] {
         didSet {
             savePowerModes()
+        }
+    }
+
+    // MARK: - Quick Actions (Autocomplete Suggestions)
+
+    /// Whether quick suggestions are enabled for the prediction button
+    @Published var quickSuggestionsEnabled: Bool = true {
+        didSet {
+            defaults?.set(quickSuggestionsEnabled, forKey: "quickSuggestionsEnabled")
+            syncToiCloud()
+        }
+    }
+
+    /// Quick actions for generating typed predictions (positive, neutral, negative, etc.)
+    @Published var quickActions: [QuickAction] = .defaultActions {
+        didSet {
+            saveQuickActions()
         }
     }
 
@@ -499,6 +522,22 @@ class SharedSettings: ObservableObject {
         }
     }
 
+    /// Enable inline AI predictions (ghost text preview after space)
+    @Published var keyboardInlinePredictionEnabled: Bool = false {
+        didSet {
+            defaults?.set(keyboardInlinePredictionEnabled, forKey: "keyboardInlinePredictionEnabled")
+            syncToiCloud()
+        }
+    }
+
+    /// Trigger inline predictions on space press
+    @Published var keyboardInlinePredictionOnSpace: Bool = true {
+        didSet {
+            defaults?.set(keyboardInlinePredictionOnSpace, forKey: "keyboardInlinePredictionOnSpace")
+            syncToiCloud()
+        }
+    }
+
     // MARK: - Autocomplete Suggestions (Keyboard)
 
     /// Whether autocomplete suggestions are enabled in keyboard
@@ -552,6 +591,15 @@ class SharedSettings: ObservableObject {
            let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw),
            returnAction != keyboardReturnProgrammableAction {
             keyboardReturnProgrammableAction = returnAction
+        }
+        // Inline AI Prediction settings
+        if let inlineEnabled = defaults?.object(forKey: "keyboardInlinePredictionEnabled") as? Bool,
+           inlineEnabled != keyboardInlinePredictionEnabled {
+            keyboardInlinePredictionEnabled = inlineEnabled
+        }
+        if let inlineOnSpace = defaults?.object(forKey: "keyboardInlinePredictionOnSpace") as? Bool,
+           inlineOnSpace != keyboardInlinePredictionOnSpace {
+            keyboardInlinePredictionOnSpace = inlineOnSpace
         }
     }
 
@@ -914,6 +962,15 @@ class SharedSettings: ObservableObject {
             powerModes = loadedModes
         }
 
+        // Load quick actions
+        if iCloud?.object(forKey: iCloudKeys.quickSuggestionsEnabled) != nil {
+            quickSuggestionsEnabled = iCloud?.bool(forKey: iCloudKeys.quickSuggestionsEnabled) ?? true
+        }
+        if let data = iCloud?.data(forKey: iCloudKeys.quickActions),
+           let loadedActions = try? JSONDecoder().decode([QuickAction].self, from: data) {
+            quickActions = loadedActions
+        }
+
         // Load vocabulary
         if let data = iCloud?.data(forKey: iCloudKeys.vocabulary),
            let entries = try? JSONDecoder().decode([VocabularyEntry].self, from: data) {
@@ -969,6 +1026,14 @@ class SharedSettings: ObservableObject {
         if let returnActionRaw = iCloud?.string(forKey: iCloudKeys.keyboardReturnProgrammableAction),
            let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw) {
             keyboardReturnProgrammableAction = returnAction
+        }
+
+        // Load inline AI prediction settings
+        if let inlineEnabled = iCloud?.object(forKey: iCloudKeys.keyboardInlinePredictionEnabled) as? Bool {
+            keyboardInlinePredictionEnabled = inlineEnabled
+        }
+        if let inlineOnSpace = iCloud?.object(forKey: iCloudKeys.keyboardInlinePredictionOnSpace) as? Bool {
+            keyboardInlinePredictionOnSpace = inlineOnSpace
         }
 
         // Load streaming settings
@@ -1031,6 +1096,12 @@ class SharedSettings: ObservableObject {
             iCloud?.set(data, forKey: iCloudKeys.powerModes)
         }
 
+        // Sync quick actions
+        iCloud?.set(quickSuggestionsEnabled, forKey: iCloudKeys.quickSuggestionsEnabled)
+        if let data = try? JSONEncoder().encode(quickActions) {
+            iCloud?.set(data, forKey: iCloudKeys.quickActions)
+        }
+
         // Sync vocabulary
         if let data = try? JSONEncoder().encode(vocabulary) {
             iCloud?.set(data, forKey: iCloudKeys.vocabulary)
@@ -1065,6 +1136,10 @@ class SharedSettings: ObservableObject {
         iCloud?.set(keyboardProgrammableAction.rawValue, forKey: iCloudKeys.keyboardProgrammableAction)
         iCloud?.set(keyboardShowProgrammableNextToReturn, forKey: iCloudKeys.keyboardShowProgrammableNextToReturn)
         iCloud?.set(keyboardReturnProgrammableAction.rawValue, forKey: iCloudKeys.keyboardReturnProgrammableAction)
+
+        // Sync inline AI prediction settings
+        iCloud?.set(keyboardInlinePredictionEnabled, forKey: iCloudKeys.keyboardInlinePredictionEnabled)
+        iCloud?.set(keyboardInlinePredictionOnSpace, forKey: iCloudKeys.keyboardInlinePredictionOnSpace)
 
         // Sync streaming settings
         iCloud?.set(transcriptionStreamingEnabled, forKey: iCloudKeys.transcriptionStreamingEnabled)
@@ -1196,6 +1271,7 @@ class SharedSettings: ObservableObject {
         // Load contexts and power modes
         loadContexts()
         loadPowerModes()
+        loadQuickActions()
         loadHiddenContextIds()
         loadObsidianVaults()
         loadHistoryMemory()
@@ -1263,6 +1339,14 @@ class SharedSettings: ObservableObject {
         if let returnActionRaw = defaults?.string(forKey: Constants.Keys.keyboardReturnProgrammableAction),
            let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw) {
             keyboardReturnProgrammableAction = returnAction
+        }
+
+        // Load inline AI prediction settings
+        if defaults?.object(forKey: "keyboardInlinePredictionEnabled") != nil {
+            keyboardInlinePredictionEnabled = defaults?.bool(forKey: "keyboardInlinePredictionEnabled") ?? false
+        }
+        if defaults?.object(forKey: "keyboardInlinePredictionOnSpace") != nil {
+            keyboardInlinePredictionOnSpace = defaults?.bool(forKey: "keyboardInlinePredictionOnSpace") ?? true
         }
 
         // Load Autocomplete Suggestions settings
@@ -1857,6 +1941,34 @@ class SharedSettings: ObservableObject {
             defaults?.set(data, forKey: Constants.Keys.powerModes)
         }
         syncToiCloud()
+    }
+
+    // MARK: - Quick Actions Methods
+
+    private func saveQuickActions() {
+        if let data = try? JSONEncoder().encode(quickActions) {
+            defaults?.set(data, forKey: "quickActions")
+        }
+        syncToiCloud()
+    }
+
+    private func loadQuickActions() {
+        // Load enabled state
+        if defaults?.object(forKey: "quickSuggestionsEnabled") != nil {
+            quickSuggestionsEnabled = defaults?.bool(forKey: "quickSuggestionsEnabled") ?? true
+        }
+
+        // Load quick actions
+        guard let data = defaults?.data(forKey: "quickActions"),
+              let actions = try? JSONDecoder().decode([QuickAction].self, from: data) else {
+            return
+        }
+        quickActions = actions
+    }
+
+    /// Get enabled quick actions sorted by order
+    var configuredQuickActions: [QuickAction] {
+        quickActions.filter { $0.isEnabled }.sorted { $0.order < $1.order }
     }
 
     // MARK: - Obsidian Vaults Methods

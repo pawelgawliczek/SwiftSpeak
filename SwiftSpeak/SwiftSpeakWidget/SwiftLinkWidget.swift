@@ -108,42 +108,193 @@ struct SwiftLinkRectangularView: View {
     }
 }
 
-// Home Screen Small Widget - Large toggle button
+// Home Screen Small Widget - Compact 3-button layout
 struct SwiftLinkSmallView: View {
     let entry: SwiftLinkWidgetEntry
 
     var body: some View {
-        ZStack {
-            // Background color based on state
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .fill(entry.isActive ? Color.green.opacity(0.2) : Color.orange.opacity(0.15))
+        VStack(spacing: 8) {
+            // SwiftLink button at top (larger, primary action)
+            Link(destination: URL(string: "swiftspeak://swiftlink-toggle")!) {
+                HStack(spacing: 8) {
+                    ZStack {
+                        Circle()
+                            .fill(entry.isActive ? Color.green : Color.orange)
+                            .frame(width: 32, height: 32)
 
-            VStack(spacing: 12) {
-                // Large icon with SwiftSpeak logo
-                ZStack {
-                    Circle()
-                        .fill(entry.isActive ? Color.green : Color.orange)
-                        .frame(width: 56, height: 56)
+                        Image("SwiftSpeakLogo")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 18, height: 18)
+                            .foregroundStyle(.white)
+                    }
 
-                    Image("SwiftSpeakLogo")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
-                        .foregroundStyle(.white)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("SwiftLink")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                        Text(entry.isActive ? "Active" : "Start")
+                            .font(.system(size: 10))
+                            .foregroundStyle(entry.isActive ? .green : .secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(.white.opacity(0.15))
+                )
+            }
+
+            // Bottom row: Meeting + Power buttons
+            HStack(spacing: 8) {
+                Link(destination: URL(string: "swiftspeak://meeting")!) {
+                    SmallWidgetButton(
+                        icon: "mic.badge.plus",
+                        label: "Meeting",
+                        color: .blue
+                    )
                 }
 
-                // Label
-                Text("SwiftSpeak")
-                    .font(.subheadline.weight(.semibold))
-
-                // Status
-                Text(entry.isActive ? "Active" : "Tap to Start")
-                    .font(.caption)
-                    .foregroundStyle(entry.isActive ? .green : .secondary)
+                Link(destination: URL(string: "swiftspeak://powermode-picker")!) {
+                    SmallWidgetButton(
+                        icon: "bolt.fill",
+                        label: "Power",
+                        color: .purple
+                    )
+                }
             }
         }
+        .padding(10)
         .containerBackground(.clear, for: .widget)
-        .widgetURL(URL(string: "swiftspeak://swiftlink-toggle"))
+    }
+}
+
+// Compact button for small widget
+struct SmallWidgetButton: View {
+    let icon: String
+    let label: String
+    let color: Color
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.2))
+                    .frame(width: 28, height: 28)
+
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(color)
+            }
+
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(.primary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(.white.opacity(0.15))
+        )
+    }
+}
+
+// Home Screen Medium Widget - 3 action buttons
+struct SwiftLinkMediumView: View {
+    let entry: SwiftLinkWidgetEntry
+
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(spacing: 12) {
+                // SwiftLink Button
+                Link(destination: URL(string: "swiftspeak://swiftlink-toggle")!) {
+                    WidgetActionButton(
+                        icon: "waveform.circle.fill",
+                        customIcon: "SwiftSpeakLogo",
+                        title: "SwiftLink",
+                        subtitle: entry.isActive ? "Active" : "Start",
+                        accentColor: entry.isActive ? .green : .orange,
+                        isActive: entry.isActive
+                    )
+                }
+
+                // Meeting Button
+                Link(destination: URL(string: "swiftspeak://meeting")!) {
+                    WidgetActionButton(
+                        icon: "mic.badge.plus",
+                        customIcon: nil,
+                        title: "Meeting",
+                        subtitle: "Record",
+                        accentColor: .blue,
+                        isActive: false
+                    )
+                }
+
+                // Power Mode Button
+                Link(destination: URL(string: "swiftspeak://powermode-picker")!) {
+                    WidgetActionButton(
+                        icon: "bolt.fill",
+                        customIcon: nil,
+                        title: "Power",
+                        subtitle: "Modes",
+                        accentColor: .purple,
+                        isActive: false
+                    )
+                }
+            }
+            .padding(12)
+        }
+        .containerBackground(.clear, for: .widget)
+    }
+}
+
+// Reusable action button for medium widget
+struct WidgetActionButton: View {
+    let icon: String
+    let customIcon: String?
+    let title: String
+    let subtitle: String
+    let accentColor: Color
+    let isActive: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(accentColor.opacity(isActive ? 0.3 : 0.2))
+                    .frame(width: 48, height: 48)
+
+                if let customIcon = customIcon {
+                    Image(customIcon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 26, height: 26)
+                        .foregroundStyle(accentColor)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(accentColor)
+                }
+            }
+
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(isActive ? accentColor : .secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(.white.opacity(0.15))
+        )
     }
 }
 
@@ -156,12 +307,13 @@ struct SwiftLinkWidget: Widget {
         StaticConfiguration(kind: kind, provider: SwiftLinkTimelineProvider()) { entry in
             SwiftLinkWidgetEntryView(entry: entry)
         }
-        .configurationDisplayName("SwiftLink")
-        .description("Tap to enable or disable SwiftLink background dictation")
+        .configurationDisplayName("SwiftSpeak")
+        .description("Quick access to SwiftLink, Meeting recording, and Power Modes")
         .supportedFamilies([
             .accessoryCircular,
             .accessoryRectangular,
-            .systemSmall
+            .systemSmall,
+            .systemMedium
         ])
     }
 }
@@ -178,6 +330,8 @@ struct SwiftLinkWidgetEntryView: View {
             SwiftLinkRectangularView(entry: entry)
         case .systemSmall:
             SwiftLinkSmallView(entry: entry)
+        case .systemMedium:
+            SwiftLinkMediumView(entry: entry)
         default:
             SwiftLinkSmallView(entry: entry)
         }
@@ -217,6 +371,18 @@ struct SwiftLinkWidgetEntryView: View {
 }
 
 #Preview("Small - Inactive", as: .systemSmall) {
+    SwiftLinkWidget()
+} timeline: {
+    SwiftLinkWidgetEntry.inactive
+}
+
+#Preview("Medium - Active", as: .systemMedium) {
+    SwiftLinkWidget()
+} timeline: {
+    SwiftLinkWidgetEntry.active
+}
+
+#Preview("Medium - Inactive", as: .systemMedium) {
     SwiftLinkWidget()
 } timeline: {
     SwiftLinkWidgetEntry.inactive

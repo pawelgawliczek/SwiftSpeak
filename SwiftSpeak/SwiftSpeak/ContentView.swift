@@ -18,6 +18,7 @@ struct ContentView: View {
     @State private var translateOnRecord = false
     @State private var showPowerModeExecution = false
     @State private var selectedPowerModeId: UUID?
+    @State private var showMeetingRecording = false  // Widget: Meeting recording
     @State private var showConfigUpdateSheet = false
     @State private var editModeOriginalText: String? = nil  // Phase 12: Edit mode
     @State private var showSwiftLinkQuickStart = false  // SwiftLink quick-start sheet
@@ -46,7 +47,7 @@ struct ContentView: View {
 
             TabView(selection: $selectedTab) {
                 // Home / Recording
-                HomeView(showRecording: $showRecording, translateOnRecord: $translateOnRecord)
+                HomeView(showRecording: $showRecording, translateOnRecord: $translateOnRecord, showMeetingRecording: $showMeetingRecording)
                     .tabItem {
                         Image(systemName: "mic.fill")
                         Text("Record")
@@ -446,6 +447,21 @@ struct ContentView: View {
         // Processing is handled in the SwiftLink auto-start block above
         if url.host == "sentenceprediction" {
             appLog("Sentence prediction URL received - processing in background", category: "Navigation")
+            return
+        }
+
+        // Widget: Handle Meeting Recording request
+        if url.host == "meeting" {
+            appLog("Meeting recording requested from widget", category: "Navigation")
+            selectedTab = 0  // Go to home tab
+            showMeetingRecording = true
+            return
+        }
+
+        // Widget: Handle Power Mode picker request
+        if url.host == "powermode-picker" {
+            appLog("Power Mode picker requested from widget", category: "Navigation")
+            selectedTab = 2  // Switch to Power tab
             return
         }
 
@@ -880,6 +896,7 @@ struct HomeView: View {
     @EnvironmentObject var settings: SharedSettings
     @Binding var showRecording: Bool
     @Binding var translateOnRecord: Bool
+    @Binding var showMeetingRecording: Bool
     @Environment(\.colorScheme) var colorScheme
     @ObservedObject private var swiftLinkManager = SwiftLinkSessionManager.shared
 
@@ -891,7 +908,6 @@ struct HomeView: View {
     // NOTE: Using settings.isTranslationEnabled directly instead of local state
     // This ensures translation state is synced via iCloud between iOS and macOS
     @State private var showSwiftLinkQuickStart = false
-    @State private var showMeetingRecording = false
 
     /// Whether the user has access to Pro features (contexts, modes, translation)
     private var hasProAccess: Bool {

@@ -1756,6 +1756,13 @@ final class SwiftLinkSessionManager: ObservableObject {
                 self?.handleSentencePredictionRequest()
             }
         }
+
+        // Inline AI prediction: Observe request from keyboard
+        DarwinNotificationManager.shared.startObserving(name: Constants.InlinePredictionNotifications.requestPrediction) { [weak self] in
+            Task { @MainActor in
+                self?.handleInlinePredictionRequest()
+            }
+        }
     }
 
     // MARK: - Phase 13.12: Sentence Prediction Handler
@@ -2179,6 +2186,289 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
 
         return Array(lines)
+    }
+
+    // MARK: - Inline AI Prediction Handler
+
+    /// Handle inline prediction request from keyboard
+    /// Used for ghost text predictions that appear after space press
+    func handleInlinePredictionRequest() {
+        appLog("Received inline prediction request from keyboard", category: "SwiftLink")
+
+        // Start background session if not active
+        if !isSessionActive {
+            appLog("Starting background session for inline prediction", category: "SwiftLink")
+            Task {
+                await startBackgroundSession()
+                await processInlinePredictionRequest()
+            }
+        } else {
+            Task {
+                await processInlinePredictionRequest()
+            }
+        }
+    }
+
+    /// Process the inline prediction request
+    private func processInlinePredictionRequest() async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        // Read context from App Groups
+        let typingContext = defaults?.string(forKey: Constants.InlinePrediction.context) ?? ""
+        let activeContextName = defaults?.string(forKey: Constants.SentencePrediction.activeContextName)
+        let activeContextId = defaults?.string(forKey: Constants.SentencePrediction.activeContextId)
+
+        appLog("Inline prediction: context='\(typingContext.suffix(30))...', activeContext=\(activeContextName ?? "none")", category: "SwiftLink")
+
+        await performInlinePrediction(
+            typingContext: typingContext,
+            activeContextName: activeContextName,
+            activeContextId: activeContextId
+        )
+    }
+
+    /// Perform inline AI prediction (single sentence continuation)
+    private func performInlinePrediction(
+        typingContext: String,
+        activeContextName: String?,
+        activeContextId: String?
+    ) async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+
+        // Access SharedSettings via MainActor to ensure proper initialization and keychain access
+        let (globalMemory, contextMemory, contextCaptureEnabled, config, provider) = await MainActor.run {
+            let settings = SharedSettings.shared
+
+            // Get global memory
+            let global = settings.globalMemory ?? ""
+
+            // Get context-specific memory if available
+            var ctxMemory = ""
+            if let contextId = activeContextId,
+               let uuid = UUID(uuidString: contextId),
+               let context = settings.contexts.first(where: { $0.id == uuid }) {
+                ctxMemory = context.contextMemory ?? ""
+            }
+
+            // Get context capture setting
+            let captureEnabled = settings.contextCaptureEnabled
+
+            // Get provider configuration - inline predictions need LLM capability
+            // Try selectedFormattingProvider first, then selectedPowerModeProvider, then any LLM-capable provider
+            var providerConfig: AIProviderConfig? = nil
+            var selectedProvider = settings.selectedFormattingProvider
+
+            // Try formatting provider first
+            if let config = settings.getAIProviderConfig(for: settings.selectedFormattingProvider),
+               config.isConfigured && config.provider.supportsPowerMode {
+                providerConfig = config
+                selectedProvider = settings.selectedFormattingProvider
+            }
+            // Fall back to power mode provider (LLM-capable)
+            else if let config = settings.getAIProviderConfig(for: settings.selectedPowerModeProvider),
+                    config.isConfigured {
+                providerConfig = config
+                selectedProvider = settings.selectedPowerModeProvider
+            }
+            // Fall back to any configured LLM-capable provider
+            else if let config = settings.powerModeProviders.first(where: { $0.isConfigured }) {
+                providerConfig = config
+                selectedProvider = config.provider
+            }
+
+            return (global, ctxMemory, captureEnabled, providerConfig, selectedProvider)
+        }
+
+        // Debug logging for provider state
+        appLog("Inline prediction: provider=\(provider.rawValue), configExists=\(config != nil), isConfigured=\(config?.isConfigured ?? false)", category: "SwiftLink")
+
+        // Get screen context if context capture is enabled and active
+        var screenContext: String? = nil
+        if contextCaptureEnabled {
+            let captureManager = await MainActor.run { ContextCaptureManager.shared }
+            let isCapturing = await MainActor.run { captureManager.isCapturing }
+
+            if isCapturing {
+                appLog("Inline prediction: Requesting fresh screen context...", category: "SwiftLink")
+                screenContext = await captureManager.requestFreshContext(timeout: 2.0)  // Shorter timeout for inline
+                if let ctx = screenContext {
+                    appLog("Inline prediction: Got screen context (\(ctx.count) chars)", category: "SwiftLink")
+                } else {
+                    appLog("Inline prediction: No screen context available", category: "SwiftLink", level: .warning)
+                }
+            } else {
+                appLog("Inline prediction: Context capture enabled but not active", category: "SwiftLink")
+            }
+        }
+
+        // Build prompt using shared AutocompletePromptBuilder
+        let prompt = AutocompletePromptBuilder.buildSentenceContinuationPrompt(
+            typingContext: typingContext,
+            recentMessagesContext: nil,  // Could add recent messages context later
+            styleContext: nil,           // Could derive from active context
+            globalMemory: globalMemory.isEmpty ? nil : globalMemory,
+            contextMemory: contextMemory.isEmpty ? nil : contextMemory,
+            screenContext: screenContext
+        )
+
+        // Check provider configuration
+        guard let validConfig = config, validConfig.isConfigured else {
+            appLog("Inline prediction: No configured provider (provider=\(provider.rawValue), apiKeyEmpty=\(config?.apiKey.isEmpty ?? true))", category: "SwiftLink", level: .error)
+            // Provide helpful error message - inline predictions need an LLM provider (not transcription-only)
+            defaults?.set("Add OpenAI, Anthropic, or Google in Settings to enable AI predictions", forKey: Constants.InlinePrediction.error)
+            defaults?.set(false, forKey: Constants.InlinePrediction.isProcessing)
+            defaults?.synchronize()
+            DarwinNotificationManager.shared.post(name: Constants.InlinePredictionNotifications.predictionReady)
+            return
+        }
+
+        do {
+            let prediction = try await callAIForInlinePrediction(prompt: prompt, config: validConfig, provider: provider)
+
+            // Store result
+            defaults?.set(prediction, forKey: Constants.InlinePrediction.result)
+            defaults?.removeObject(forKey: Constants.InlinePrediction.error)
+            defaults?.set(false, forKey: Constants.InlinePrediction.isProcessing)
+            defaults?.synchronize()
+
+            appLog("Inline prediction: '\(prediction.prefix(50))...'", category: "SwiftLink")
+
+            // Notify keyboard
+            DarwinNotificationManager.shared.post(name: Constants.InlinePredictionNotifications.predictionReady)
+
+        } catch {
+            appLog("Inline prediction error: \(error.localizedDescription)", category: "SwiftLink", level: .error)
+            defaults?.set(error.localizedDescription, forKey: Constants.InlinePrediction.error)
+            defaults?.set(false, forKey: Constants.InlinePrediction.isProcessing)
+            defaults?.synchronize()
+            DarwinNotificationManager.shared.post(name: Constants.InlinePredictionNotifications.predictionReady)
+        }
+    }
+
+    /// Call AI API for inline prediction (single continuation)
+    private func callAIForInlinePrediction(prompt: String, config: AIProviderConfig, provider: AIProvider) async throws -> String {
+        // Build URL based on provider
+        let url: URL
+        let headers: [String: String]
+        let body: [String: Any]
+
+        switch provider {
+        case .openAI:
+            url = URL(string: "https://api.openai.com/v1/chat/completions")!
+            headers = [
+                "Authorization": "Bearer \(config.apiKey)",
+                "Content-Type": "application/json"
+            ]
+            body = [
+                "model": "gpt-4o-mini",
+                "messages": [
+                    ["role": "system", "content": "You are helping complete a sentence. Provide a natural continuation that flows seamlessly from the existing text. Be concise (under 15 words). Respond with ONLY the continuation, no quotes or explanation."],
+                    ["role": "user", "content": prompt]
+                ],
+                "max_tokens": 50,
+                "temperature": 0.7
+            ]
+
+        case .anthropic:
+            url = URL(string: "https://api.anthropic.com/v1/messages")!
+            headers = [
+                "x-api-key": config.apiKey,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            ]
+            body = [
+                "model": "claude-3-haiku-20240307",
+                "max_tokens": 50,
+                "messages": [
+                    ["role": "user", "content": prompt]
+                ],
+                "system": "You are helping complete a sentence. Provide a natural continuation that flows seamlessly from the existing text. Be concise (under 15 words). Respond with ONLY the continuation, no quotes or explanation."
+            ]
+
+        case .google:
+            let model = "gemini-1.5-flash"
+            url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(config.apiKey)")!
+            headers = ["Content-Type": "application/json"]
+            body = [
+                "contents": [
+                    ["parts": [["text": prompt]]]
+                ],
+                "generationConfig": [
+                    "maxOutputTokens": 50,
+                    "temperature": 0.7
+                ]
+            ]
+
+        default:
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 5  // Shorter timeout for inline predictions
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TranscriptionError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                let errorMessage = (errorJson["error"] as? [String: Any])?["message"] as? String ?? "Unknown error"
+                throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: errorMessage)
+            }
+            throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: "Request failed")
+        }
+
+        // Parse response based on provider
+        let content: String
+
+        switch provider {
+        case .openAI:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let firstChoice = choices.first,
+                  let message = firstChoice["message"] as? [String: Any],
+                  let text = message["content"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse OpenAI response")
+            }
+            content = text
+
+        case .anthropic:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let contentArray = json["content"] as? [[String: Any]],
+                  let firstContent = contentArray.first,
+                  let text = firstContent["text"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse Anthropic response")
+            }
+            content = text
+
+        case .google:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let candidates = json["candidates"] as? [[String: Any]],
+                  let firstCandidate = candidates.first,
+                  let contentDict = firstCandidate["content"] as? [String: Any],
+                  let parts = contentDict["parts"] as? [[String: Any]],
+                  let firstPart = parts.first,
+                  let text = firstPart["text"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse Google response")
+            }
+            content = text
+
+        default:
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        // Clean up the response (remove quotes, trim whitespace)
+        return content
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
     }
 
     // MARK: - Phase 13.11: AI Process Request Handler

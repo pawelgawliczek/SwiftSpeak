@@ -377,6 +377,18 @@ struct InputActionConfigSheet: View {
 
         case .shareAudioImport:
             infoBox(text: "Marks this Power Mode as available for shared audio import from other apps")
+
+        case .shareTextImport:
+            infoBox(text: "Marks this Power Mode as available for shared text content from other apps")
+
+        case .shareImageImport:
+            infoBox(text: "Marks this Power Mode as available for shared images (OCR text extraction) from other apps")
+
+        case .shareURLImport:
+            infoBox(text: "Marks this Power Mode as available for shared URLs (web content fetch) from other apps")
+
+        case .sharePDFImport:
+            infoBox(text: "Marks this Power Mode as available for shared PDFs (text extraction) from other apps")
         }
     }
 
@@ -891,6 +903,10 @@ extension InputActionType {
         case .webhook: return "link"
         case .screenContext: return "text.viewfinder"
         case .shareAudioImport: return "waveform.badge.plus"
+        case .shareTextImport: return "doc.text.fill"
+        case .shareImageImport: return "photo.badge.plus"
+        case .shareURLImport: return "link.badge.plus"
+        case .sharePDFImport: return "doc.richtext.fill"
         }
     }
 
@@ -907,6 +923,10 @@ extension InputActionType {
         case .webhook: return .orange
         case .screenContext: return .cyan
         case .shareAudioImport: return .teal
+        case .shareTextImport: return .blue
+        case .shareImageImport: return .indigo
+        case .shareURLImport: return .green
+        case .sharePDFImport: return .red
         }
     }
 
@@ -934,6 +954,14 @@ extension InputActionType {
             return "Capture text from your screen via OCR"
         case .shareAudioImport:
             return "Accept audio files shared from other apps"
+        case .shareTextImport:
+            return "Accept text content shared from other apps"
+        case .shareImageImport:
+            return "Accept images and extract text via OCR"
+        case .shareURLImport:
+            return "Accept URLs and fetch web content"
+        case .sharePDFImport:
+            return "Accept PDFs and extract text"
         }
     }
 }

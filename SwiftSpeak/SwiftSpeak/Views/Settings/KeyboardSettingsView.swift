@@ -35,6 +35,9 @@ struct KeyboardSettingsView: View {
                 // Autocomplete Suggestions Section (Power tier)
                 autocompleteSuggestionsSection
 
+                // Inline AI Prediction Section
+                inlinePredictionSection
+
                 // Tips Section
                 tipsSection
             }
@@ -220,6 +223,54 @@ struct KeyboardSettingsView: View {
         } footer: {
             if settings.subscriptionTier != .free && settings.keyboardQuickSuggestionsEnabled {
                 Text("Configure which response types to generate based on screen context.")
+            }
+        }
+    }
+
+    // MARK: - Inline AI Prediction Section
+
+    private var inlinePredictionSection: some View {
+        Section {
+            Toggle(isOn: $settings.keyboardInlinePredictionEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text("Inline AI Predictions")
+                            .font(.callout)
+                        Image(systemName: "sparkles")
+                            .font(.caption)
+                            .foregroundStyle(.purple)
+                    }
+                    Text("Ghost text continuation appears after pressing space")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
+
+            if settings.keyboardInlinePredictionEnabled {
+                Toggle(isOn: $settings.keyboardInlinePredictionOnSpace) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Predict on Space")
+                            .font(.callout)
+                        Text("Trigger predictions automatically after pressing space")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .tint(AppTheme.accent)
+                .listRowBackground(rowBackground)
+            }
+        } header: {
+            HStack {
+                Text("Inline AI Prediction")
+                Image(systemName: "text.bubble")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+        } footer: {
+            if settings.keyboardInlinePredictionEnabled {
+                Text("AI predicts what you might type next and shows it as ghost text. Tap or swipe on the prediction to accept words. Requires AI provider to be configured.")
             }
         }
     }

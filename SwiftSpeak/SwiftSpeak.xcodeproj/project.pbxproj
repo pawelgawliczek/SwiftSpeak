@@ -19,7 +19,7 @@
 		837CF8F92F16B3C900CF438B /* Vision.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8F82F16B3C900CF438B /* Vision.framework */; };
 		837CF8FB2F16B3D400CF438B /* CoreMedia.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 837CF8FA2F16B3D400CF438B /* CoreMedia.framework */; };
 		837CF9152F17EC0500CF438B /* SwiftSpeakShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		837CF92D2F18F1CB00CF438B /* SwiftSpeakMacShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		837CF92D2F18F1CB00CF438B /* SwiftSpeak.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 837CF9212F18F1CB00CF438B /* SwiftSpeak.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		837CF9392F18F35500CF438B /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 837CF9382F18F35500CF438B /* SwiftSpeakCore */; };
 		838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117402F014001009B3FD9 /* SwiftSpeakCore */; };
 		838749822F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117412F014002009B3FD9 /* SwiftSpeakCore */; };
@@ -103,7 +103,7 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				837CF92D2F18F1CB00CF438B /* SwiftSpeakMacShare.appex in Embed Foundation Extensions */,
+				837CF92D2F18F1CB00CF438B /* SwiftSpeak.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -139,7 +139,7 @@
 		837CF8F82F16B3C900CF438B /* Vision.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Vision.framework; path = System/Library/Frameworks/Vision.framework; sourceTree = SDKROOT; };
 		837CF8FA2F16B3D400CF438B /* CoreMedia.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreMedia.framework; path = System/Library/Frameworks/CoreMedia.framework; sourceTree = SDKROOT; };
 		837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakMacShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		837CF9212F18F1CB00CF438B /* SwiftSpeak.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeak.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED79152EFE4CB900880604 /* SwiftSpeak.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SwiftSpeak.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SwiftSpeakKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		83ED7A112EFECCE900880604 /* SwiftSpeakTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SwiftSpeakTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -423,7 +423,7 @@
 				8316B8202F102B3E000FC1C2 /* SwiftSpeakWidgetExtension.appex */,
 				837CF8E92F16B35900CF438B /* SwiftSpeakBroadcast.appex */,
 				837CF90B2F17EC0500CF438B /* SwiftSpeakShare.appex */,
-				837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */,
+				837CF9212F18F1CB00CF438B /* SwiftSpeak.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -586,7 +586,7 @@
 				837CF9382F18F35500CF438B /* SwiftSpeakCore */,
 			);
 			productName = SwiftSpeakMacShare;
-			productReference = 837CF9212F18F1CB00CF438B /* SwiftSpeakMacShare.appex */;
+			productReference = 837CF9212F18F1CB00CF438B /* SwiftSpeak.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 		83ED79142EFE4CB900880604 /* SwiftSpeak */ = {

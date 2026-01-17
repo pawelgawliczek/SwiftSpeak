@@ -217,6 +217,29 @@ enum Constants {
         static let autoReturnRequested = "sentencePredictionAutoReturnRequested"
     }
 
+    // MARK: - Inline AI Prediction (ghost text preview)
+    enum InlinePrediction {
+        /// Key for storing typing context for inline prediction
+        static let context = "inlinePredictionContext"
+        /// Key for storing single inline prediction result
+        static let result = "inlinePredictionResult"
+        /// Key for storing error message if prediction fails
+        static let error = "inlinePredictionError"
+        /// Key for tracking if inline prediction is in progress
+        static let isProcessing = "inlinePredictionIsProcessing"
+        /// Debounce delay in milliseconds before triggering prediction
+        static let debounceDelayMs: Int = 300
+    }
+
+    // MARK: - Inline Prediction Darwin Notifications
+    enum InlinePredictionNotifications {
+        static let prefix = "com.swiftspeak.inline."
+        /// Request inline prediction from keyboard
+        static let requestPrediction = prefix + "requestPrediction"
+        /// Inline prediction result ready
+        static let predictionReady = prefix + "predictionReady"
+    }
+
     // MARK: - App Groups Keys for Edit Mode (Phase 12)
     enum EditMode {
         /// Key for storing original text to edit (in App Groups UserDefaults)

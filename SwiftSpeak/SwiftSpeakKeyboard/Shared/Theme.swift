@@ -102,13 +102,29 @@ struct AppTheme {
     /// Smooth spring for cards
     static let smoothSpring = Animation.spring(response: 0.5, dampingFraction: 0.8)
 
-    // MARK: - Keyboard-Specific Properties
+    // MARK: - Keyboard-Specific Properties (Static defaults - use KeyboardSizing for dynamic values)
 
-    /// Keyboard layout spacing
+    /// Keyboard layout spacing (defaults - normal mode)
     static let keySpacing: CGFloat = 6
-    static let rowSpacing: CGFloat = 12
-    static let keyHeight: CGFloat = 46
+    static let rowSpacing: CGFloat = 8  // Reduced from 12 for tighter layout
+    static let keyHeight: CGFloat = 42  // Reduced from 46
     static let horizontalPadding: CGFloat = 3
+
+    // MARK: - Compact Mode Values
+
+    /// Compact mode - smaller sizes for more screen real estate
+    static let compactRowSpacing: CGFloat = 4
+    static let compactKeyHeight: CGFloat = 38
+    static let compactBarButtonSize: CGFloat = 28  // Half of 56 (normal glow area)
+    static let compactBarPadding: CGFloat = 4
+    static let compactPredictionRowHeight: CGFloat = 26
+    static let compactTranscribeButtonSize: CGFloat = 32
+
+    /// Normal mode values
+    static let normalBarButtonSize: CGFloat = 40
+    static let normalBarPadding: CGFloat = 10
+    static let normalPredictionRowHeight: CGFloat = 36
+    static let normalTranscribeButtonSize: CGFloat = 42
 
     /// Keyboard key background colors (dark mode to match SwiftSpeak overlay)
     static let keyBackground: Color = Color(white: 0.22)
@@ -198,14 +214,12 @@ enum HapticManager {
 
 // MARK: - Keyboard Haptics
 /// Keyboard-specific haptics using AudioServicesPlaySystemSound
-/// Note: UIImpactFeedbackGenerator doesn't work reliably in keyboard extensions
+/// Note: UIImpactFeedbackGenerator doesn't work in keyboard extensions
 enum KeyboardHaptics {
     // System sound IDs for haptic feedback
-    private static let peekHaptic: SystemSoundID = 1519      // Light tap
+    // 1519 = Peek (lightest), 1520 = Pop (medium), 1521 = Error
+    private static let peekHaptic: SystemSoundID = 1519      // Lightest available
     private static let popHaptic: SystemSoundID = 1520       // Medium tap
-    private static let tryAgainHaptic: SystemSoundID = 1102  // Subtle tick
-    private static let successHaptic: SystemSoundID = 1519   // Success feel
-    private static let errorHaptic: SystemSoundID = 1521     // Error/cancelled
 
     /// Check if haptic feedback is enabled in keyboard settings
     private static var isEnabled: Bool {
@@ -213,10 +227,10 @@ enum KeyboardHaptics {
         return (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
     }
 
-    /// Prepare - no-op for AudioServices (kept for API compatibility)
+    /// Prepare - no-op for AudioServices
     static func prepare() {}
 
-    /// Light tap for minor interactions (key press)
+    /// Light tap for key presses - uses Peek (1519), the lightest system haptic
     static func lightTap() {
         guard isEnabled else { return }
         AudioServicesPlaySystemSound(peekHaptic)
@@ -234,28 +248,28 @@ enum KeyboardHaptics {
         AudioServicesPlaySystemSound(popHaptic)
     }
 
-    /// Success notification (task complete)
+    /// Success notification
     static func success() {
         guard isEnabled else { return }
-        AudioServicesPlaySystemSound(successHaptic)
+        AudioServicesPlaySystemSound(peekHaptic)
     }
 
     /// Warning notification
     static func warning() {
         guard isEnabled else { return }
-        AudioServicesPlaySystemSound(tryAgainHaptic)
+        AudioServicesPlaySystemSound(peekHaptic)
     }
 
     /// Error notification
     static func error() {
         guard isEnabled else { return }
-        AudioServicesPlaySystemSound(errorHaptic)
+        AudioServicesPlaySystemSound(popHaptic)
     }
 
     /// Selection changed (mode switch, picker)
     static func selection() {
         guard isEnabled else { return }
-        AudioServicesPlaySystemSound(tryAgainHaptic)
+        AudioServicesPlaySystemSound(peekHaptic)
     }
 }
 
@@ -412,6 +426,81 @@ struct ThemedStatItem: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }
+    }
+}
+
+// MARK: - Keyboard Sizing Helper
+/// Provides dynamic sizing values based on the current keyboard theme size
+/// Import KeyboardSettings to use: KeyboardSizing(settings.themeSize)
+struct KeyboardSizing {
+    let themeSize: KeyboardThemeSize
+
+    init(_ themeSize: KeyboardThemeSize = .normal) {
+        self.themeSize = themeSize
+    }
+
+    /// Load sizing from current settings
+    static func fromSettings() -> KeyboardSizing {
+        let settings = KeyboardSettings.load()
+        return KeyboardSizing(settings.themeSize)
+    }
+
+    var isCompact: Bool { themeSize == .compact }
+
+    // MARK: - Key Layout
+
+    var rowSpacing: CGFloat {
+        isCompact ? AppTheme.compactRowSpacing : AppTheme.rowSpacing
+    }
+
+    var keyHeight: CGFloat {
+        isCompact ? AppTheme.compactKeyHeight : AppTheme.keyHeight
+    }
+
+    // MARK: - SwiftSpeak Bar
+
+    var barButtonSize: CGFloat {
+        isCompact ? AppTheme.compactBarButtonSize : AppTheme.normalBarButtonSize
+    }
+
+    var barPadding: CGFloat {
+        isCompact ? AppTheme.compactBarPadding : AppTheme.normalBarPadding
+    }
+
+    var barIconSize: CGFloat {
+        isCompact ? 12 : 16
+    }
+
+    var barEmojiSize: CGFloat {
+        isCompact ? 14 : 18
+    }
+
+    // MARK: - Prediction Row
+
+    var predictionRowHeight: CGFloat {
+        isCompact ? AppTheme.compactPredictionRowHeight : AppTheme.normalPredictionRowHeight
+    }
+
+    var predictionFontSize: CGFloat {
+        isCompact ? 12 : 14
+    }
+
+    var predictionButtonSize: CGFloat {
+        isCompact ? 28 : 36
+    }
+
+    // MARK: - Transcribe Button
+
+    var transcribeButtonSize: CGFloat {
+        isCompact ? AppTheme.compactTranscribeButtonSize : AppTheme.normalTranscribeButtonSize
+    }
+
+    var transcribeGlowSize: CGFloat {
+        isCompact ? 42 : 56
+    }
+
+    var transcribeLogoSize: CGFloat {
+        isCompact ? 42 : 56
     }
 }
 
