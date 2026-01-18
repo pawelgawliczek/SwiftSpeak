@@ -216,16 +216,27 @@ struct PredictionRow: View {
 
         // Delete the corrected word and insert the original
         if let beforeText = proxy.documentContextBeforeInput {
-            // Find the corrected word at the end
-            var charsToDelete = 0
-            for char in beforeText.reversed() {
-                if char.isWhitespace {
-                    break
-                }
-                charsToDelete += 1
+            let chars = Array(beforeText)
+            var index = chars.count - 1
+
+            // Step 1: Skip trailing whitespace (handles "word |" case)
+            var trailingSpaces = 0
+            while index >= 0 && chars[index].isWhitespace {
+                trailingSpaces += 1
+                index -= 1
             }
 
-            // Delete the corrected word
+            // Step 2: Count word characters to delete
+            var wordChars = 0
+            while index >= 0 && !chars[index].isWhitespace {
+                wordChars += 1
+                index -= 1
+            }
+
+            // Total characters to delete = word + trailing spaces
+            let charsToDelete = wordChars + trailingSpaces
+
+            // Delete the corrected word (and trailing space if present)
             for _ in 0..<charsToDelete {
                 proxy.deleteBackward()
             }
@@ -274,17 +285,27 @@ struct PredictionRow: View {
         // Delete the current partial word before inserting the prediction
         // This ensures clicking a prediction replaces what the user was typing
         if let beforeText = proxy.documentContextBeforeInput {
-            // Find how many characters of the current word to delete
-            // Go backwards until we hit a space, punctuation, or start of text
-            var charsToDelete = 0
-            for char in beforeText.reversed() {
-                if char.isWhitespace || char.isPunctuation {
-                    break
-                }
-                charsToDelete += 1
+            let chars = Array(beforeText)
+            var index = chars.count - 1
+
+            // Step 1: Skip trailing whitespace (handles "word |" case)
+            var trailingSpaces = 0
+            while index >= 0 && chars[index].isWhitespace {
+                trailingSpaces += 1
+                index -= 1
             }
 
-            // Delete the partial word
+            // Step 2: Count word characters to delete
+            var wordChars = 0
+            while index >= 0 && !chars[index].isWhitespace && !chars[index].isPunctuation {
+                wordChars += 1
+                index -= 1
+            }
+
+            // Total characters to delete = word + trailing spaces
+            let charsToDelete = wordChars + trailingSpaces
+
+            // Delete the partial word (and trailing space if present)
             for _ in 0..<charsToDelete {
                 proxy.deleteBackward()
             }
