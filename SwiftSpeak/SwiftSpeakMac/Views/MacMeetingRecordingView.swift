@@ -14,12 +14,16 @@ struct MacMeetingRecordingView: View {
     @EnvironmentObject var settings: MacSettings
     @ObservedObject private var notificationManager = MeetingNotificationManager.shared
 
-    @StateObject private var orchestrator = MeetingRecordingOrchestrator()
-    @StateObject private var deviceManager = MacAudioDeviceManager()
+    // Use shared manager to survive window closures
+    @ObservedObject private var recordingManager = MeetingRecordingManager.shared
 
-    // Services (created once and retained)
-    // Use dual-source recorder for both single and dual modes
-    private let audioRecorder = MacDualSourceAudioRecorder()
+    // Use shared orchestrator (ObservedObject for bindings like $orchestrator.settings)
+    @ObservedObject private var orchestrator = MeetingRecordingManager.shared.orchestrator
+
+    // Convenience accessor for shared audio recorder
+    private var audioRecorder: MacDualSourceAudioRecorder { recordingManager.audioRecorder }
+
+    @StateObject private var deviceManager = MacAudioDeviceManager()
 
     // State
     @State private var showingSettings = false
@@ -172,8 +176,16 @@ struct MacMeetingRecordingView: View {
             }
         }
         .onAppear {
-            configureOrchestrator()
-            selectedContextId = orchestrator.settings.contextId
+            // Check if reconnecting to an active recording
+            if recordingManager.hasActiveRecording() {
+                macLog("Reconnected to active recording (duration: \(recordingManager.currentDuration)s)", category: "Meeting")
+                // Restore context selection from orchestrator
+                selectedContextId = orchestrator.settings.contextId
+            } else {
+                // Fresh start - configure orchestrator
+                configureOrchestrator()
+                selectedContextId = orchestrator.settings.contextId
+            }
         }
         .task {
             // Check dual-source availability
@@ -182,11 +194,18 @@ struct MacMeetingRecordingView: View {
         .onDisappear {
             windowClosed = true
             stopStatsTimer()
-            // Clean up audio recorder when view disappears (only if not processing)
-            if !orchestrator.isProcessing {
+            // DON'T cleanup if recording or processing - the shared manager keeps it alive
+            // This allows reopening the window to reconnect to an active recording
+            if !orchestrator.isRecording && !orchestrator.isProcessing {
                 Task {
                     await audioRecorder.cleanup()
+                    // Only reset manager if fully complete
+                    if case .idle = orchestrator.state {
+                        // recordingManager.reset() - don't reset, let user explicitly close
+                    }
                 }
+            } else {
+                macLog("Window closed but recording/processing continues in background", category: "Meeting")
             }
         }
     }

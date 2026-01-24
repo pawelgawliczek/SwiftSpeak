@@ -385,6 +385,7 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
                                      keyEquivalent: "m")
         meetingItem.target = self
         menu?.addItem(meetingItem)
+        meetingMenuItem = meetingItem  // Store reference for dynamic updates
 
         // Meeting History
         let meetingHistoryItem = NSMenuItem(title: "Meeting History...",
@@ -410,6 +411,9 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         menu?.addItem(quitItem)
     }
 
+    /// Meeting menu item reference for dynamic updates
+    private var meetingMenuItem: NSMenuItem?
+
     private func setupBindings() {
         // Update menu bar icon based on recording state
         audioRecorder.$isRecording
@@ -417,6 +421,14 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
             .sink { [weak self] recording in
                 self?.isRecording = recording
                 self?.updateStatusIcon(isRecording: recording)
+            }
+            .store(in: &cancellables)
+
+        // Update meeting menu item when meeting recording state changes
+        MeetingRecordingManager.shared.$isRecordingActive
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] isActive in
+                self?.updateMeetingMenuItem(isRecording: isActive)
             }
             .store(in: &cancellables)
 
@@ -1154,6 +1166,48 @@ final class MenuBarController: NSObject, ObservableObject, NSWindowDelegate {
         if let recordItem = menu?.items.first {
             recordItem.title = isRecording ? "Stop Recording" : "Start Recording"
         }
+    }
+
+    /// Update meeting menu item to show recording indicator
+    private func updateMeetingMenuItem(isRecording: Bool) {
+        guard let item = meetingMenuItem else { return }
+
+        if isRecording {
+            // Show recording indicator with red circle and duration
+            let duration = MeetingRecordingManager.shared.currentDuration
+            let minutes = Int(duration) / 60
+            let seconds = Int(duration) % 60
+            item.title = "🔴 Meeting Recording (\(minutes):\(String(format: "%02d", seconds)))"
+
+            // Set up timer to update duration display
+            updateMeetingMenuItemTimer()
+        } else {
+            item.title = "Meeting Recording..."
+            stopMeetingMenuItemTimer()
+        }
+    }
+
+    private var meetingMenuItemTimer: Timer?
+
+    private func updateMeetingMenuItemTimer() {
+        stopMeetingMenuItemTimer()
+        meetingMenuItemTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self,
+                      let item = self.meetingMenuItem,
+                      MeetingRecordingManager.shared.isRecordingActive else { return }
+
+                let duration = MeetingRecordingManager.shared.currentDuration
+                let minutes = Int(duration) / 60
+                let seconds = Int(duration) % 60
+                item.title = "🔴 Meeting Recording (\(minutes):\(String(format: "%02d", seconds)))"
+            }
+        }
+    }
+
+    private func stopMeetingMenuItemTimer() {
+        meetingMenuItemTimer?.invalidate()
+        meetingMenuItemTimer = nil
     }
 
     private func showNotification(title: String, body: String) {

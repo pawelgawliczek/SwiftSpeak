@@ -676,6 +676,7 @@ public final class GoogleMeetingService: MeetingTranscriptionService, @unchecked
 
     /// Convert audio file to WAV format for Google Cloud STT compatibility
     /// Google STT v1 API works best with LINEAR16 (WAV) format
+    /// Uses streaming conversion to avoid memory issues with large files
     private func convertToWAV(audioURL: URL) async throws -> URL {
         // Create output URL in temp directory
         let outputURL = FileManager.default.temporaryDirectory
@@ -684,6 +685,7 @@ public final class GoogleMeetingService: MeetingTranscriptionService, @unchecked
         // Open source audio file
         let sourceFile = try AVAudioFile(forReading: audioURL)
         let sourceFormat = sourceFile.processingFormat
+        let totalFrames = AVAudioFrameCount(sourceFile.length)
 
         #if DEBUG
         print("[GoogleMeetingService] Source format: \(sourceFormat.sampleRate)Hz, \(sourceFormat.channelCount)ch")
@@ -704,47 +706,71 @@ public final class GoogleMeetingService: MeetingTranscriptionService, @unchecked
             throw MeetingRecordingError.transcriptionFailed("Failed to create audio converter")
         }
 
-        // Calculate output buffer size
-        let frameCount = AVAudioFrameCount(sourceFile.length)
-        let ratio = targetFormat.sampleRate / sourceFormat.sampleRate
-        let outputFrameCount = AVAudioFrameCount(Double(frameCount) * ratio)
-
-        // Read source audio into buffer
-        guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: frameCount) else {
-            throw MeetingRecordingError.transcriptionFailed("Failed to create source buffer")
-        }
-        try sourceFile.read(into: sourceBuffer)
-
-        // Create output buffer
-        guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: outputFrameCount) else {
-            throw MeetingRecordingError.transcriptionFailed("Failed to create output buffer")
-        }
-
-        // Convert
-        var error: NSError?
-        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
-            outStatus.pointee = .haveData
-            return sourceBuffer
-        }
-
-        converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
-
-        if let error = error {
-            throw MeetingRecordingError.transcriptionFailed("Audio conversion failed: \(error.localizedDescription)")
-        }
-
-        // Write output WAV file
+        // Create output file
         let outputFile = try AVAudioFile(
             forWriting: outputURL,
             settings: targetFormat.settings,
             commonFormat: .pcmFormatInt16,
             interleaved: true
         )
-        try outputFile.write(from: outputBuffer)
+
+        // Process in chunks to avoid memory issues with large files
+        // Use 10 second chunks at source sample rate
+        let chunkFrames = AVAudioFrameCount(sourceFormat.sampleRate * 10)
+        let ratio = targetFormat.sampleRate / sourceFormat.sampleRate
+
+        var framesRead: AVAudioFrameCount = 0
+        var totalOutputFrames: AVAudioFrameCount = 0
+
+        while framesRead < totalFrames {
+            let framesToRead = min(chunkFrames, totalFrames - framesRead)
+
+            // Create source buffer for this chunk
+            guard let sourceBuffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: framesToRead) else {
+                throw MeetingRecordingError.transcriptionFailed("Failed to create source buffer")
+            }
+
+            // Read chunk from source file
+            try sourceFile.read(into: sourceBuffer, frameCount: framesToRead)
+
+            // Create output buffer for converted chunk
+            let expectedOutputFrames = AVAudioFrameCount(Double(sourceBuffer.frameLength) * ratio) + 1
+            guard let outputBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: expectedOutputFrames) else {
+                throw MeetingRecordingError.transcriptionFailed("Failed to create output buffer")
+            }
+
+            // Convert chunk
+            var error: NSError?
+            var inputBufferConsumed = false
+
+            let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+                if inputBufferConsumed {
+                    outStatus.pointee = .noDataNow
+                    return nil
+                }
+                inputBufferConsumed = true
+                outStatus.pointee = .haveData
+                return sourceBuffer
+            }
+
+            converter.convert(to: outputBuffer, error: &error, withInputFrom: inputBlock)
+
+            if let error = error {
+                throw MeetingRecordingError.transcriptionFailed("Audio conversion failed: \(error.localizedDescription)")
+            }
+
+            // Write converted chunk to output file
+            if outputBuffer.frameLength > 0 {
+                try outputFile.write(from: outputBuffer)
+                totalOutputFrames += outputBuffer.frameLength
+            }
+
+            framesRead += framesToRead
+        }
 
         #if DEBUG
         let fileSize = (try? FileManager.default.attributesOfItem(atPath: outputURL.path)[.size] as? Int) ?? 0
-        let duration = Double(outputBuffer.frameLength) / targetFormat.sampleRate
+        let duration = Double(totalOutputFrames) / targetFormat.sampleRate
         print("[GoogleMeetingService] Converted to WAV: \(fileSize) bytes, \(String(format: "%.1f", duration))s duration")
         #endif
 
