@@ -30,6 +30,45 @@ enum SpellChecker {
         return _availableLanguages!
     }
 
+    // MARK: - Polish Diacritics Dictionary (lazy loaded from file)
+
+    private static var _polishDiacriticsDict: [String: String]?
+    private static var polishDiacriticsDict: [String: String] {
+        if _polishDiacriticsDict == nil {
+            _polishDiacriticsDict = loadPolishDiacriticsDictionary()
+        }
+        return _polishDiacriticsDict!
+    }
+
+    /// Load Polish ASCII -> diacritics mapping from pl_diacritics.txt (20k entries from NKJP corpus)
+    private static func loadPolishDiacriticsDictionary() -> [String: String] {
+        guard let bundlePath = Bundle.main.path(forResource: "pl_diacritics", ofType: "txt", inDirectory: "Dictionaries") else {
+            keyboardLog("Polish diacritics dictionary not found", category: "SpellCheck")
+            return [:]
+        }
+
+        do {
+            let content = try String(contentsOfFile: bundlePath, encoding: .utf8)
+            var dict: [String: String] = [:]
+            dict.reserveCapacity(20000)
+
+            for line in content.components(separatedBy: .newlines) {
+                let parts = line.split(separator: " ", maxSplits: 1)
+                if parts.count == 2 {
+                    let ascii = String(parts[0])
+                    let proper = String(parts[1])
+                    dict[ascii] = proper
+                }
+            }
+
+            keyboardLog("Loaded \(dict.count) Polish diacritics corrections", category: "SpellCheck")
+            return dict
+        } catch {
+            keyboardLog("Failed to load Polish diacritics: \(error)", category: "SpellCheck")
+            return [:]
+        }
+    }
+
     // MARK: - Public API
 
     /// Correct a potentially misspelled word in the given language
@@ -207,7 +246,17 @@ enum SpellChecker {
     }
 
     private static func getPriorityCorrection(_ word: String, language: String) -> String? {
-        return getPriorityCorrections()[language]?[word]
+        // First check hardcoded priority corrections
+        if let correction = getPriorityCorrections()[language]?[word] {
+            return correction
+        }
+
+        // For Polish, also check the 20k diacritics dictionary loaded from file
+        if language == "pl" {
+            return polishDiacriticsDict[word]
+        }
+
+        return nil
     }
 
     private static func preserveCase(original: String, corrected: String) -> String {
@@ -406,6 +455,7 @@ enum SpellChecker {
                 "buisness": "business", "busines": "business",
                 "goverment": "government", "govenment": "government",
                 "enviroment": "environment", "enviornment": "environment",
+                "hoe": "how", "hwo": "how",  // Common "how" typos
             ],
             "de": [
                 "fur": "für", "uber": "über", "konnen": "können",
@@ -442,6 +492,12 @@ enum SpellChecker {
                 "informacao": "informação", "coracao": "coração",
             ],
             "pl": [
+                // być (to be) - extremely common
+                "bedzie": "będzie", "bede": "będę", "bedziemy": "będziemy",
+                "bedziecie": "będziecie", "beda": "będą",
+                // reflexive & common particles
+                "sie": "się", "juz": "już", "tez": "też", "wiec": "więc",
+                // other common words
                 "zolty": "żółty", "zrodlo": "źródło", "swiat": "świat",
                 "dziekuje": "dziękuję", "prosze": "proszę", "czesc": "cześć",
                 "szczescie": "szczęście", "zycze": "życzę",
@@ -452,8 +508,63 @@ enum SpellChecker {
                 "еще": "ещё", "все": "всё", "ее": "её",
                 "ежик": "ёжик", "елка": "ёлка",
             ],
-            "ar": [:],
-            "arz": [:],
+            "ar": [
+                // Alef variations (أ إ آ ا) - normalize to proper form
+                "اذا": "إذا",      // if (hamza below)
+                "انا": "أنا",      // I (hamza above)
+                "انت": "أنت",      // you (hamza above)
+                "انتم": "أنتم",    // you (plural)
+                "اخ": "أخ",        // brother
+                "اخت": "أخت",      // sister
+                "امس": "أمس",      // yesterday
+                "اكل": "أكل",      // food/eating
+                "امر": "أمر",      // matter/command
+                "ابدا": "أبداً",   // never
+                "ايضا": "أيضاً",   // also
+                "اخر": "آخر",      // other/last
+                "الان": "الآن",    // now
+
+                // Taa marbuta (ة) vs Haa (ه) confusion
+                "الجامعه": "الجامعة",  // university
+                "المدرسه": "المدرسة",  // school
+                "الحياه": "الحياة",    // life
+                "الصلاه": "الصلاة",    // prayer
+                "القاهره": "القاهرة",  // Cairo
+                "اللغه": "اللغة",      // language
+                "الكلمه": "الكلمة",    // word
+
+                // Common typos - adjacent key swaps
+                "شكار": "شكراً",    // thank you
+                "مرحاب": "مرحباً",  // hello
+                "السالم": "السلام", // peace
+                "عيلك": "عليك",     // on you
+                "معا": "معاً",      // together
+
+                // Missing shadda/emphasis
+                "الله": "اللّه",    // Allah (with shadda) - optional
+                "محمد": "محمّد",    // Muhammad (with shadda) - optional
+            ],
+            "arz": [
+                // Egyptian Arabic common corrections
+                // Alef normalization (Egyptian often drops hamza)
+                "انا": "أنا",      // I
+                "انت": "إنت",      // you (Egyptian spelling with kasra)
+                "انتي": "إنتي",    // you (feminine)
+                "اية": "إيه",      // what (Egyptian)
+                "ازيك": "إزيك",    // how are you (Egyptian)
+                "ازاي": "إزاي",    // how (Egyptian)
+
+                // Common Egyptian words with proper spelling
+                "عايز": "عاوز",    // want (masc) - alternate form
+                "كويس": "كويّس",   // good/fine
+                "ماشي": "ماشي",    // ok/walking
+
+                // Taa marbuta in Egyptian context
+                "الجامعه": "الجامعة",
+                "المدرسه": "المدرسة",
+                "القاهره": "القاهرة",
+                "اسكندريه": "إسكندرية", // Alexandria
+            ],
             "zh": [:],
             "ja": [:],
             "ko": [:],

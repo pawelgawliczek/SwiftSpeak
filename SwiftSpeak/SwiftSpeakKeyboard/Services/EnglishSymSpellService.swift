@@ -1,3 +1,9 @@
+// ============================================================================
+// LEGACY: NOT USED - Kept for reference only
+// Replaced by: MultiLanguageSpellChecker.swift (SpellChecker enum)
+// The actual autocorrect uses SpellChecker.correctWord() which has its own
+// getPriorityCorrections() dictionary. DO NOT add typo fixes here.
+// ============================================================================
 //
 //  EnglishSymSpellService.swift
 //  SwiftSpeakKeyboard
