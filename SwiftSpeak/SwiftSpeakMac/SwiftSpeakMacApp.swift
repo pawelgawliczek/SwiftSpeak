@@ -46,11 +46,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Initialize components
             let audioRecorder = MacAudioRecorder()
 
-            // Load saved audio device selection
-            if let savedDeviceID = UserDefaults.standard.string(forKey: "mac_selectedAudioInputDeviceID"),
-               let deviceID = UInt32(savedDeviceID) {
-                audioRecorder.selectedDeviceID = deviceID
-                macLog("Loaded saved audio device: \(savedDeviceID)", category: "Audio")
+            // Initialize device manager to get validated device ID
+            // Device IDs can change between macOS sessions, so we must validate
+            let audioDeviceManager = MacAudioDeviceManager()
+            if let validatedDeviceID = audioDeviceManager.getSelectedDeviceID() {
+                audioRecorder.selectedDeviceID = validatedDeviceID
+                macLog("Loaded validated audio device ID: \(validatedDeviceID)", category: "Audio")
+            } else {
+                macLog("Using system default audio device", category: "Audio")
             }
 
             // Pre-warm audio engine (this is the heavy operation)

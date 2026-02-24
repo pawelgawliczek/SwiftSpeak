@@ -88,9 +88,11 @@ struct PowerModeListContent: View {
                 // Create new button
                 createNewButton
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 32)
+                    .padding(.bottom, 100)  // Extra padding for tab bar
             }
         }
+        .scrollIndicators(.visible)
+        .contentMargins(.bottom, 20, for: .scrollIndicators)
         .background(AppTheme.darkBase.ignoresSafeArea())
         .overlay {
             if !hasPowerAccess {

@@ -39,15 +39,18 @@ struct PowerTabView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 12)
 
-                // Content based on selection
-                switch selectedTab {
-                case .contexts:
-                    ContextsListContent()
-                case .meetings:
-                    MeetingsListContent()
-                case .modes:
-                    PowerModeListContent()
+                // Content based on selection - use frame to allow scrolling
+                Group {
+                    switch selectedTab {
+                    case .contexts:
+                        ContextsListContent()
+                    case .meetings:
+                        MeetingsListContent()
+                    case .modes:
+                        PowerModeListContent()
+                    }
                 }
+                .frame(maxHeight: .infinity)
             }
             .background(AppTheme.darkBase.ignoresSafeArea())
             .navigationTitle("Power")

@@ -556,7 +556,7 @@ struct MacPowerModeOverlayView: View {
                     // Type indicator
                     Image(systemName: suggestion.type.icon)
                         .font(.caption)
-                        .foregroundStyle(suggestion.type.color)
+                        .foregroundStyle(suggestion.type.macColor)
                         .frame(width: 20)
 
                     // Suggestion text (or loading indicator)

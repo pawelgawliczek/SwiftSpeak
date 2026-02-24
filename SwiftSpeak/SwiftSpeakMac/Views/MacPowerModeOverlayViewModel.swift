@@ -17,42 +17,18 @@ import SwiftSpeakCore
 /// Use shared state enum from SwiftSpeakCore
 typealias OverlayState = PowerModeExecutionState
 
-// MARK: - Quick Suggestion
+// MARK: - Quick Suggestion Helper
 
-/// A quick reply suggestion generated from screen context
-struct QuickSuggestion: Identifiable, Equatable {
-    let id = UUID()
-    let type: SuggestionType
-    let text: String
-    let shortLabel: String
-
-    enum SuggestionType: String, CaseIterable {
-        case positive = "positive"
-        case neutral = "neutral"
-        case negative = "negative"
-
-        var icon: String {
-            switch self {
-            case .positive: return "hand.thumbsup.fill"
-            case .neutral: return "hand.raised.fill"
-            case .negative: return "hand.thumbsdown.fill"
-            }
-        }
-
-        var color: Color {
-            switch self {
-            case .positive: return .green
-            case .neutral: return .orange
-            case .negative: return .red
-            }
-        }
-
-        var label: String {
-            switch self {
-            case .positive: return "Positive"
-            case .neutral: return "Neutral"
-            case .negative: return "Decline"
-            }
+/// Helper extension to provide Color from QuickActionType for macOS views
+extension QuickActionType {
+    var macColor: Color {
+        switch color {
+        case "green": return .green
+        case "orange": return .orange
+        case "red": return .red
+        case "blue": return .blue
+        case "purple": return .purple
+        default: return .gray
         }
     }
 }
@@ -1103,7 +1079,7 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
 
                 if !text.isEmpty {
                     suggestions.append(QuickSuggestion(
-                        type: mapQuickActionTypeToSuggestionType(action.type),
+                        type: action.type,
                         text: text,
                         shortLabel: action.label
                     ))
@@ -1117,16 +1093,6 @@ final class MacPowerModeOverlayViewModel: ObservableObject {
         }
 
         return suggestions
-    }
-
-    /// Map QuickActionType to QuickSuggestion.SuggestionType
-    private func mapQuickActionTypeToSuggestionType(_ actionType: QuickActionType) -> QuickSuggestion.SuggestionType {
-        switch actionType {
-        case .positive: return .positive
-        case .neutral: return .neutral
-        case .negative: return .negative
-        case .summarize, .custom: return .neutral
-        }
     }
 
     /// Build a comprehensive context prompt from ConversationContext

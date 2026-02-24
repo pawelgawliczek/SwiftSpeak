@@ -440,6 +440,19 @@ struct SettingsView: View {
             }
             .listRowBackground(rowBackground)
 
+            // Correction Quality Review
+            NavigationLink {
+                CorrectionQualityReviewView()
+            } label: {
+                SettingsRow(
+                    icon: "textformat.abc",
+                    iconColor: .purple,
+                    title: "Correction Quality",
+                    subtitle: "Review and rate autocorrections"
+                )
+            }
+            .listRowBackground(rowBackground)
+
             // Reset all data
             Button(action: {
                 showResetAllConfirmation = true

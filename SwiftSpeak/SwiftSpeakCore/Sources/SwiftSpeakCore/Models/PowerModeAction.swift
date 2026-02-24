@@ -884,3 +884,26 @@ public extension Array where Element == QuickAction {
         []
     }
 }
+
+// MARK: - Quick Suggestion (Generated Prediction)
+
+/// A generated prediction/suggestion based on a QuickAction type
+/// Used for displaying AI-generated suggestions in the keyboard and macOS overlay
+public struct QuickSuggestion: Codable, Identifiable, Equatable, Sendable {
+    public let id: UUID
+    public let type: QuickActionType
+    public let text: String
+    public let shortLabel: String
+
+    public init(
+        id: UUID = UUID(),
+        type: QuickActionType,
+        text: String,
+        shortLabel: String? = nil
+    ) {
+        self.id = id
+        self.type = type
+        self.text = text
+        self.shortLabel = shortLabel ?? type.displayName
+    }
+}

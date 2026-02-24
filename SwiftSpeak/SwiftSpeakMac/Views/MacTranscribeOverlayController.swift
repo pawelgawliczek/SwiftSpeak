@@ -213,18 +213,20 @@ final class MacTranscribeOverlayController {
         // Clean up viewModel subscriptions immediately
         viewModel?.cleanup()
 
+        // CRITICAL: Clear the window's content view BEFORE hiding
+        // This ensures SwiftUI properly tears down the view hierarchy
+        // and will properly reinitialize on the next show()
+        overlayWindow?.contentView = nil
+        hostingView = nil
+
         // Hide window (keep it around for reuse)
         overlayWindow?.orderOut(nil)
 
         // Capture callback to call after cleanup
         let closeCallback = onClose
 
-        // Delay cleanup to allow SwiftUI to finish any pending updates
-        // This prevents EXC_BAD_ACCESS from "entangle context after pre-commit"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
-            // DON'T close the window - just clear SwiftUI state
-            // The window will be reused next time (isReleasedWhenClosed = false)
-            self?.hostingView = nil
+        // Clear viewModel after a brief delay to allow SwiftUI cleanup
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
             self?.viewModel = nil
 
             // Call close callback after all cleanup is done
