@@ -35,9 +35,6 @@ struct KeyboardSettingsView: View {
                 // Autocomplete Suggestions Section (Power tier)
                 autocompleteSuggestionsSection
 
-                // Inline AI Prediction Section
-                inlinePredictionSection
-
                 // Tips Section
                 tipsSection
             }
@@ -159,7 +156,7 @@ struct KeyboardSettingsView: View {
         Section {
             if settings.subscriptionTier != .free {
                 // Enable toggle
-                Toggle(isOn: $settings.keyboardQuickSuggestionsEnabled) {
+                Toggle(isOn: $settings.quickSuggestionsEnabled) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Autocomplete Suggestions")
                             .font(.callout)
@@ -171,9 +168,9 @@ struct KeyboardSettingsView: View {
                 .tint(AppTheme.accent)
                 .listRowBackground(rowBackground)
 
-                // Quick Actions Editor (when enabled)
-                if settings.keyboardQuickSuggestionsEnabled {
-                    QuickActionsEditor(actions: $settings.keyboardQuickActions)
+                // Quick Actions Editor (when enabled) - uses iCloud-synced quickActions
+                if settings.quickSuggestionsEnabled {
+                    QuickActionsEditor(actions: $settings.quickActions)
                         .listRowBackground(rowBackground)
                         .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
                 }
@@ -221,56 +218,8 @@ struct KeyboardSettingsView: View {
                 }
             }
         } footer: {
-            if settings.subscriptionTier != .free && settings.keyboardQuickSuggestionsEnabled {
-                Text("Configure which response types to generate based on screen context.")
-            }
-        }
-    }
-
-    // MARK: - Inline AI Prediction Section
-
-    private var inlinePredictionSection: some View {
-        Section {
-            Toggle(isOn: $settings.keyboardInlinePredictionEnabled) {
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text("Inline AI Predictions")
-                            .font(.callout)
-                        Image(systemName: "sparkles")
-                            .font(.caption)
-                            .foregroundStyle(.purple)
-                    }
-                    Text("Ghost text continuation appears after pressing space")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .tint(AppTheme.accent)
-            .listRowBackground(rowBackground)
-
-            if settings.keyboardInlinePredictionEnabled {
-                Toggle(isOn: $settings.keyboardInlinePredictionOnSpace) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Predict on Space")
-                            .font(.callout)
-                        Text("Trigger predictions automatically after pressing space")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .tint(AppTheme.accent)
-                .listRowBackground(rowBackground)
-            }
-        } header: {
-            HStack {
-                Text("Inline AI Prediction")
-                Image(systemName: "text.bubble")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        } footer: {
-            if settings.keyboardInlinePredictionEnabled {
-                Text("AI predicts what you might type next and shows it as ghost text. Tap or swipe on the prediction to accept words. Requires AI provider to be configured.")
+            if settings.subscriptionTier != .free && settings.quickSuggestionsEnabled {
+                Text("Configure which response types to generate based on screen context. Synced with macOS via iCloud.")
             }
         }
     }

@@ -1757,10 +1757,10 @@ final class SwiftLinkSessionManager: ObservableObject {
             }
         }
 
-        // Inline AI prediction: Observe request from keyboard
-        DarwinNotificationManager.shared.startObserving(name: Constants.InlinePredictionNotifications.requestPrediction) { [weak self] in
+        // AI word prediction: Observe request from keyboard
+        DarwinNotificationManager.shared.startObserving(name: Constants.AIWordPredictionNotifications.requestPrediction) { [weak self] in
             Task { @MainActor in
-                self?.handleInlinePredictionRequest()
+                self?.handleAIWordPredictionRequest()
             }
         }
     }
@@ -1817,12 +1817,49 @@ final class SwiftLinkSessionManager: ObservableObject {
         // Get global memory
         let globalMemory = settings.globalMemory ?? ""
 
-        // Get context-specific memory if available
+        // Get context and its memory
         var contextMemory = ""
+        var activeContext: ConversationContext? = nil
         if let contextId = activeContextId,
-           let uuid = UUID(uuidString: contextId),
-           let context = settings.contexts.first(where: { $0.id == uuid }) {
-            contextMemory = context.contextMemory ?? ""
+           let uuid = UUID(uuidString: contextId) {
+            activeContext = settings.contexts.first(where: { $0.id == uuid })
+                ?? ConversationContext.presets.first(where: { $0.id == uuid })
+            if let context = activeContext {
+                contextMemory = context.contextMemory ?? ""
+            }
+        }
+
+        // Check if sentence predictions are enabled for this context
+        if let context = activeContext, !context.sentencePredictionSettings.enabled {
+            appLog("Sentence prediction: Disabled for context '\(context.name)'", category: "SwiftLink")
+            await MainActor.run {
+                defaults?.set("", forKey: Constants.SentencePrediction.error)
+                defaults?.set(false, forKey: Constants.SentencePrediction.isProcessing)
+            }
+            DarwinNotificationManager.shared.post(name: Constants.SwiftLinkNotifications.sentencePredictionReady)
+            return
+        }
+
+        // Refresh Quick Actions from iCloud to ensure we have the latest configuration
+        await MainActor.run { settings.refreshQuickActionsFromiCloud() }
+
+        // Get Quick Actions from context if configured, otherwise use global
+        let quickActions: [QuickAction]
+        if let context = activeContext,
+           let contextQuickActions = context.sentencePredictionSettings.quickActions {
+            // Context has custom Quick Actions
+            quickActions = contextQuickActions.filter { $0.isEnabled }.sorted { $0.order < $1.order }
+            appLog("Sentence prediction: Using \(quickActions.count) context-specific Quick Actions", category: "SwiftLink")
+        } else if settings.quickSuggestionsEnabled {
+            // Use global Quick Actions
+            quickActions = settings.configuredQuickActions
+            appLog("Sentence prediction: Using \(quickActions.count) global Quick Actions", category: "SwiftLink")
+        } else {
+            quickActions = []
+            appLog("Sentence prediction: Quick Suggestions disabled globally", category: "SwiftLink")
+        }
+        for action in quickActions {
+            appLog("  - \(action.type.rawValue): \(action.label) (enabled: \(action.isEnabled))", category: "SwiftLink")
         }
 
         // Get screen context if context capture is enabled and active
@@ -1847,13 +1884,14 @@ final class SwiftLinkSessionManager: ObservableObject {
             }
         }
 
-        // Build the prompt
+        // Build the prompt with Quick Actions
         let prompt = buildSentencePredictionPrompt(
             typingContext: typingContext,
             globalMemory: globalMemory,
             contextMemory: contextMemory,
             contextName: activeContextName ?? "",
-            screenContext: screenContext
+            screenContext: screenContext,
+            quickActions: quickActions
         )
 
         // Get API key from configured providers
@@ -1878,10 +1916,39 @@ final class SwiftLinkSessionManager: ObservableObject {
 
         do {
             let startTime = Date()
-            let predictions = try await callAIForSentencePredictions(prompt: prompt, config: config, provider: provider)
+
+            // Different flow depending on whether Quick Actions are configured
+            let predictions: [String]
+            var quickSuggestions: [QuickSuggestion] = []
+
+            if !quickActions.isEmpty {
+                // Quick Actions flow: get raw response and parse into QuickSuggestions
+                let rawResponse = try await callAIForRawResponse(prompt: prompt, config: config, provider: provider)
+                appLog("Sentence prediction: Raw response (\(rawResponse.count) chars):\n\(rawResponse)", category: "SwiftLink")
+
+                quickSuggestions = parseQuickActionsResponse(rawResponse, actions: quickActions)
+                predictions = quickSuggestions.map { $0.text }
+
+                appLog("Sentence prediction: Parsed \(quickSuggestions.count)/\(quickActions.count) QuickSuggestions", category: "SwiftLink")
+                for (index, suggestion) in quickSuggestions.enumerated() {
+                    appLog("  [\(index)] \(suggestion.type.rawValue): \(suggestion.text.prefix(50))...", category: "SwiftLink")
+                }
+
+                // Store QuickSuggestions for keyboard
+                if let suggestionsData = try? JSONEncoder().encode(quickSuggestions) {
+                    defaults?.set(suggestionsData, forKey: Constants.SentencePrediction.quickSuggestions)
+                }
+            } else {
+                // Fallback: No Quick Actions - use original flow
+                predictions = try await callAIForSentencePredictions(prompt: prompt, config: config, provider: provider)
+
+                // Clear QuickSuggestions key
+                defaults?.removeObject(forKey: Constants.SentencePrediction.quickSuggestions)
+            }
+
             let duration = Date().timeIntervalSince(startTime)
 
-            // Store results
+            // Store results (plain strings for backward compatibility)
             let resultsData = try JSONEncoder().encode(predictions)
             defaults?.set(resultsData, forKey: Constants.SentencePrediction.results)
             defaults?.removeObject(forKey: Constants.SentencePrediction.error)
@@ -1986,13 +2053,14 @@ final class SwiftLinkSessionManager: ObservableObject {
         }
     }
 
-    /// Build the prompt for sentence prediction
+    /// Build the prompt for sentence prediction using Quick Actions
     private func buildSentencePredictionPrompt(
         typingContext: String,
         globalMemory: String,
         contextMemory: String,
         contextName: String,
-        screenContext: String? = nil
+        screenContext: String? = nil,
+        quickActions: [QuickAction] = []
     ) -> String {
         var systemContext = ""
 
@@ -2008,49 +2076,164 @@ final class SwiftLinkSessionManager: ObservableObject {
             ? "The user is starting a new message."
             : "Current text: \"\(typingContext)\""
 
-        // Build prompt based on whether we have screen context
+        // Build screen context section if available
+        var screenSection = ""
         if let screen = screenContext, !screen.isEmpty {
-            // Truncate to avoid huge prompts
             let truncated = screen.count > 1500 ? String(screen.prefix(1500)) + "..." : screen
-
-            return """
-            \(systemContext)\(conversationContext)
+            screenSection = """
 
             CRITICAL: The user is currently looking at the following content on their screen:
             ---
             \(truncated)
             ---
 
-            Your predictions MUST be directly relevant to what the user is looking at. For example:
-            - If they're looking at a chat conversation, predict replies to that conversation
-            - If they're looking at an email, predict responses or follow-ups
-            - If they're looking at a document, predict comments or edits related to it
-            - If they're looking at social media, predict reactions or replies to the posts
-
-            Generate exactly 4 natural sentences the user might want to type. Each sentence should:
-            1. Be DIRECTLY related to the screen content they're viewing
-            2. Be a complete, ready-to-send message
-            3. Be concise (under 20 words)
-            4. Offer a varied approach (question, statement, acknowledgment, etc.)
-
-            Respond with exactly 4 sentences, one per line, no numbering or bullets.
-            """
-        } else {
-            // No screen context - use original prompt
-            return """
-            \(systemContext)\(conversationContext)
-
-            Generate exactly 4 natural sentence completions or responses the user might want to send next. Each should be a complete, standalone sentence that continues naturally from the context.
-
-            Rules:
-            - Make sentences varied in tone and approach
-            - Keep sentences concise (under 20 words each)
-            - Make them contextually appropriate
-            - If starting fresh, provide common greeting/opener options
-
-            Respond with exactly 4 sentences, one per line, no numbering or bullets.
+            Your predictions MUST be directly relevant to what the user is looking at.
             """
         }
+
+        // If we have Quick Actions configured, generate typed predictions
+        if !quickActions.isEmpty {
+            let actionDescriptions = quickActions.enumerated().map { index, action in
+                "ACTION_\(action.type.rawValue.uppercased()): \(action.effectivePrompt)"
+            }.joined(separator: "\n")
+
+            // Determine if we have partial text to continue
+            let continuationInstruction: String
+            if !typingContext.isEmpty {
+                // Check if user's text ends mid-sentence (needs lowercase) or at sentence end (needs capital)
+                let trimmedContext = typingContext.trimmingCharacters(in: .whitespaces)
+                let lastChar = trimmedContext.last ?? " "
+                let needsCapital = ".!?".contains(lastChar) || trimmedContext.isEmpty
+                let capitalizationNote = needsCapital
+                    ? "Start with a CAPITAL letter (new sentence)."
+                    : "Start with a LOWERCASE letter (continuing mid-sentence)."
+
+                continuationInstruction = """
+                The user has started typing: "\(typingContext)"
+
+                CRITICAL: You are completing the user's UNFINISHED sentence/message.
+                The result of "\(typingContext)" + your continuation must form a complete, grammatically correct sentence.
+                Do NOT respond to what they typed. Do NOT write a reply. COMPLETE their sentence.
+                Do NOT wrap your response in quotes.
+
+                CAPITALIZATION: \(capitalizationNote)
+
+                Examples of CORRECT completions:
+                - User typed: "How are" → "you doing today?"
+                - User typed: "I wanted to ask if" → "you're free this weekend?"
+                - User typed: "Let me know when" → "you have a moment to chat."
+
+                Examples of WRONG responses (these respond TO the text instead of completing it):
+                - User typed: "How are" → "I'm doing great!" (WRONG - this answers the question)
+                - User typed: "I wanted to" → "Sure, go ahead!" (WRONG - this is a reply)
+
+                Your continuations must:
+                1. COMPLETE the user's unfinished sentence grammatically
+                2. The combined text must make sense as one message
+                3. Use correct capitalization
+                4. Match the action type's tone
+                5. Be under 12 words
+                6. NOT be wrapped in quotes
+                """
+            } else {
+                continuationInstruction = """
+                The user is starting a new message. Generate a complete sentence for each action type.
+                Each response should be concise (under 20 words).
+                """
+            }
+
+            // Build dynamic format example from actual configured actions
+            let formatExample = quickActions.map { action in
+                "ACTION_\(action.type.rawValue.uppercased()): [your \(action.label.lowercased()) continuation]"
+            }.joined(separator: "\n")
+
+            return """
+            \(systemContext)\(conversationContext)\(screenSection)
+
+            \(continuationInstruction)
+
+            Generate ONE response for each of the following action types:
+            \(actionDescriptions)
+
+            Format your response EXACTLY like this (one line per action type):
+            \(formatExample)
+
+            Respond ONLY with the formatted responses, nothing else.
+            """
+        } else {
+            // Fallback: No Quick Actions configured - generate generic predictions
+            if !screenSection.isEmpty {
+                return """
+                \(systemContext)\(conversationContext)\(screenSection)
+
+                Generate exactly 4 natural sentences the user might want to type. Each sentence should:
+                1. Be DIRECTLY related to the screen content they're viewing
+                2. Be a complete, ready-to-send message
+                3. Be concise (under 20 words)
+                4. Offer a varied approach (question, statement, acknowledgment, etc.)
+
+                Respond with exactly 4 sentences, one per line, no numbering or bullets.
+                """
+            } else {
+                return """
+                \(systemContext)\(conversationContext)
+
+                Generate exactly 4 natural sentence completions or responses the user might want to send next. Each should be a complete, standalone sentence that continues naturally from the context.
+
+                Rules:
+                - Make sentences varied in tone and approach
+                - Keep sentences concise (under 20 words each)
+                - Make them contextually appropriate
+                - If starting fresh, provide common greeting/opener options
+
+                Respond with exactly 4 sentences, one per line, no numbering or bullets.
+                """
+            }
+        }
+    }
+
+    /// Parse AI response into QuickSuggestions based on action types
+    private func parseQuickActionsResponse(_ response: String, actions: [QuickAction]) -> [QuickSuggestion] {
+        var suggestions: [QuickSuggestion] = []
+
+        for action in actions {
+            let marker = "ACTION_\(action.type.rawValue.uppercased()):"
+            if let range = response.range(of: marker, options: .caseInsensitive) {
+                // Find the text after the marker until the next ACTION_ or end of string
+                let startIndex = range.upperBound
+                let restOfString = String(response[startIndex...])
+
+                // Find the end - either next ACTION_ marker or end of string
+                let endIndex: String.Index
+                if let nextMarkerRange = restOfString.range(of: "ACTION_", options: .caseInsensitive) {
+                    endIndex = nextMarkerRange.lowerBound
+                } else {
+                    endIndex = restOfString.endIndex
+                }
+
+                var text = String(restOfString[..<endIndex])
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                // Strip surrounding quotes if present (AI sometimes wraps in quotes)
+                // Check for straight quotes, single quotes, and curly quotes
+                let startsWithQuote = text.hasPrefix("\"") || text.hasPrefix("'") || text.hasPrefix("\u{201C}") || text.hasPrefix("\u{2018}")
+                let endsWithQuote = text.hasSuffix("\"") || text.hasSuffix("'") || text.hasSuffix("\u{201D}") || text.hasSuffix("\u{2019}")
+                if startsWithQuote && endsWithQuote && text.count >= 2 {
+                    text = String(text.dropFirst().dropLast())
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+
+                if !text.isEmpty {
+                    suggestions.append(QuickSuggestion(
+                        type: action.type,
+                        text: text,
+                        shortLabel: action.label
+                    ))
+                }
+            }
+        }
+
+        return suggestions
     }
 
     /// Call AI API for sentence predictions
@@ -2188,166 +2371,8 @@ final class SwiftLinkSessionManager: ObservableObject {
         return Array(lines)
     }
 
-    // MARK: - Inline AI Prediction Handler
-
-    /// Handle inline prediction request from keyboard
-    /// Used for ghost text predictions that appear after space press
-    func handleInlinePredictionRequest() {
-        appLog("Received inline prediction request from keyboard", category: "SwiftLink")
-
-        // Start background session if not active
-        if !isSessionActive {
-            appLog("Starting background session for inline prediction", category: "SwiftLink")
-            Task {
-                await startBackgroundSession()
-                await processInlinePredictionRequest()
-            }
-        } else {
-            Task {
-                await processInlinePredictionRequest()
-            }
-        }
-    }
-
-    /// Process the inline prediction request
-    private func processInlinePredictionRequest() async {
-        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
-        defaults?.synchronize()
-
-        // Read context from App Groups
-        let typingContext = defaults?.string(forKey: Constants.InlinePrediction.context) ?? ""
-        let activeContextName = defaults?.string(forKey: Constants.SentencePrediction.activeContextName)
-        let activeContextId = defaults?.string(forKey: Constants.SentencePrediction.activeContextId)
-
-        appLog("Inline prediction: context='\(typingContext.suffix(30))...', activeContext=\(activeContextName ?? "none")", category: "SwiftLink")
-
-        await performInlinePrediction(
-            typingContext: typingContext,
-            activeContextName: activeContextName,
-            activeContextId: activeContextId
-        )
-    }
-
-    /// Perform inline AI prediction (single sentence continuation)
-    private func performInlinePrediction(
-        typingContext: String,
-        activeContextName: String?,
-        activeContextId: String?
-    ) async {
-        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
-
-        // Access SharedSettings via MainActor to ensure proper initialization and keychain access
-        let (globalMemory, contextMemory, contextCaptureEnabled, config, provider) = await MainActor.run {
-            let settings = SharedSettings.shared
-
-            // Get global memory
-            let global = settings.globalMemory ?? ""
-
-            // Get context-specific memory if available
-            var ctxMemory = ""
-            if let contextId = activeContextId,
-               let uuid = UUID(uuidString: contextId),
-               let context = settings.contexts.first(where: { $0.id == uuid }) {
-                ctxMemory = context.contextMemory ?? ""
-            }
-
-            // Get context capture setting
-            let captureEnabled = settings.contextCaptureEnabled
-
-            // Get provider configuration - inline predictions need LLM capability
-            // Try selectedFormattingProvider first, then selectedPowerModeProvider, then any LLM-capable provider
-            var providerConfig: AIProviderConfig? = nil
-            var selectedProvider = settings.selectedFormattingProvider
-
-            // Try formatting provider first
-            if let config = settings.getAIProviderConfig(for: settings.selectedFormattingProvider),
-               config.isConfigured && config.provider.supportsPowerMode {
-                providerConfig = config
-                selectedProvider = settings.selectedFormattingProvider
-            }
-            // Fall back to power mode provider (LLM-capable)
-            else if let config = settings.getAIProviderConfig(for: settings.selectedPowerModeProvider),
-                    config.isConfigured {
-                providerConfig = config
-                selectedProvider = settings.selectedPowerModeProvider
-            }
-            // Fall back to any configured LLM-capable provider
-            else if let config = settings.powerModeProviders.first(where: { $0.isConfigured }) {
-                providerConfig = config
-                selectedProvider = config.provider
-            }
-
-            return (global, ctxMemory, captureEnabled, providerConfig, selectedProvider)
-        }
-
-        // Debug logging for provider state
-        appLog("Inline prediction: provider=\(provider.rawValue), configExists=\(config != nil), isConfigured=\(config?.isConfigured ?? false)", category: "SwiftLink")
-
-        // Get screen context if context capture is enabled and active
-        var screenContext: String? = nil
-        if contextCaptureEnabled {
-            let captureManager = await MainActor.run { ContextCaptureManager.shared }
-            let isCapturing = await MainActor.run { captureManager.isCapturing }
-
-            if isCapturing {
-                appLog("Inline prediction: Requesting fresh screen context...", category: "SwiftLink")
-                screenContext = await captureManager.requestFreshContext(timeout: 2.0)  // Shorter timeout for inline
-                if let ctx = screenContext {
-                    appLog("Inline prediction: Got screen context (\(ctx.count) chars)", category: "SwiftLink")
-                } else {
-                    appLog("Inline prediction: No screen context available", category: "SwiftLink", level: .warning)
-                }
-            } else {
-                appLog("Inline prediction: Context capture enabled but not active", category: "SwiftLink")
-            }
-        }
-
-        // Build prompt using shared AutocompletePromptBuilder
-        let prompt = AutocompletePromptBuilder.buildSentenceContinuationPrompt(
-            typingContext: typingContext,
-            recentMessagesContext: nil,  // Could add recent messages context later
-            styleContext: nil,           // Could derive from active context
-            globalMemory: globalMemory.isEmpty ? nil : globalMemory,
-            contextMemory: contextMemory.isEmpty ? nil : contextMemory,
-            screenContext: screenContext
-        )
-
-        // Check provider configuration
-        guard let validConfig = config, validConfig.isConfigured else {
-            appLog("Inline prediction: No configured provider (provider=\(provider.rawValue), apiKeyEmpty=\(config?.apiKey.isEmpty ?? true))", category: "SwiftLink", level: .error)
-            // Provide helpful error message - inline predictions need an LLM provider (not transcription-only)
-            defaults?.set("Add OpenAI, Anthropic, or Google in Settings to enable AI predictions", forKey: Constants.InlinePrediction.error)
-            defaults?.set(false, forKey: Constants.InlinePrediction.isProcessing)
-            defaults?.synchronize()
-            DarwinNotificationManager.shared.post(name: Constants.InlinePredictionNotifications.predictionReady)
-            return
-        }
-
-        do {
-            let prediction = try await callAIForInlinePrediction(prompt: prompt, config: validConfig, provider: provider)
-
-            // Store result
-            defaults?.set(prediction, forKey: Constants.InlinePrediction.result)
-            defaults?.removeObject(forKey: Constants.InlinePrediction.error)
-            defaults?.set(false, forKey: Constants.InlinePrediction.isProcessing)
-            defaults?.synchronize()
-
-            appLog("Inline prediction: '\(prediction.prefix(50))...'", category: "SwiftLink")
-
-            // Notify keyboard
-            DarwinNotificationManager.shared.post(name: Constants.InlinePredictionNotifications.predictionReady)
-
-        } catch {
-            appLog("Inline prediction error: \(error.localizedDescription)", category: "SwiftLink", level: .error)
-            defaults?.set(error.localizedDescription, forKey: Constants.InlinePrediction.error)
-            defaults?.set(false, forKey: Constants.InlinePrediction.isProcessing)
-            defaults?.synchronize()
-            DarwinNotificationManager.shared.post(name: Constants.InlinePredictionNotifications.predictionReady)
-        }
-    }
-
-    /// Call AI API for inline prediction (single continuation)
-    private func callAIForInlinePrediction(prompt: String, config: AIProviderConfig, provider: AIProvider) async throws -> String {
+    /// Call AI API and return raw response content (for Quick Actions parsing)
+    private func callAIForRawResponse(prompt: String, config: AIProviderConfig, provider: AIProvider) async throws -> String {
         // Build URL based on provider
         let url: URL
         let headers: [String: String]
@@ -2363,11 +2388,11 @@ final class SwiftLinkSessionManager: ObservableObject {
             body = [
                 "model": "gpt-4o-mini",
                 "messages": [
-                    ["role": "system", "content": "You are helping complete a sentence. Provide a natural continuation that flows seamlessly from the existing text. Be concise (under 15 words). Respond with ONLY the continuation, no quotes or explanation."],
+                    ["role": "system", "content": "You are a helpful assistant that generates response suggestions based on context. When screen content is provided, your suggestions MUST be directly relevant to what the user is viewing. Be concise and natural."],
                     ["role": "user", "content": prompt]
                 ],
-                "max_tokens": 50,
-                "temperature": 0.7
+                "max_tokens": 300,
+                "temperature": 0.8
             ]
 
         case .anthropic:
@@ -2379,11 +2404,11 @@ final class SwiftLinkSessionManager: ObservableObject {
             ]
             body = [
                 "model": "claude-3-haiku-20240307",
-                "max_tokens": 50,
+                "max_tokens": 300,
                 "messages": [
                     ["role": "user", "content": prompt]
                 ],
-                "system": "You are helping complete a sentence. Provide a natural continuation that flows seamlessly from the existing text. Be concise (under 15 words). Respond with ONLY the continuation, no quotes or explanation."
+                "system": "You are a helpful assistant that generates response suggestions based on context. When screen content is provided, your suggestions MUST be directly relevant to what the user is viewing. Be concise and natural."
             ]
 
         case .google:
@@ -2395,8 +2420,8 @@ final class SwiftLinkSessionManager: ObservableObject {
                     ["parts": [["text": prompt]]]
                 ],
                 "generationConfig": [
-                    "maxOutputTokens": 50,
-                    "temperature": 0.7
+                    "maxOutputTokens": 300,
+                    "temperature": 0.8
                 ]
             ]
 
@@ -2410,7 +2435,268 @@ final class SwiftLinkSessionManager: ObservableObject {
             request.setValue(value, forHTTPHeaderField: key)
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        request.timeoutInterval = 5  // Shorter timeout for inline predictions
+        request.timeoutInterval = 10
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TranscriptionError.networkError("Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let errorJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                if let error = errorJson["error"] as? [String: Any],
+                   let message = error["message"] as? String {
+                    throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: message)
+                }
+            }
+            throw TranscriptionError.serverError(statusCode: httpResponse.statusCode, message: nil)
+        }
+
+        // Parse response based on provider
+        switch provider {
+        case .openAI:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let choices = json["choices"] as? [[String: Any]],
+                  let firstChoice = choices.first,
+                  let message = firstChoice["message"] as? [String: Any],
+                  let text = message["content"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse OpenAI response")
+            }
+            return text
+
+        case .anthropic:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let contentArray = json["content"] as? [[String: Any]],
+                  let firstContent = contentArray.first,
+                  let text = firstContent["text"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse Anthropic response")
+            }
+            return text
+
+        case .google:
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let candidates = json["candidates"] as? [[String: Any]],
+                  let firstCandidate = candidates.first,
+                  let contentDict = firstCandidate["content"] as? [String: Any],
+                  let parts = contentDict["parts"] as? [[String: Any]],
+                  let firstPart = parts.first,
+                  let text = firstPart["text"] as? String else {
+                throw TranscriptionError.unexpectedResponse("Failed to parse Google response")
+            }
+            return text
+
+        default:
+            throw TranscriptionError.providerNotConfigured
+        }
+    }
+
+    // MARK: - AI Word Prediction Handler
+
+    /// Handle AI word prediction request from keyboard
+    /// This works independently of SwiftLink dictation sessions
+    func handleAIWordPredictionRequest() {
+        appLog("Received AI word prediction request from keyboard", category: "AIPrediction")
+
+        Task {
+            await processAIWordPredictionRequest()
+        }
+    }
+
+    /// Process the AI word prediction request
+    private func processAIWordPredictionRequest() async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        defaults?.synchronize()
+
+        // Read request from App Groups
+        let prefix = defaults?.string(forKey: Constants.Keys.aiWordPredictionPrefix) ?? ""
+        let context = defaults?.string(forKey: Constants.Keys.aiWordPredictionContext) ?? ""
+        let language = defaults?.string(forKey: Constants.Keys.aiWordPredictionLanguage) ?? "en"
+        let contextName = defaults?.string(forKey: Constants.Keys.aiWordPredictionContextName)
+
+        appLog("AI word prediction: prefix='\(prefix)', context='\(context.suffix(30))...'", category: "AIPrediction")
+
+        await performAIWordPrediction(
+            prefix: prefix,
+            context: context,
+            language: language,
+            contextName: contextName
+        )
+    }
+
+    /// Perform AI word prediction
+    private func performAIWordPrediction(
+        prefix: String,
+        context: String,
+        language: String,
+        contextName: String?
+    ) async {
+        let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
+        let startTime = Date()
+
+        // Get provider configuration
+        let (config, provider) = await MainActor.run {
+            let settings = SharedSettings.shared
+
+            // Try formatting provider first (LLM-capable)
+            var providerConfig: AIProviderConfig? = nil
+            var selectedProvider = settings.selectedFormattingProvider
+
+            if let config = settings.getAIProviderConfig(for: settings.selectedFormattingProvider),
+               config.isConfigured && config.provider.supportsPowerMode {
+                providerConfig = config
+                selectedProvider = settings.selectedFormattingProvider
+            }
+            // Fall back to power mode provider
+            else if let config = settings.getAIProviderConfig(for: settings.selectedPowerModeProvider),
+                    config.isConfigured {
+                providerConfig = config
+                selectedProvider = settings.selectedPowerModeProvider
+            }
+            // Fall back to any configured LLM provider
+            else if let config = settings.powerModeProviders.first(where: { $0.isConfigured }) {
+                providerConfig = config
+                selectedProvider = config.provider
+            }
+
+            return (providerConfig, selectedProvider)
+        }
+
+        guard let validConfig = config, validConfig.isConfigured else {
+            appLog("AI word prediction: No configured provider", category: "AIPrediction", level: .error)
+            defaults?.set("Configure an AI provider in Settings", forKey: Constants.Keys.aiWordPredictionError)
+            defaults?.set(false, forKey: Constants.Keys.aiWordPredictionIsProcessing)
+            defaults?.synchronize()
+            DarwinNotificationManager.shared.post(name: Constants.AIWordPredictionNotifications.predictionReady)
+            return
+        }
+
+        do {
+            let predictions = try await callAIForWordPrediction(
+                prefix: prefix,
+                context: context,
+                language: language,
+                config: validConfig,
+                provider: provider
+            )
+
+            // Store results as JSON
+            let resultsData = try JSONEncoder().encode(predictions)
+            defaults?.set(resultsData, forKey: Constants.Keys.aiWordPredictionResults)
+            defaults?.removeObject(forKey: Constants.Keys.aiWordPredictionError)
+            defaults?.set(false, forKey: Constants.Keys.aiWordPredictionIsProcessing)
+            defaults?.synchronize()
+
+            appLog("AI word prediction: \(predictions.count) results - \(predictions.joined(separator: ", "))", category: "AIPrediction")
+
+            // Record cost
+            let duration = Date().timeIntervalSince(startTime)
+            await recordAIWordPredictionCost(
+                prefix: prefix,
+                context: context,
+                predictions: predictions,
+                provider: provider,
+                duration: duration,
+                contextName: contextName
+            )
+
+            // Notify keyboard
+            DarwinNotificationManager.shared.post(name: Constants.AIWordPredictionNotifications.predictionReady)
+
+        } catch {
+            appLog("AI word prediction error: \(error.localizedDescription)", category: "AIPrediction", level: .error)
+            defaults?.set(error.localizedDescription, forKey: Constants.Keys.aiWordPredictionError)
+            defaults?.set(false, forKey: Constants.Keys.aiWordPredictionIsProcessing)
+            defaults?.synchronize()
+            DarwinNotificationManager.shared.post(name: Constants.AIWordPredictionNotifications.predictionReady)
+        }
+    }
+
+    /// Call AI API for word predictions
+    private func callAIForWordPrediction(
+        prefix: String,
+        context: String,
+        language: String,
+        config: AIProviderConfig,
+        provider: AIProvider
+    ) async throws -> [String] {
+        // Build prompt for word prediction
+        let prompt = """
+        You are a word prediction assistant. Given the context and partial word, suggest 3-5 words that could complete or follow the partial word.
+
+        Context (last 100 chars): \(context.suffix(100))
+        Partial word: "\(prefix)"
+        Language: \(language)
+
+        Rules:
+        - Return ONLY the predicted words, one per line
+        - Words should naturally follow from the context
+        - If partial word is provided, complete it first, then suggest next words
+        - If partial word is empty, suggest the most likely next words
+        - Keep predictions relevant and common
+        - No explanations, just the words
+        """
+
+        let url: URL
+        let headers: [String: String]
+        let body: [String: Any]
+
+        switch provider {
+        case .openAI:
+            url = URL(string: "https://api.openai.com/v1/chat/completions")!
+            headers = [
+                "Authorization": "Bearer \(config.apiKey)",
+                "Content-Type": "application/json"
+            ]
+            body = [
+                "model": "gpt-4o-mini",
+                "messages": [
+                    ["role": "user", "content": prompt]
+                ],
+                "max_tokens": 30,
+                "temperature": 0.5
+            ]
+
+        case .anthropic:
+            url = URL(string: "https://api.anthropic.com/v1/messages")!
+            headers = [
+                "x-api-key": config.apiKey,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json"
+            ]
+            body = [
+                "model": "claude-3-haiku-20240307",
+                "max_tokens": 30,
+                "messages": [
+                    ["role": "user", "content": prompt]
+                ]
+            ]
+
+        case .google:
+            let model = "gemini-1.5-flash"
+            url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(config.apiKey)")!
+            headers = ["Content-Type": "application/json"]
+            body = [
+                "contents": [
+                    ["parts": [["text": prompt]]]
+                ],
+                "generationConfig": [
+                    "maxOutputTokens": 30,
+                    "temperature": 0.5
+                ]
+            ]
+
+        default:
+            throw TranscriptionError.providerNotConfigured
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.timeoutInterval = 3  // Short timeout for word predictions
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -2465,10 +2751,66 @@ final class SwiftLinkSessionManager: ObservableObject {
             throw TranscriptionError.providerNotConfigured
         }
 
-        // Clean up the response (remove quotes, trim whitespace)
-        return content
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\"'"))
+        // Parse words from response (one per line)
+        let words = content
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && $0.count < 30 }  // Filter out empty and overly long
+            .prefix(5)  // Max 5 predictions
+
+        return Array(words)
+    }
+
+    /// Record cost for AI word prediction
+    private func recordAIWordPredictionCost(
+        prefix: String,
+        context: String,
+        predictions: [String],
+        provider: AIProvider,
+        duration: TimeInterval,
+        contextName: String?
+    ) async {
+        // Calculate cost
+        let inputTokens = (prefix.count + context.suffix(100).count + 200) / 4  // Prompt + context
+        let outputTokens = predictions.joined(separator: "\n").count / 4
+
+        let costCalculator = CostCalculator()
+        let formattingCost = costCalculator.llmCost(
+            provider: provider,
+            model: provider.defaultLLMModel ?? "unknown",
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
+
+        let costBreakdown = CostBreakdown(
+            transcriptionCost: 0,
+            formattingCost: formattingCost,
+            translationCost: nil,
+            powerModeCost: nil,
+            ragCost: nil,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens
+        )
+
+        // Create record
+        let record = TranscriptionRecord(
+            rawTranscribedText: "[\(prefix)]",  // Prefix being predicted
+            text: predictions.joined(separator: ", "),  // Predictions
+            mode: .raw,
+            provider: provider,
+            duration: duration,
+            contextName: contextName,
+            estimatedCost: costBreakdown.total,
+            costBreakdown: costBreakdown,
+            source: .prediction  // Uses prediction source
+        )
+
+        // Save to history
+        await MainActor.run {
+            SharedSettings.shared.transcriptionHistory.insert(record, at: 0)
+        }
+
+        appLog("AI word prediction cost: $\(String(format: "%.6f", costBreakdown.total))", category: "AIPrediction")
     }
 
     // MARK: - Phase 13.11: AI Process Request Handler

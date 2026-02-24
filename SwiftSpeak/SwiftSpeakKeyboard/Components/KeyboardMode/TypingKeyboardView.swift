@@ -65,30 +65,16 @@ struct TypingKeyboardView: View {
                     }
                 )
                 .transition(.opacity)
-            } else {
-                // Inline AI prediction preview (reserves space when enabled to avoid height jumps)
-                if keyboardSettings.inlinePredictionEnabled {
-                    if viewModel.hasInlinePrediction || viewModel.isGeneratingInlinePrediction || viewModel.hasInlinePredictionError {
-                        InlinePredictionPreview(
-                            typedText: viewModel.inlinePredictionTypingContext,
-                            prediction: viewModel.inlinePrediction,
-                            isLoading: viewModel.isGeneratingInlinePrediction,
-                            errorMessage: viewModel.inlinePredictionError,
-                            onAcceptWords: { words in
-                                viewModel.acceptInlinePredictionWords(words)
-                            },
-                            onDismiss: {
-                                viewModel.dismissInlinePrediction()
-                            }
-                        )
-                        .transition(.opacity)
-                    } else {
-                        // Placeholder to reserve space when no prediction is active
-                        Color.clear
-                            .frame(height: 52)
+            } else if viewModel.showReportTypoPanel {
+                ReportTypoPanel(
+                    viewModel: viewModel,
+                    onDismiss: {
+                        KeyboardHaptics.lightTap()
+                        viewModel.showReportTypoPanel = false
                     }
-                }
-
+                )
+                .transition(.opacity)
+            } else {
                 // SwiftSpeak bar with voice controls (Phase 16: conditionally shown)
                 // NOTE: Recording UI is now handled by SwiftLinkStreamingOverlay in KeyboardView.swift
                 if keyboardSettings.showSwiftSpeakBar {

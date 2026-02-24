@@ -8,6 +8,7 @@
 //
 
 import Foundation
+import SwiftSpeakCore
 
 // MARK: - Prediction Engine
 actor PredictionEngine {
@@ -17,7 +18,7 @@ actor PredictionEngine {
     private var frequentWords: [String: Int] = [:]
 
     // Debouncing for predictions
-    private var pendingPredictionTask: Task<[String], Never>?
+    private var pendingPredictionTask: Task<[Prediction], Never>?
     private var lastPredictionContext: String = ""
 
     // Service initialization - use Task to ensure single execution
@@ -168,11 +169,12 @@ actor PredictionEngine {
     // MARK: - Local Predictions
 
     /// Get predictions based on local vocabulary, N-grams, and context
-    func localPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [String] {
+    /// Returns typed predictions distinguishing corrections from completions
+    func localPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [Prediction] {
         // Ensure services are initialized
         await ensureInitialized()
 
-        var predictions: [(text: String, score: Double)] = []
+        var predictions: [(text: String, score: Double, type: PredictionType)] = []
 
         let searchTerm = context.currentWord.lowercased()
         let previousWords = context.previousWords
@@ -188,12 +190,12 @@ actor PredictionEngine {
             // 1. Get N-gram predictions based on previous words
             let ngramPredictions = await NGramPredictor.shared.predict(
                 previousWords: previousWords,
-                maxResults: 5,
+                maxResults: 8,  // Get more N-gram predictions for better next-word suggestions
                 language: language
             )
             for (index, word) in ngramPredictions.enumerated() {
                 let score = 100.0 - Double(index * 10)
-                predictions.append((word, score))
+                predictions.append((word, score, .prediction))
             }
 
             // 2. Get learned follow words from feedback
@@ -203,17 +205,21 @@ actor PredictionEngine {
                     maxResults: 3
                 )
                 for word in learnedWords {
-                    predictions.append((word, 90.0))  // High score for learned patterns
+                    predictions.append((word, 90.0, .prediction))  // High score for learned patterns
                 }
             }
 
-            // 3. Get context-aware starter predictions
-            let contextPredictions = await ContextAwarePredictions.shared.getStarterPredictions(
-                for: typingContext,
-                language: language
-            )
-            for (index, word) in contextPredictions.prefix(3).enumerated() {
-                predictions.append((word, 50.0 - Double(index * 5)))
+            // 3. Get context-aware starter predictions ONLY at beginning of input
+            // Don't show "hey", "hi", etc. mid-sentence - only when starting a message
+            let isStartOfInput = previousWords.count <= 1
+            if isStartOfInput {
+                let contextPredictions = await ContextAwarePredictions.shared.getStarterPredictions(
+                    for: typingContext,
+                    language: language
+                )
+                for (index, word) in contextPredictions.prefix(3).enumerated() {
+                    predictions.append((word, 50.0 - Double(index * 5), .prediction))
+                }
             }
 
         } else {
@@ -227,16 +233,16 @@ actor PredictionEngine {
                 maxResults: 2
             )
             for (index, correction) in spellingCorrections.enumerated() {
-                // Very high score for spelling corrections
+                // Very high score for spelling corrections - marked as .correction type
                 let score = 120.0 - Double(index * 5)
-                predictions.append((correction, score))
+                predictions.append((correction, score, .correction))
             }
 
             // 1. Recently typed words (recency boost)
             let recentWords = await SessionRecencyTracker.shared.getRecentWordsWithPrefix(searchTerm, maxResults: 3)
             for (index, word) in recentWords.enumerated() {
                 let score = 110.0 - Double(index * 5)
-                predictions.append((word.capitalized, score))
+                predictions.append((word.capitalized, score, .prediction))
             }
 
             // 2. N-gram completions (context-aware prefix matching)
@@ -248,7 +254,7 @@ actor PredictionEngine {
             )
             for (index, word) in ngramCompletions.enumerated() {
                 let score = 100.0 - Double(index * 10)
-                predictions.append((word, score))
+                predictions.append((word, score, .prediction))
             }
 
             // 3. UITextChecker completions (Apple's dictionary)
@@ -259,7 +265,7 @@ actor PredictionEngine {
             )
             for (index, word) in textCheckerCompletions.enumerated() {
                 let score = 85.0 - Double(index * 5)
-                predictions.append((word, score))
+                predictions.append((word, score, .prediction))
             }
 
             // 4. Personal dictionary matches
@@ -267,13 +273,13 @@ actor PredictionEngine {
             for word in personalWords {
                 let freq = await PersonalDictionary.shared.frequency(of: word)
                 let score = 80.0 + min(Double(freq) * 2, 20.0)
-                predictions.append((word.capitalized, score))
+                predictions.append((word.capitalized, score, .prediction))
             }
 
             // 5. Search custom vocabulary for prefix matches
             for word in vocabulary {
                 if word.lowercased().hasPrefix(searchTerm) && word.lowercased() != searchTerm {
-                    predictions.append((word, 70.0))
+                    predictions.append((word, 70.0, .prediction))
                 }
             }
 
@@ -281,7 +287,7 @@ actor PredictionEngine {
             for (word, count) in frequentWords {
                 if word.hasPrefix(searchTerm) && word != searchTerm {
                     let score = 60.0 + min(Double(count), 20.0)
-                    predictions.append((word.capitalized, score))
+                    predictions.append((word.capitalized, score, .prediction))
                 }
             }
 
@@ -292,13 +298,13 @@ actor PredictionEngine {
                 language: language
             )
             for (index, word) in contextWords.prefix(3).enumerated() {
-                predictions.append((word, 55.0 - Double(index * 5)))
+                predictions.append((word, 55.0 - Double(index * 5), .prediction))
             }
         }
 
         // Apply feedback boosts and recency boost
-        var boostedPredictions: [(String, Double)] = []
-        for (text, baseScore) in predictions {
+        var boostedPredictions: [(String, Double, PredictionType)] = []
+        for (text, baseScore, type) in predictions {
             let feedbackBoost = await PredictionFeedback.shared.getBoost(for: text)
 
             // Apply contextual boost if we have previous word
@@ -311,25 +317,39 @@ actor PredictionEngine {
             let recencyBoost = await SessionRecencyTracker.shared.getRecencyBoost(for: text)
 
             let finalScore = baseScore * feedbackBoost * contextBoost * recencyBoost
-            boostedPredictions.append((text, finalScore))
+            boostedPredictions.append((text, finalScore, type))
         }
 
-        // Deduplicate, sort by score, and return top 3
+        // Deduplicate predictions
         var seen = Set<String>()
-        var uniquePredictions: [(String, Double)] = []
-        for (text, score) in boostedPredictions {
+        var uniquePredictions: [(String, Double, PredictionType)] = []
+        for (text, score, type) in boostedPredictions {
             let normalized = text.lowercased()
             if seen.insert(normalized).inserted {
-                uniquePredictions.append((text, score))
+                uniquePredictions.append((text, score, type))
             }
+        }
+
+        // Filter out recently typed words (don't suggest what was just typed)
+        // Get the last few words from context to filter out
+        let recentWordsToExclude = Set(previousWords.suffix(3).map { $0.lowercased() })
+        uniquePredictions = uniquePredictions.filter { text, _, type in
+            // Always allow corrections (they fix typos, so they should appear)
+            if type == .correction {
+                return true
+            }
+            // For predictions, filter out words that were just typed
+            return !recentWordsToExclude.contains(text.lowercased())
         }
 
         uniquePredictions.sort { $0.1 > $1.1 }
 
         // Apply smart capitalization based on context
+        // Return up to 8 predictions for scrollable prediction bar
         let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText, language: language)
-        return uniquePredictions.prefix(3).map { text, _ in
-            applySmartCapitalization(text, shouldCapitalize: shouldCapitalize, language: language)
+        return uniquePredictions.prefix(8).map { text, score, type in
+            let capitalizedText = applySmartCapitalization(text, shouldCapitalize: shouldCapitalize, language: language)
+            return Prediction(text: capitalizedText, type: type, score: score)
         }
     }
 
@@ -392,17 +412,17 @@ actor PredictionEngine {
         return word.lowercased()
     }
 
-    /// Legacy sync wrapper
-    func localPredictions(for context: PredictionContext) -> [String] {
-        // For backward compatibility, return simple predictions
+    /// Legacy sync wrapper - returns predictions as Prediction array
+    func localPredictions(for context: PredictionContext) -> [Prediction] {
+        // For backward compatibility, return simple predictions (all as .prediction type)
         let searchTerm = context.currentWord.lowercased()
         let shouldCapitalize = shouldCapitalizeNextWord(context: context.fullText, language: nil)
 
         if searchTerm.isEmpty {
             return frequentWords
                 .sorted { $0.value > $1.value }
-                .prefix(3)
-                .map { applySmartCapitalization($0.key, shouldCapitalize: shouldCapitalize, language: nil) }
+                .prefix(8)
+                .map { Prediction.prediction(applySmartCapitalization($0.key, shouldCapitalize: shouldCapitalize, language: nil)) }
         }
 
         var predictions: [(String, Int)] = []
@@ -421,15 +441,32 @@ actor PredictionEngine {
 
         return predictions
             .sorted { $0.1 > $1.1 }
-            .prefix(3)
-            .map { applySmartCapitalization($0.0, shouldCapitalize: shouldCapitalize, language: nil) }
+            .prefix(8)
+            .map { Prediction.prediction(applySmartCapitalization($0.0, shouldCapitalize: shouldCapitalize, language: nil)) }
     }
 
     // MARK: - Get Predictions
 
     /// Get predictions for the current typing context
-    /// Uses local predictions only - no external API calls
-    func getPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil) async -> [String] {
+    /// Get word predictions based on the configured source
+    /// - Parameters:
+    ///   - context: Current text context
+    ///   - activeContext: Active conversation context name
+    ///   - language: Language code for predictions
+    ///   - source: Word autocomplete source (.system, .ai, .both, .disabled)
+    /// - Returns: Array of predictions sorted by relevance
+    func getPredictions(
+        for context: PredictionContext,
+        activeContext: String? = nil,
+        language: String? = nil,
+        source: WordAutocompleteSource = .system
+    ) async -> [Prediction] {
+        // Check for disabled predictions
+        if source == .disabled {
+            keyboardLog("PredictionEngine: Predictions disabled for current context", category: "Prediction")
+            return []
+        }
+
         // Ensure services are initialized before making predictions
         await ensureInitialized()
 
@@ -439,17 +476,52 @@ actor PredictionEngine {
             lastPredictionContext = context.fullText
         }
 
-        // Always use local predictions (no LLM)
-        return await localPredictions(for: context, activeContext: activeContext, language: language)
+        // Get system predictions (N-gram, spelling, dictionary)
+        var predictions: [Prediction] = []
+
+        if source == .system || source == .both {
+            predictions = await localPredictions(for: context, activeContext: activeContext, language: language)
+        }
+
+        // AI predictions via AIWordPredictionService
+        if source == .ai || source == .both {
+            let aiPredictions = await getAIPredictions(
+                prefix: context.currentWord,
+                fullContext: context.fullText,
+                activeContext: activeContext,
+                language: language ?? "en"
+            )
+
+            if source == .ai {
+                // AI-only mode: use only AI predictions
+                predictions = aiPredictions
+            } else if source == .both {
+                // Merge AI predictions with system predictions, avoiding duplicates
+                let systemWords = Set(predictions.map { $0.text.lowercased() })
+                for aiPrediction in aiPredictions {
+                    if !systemWords.contains(aiPrediction.text.lowercased()) {
+                        predictions.append(aiPrediction)
+                    }
+                }
+            }
+        }
+
+        return predictions
     }
 
     /// Get predictions with debouncing (waits for typing to pause)
-    func getDebouncedPredictions(for context: PredictionContext, activeContext: String? = nil, language: String? = nil, delayMs: Int = 150) async -> [String] {
+    func getDebouncedPredictions(
+        for context: PredictionContext,
+        activeContext: String? = nil,
+        language: String? = nil,
+        source: WordAutocompleteSource = .system,
+        delayMs: Int = 150
+    ) async -> [Prediction] {
         // Cancel previous pending task
         pendingPredictionTask?.cancel()
 
         // Create new debounced task
-        let task = Task { () -> [String] in
+        let task = Task { () -> [Prediction] in
             // Wait for debounce delay
             try? await Task.sleep(for: .milliseconds(delayMs))
 
@@ -459,16 +531,52 @@ actor PredictionEngine {
             }
 
             // Get predictions
-            return await getPredictions(for: context, activeContext: activeContext, language: language)
+            return await getPredictions(for: context, activeContext: activeContext, language: language, source: source)
         }
 
         pendingPredictionTask = task
         return await task.value
     }
 
-    /// Legacy wrapper
-    func getPredictions(for context: PredictionContext) async -> [String] {
-        return await getPredictions(for: context, activeContext: nil, language: nil)
+    /// Legacy wrapper (defaults to system predictions)
+    func getPredictions(for context: PredictionContext) async -> [Prediction] {
+        return await getPredictions(for: context, activeContext: nil, language: nil, source: .system)
+    }
+
+    // MARK: - AI Predictions
+
+    /// Get AI-powered word predictions via AIWordPredictionService
+    /// Uses Darwin notifications + App Groups to communicate with main app
+    private func getAIPredictions(
+        prefix: String,
+        fullContext: String,
+        activeContext: String?,
+        language: String
+    ) async -> [Prediction] {
+        keyboardLog("PredictionEngine: Requesting AI predictions for '\(prefix)'", category: "Prediction")
+
+        let aiWords = await AIWordPredictionService.shared.getPredictions(
+            prefix: prefix,
+            context: fullContext,
+            contextName: activeContext,
+            language: language
+        )
+
+        // Convert to Prediction objects with AI type indicator
+        var predictions: [Prediction] = []
+        for (index, word) in aiWords.enumerated() {
+            // AI predictions get high scores but lower than system exact matches
+            let score = 180.0 - Double(index * 10)
+            predictions.append(Prediction(
+                text: word,
+                source: .ai,
+                type: .prediction,
+                score: score
+            ))
+        }
+
+        keyboardLog("PredictionEngine: Got \(predictions.count) AI predictions", category: "Prediction")
+        return predictions
     }
 
     // MARK: - Feedback Recording

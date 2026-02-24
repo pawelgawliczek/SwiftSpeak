@@ -263,8 +263,6 @@ struct QWERTYKeyboard: View {
             SpaceBar(
                 action: {
                     insertText(" ")
-                    // Trigger inline AI prediction on space (if enabled)
-                    triggerInlinePredictionIfEnabled()
                 },
                 textDocumentProxy: textDocumentProxy
             )
@@ -397,18 +395,6 @@ struct QWERTYKeyboard: View {
         viewModel?.updateTypingContext()
     }
 
-    /// Trigger inline AI prediction if setting is enabled
-    private func triggerInlinePredictionIfEnabled() {
-        // Check if inline prediction on space is enabled
-        let settings = KeyboardSettings.load()
-        guard settings.inlinePredictionEnabled && settings.inlinePredictionOnSpace else { return }
-
-        // Trigger the prediction (this internally cancels any pending prediction synchronously)
-        // Note: Don't call dismissInlinePrediction() here as it has an async cancel
-        // that could race with the new prediction result and clear it prematurely
-        viewModel?.triggerInlinePrediction()
-    }
-
     /// Check if autocorrect is enabled
     private var autocorrectEnabled: Bool {
         let defaults = UserDefaults(suiteName: Constants.appGroupIdentifier)
@@ -478,15 +464,32 @@ struct QWERTYKeyboard: View {
            correction != wordString {
 
             // Check personal dictionary and ignored corrections (synchronous from cache)
+            let position = beforeText.count
             if AutocorrectCache.isInPersonalDictionary(wordString) {
-                // Word is in personal dictionary - don't correct
+                // Word is in personal dictionary - don't correct, but log as skipped
+                CorrectionQualityLogService.shared.logSkippedCorrection(
+                    original: wordString,
+                    suggestion: correction,
+                    fullTextBefore: beforeText,
+                    language: currentLang,
+                    cursorPosition: position,
+                    reason: .personalDictionary
+                )
                 proxy.insertText(text)
                 viewModel?.updateTypingContext()
                 return
             }
 
             if AutocorrectCache.shouldIgnoreCorrection(original: wordString, correctedTo: correction) {
-                // User previously undid this correction - don't apply
+                // User previously undid this correction - don't apply, but log as skipped
+                CorrectionQualityLogService.shared.logSkippedCorrection(
+                    original: wordString,
+                    suggestion: correction,
+                    fullTextBefore: beforeText,
+                    language: currentLang,
+                    cursorPosition: position,
+                    reason: .ignoredCorrection
+                )
                 proxy.insertText(text)
                 viewModel?.updateTypingContext()
                 return
@@ -500,7 +503,6 @@ struct QWERTYKeyboard: View {
             KeyboardHaptics.lightTap()
 
             // Record correction for undo functionality (async is fine here)
-            let position = beforeText.count
             Task {
                 await AutocorrectHistoryService.shared.recordCorrection(
                     original: wordString,
@@ -508,6 +510,15 @@ struct QWERTYKeyboard: View {
                     atPosition: position
                 )
             }
+
+            // Log for quality review (sync, queued internally)
+            CorrectionQualityLogService.shared.logCorrection(
+                original: wordString,
+                corrected: correction,
+                fullTextBefore: beforeText,
+                language: currentLang,
+                cursorPosition: position
+            )
         }
 
         proxy.insertText(text)

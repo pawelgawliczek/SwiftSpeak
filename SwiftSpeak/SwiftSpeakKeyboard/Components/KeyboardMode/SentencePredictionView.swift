@@ -3,10 +3,11 @@
 //  SwiftSpeakKeyboard
 //
 //  AI-powered sentence prediction panel
-//  Shows 4 sentence options for user to select
+//  Shows typed suggestions (Quick Actions) or generic sentence options
 //
 
 import SwiftUI
+import SwiftSpeakCore
 
 struct SentencePredictionView: View {
     @ObservedObject var viewModel: KeyboardViewModel
@@ -90,20 +91,36 @@ struct SentencePredictionView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(Color(white: 0.08))
             }
-            // Sentence options
+            // Suggestions - show typed (Quick Actions) or generic
             else {
                 ScrollView {
                     VStack(spacing: 8) {
-                        ForEach(Array(viewModel.sentencePredictions.enumerated()), id: \.offset) { index, sentence in
-                            SentenceOptionButton(
-                                sentence: sentence,
-                                index: index + 1,
-                                action: {
-                                    KeyboardHaptics.mediumTap()
-                                    viewModel.insertSentencePrediction(sentence)
-                                    onClose()
-                                }
-                            )
+                        // Use QuickSuggestions if available (typed predictions)
+                        if !viewModel.quickSuggestions.isEmpty {
+                            ForEach(viewModel.quickSuggestions) { suggestion in
+                                QuickSuggestionButton(
+                                    suggestion: suggestion,
+                                    action: {
+                                        KeyboardHaptics.mediumTap()
+                                        viewModel.insertSentencePrediction(suggestion.text)
+                                        onClose()
+                                    }
+                                )
+                            }
+                        }
+                        // Fallback: Generic sentence predictions
+                        else {
+                            ForEach(Array(viewModel.sentencePredictions.enumerated()), id: \.offset) { index, sentence in
+                                SentenceOptionButton(
+                                    sentence: sentence,
+                                    index: index + 1,
+                                    action: {
+                                        KeyboardHaptics.mediumTap()
+                                        viewModel.insertSentencePrediction(sentence)
+                                        onClose()
+                                    }
+                                )
+                            }
                         }
                     }
                     .padding(.horizontal, 12)
@@ -115,7 +132,84 @@ struct SentencePredictionView: View {
     }
 }
 
-// MARK: - Sentence Option Button
+// MARK: - Quick Suggestion Button (Typed predictions)
+
+private struct QuickSuggestionButton: View {
+    let suggestion: QuickSuggestion
+    let action: () -> Void
+
+    @State private var isPressed = false
+
+    /// Get color for the suggestion type
+    private var typeColor: Color {
+        switch suggestion.type {
+        case .positive:
+            return .green
+        case .neutral:
+            return .orange
+        case .negative:
+            return .red
+        case .summarize:
+            return .blue
+        case .custom:
+            return .purple
+        }
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(alignment: .top, spacing: 12) {
+                // Type indicator with icon
+                Image(systemName: suggestion.type.icon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(typeColor)
+                    .frame(width: 28, height: 28)
+                    .background(typeColor.opacity(0.2))
+                    .clipShape(Circle())
+
+                // Content
+                VStack(alignment: .leading, spacing: 4) {
+                    // Type label
+                    Text(suggestion.shortLabel)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(typeColor)
+
+                    // Suggestion text
+                    Text(suggestion.text)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.white.opacity(0.9))
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                }
+
+                Spacer(minLength: 0)
+
+                // Insert icon
+                Image(systemName: "arrow.turn.down.left")
+                    .font(.system(size: 14))
+                    .foregroundStyle(.white.opacity(0.4))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.white.opacity(isPressed ? 0.15 : 0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(typeColor.opacity(0.3), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .scaleEffect(isPressed ? 0.98 : 1.0)
+        .animation(.easeInOut(duration: 0.1), value: isPressed)
+        .onLongPressGesture(minimumDuration: .infinity, pressing: { pressing in
+            isPressed = pressing
+        }, perform: {})
+    }
+}
+
+// MARK: - Sentence Option Button (Generic predictions)
 
 private struct SentenceOptionButton: View {
     let sentence: String
@@ -184,17 +278,18 @@ private struct SentenceOptionButton: View {
         SentencePredictionView(
             viewModel: {
                 let vm = KeyboardViewModel()
-                vm.sentencePredictions = [
-                    "I'll be there in about 10 minutes.",
-                    "Let me check my schedule and get back to you.",
-                    "That sounds great! I'm looking forward to it.",
-                    "I'm running a bit late, sorry for the delay."
+                // Preview with QuickSuggestions
+                vm.quickSuggestions = [
+                    QuickSuggestion(type: .positive, text: "That sounds great! I'd love to join you for lunch."),
+                    QuickSuggestion(type: .neutral, text: "Let me check my schedule and get back to you."),
+                    QuickSuggestion(type: .negative, text: "I appreciate the offer, but I won't be able to make it.")
                 ]
+                vm.sentencePredictions = vm.quickSuggestions.map { $0.text }
                 return vm
             }(),
             onClose: { print("Closed") }
         )
-        .frame(height: 300)
+        .frame(height: 350)
     }
     .background(Color.black)
     .preferredColorScheme(.dark)

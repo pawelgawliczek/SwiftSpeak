@@ -490,6 +490,13 @@ actor NGramPredictor {
             ("she", "is", 340), ("she", "was", 290), ("she", "has", 240), ("she", "will", 190),
             ("it", "is", 500), ("it", "was", 400), ("it", "will", 300), ("it", "would", 250),
 
+            // Question continuations (verb → pronoun for questions)
+            ("are", "you", 550), ("are", "we", 300), ("are", "they", 280),
+            ("is", "it", 400), ("is", "there", 350), ("is", "this", 320), ("is", "that", 300),
+            ("do", "you", 500), ("does", "it", 350), ("did", "you", 400),
+            ("have", "you", 400), ("has", "it", 300),
+            ("will", "you", 350), ("would", "you", 380), ("could", "you", 360), ("can", "you", 400),
+
             // Common phrases
             ("thank", "you", 600), ("of", "the", 550), ("in", "the", 500), ("to", "the", 450),
             ("on", "the", 400), ("for", "the", 380), ("at", "the", 350), ("with", "the", 320),

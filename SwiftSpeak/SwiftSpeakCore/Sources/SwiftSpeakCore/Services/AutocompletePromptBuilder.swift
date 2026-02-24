@@ -3,18 +3,18 @@
 //  SwiftSpeakCore
 //
 //  Shared prompt building for AI autocomplete features.
-//  Used by both iOS keyboard inline predictions and macOS quick actions.
+//  Used by sentence predictions and macOS quick actions.
 //
 
 import Foundation
 
 /// Builds prompts for AI-powered autocomplete features
-/// Shared between keyboard inline predictions and macOS quick actions
+/// Shared between sentence predictions and macOS quick actions
 public struct AutocompletePromptBuilder {
 
     // MARK: - Sentence Continuation Prompt
 
-    /// Build a sentence continuation prompt for inline predictions
+    /// Build a sentence continuation prompt for sentence predictions
     /// - Parameters:
     ///   - typingContext: Current text being typed (last ~100 chars before cursor)
     ///   - recentMessagesContext: Recent conversation messages for context (optional)

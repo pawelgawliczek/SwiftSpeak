@@ -114,6 +114,32 @@ public enum Constants {
         public static let swiftLinkWidgetSessionEndTime = "swiftLinkWidgetSessionEndTime"
         public static let swiftLinkWidgetTargetAppName = "swiftLinkWidgetTargetAppName"
         public static let swiftLinkWidgetTargetAppIcon = "swiftLinkWidgetTargetAppIcon"
+
+        // Prediction Settings per Context
+        /// Word autocomplete source for active context (WordAutocompleteSource rawValue: "system", "ai", "both", "disabled")
+        public static let activeContextWordAutocompleteSource = "activeContextWordAutocompleteSource"
+        /// Sentence predictions enabled for active context (Bool)
+        public static let activeContextSentencePredictionsEnabled = "activeContextSentencePredictionsEnabled"
+        /// Quick Actions for active context (JSON-encoded [QuickAction], nil = use global)
+        public static let activeContextQuickActions = "activeContextQuickActions"
+
+        // AI Word Prediction
+        /// Current word/prefix being typed for AI prediction
+        public static let aiWordPredictionPrefix = "aiWordPredictionPrefix"
+        /// Full text context for AI prediction
+        public static let aiWordPredictionContext = "aiWordPredictionContext"
+        /// Active context name for AI prediction
+        public static let aiWordPredictionContextName = "aiWordPredictionContextName"
+        /// Language for AI prediction
+        public static let aiWordPredictionLanguage = "aiWordPredictionLanguage"
+        /// AI prediction results (JSON array of strings)
+        public static let aiWordPredictionResults = "aiWordPredictionResults"
+        /// Whether AI prediction is in progress
+        public static let aiWordPredictionIsProcessing = "aiWordPredictionIsProcessing"
+        /// Error message if AI prediction fails
+        public static let aiWordPredictionError = "aiWordPredictionError"
+        /// Timestamp of last AI prediction request (for debouncing)
+        public static let aiWordPredictionTimestamp = "aiWordPredictionTimestamp"
     }
 
     // MARK: - API Endpoints
@@ -224,6 +250,8 @@ public enum Constants {
         public static let activeContextId = "sentencePredictionActiveContextId"
         /// Key for storing prediction results (JSON array of 4 sentences)
         public static let results = "sentencePredictionResults"
+        /// Key for storing QuickSuggestions (JSON array, used when Quick Actions are enabled)
+        public static let quickSuggestions = "sentencePredictionQuickSuggestions"
         /// Key for storing error message if prediction fails
         public static let error = "sentencePredictionError"
         /// Key for tracking if prediction is in progress
@@ -234,26 +262,12 @@ public enum Constants {
         public static let autoReturnRequested = "sentencePredictionAutoReturnRequested"
     }
 
-    // MARK: - Inline AI Prediction (ghost text preview)
-    public enum InlinePrediction {
-        /// Key for storing typing context for inline prediction
-        public static let context = "inlinePredictionContext"
-        /// Key for storing single inline prediction result
-        public static let result = "inlinePredictionResult"
-        /// Key for storing error message if prediction fails
-        public static let error = "inlinePredictionError"
-        /// Key for tracking if inline prediction is in progress
-        public static let isProcessing = "inlinePredictionIsProcessing"
-        /// Debounce delay in milliseconds before triggering prediction
-        public static let debounceDelayMs: Int = 300
-    }
-
-    // MARK: - Inline Prediction Darwin Notifications
-    public enum InlinePredictionNotifications {
-        public static let prefix = "com.swiftspeak.inline."
-        /// Request inline prediction from keyboard
+    // MARK: - AI Word Prediction Darwin Notifications
+    public enum AIWordPredictionNotifications {
+        public static let prefix = "com.swiftspeak.aiword."
+        /// Request AI word prediction from keyboard
         public static let requestPrediction = prefix + "requestPrediction"
-        /// Inline prediction result ready
+        /// AI word prediction result ready
         public static let predictionReady = prefix + "predictionReady"
     }
 

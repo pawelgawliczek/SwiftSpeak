@@ -13,8 +13,8 @@ struct PredictionRow: View {
     @ObservedObject var viewModel: KeyboardViewModel
     var settings: KeyboardSettings = KeyboardSettings()  // Phase 16: For programmable button
     var sizing: KeyboardSizing = KeyboardSizing(.normal)  // Dynamic sizing support
-    @State private var predictions: [String] = []
-    @State private var lastShownPredictions: [String] = []  // For feedback tracking
+    @State private var predictions: [Prediction] = []
+    @State private var lastShownPredictions: [Prediction] = []  // For feedback tracking
     @State private var previousWord: String? = nil  // For contextual feedback
 
     // Autocorrect undo state
@@ -29,9 +29,14 @@ struct PredictionRow: View {
     // Debounce task for predictions
     @State private var predictionTask: Task<Void, Never>?
 
+    /// Minimum width for each prediction slot
+    private var minSlotWidth: CGFloat {
+        sizing.isCompact ? 70 : 90
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            // Settings button on the left
+            // Settings button on the left (fixed)
             Button(action: {
                 KeyboardHaptics.lightTap()
                 viewModel.showQuickSettings = true
@@ -46,54 +51,68 @@ struct PredictionRow: View {
             Divider()
                 .background(Color.white.opacity(0.1))
 
-            // Show autocorrect undo as first slot if available
-            if let undoSuggestion = autocorrectUndoSuggestion {
-                AutocorrectUndoSlot(suggestion: undoSuggestion, sizing: sizing) {
-                    handleAutocorrectUndoTap(undoSuggestion)
-                }
+            // Scrollable predictions area
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 0) {
+                    // Show autocorrect undo as first item if available
+                    if let undoSuggestion = autocorrectUndoSuggestion {
+                        AutocorrectUndoSlot(suggestion: undoSuggestion, sizing: sizing) {
+                            handleAutocorrectUndoTap(undoSuggestion)
+                        }
+                        .frame(minWidth: minSlotWidth)
 
-                Divider()
-                    .background(Color.white.opacity(0.1))
-
-                // Show remaining 2 predictions
-                ForEach(0..<2, id: \.self) { index in
-                    PredictionSlot(
-                        text: index < predictions.count ? predictions[index] : "",
-                        sizing: sizing
-                    ) {
-                        if index < predictions.count {
-                            handlePredictionTap(predictions[index])
+                        if !predictions.isEmpty {
+                            Divider()
+                                .background(Color.white.opacity(0.1))
                         }
                     }
 
-                    if index < 1 {
-                        Divider()
-                            .background(Color.white.opacity(0.1))
-                    }
-                }
-            } else {
-                // Normal 3-slot predictions
-                ForEach(0..<3, id: \.self) { index in
-                    PredictionSlot(
-                        text: index < predictions.count ? predictions[index] : "",
-                        sizing: sizing
-                    ) {
-                        if index < predictions.count {
-                            handlePredictionTap(predictions[index])
+                    // All predictions
+                    ForEach(Array(predictions.enumerated()), id: \.element.id) { index, prediction in
+                        PredictionSlot(
+                            prediction: prediction,
+                            sizing: sizing
+                        ) {
+                            handlePredictionTap(prediction)
                         }
-                    }
+                        .frame(minWidth: minSlotWidth)
 
-                    if index < 2 {
-                        Divider()
-                            .background(Color.white.opacity(0.1))
+                        // Divider between predictions (not after last one)
+                        if index < predictions.count - 1 {
+                            Divider()
+                                .background(Color.white.opacity(0.1))
+                        }
                     }
                 }
             }
+            // Fade edges to hint at scrollability
+            .mask(
+                HStack(spacing: 0) {
+                    // Left fade (subtle)
+                    LinearGradient(
+                        colors: [.clear, .black],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: 8)
+
+                    // Full visibility in the middle
+                    Rectangle().fill(.black)
+
+                    // Right fade (more prominent to indicate more content)
+                    LinearGradient(
+                        colors: [.black, .black.opacity(0.3)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: predictions.count > 3 ? 20 : 0)
+                }
+            )
 
             Divider()
                 .background(Color.white.opacity(0.1))
 
-            // Phase 16: Programmable button on the right
+            // Phase 16: Programmable button on the right (fixed)
             ProgrammableButton(
                 action: settings.programmableAction,
                 viewModel: viewModel,
@@ -271,48 +290,75 @@ struct PredictionRow: View {
         }
     }
 
-    private func handlePredictionTap(_ text: String) {
-        guard !text.isEmpty else { return }
+    private func handlePredictionTap(_ prediction: Prediction) {
+        guard !prediction.text.isEmpty else { return }
         guard let proxy = viewModel.textDocumentProxy else { return }
 
         KeyboardHaptics.lightTap()
 
         // Record feedback - user accepted this prediction
         Task {
-            await Self.predictionEngine.recordPredictionAccepted(text, previousWord: previousWord)
+            await Self.predictionEngine.recordPredictionAccepted(prediction.text, previousWord: previousWord)
         }
 
-        // Delete the current partial word before inserting the prediction
-        // This ensures clicking a prediction replaces what the user was typing
-        if let beforeText = proxy.documentContextBeforeInput {
-            let chars = Array(beforeText)
-            var index = chars.count - 1
+        // Behavior differs based on prediction type:
+        // - Corrections: Replace the current (misspelled) word
+        // - Predictions: Add to text (just insert, don't delete)
+        if prediction.type == .correction {
+            // CORRECTION: Delete the current word and replace with corrected word
+            if let beforeText = proxy.documentContextBeforeInput {
+                let chars = Array(beforeText)
+                var index = chars.count - 1
 
-            // Step 1: Skip trailing whitespace (handles "word |" case)
-            var trailingSpaces = 0
-            while index >= 0 && chars[index].isWhitespace {
-                trailingSpaces += 1
-                index -= 1
+                // Step 1: Skip trailing whitespace (handles "word |" case)
+                var trailingSpaces = 0
+                while index >= 0 && chars[index].isWhitespace {
+                    trailingSpaces += 1
+                    index -= 1
+                }
+
+                // Step 2: Count word characters to delete
+                var wordChars = 0
+                while index >= 0 && !chars[index].isWhitespace && !chars[index].isPunctuation {
+                    wordChars += 1
+                    index -= 1
+                }
+
+                // Total characters to delete = word + trailing spaces
+                let charsToDelete = wordChars + trailingSpaces
+
+                // Delete the misspelled word
+                for _ in 0..<charsToDelete {
+                    proxy.deleteBackward()
+                }
             }
+        } else {
+            // PREDICTION: Only delete partial word being typed (not previous completed words)
+            // This allows predictions to complete the current word or add next word
+            if let beforeText = proxy.documentContextBeforeInput,
+               !beforeText.isEmpty,
+               !beforeText.hasSuffix(" ") {
+                // User is typing a partial word - delete it to complete with prediction
+                let chars = Array(beforeText)
+                var index = chars.count - 1
 
-            // Step 2: Count word characters to delete
-            var wordChars = 0
-            while index >= 0 && !chars[index].isWhitespace && !chars[index].isPunctuation {
-                wordChars += 1
-                index -= 1
+                // Count word characters to delete (no trailing spaces here)
+                var wordChars = 0
+                while index >= 0 && !chars[index].isWhitespace && !chars[index].isPunctuation {
+                    wordChars += 1
+                    index -= 1
+                }
+
+                // Delete only the partial word
+                for _ in 0..<wordChars {
+                    proxy.deleteBackward()
+                }
             }
-
-            // Total characters to delete = word + trailing spaces
-            let charsToDelete = wordChars + trailingSpaces
-
-            // Delete the partial word (and trailing space if present)
-            for _ in 0..<charsToDelete {
-                proxy.deleteBackward()
-            }
+            // If text ends with space, don't delete anything - just add the prediction
         }
 
         // Insert prediction with space
-        proxy.insertText(text + " ")
+        proxy.insertText(prediction.text + " ")
 
         // Update typing context
         viewModel.updateTypingContext()
@@ -329,12 +375,12 @@ struct PredictionRow: View {
         }
 
         // Record that other predictions were not selected (implicit rejection)
-        let rejectedPredictions = oldPredictions.filter { $0 != text }
+        let rejectedPredictions = oldPredictions.filter { $0.text != prediction.text }
         if !rejectedPredictions.isEmpty {
             Task {
                 await Self.predictionEngine.recordPredictionsRejected(
-                    rejectedPredictions,
-                    actuallyTyped: text,
+                    rejectedPredictions.map(\.text),
+                    actuallyTyped: prediction.text,
                     previousWord: previousWord
                 )
             }
@@ -346,10 +392,10 @@ struct PredictionRow: View {
         guard !lastShownPredictions.isEmpty else { return }
 
         // User typed something different from predictions
-        if !lastShownPredictions.contains(where: { $0.lowercased() == word.lowercased() }) {
+        if !lastShownPredictions.contains(where: { $0.text.lowercased() == word.lowercased() }) {
             Task {
                 await Self.predictionEngine.recordPredictionsRejected(
-                    lastShownPredictions,
+                    lastShownPredictions.map(\.text),
                     actuallyTyped: word,
                     previousWord: previousWord
                 )
@@ -360,22 +406,63 @@ struct PredictionRow: View {
 
 // MARK: - Prediction Slot
 private struct PredictionSlot: View {
-    let text: String
+    let prediction: Prediction?
     var sizing: KeyboardSizing = KeyboardSizing(.normal)
     let action: () -> Void
 
+    /// Text to display
+    private var displayText: String {
+        prediction?.text ?? ""
+    }
+
+    /// Whether this slot is empty
+    private var isEmpty: Bool {
+        displayText.isEmpty
+    }
+
+    /// Whether this is a spelling correction (not a prediction)
+    private var isCorrection: Bool {
+        prediction?.type == .correction
+    }
+
+    /// Background color based on prediction type
+    private var backgroundColor: Color {
+        guard !isEmpty else { return .clear }
+
+        if isCorrection {
+            // Subtle blue/cyan background for spelling corrections
+            return Color(red: 0.2, green: 0.5, blue: 0.7).opacity(0.25)
+        } else {
+            // No background for regular predictions
+            return .clear
+        }
+    }
+
+    /// Text color based on prediction type
+    private var textColor: Color {
+        guard !isEmpty else { return .clear }
+
+        if isCorrection {
+            // Slightly brighter text for corrections to stand out
+            return Color(red: 0.6, green: 0.85, blue: 1.0)
+        } else {
+            return .white.opacity(0.7)
+        }
+    }
+
     var body: some View {
         Button(action: action) {
-            Text(text.isEmpty ? " " : text)
-                .font(.system(size: sizing.predictionFontSize, weight: .regular))
-                .foregroundStyle(text.isEmpty ? .clear : .white.opacity(0.7))
+            Text(isEmpty ? " " : displayText)
+                .font(.system(size: sizing.predictionFontSize, weight: isCorrection ? .medium : .regular))
+                .foregroundStyle(textColor)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity)
                 .frame(height: sizing.predictionRowHeight)
+                .background(backgroundColor)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(text.isEmpty)
+        .disabled(isEmpty)
     }
 }
 

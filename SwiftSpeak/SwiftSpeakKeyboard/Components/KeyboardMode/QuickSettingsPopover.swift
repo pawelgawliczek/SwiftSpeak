@@ -117,6 +117,32 @@ struct QuickSettingsPopover: View {
                             settings.save()
                             KeyboardHaptics.lightTap()
                         }
+
+                        // Report missed correction (for QA/debugging)
+                        Button(action: {
+                            KeyboardHaptics.lightTap()
+                            settings.save()
+                            onDismiss()
+                            // Small delay to let the popover close before showing report panel
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                viewModel.showReportTypoPanel = true
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "flag")
+                                    .font(.system(size: 14))
+                                Text("Report Missed Correction")
+                                    .font(.callout)
+                                Spacer()
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 10)
+                        }
+                        .buttonStyle(.plain)
                     }
 
                     // SECTION 3: Keyboard Layout (Phase 16)
@@ -195,24 +221,7 @@ struct QuickSettingsPopover: View {
                         }
                     }
 
-                    // SECTION 4: AI Features
-                    SettingsSection(title: "AI Features") {
-                        ToggleRow(title: "Inline AI Predictions", isOn: $settings.inlinePredictionEnabled) {
-                            settings.save()
-                            KeyboardHaptics.lightTap()
-                            // Notify height change (adds/removes prediction preview area)
-                            (viewModel.hostViewController as? KeyboardViewController)?.refreshHeight()
-                        }
-
-                        if settings.inlinePredictionEnabled {
-                            ToggleRow(title: "Predict on Space", isOn: $settings.inlinePredictionOnSpace) {
-                                settings.save()
-                                KeyboardHaptics.lightTap()
-                            }
-                        }
-                    }
-
-                    // SECTION 5: System Info
+                    // SECTION 4: System Info
                     SettingsSection(title: "System") {
                         InfoRow(
                             title: "Subscription",

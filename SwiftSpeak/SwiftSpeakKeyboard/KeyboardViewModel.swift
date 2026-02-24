@@ -68,22 +68,9 @@ class KeyboardViewModel: ObservableObject {
     // Phase 13.12: AI Sentence Prediction
     @Published var showSentencePredictionPanel = false
     @Published var sentencePredictions: [String] = []
+    @Published var quickSuggestions: [QuickSuggestion] = []  // Typed suggestions when Quick Actions are configured
     @Published var isLoadingSentencePredictions = false
     @Published var sentencePredictionError: String?
-
-    // Inline AI Prediction (ghost text preview)
-    @Published var inlinePrediction: String = ""
-    @Published var isGeneratingInlinePrediction: Bool = false
-    @Published var inlinePredictionTypingContext: String = ""  // The context when prediction was triggered
-    @Published var inlinePredictionError: String? = nil  // Error message to display to user
-    private var inlinePredictionTask: Task<Void, Never>?
-    private var inlinePredictionDebounceTask: Task<Void, Never>?
-
-    /// Whether there's an active inline prediction to display
-    var hasInlinePrediction: Bool { !inlinePrediction.isEmpty }
-
-    /// Whether there's an error to show (even with no prediction)
-    var hasInlinePredictionError: Bool { inlinePredictionError != nil }
 
     // Phase 13: Undo Stack (Gboard-style, AI-aware)
     @Published var undoStack: [UndoItem] = []  // Stack of undoable operations
@@ -93,6 +80,10 @@ class KeyboardViewModel: ObservableObject {
     @Published var showClipboardPanel = false
     @Published var clipboardItems: [ClipboardItem] = []
     @Published var pinnedClipboardItems: [ClipboardItem] = []
+
+    // Report Typo Panel (for logging missed autocorrections)
+    @Published var showReportTypoPanel = false
+    @Published var reportTypoOriginalWord = ""  // Pre-filled from context if available
 
     weak var textDocumentProxy: UITextDocumentProxy?
     weak var hostViewController: UIViewController?
@@ -1268,6 +1259,7 @@ class KeyboardViewModel: ObservableObject {
         isLoadingSentencePredictions = true
         sentencePredictionError = nil
         sentencePredictions = []
+        quickSuggestions = []
 
         // Get current typing context
         updateTypingContext()
@@ -1336,11 +1328,25 @@ class KeyboardViewModel: ObservableObject {
                     return
                 }
 
-                // Check for results
+                // Check for QuickSuggestions first (when Quick Actions are configured)
+                if let suggestionsData = defaults?.data(forKey: Constants.SentencePrediction.quickSuggestions),
+                   let suggestions = try? JSONDecoder().decode([QuickSuggestion].self, from: suggestionsData),
+                   !suggestions.isEmpty {
+                    keyboardLog("Received \(suggestions.count) QuickSuggestions from main app", category: "AI")
+                    await MainActor.run {
+                        quickSuggestions = suggestions
+                        sentencePredictions = suggestions.map { $0.text }
+                        isLoadingSentencePredictions = false
+                    }
+                    return
+                }
+
+                // Fallback: Check for plain string results
                 if let resultsData = defaults?.data(forKey: Constants.SentencePrediction.results),
                    let results = try? JSONDecoder().decode([String].self, from: resultsData) {
                     keyboardLog("Received \(results.count) predictions from main app", category: "AI")
                     await MainActor.run {
+                        quickSuggestions = []  // Clear any previous typed suggestions
                         sentencePredictions = results
                         isLoadingSentencePredictions = false
                     }
@@ -1511,6 +1517,7 @@ class KeyboardViewModel: ObservableObject {
         // Close the panel
         showSentencePredictionPanel = false
         sentencePredictions = []
+        quickSuggestions = []
 
         keyboardLog("Inserted sentence prediction (\(sentence.count) chars)", category: "AI")
     }
@@ -1519,124 +1526,9 @@ class KeyboardViewModel: ObservableObject {
     func closeSentencePredictionPanel() {
         showSentencePredictionPanel = false
         sentencePredictions = []
+        quickSuggestions = []
         sentencePredictionError = nil
         isLoadingSentencePredictions = false
-    }
-
-    // MARK: - Inline AI Prediction (Ghost Text)
-
-    /// Trigger inline prediction after space is pressed
-    /// Debounces requests and cancels if user continues typing
-    func triggerInlinePrediction() {
-        // Cancel any pending debounce/prediction
-        inlinePredictionDebounceTask?.cancel()
-        inlinePredictionTask?.cancel()
-
-        // Clear current prediction if user is typing
-        if !inlinePrediction.isEmpty {
-            inlinePrediction = ""
-        }
-
-        // Check if inline predictions are enabled
-        let settings = KeyboardSettings.load()
-        guard settings.inlinePredictionEnabled else { return }
-
-        // Get current typing context
-        updateTypingContext()
-        let typingContext = currentTypingContext
-
-        // Don't trigger for very short context
-        guard typingContext.count >= 3 else { return }
-
-        // Store context for display
-        inlinePredictionTypingContext = typingContext
-
-        // Debounce: wait before actually requesting
-        let debounceMs = Constants.InlinePrediction.debounceDelayMs
-
-        inlinePredictionDebounceTask = Task { [weak self] in
-            do {
-                try await Task.sleep(for: .milliseconds(debounceMs))
-
-                // Check if task was cancelled during debounce
-                try Task.checkCancellation()
-
-                await self?.performInlinePrediction(typingContext: typingContext)
-            } catch {
-                // Cancelled - ignore
-            }
-        }
-    }
-
-    /// Actually perform the inline prediction request
-    private func performInlinePrediction(typingContext: String) async {
-        await MainActor.run {
-            isGeneratingInlinePrediction = true
-        }
-
-        keyboardLog("Triggering inline prediction for: '\(typingContext.suffix(30))...'", category: "InlinePrediction")
-
-        inlinePredictionTask = Task { [weak self] in
-            do {
-                let result = try await InlinePredictionService.shared.generateContinuation(
-                    typingContext: typingContext,
-                    contextId: self?.activeContext?.id,
-                    contextName: self?.activeContext?.name
-                )
-
-                await MainActor.run {
-                    self?.isGeneratingInlinePrediction = false
-                    self?.inlinePredictionError = nil  // Clear any previous error
-
-                    if let prediction = result, !prediction.isEmpty {
-                        self?.inlinePrediction = prediction
-                        keyboardLog("Inline prediction received: '\(prediction.prefix(30))...'", category: "InlinePrediction")
-                    } else {
-                        self?.inlinePrediction = ""
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    self?.isGeneratingInlinePrediction = false
-                    self?.inlinePrediction = ""
-                    // Store error message for display to user
-                    self?.inlinePredictionError = error.localizedDescription
-                    keyboardLog("Inline prediction failed: \(error.localizedDescription)", category: "InlinePrediction", level: .error)
-                }
-            }
-        }
-    }
-
-    /// Accept words from the inline prediction
-    /// - Parameter words: Array of words to insert
-    func acceptInlinePredictionWords(_ words: [String]) {
-        guard !words.isEmpty else { return }
-
-        let text = words.joined(separator: " ") + " "
-        textDocumentProxy?.insertText(text)
-
-        keyboardLog("Accepted inline prediction: \(words.count) words", category: "InlinePrediction")
-
-        // Clear the prediction
-        dismissInlinePrediction()
-
-        // Update context for potential next prediction
-        updateTypingContext()
-    }
-
-    /// Dismiss the inline prediction preview
-    func dismissInlinePrediction() {
-        inlinePredictionDebounceTask?.cancel()
-        inlinePredictionTask?.cancel()
-        inlinePrediction = ""
-        inlinePredictionTypingContext = ""
-        inlinePredictionError = nil  // Clear any error message
-        isGeneratingInlinePrediction = false
-
-        // Note: We intentionally don't call InlinePredictionService.shared.cancel() here
-        // to avoid race conditions where the async cancel clears App Groups data
-        // that a subsequent prediction request needs. The service handles its own
-        // cancellation through the Task cancellation above.
     }
 
     // MARK: - Phase 13.11: AI Context Processing

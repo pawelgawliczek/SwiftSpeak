@@ -97,12 +97,6 @@ struct KeyboardSettings {
     /// Enable/disable AI predictions
     var aiPredictions: Bool = true
 
-    /// Enable inline AI predictions (ghost text preview after space)
-    var inlinePredictionEnabled: Bool = false
-
-    /// Trigger inline predictions on space press
-    var inlinePredictionOnSpace: Bool = true
-
     /// Enable/disable autocorrect
     var autocorrect: Bool = true
 
@@ -188,8 +182,6 @@ struct KeyboardSettings {
         // bool(forKey:) returns false for missing keys, so ?? defaultValue never works
         settings.hapticFeedback = (defaults?.object(forKey: "keyboardHapticFeedback") as? Bool) ?? true
         settings.aiPredictions = (defaults?.object(forKey: "keyboardAIPredictions") as? Bool) ?? true
-        settings.inlinePredictionEnabled = (defaults?.object(forKey: "keyboardInlinePredictionEnabled") as? Bool) ?? false
-        settings.inlinePredictionOnSpace = (defaults?.object(forKey: "keyboardInlinePredictionOnSpace") as? Bool) ?? true
         settings.autocorrect = (defaults?.object(forKey: "keyboardAutocorrect") as? Bool) ?? true
         settings.swipeTyping = (defaults?.object(forKey: Constants.Keys.swipeTypingEnabled) as? Bool) ?? true
         settings.smartPunctuation = (defaults?.object(forKey: "keyboardSmartPunctuation") as? Bool) ?? true
@@ -242,8 +234,6 @@ struct KeyboardSettings {
         // Keyboard behavior
         defaults?.set(hapticFeedback, forKey: "keyboardHapticFeedback")
         defaults?.set(aiPredictions, forKey: "keyboardAIPredictions")
-        defaults?.set(inlinePredictionEnabled, forKey: "keyboardInlinePredictionEnabled")
-        defaults?.set(inlinePredictionOnSpace, forKey: "keyboardInlinePredictionOnSpace")
         defaults?.set(autocorrect, forKey: "keyboardAutocorrect")
         defaults?.set(swipeTyping, forKey: Constants.Keys.swipeTypingEnabled)
         defaults?.set(smartPunctuation, forKey: "keyboardSmartPunctuation")
