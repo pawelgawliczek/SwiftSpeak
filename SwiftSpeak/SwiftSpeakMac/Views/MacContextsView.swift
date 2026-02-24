@@ -639,6 +639,11 @@ struct MacContextEditorSheet: View {
 
     /// Check if Arabizi option should be visible
     private var showArabiziOption: Bool {
+        // Auto-detect: fall through to global setting
+        if context.autoDetectInputLanguage {
+            guard let globalLang = settings.selectedDictationLanguage else { return false }
+            return globalLang == .arabic || globalLang == .egyptianArabic
+        }
         let effectiveLanguage = context.defaultInputLanguage ?? settings.selectedDictationLanguage
         return effectiveLanguage == .arabic || effectiveLanguage == .egyptianArabic
     }
@@ -675,10 +680,13 @@ struct MacContextEditorSheet: View {
                             autoSendAfterInsert: context.autoSendAfterInsert,
                             enterKeyBehavior: context.enterKeyBehavior,
                             defaultInputLanguage: context.defaultInputLanguage,
+                            autoDetectInputLanguage: context.autoDetectInputLanguage,
                             transcriptionProviderOverride: context.transcriptionProviderOverride,
                             translationProviderOverride: context.translationProviderOverride,
                             formattingProviderOverride: context.formattingProviderOverride,
                             aiProviderOverride: context.aiProviderOverride,
+                            wordAutocompleteSettings: context.wordAutocompleteSettings,
+                            sentencePredictionSettings: context.sentencePredictionSettings,
                             appAssignment: context.appAssignment,
                             isPreset: false
                         )
@@ -759,27 +767,46 @@ struct MacContextEditorSheet: View {
                 Section {
                     // Input Language Override
                     Toggle("Custom Input Language", isOn: Binding(
-                        get: { context.defaultInputLanguage != nil },
+                        get: { context.defaultInputLanguage != nil || context.autoDetectInputLanguage },
                         set: { enabled in
                             if enabled {
-                                context.defaultInputLanguage = .english
+                                context.autoDetectInputLanguage = true
+                                context.defaultInputLanguage = nil
                             } else {
+                                context.autoDetectInputLanguage = false
                                 context.defaultInputLanguage = nil
                             }
                         }
                     ))
 
-                    if context.defaultInputLanguage != nil {
+                    if context.defaultInputLanguage != nil || context.autoDetectInputLanguage {
                         Picker("Language", selection: Binding(
-                            get: { context.defaultInputLanguage ?? .english },
-                            set: { context.defaultInputLanguage = $0 }
+                            get: {
+                                if context.autoDetectInputLanguage { return "auto" }
+                                return context.defaultInputLanguage?.rawValue ?? "auto"
+                            },
+                            set: { value in
+                                if value == "auto" {
+                                    context.autoDetectInputLanguage = true
+                                    context.defaultInputLanguage = nil
+                                } else if let lang = Language(rawValue: value) {
+                                    context.autoDetectInputLanguage = false
+                                    context.defaultInputLanguage = lang
+                                }
+                            }
                         )) {
+                            HStack {
+                                Image(systemName: "waveform")
+                                Text("Auto-detect")
+                            }
+                            .tag("auto")
+
                             ForEach(Language.allCases) { lang in
                                 HStack {
                                     Text(lang.flag)
                                     Text(lang.displayName)
                                 }
-                                .tag(lang)
+                                .tag(lang.rawValue)
                             }
                         }
                     }
@@ -865,7 +892,9 @@ struct MacContextEditorSheet: View {
                     Text("Transcription")
                 } footer: {
                     VStack(alignment: .leading, spacing: 4) {
-                        if context.defaultInputLanguage != nil {
+                        if context.autoDetectInputLanguage {
+                            Text("AI will automatically detect the spoken language when this context is active.")
+                        } else if context.defaultInputLanguage != nil {
                             Text("Custom language will be sent to transcription services when this context is active.")
                         }
                         if context.domainJargon != .none {
@@ -981,6 +1010,58 @@ struct MacContextEditorSheet: View {
                     )
                 } header: {
                     Text("Provider Overrides")
+                }
+
+                // Predictions Settings
+                Section {
+                    // Word Autocomplete
+                    Picker("Word Autocomplete", selection: $context.wordAutocompleteSettings.source) {
+                        ForEach(WordAutocompleteSource.allCases, id: \.self) { source in
+                            HStack {
+                                Image(systemName: source.icon)
+                                Text(source.displayName)
+                            }
+                            .tag(source)
+                        }
+                    }
+
+                    if context.wordAutocompleteSettings.source != .disabled {
+                        Text(context.wordAutocompleteSettings.source.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Divider()
+
+                    // Sentence Predictions
+                    Toggle("Sentence Predictions", isOn: $context.sentencePredictionSettings.enabled)
+
+                    if context.sentencePredictionSettings.enabled {
+                        DisclosureGroup("Configure Quick Actions") {
+                            MacQuickActionsEditor(
+                                actions: Binding(
+                                    get: { context.sentencePredictionSettings.quickActions ?? settings.quickActions },
+                                    set: { context.sentencePredictionSettings.quickActions = $0 }
+                                ),
+                                settings: settings
+                            )
+                        }
+
+                        if context.sentencePredictionSettings.quickActions != nil {
+                            Button(action: {
+                                context.sentencePredictionSettings.quickActions = nil
+                            }) {
+                                Label("Reset to Global Quick Actions", systemImage: "arrow.counterclockwise")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                } header: {
+                    Text("Predictions")
+                } footer: {
+                    Text("Configure word autocomplete source and sentence prediction quick actions for this context.")
                 }
 
                 // TODO: Text Insertion Method - macOS-specific feature to be added to shared model

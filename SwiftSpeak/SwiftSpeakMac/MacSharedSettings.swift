@@ -55,6 +55,9 @@ class MacSettings: ObservableObject {
         static let hiddenContextIds = "icloud_hiddenContextIds"
         // Subscription tier
         static let subscriptionTier = "icloud_subscriptionTier"
+        // Quick Actions (autocomplete suggestions)
+        static let quickActions = "icloud_quickActions"
+        static let quickSuggestionsEnabled = "icloud_quickSuggestionsEnabled"
     }
 
     // MARK: - Published Properties
@@ -146,9 +149,15 @@ class MacSettings: ObservableObject {
     /// Effective transcription language: context override > global setting > auto-detect
     /// Use this for all transcription requests to respect per-context language settings
     var effectiveTranscriptionLanguage: Language? {
-        // Check if active context has a custom input language
-        if let contextLanguage = activeContext?.defaultInputLanguage {
-            return contextLanguage
+        if let context = activeContext {
+            // Context explicitly set to auto-detect
+            if context.autoDetectInputLanguage {
+                return nil
+            }
+            // Context has a specific language override
+            if let contextLanguage = context.defaultInputLanguage {
+                return contextLanguage
+            }
         }
         // Fall back to global setting (nil = auto-detect)
         return selectedDictationLanguage
@@ -323,6 +332,7 @@ class MacSettings: ObservableObject {
         if let data = try? JSONEncoder().encode(quickActions) {
             defaults?.set(data, forKey: "quickActions")
         }
+        syncToiCloud()
     }
 
     private func loadQuickActions() {
@@ -623,6 +633,33 @@ class MacSettings: ObservableObject {
     private func saveWhisperKitConfig() {
         if let data = try? JSONEncoder().encode(whisperKitConfig) {
             defaults?.set(data, forKey: "whisperKitConfig")
+        }
+    }
+
+    // MARK: - Parakeet MLX (macOS only)
+
+    /// Parakeet MLX on-device transcription configuration
+    @Published var parakeetMLXConfig: ParakeetMLXSettings = .default {
+        didSet {
+            saveParakeetMLXConfig()
+        }
+    }
+
+    /// Whether Parakeet MLX is ready to use
+    var isParakeetMLXReady: Bool {
+        parakeetMLXConfig.status == .ready && parakeetMLXConfig.isEnabled
+    }
+
+    private func loadParakeetMLXConfig() {
+        if let data = defaults?.data(forKey: "parakeetMLXConfig"),
+           let config = try? JSONDecoder().decode(ParakeetMLXSettings.self, from: data) {
+            parakeetMLXConfig = config
+        }
+    }
+
+    private func saveParakeetMLXConfig() {
+        if let data = try? JSONEncoder().encode(parakeetMLXConfig) {
+            defaults?.set(data, forKey: "parakeetMLXConfig")
         }
     }
 
@@ -939,6 +976,13 @@ class MacSettings: ObservableObject {
             powerModes = loadedModes
         }
 
+        // Load quick actions (autocomplete suggestions)
+        if let data = iCloud?.data(forKey: iCloudKeys.quickActions),
+           let loadedActions = try? JSONDecoder().decode([QuickAction].self, from: data) {
+            quickActions = loadedActions
+            macLog("loadFromiCloud: Loaded \(loadedActions.count) quick actions", category: "iCloud")
+        }
+
         // Load vocabulary
         if let data = iCloud?.data(forKey: iCloudKeys.vocabulary),
            let entries = try? JSONDecoder().decode([VocabularyEntry].self, from: data) {
@@ -1060,6 +1104,11 @@ class MacSettings: ObservableObject {
         // Sync power modes
         if let data = try? JSONEncoder().encode(powerModes) {
             iCloud?.set(data, forKey: iCloudKeys.powerModes)
+        }
+
+        // Sync quick actions (autocomplete suggestions)
+        if let data = try? JSONEncoder().encode(quickActions) {
+            iCloud?.set(data, forKey: iCloudKeys.quickActions)
         }
 
         // Sync vocabulary
@@ -1209,6 +1258,7 @@ class MacSettings: ObservableObject {
         loadObsidianAPIConfig()
         loadAppleIntelligenceConfig()
         loadWhisperKitConfig()
+        loadParakeetMLXConfig()
         loadAppleTranslationConfig()
 
         // Load active context
@@ -1808,10 +1858,12 @@ extension MacSettings: ContextProviderManager {
 extension MacSettings: LocalModelSettingsProvider {
     // Protocol requirements are already implemented in MacSettings:
     // - whisperKitConfig: WhisperKitSettings
+    // - parakeetMLXConfig: ParakeetMLXSettings
     // - appleIntelligenceConfig: AppleIntelligenceConfig
     // - appleTranslationConfig: AppleTranslationConfig
     // - selfHostedLLMConfig: LocalProviderConfig?
     // - isWhisperKitReady: Bool
+    // - isParakeetMLXReady: Bool
     // - isAppleIntelligenceReady: Bool
     // - hasLocalTranslation: Bool
     // - localModelStorageBytes: Int

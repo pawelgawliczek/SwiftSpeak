@@ -525,7 +525,9 @@ final class ShareImportViewModel: ObservableObject {
 
             // Get language: context override > settings default
             let language: Language?
-            if let contextLanguage = selectedContext?.defaultInputLanguage {
+            if let ctx = selectedContext, ctx.autoDetectInputLanguage {
+                language = nil
+            } else if let contextLanguage = selectedContext?.defaultInputLanguage {
                 language = contextLanguage
             } else {
                 language = settings.selectedDictationLanguage
@@ -686,7 +688,7 @@ final class ShareImportViewModel: ObservableObject {
             processingMetadata: ProcessingMetadata(
                 steps: [],
                 totalProcessingTime: elapsedTime,
-                sourceLanguageHint: selectedContext?.defaultInputLanguage ?? settings.selectedDictationLanguage,
+                sourceLanguageHint: (selectedContext?.autoDetectInputLanguage == true) ? nil : (selectedContext?.defaultInputLanguage ?? settings.selectedDictationLanguage),
                 vocabularyApplied: nil,
                 memorySourcesUsed: nil,
                 ragDocumentsQueried: nil,
@@ -833,7 +835,7 @@ final class ShareImportViewModel: ObservableObject {
             processingMetadata: ProcessingMetadata(
                 steps: [],
                 totalProcessingTime: result.processingDuration,
-                sourceLanguageHint: selectedContext?.defaultInputLanguage ?? settings.selectedDictationLanguage,
+                sourceLanguageHint: (selectedContext?.autoDetectInputLanguage == true) ? nil : (selectedContext?.defaultInputLanguage ?? settings.selectedDictationLanguage),
                 vocabularyApplied: nil,
                 memorySourcesUsed: nil,
                 ragDocumentsQueried: nil,

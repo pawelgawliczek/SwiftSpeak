@@ -31,6 +31,7 @@ struct ContextEditorSheet: View {
     @State private var newJargonText: String = ""
     @State private var inputLanguage: Language? = nil
     @State private var useCustomInputLanguage: Bool = false
+    @State private var autoDetectInputLanguage: Bool = false
     @State private var outputArabizi: Bool? = nil
 
     // MARK: - Formatting State
@@ -57,6 +58,11 @@ struct ContextEditorSheet: View {
     @State private var translationProviderOverride: ProviderSelection? = nil
     @State private var formattingProviderOverride: ProviderSelection? = nil
     @State private var aiProviderOverride: ProviderSelection? = nil
+
+    // MARK: - Prediction Settings State
+    @State private var wordAutocompleteSource: WordAutocompleteSource = .system
+    @State private var sentencePredictionsEnabled: Bool = true
+    @State private var contextQuickActions: [QuickAction]? = nil
 
     // MARK: - System State
     @State private var appAssignment: AppAssignment = AppAssignment()
@@ -85,7 +91,8 @@ struct ContextEditorSheet: View {
         _domainJargon = State(initialValue: context.domainJargon)
         _customJargon = State(initialValue: context.customJargon)
         _inputLanguage = State(initialValue: context.defaultInputLanguage)
-        _useCustomInputLanguage = State(initialValue: context.defaultInputLanguage != nil)
+        _useCustomInputLanguage = State(initialValue: context.defaultInputLanguage != nil || context.autoDetectInputLanguage)
+        _autoDetectInputLanguage = State(initialValue: context.autoDetectInputLanguage)
         _outputArabizi = State(initialValue: context.outputArabizi)
         _examples = State(initialValue: context.examples)
         _selectedInstructions = State(initialValue: context.selectedInstructions)
@@ -102,6 +109,9 @@ struct ContextEditorSheet: View {
         _translationProviderOverride = State(initialValue: context.translationProviderOverride)
         _formattingProviderOverride = State(initialValue: context.formattingProviderOverride)
         _aiProviderOverride = State(initialValue: context.aiProviderOverride)
+        _wordAutocompleteSource = State(initialValue: context.wordAutocompleteSettings.source)
+        _sentencePredictionsEnabled = State(initialValue: context.sentencePredictionSettings.enabled)
+        _contextQuickActions = State(initialValue: context.sentencePredictionSettings.quickActions)
         _appAssignment = State(initialValue: context.appAssignment)
     }
 
@@ -135,6 +145,9 @@ struct ContextEditorSheet: View {
 
                     sectionHeader("PROVIDER OVERRIDES")
                     providerOverridesSection
+
+                    sectionHeader("PREDICTIONS")
+                    predictionsSection
 
                     sectionHeader("APP ASSIGNMENT")
                     appAssignmentSection
@@ -309,34 +322,70 @@ struct ContextEditorSheet: View {
                     .labelsHidden()
                     .tint(color.color)
                     .onChange(of: useCustomInputLanguage) { _, enabled in
-                        if enabled && inputLanguage == nil {
-                            inputLanguage = .english
+                        if enabled && inputLanguage == nil && !autoDetectInputLanguage {
+                            autoDetectInputLanguage = true
+                        }
+                        if !enabled {
+                            autoDetectInputLanguage = false
+                            inputLanguage = nil
                         }
                     }
             }
 
             if useCustomInputLanguage {
-                HStack {
-                    Text("Language")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-
-                    Picker("", selection: Binding(
-                        get: { inputLanguage ?? .english },
-                        set: { inputLanguage = $0 }
-                    )) {
-                        ForEach(Language.allCases) { lang in
-                            HStack {
-                                Text(lang.flag)
-                                Text(lang.displayName)
+                VStack(spacing: 0) {
+                    // Auto-detect option
+                    Button {
+                        autoDetectInputLanguage = true
+                        inputLanguage = nil
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "waveform")
+                                .font(.body)
+                                .frame(width: 24)
+                            Text("Auto-detect")
+                                .font(.subheadline)
+                            Spacer()
+                            if autoDetectInputLanguage {
+                                Image(systemName: "checkmark")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(color.color)
                             }
-                            .tag(lang)
                         }
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
                     }
-                    .pickerStyle(.menu)
-                    .tint(color.color)
+                    .buttonStyle(.plain)
+
+                    Divider()
+
+                    // Specific language picker
+                    HStack {
+                        Text("Specific language")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Picker("", selection: Binding(
+                            get: { inputLanguage ?? .english },
+                            set: {
+                                inputLanguage = $0
+                                autoDetectInputLanguage = false
+                            }
+                        )) {
+                            ForEach(Language.allCases) { lang in
+                                HStack {
+                                    Text(lang.flag)
+                                    Text(lang.displayName)
+                                }
+                                .tag(lang)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .tint(autoDetectInputLanguage ? .secondary : color.color)
+                    }
+                    .padding(.vertical, 4)
                 }
                 .padding(.leading, 52)
 
@@ -344,7 +393,9 @@ struct ContextEditorSheet: View {
                     Image(systemName: "info.circle")
                         .foregroundStyle(color.color)
                         .font(.caption)
-                    Text("This language will be sent to transcription services when this context is active. Leave off to use the global setting or auto-detect.")
+                    Text(autoDetectInputLanguage
+                         ? "AI will automatically detect the spoken language. Works best with providers like OpenAI Whisper."
+                         : "This language will be sent to transcription services when this context is active.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -388,11 +439,11 @@ struct ContextEditorSheet: View {
 
     /// Show Arabizi option when effective language is Arabic or Egyptian Arabic
     private var showArabiziOption: Bool {
-        // If context has custom language, check that
-        if useCustomInputLanguage, let lang = inputLanguage {
+        // If context has custom language (not auto-detect), check that
+        if useCustomInputLanguage && !autoDetectInputLanguage, let lang = inputLanguage {
             return lang == .arabic || lang == .egyptianArabic
         }
-        // Otherwise check global setting
+        // Auto-detect or no override: check global setting
         guard let globalLang = settings.selectedDictationLanguage else { return false }
         return globalLang == .arabic || globalLang == .egyptianArabic
     }
@@ -1128,6 +1179,117 @@ struct ContextEditorSheet: View {
         .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
     }
 
+    // MARK: - Predictions Section
+
+    private var predictionsSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Word Autocomplete
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: wordAutocompleteSource.icon)
+                        .font(.title2)
+                        .foregroundStyle(wordAutocompleteSource != .disabled ? color.color : .secondary)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Word Autocomplete")
+                            .font(.subheadline.weight(.medium))
+                        Text(wordAutocompleteSource.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Picker("", selection: $wordAutocompleteSource) {
+                        ForEach(WordAutocompleteSource.allCases, id: \.self) { source in
+                            Text(source.displayName).tag(source)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .tint(color.color)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+
+            // Sentence Predictions
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 12) {
+                    Image(systemName: "text.bubble")
+                        .font(.title2)
+                        .foregroundStyle(sentencePredictionsEnabled ? color.color : .secondary)
+                        .frame(width: 40)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Sentence Predictions")
+                            .font(.subheadline.weight(.medium))
+                        Text("Quick reply suggestions based on conversation")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Toggle("", isOn: $sentencePredictionsEnabled)
+                        .labelsHidden()
+                        .tint(color.color)
+                }
+
+                if sentencePredictionsEnabled {
+                    NavigationLink {
+                        QuickActionsEditor(actions: Binding(
+                            get: { contextQuickActions ?? settings.quickActions },
+                            set: { contextQuickActions = $0 }
+                        ))
+                        .environmentObject(settings)
+                    } label: {
+                        HStack {
+                            Text("Configure Quick Actions")
+                                .font(.subheadline)
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            let activeCount = (contextQuickActions ?? settings.quickActions).filter { $0.isEnabled }.count
+                            Text("\(activeCount) active")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(color.color.opacity(0.1))
+                        .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+                    }
+                    .padding(.leading, 52)
+
+                    // Reset to global option
+                    if contextQuickActions != nil {
+                        Button(action: {
+                            HapticManager.lightTap()
+                            contextQuickActions = nil
+                        }) {
+                            HStack {
+                                Image(systemName: "arrow.counterclockwise")
+                                Text("Reset to global Quick Actions")
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        }
+                        .padding(.leading, 52)
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 14)
+            .background(Color.primary.opacity(0.05))
+            .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusSmall, style: .continuous))
+        }
+    }
+
     // MARK: - App Assignment Section
 
     private var appAssignmentSection: some View {
@@ -1184,12 +1346,18 @@ struct ContextEditorSheet: View {
             recentMessagesCount: recentMessagesCount,
             autoSendAfterInsert: autoSendAfterInsert,
             enterKeyBehavior: enterKeyBehavior,
-            defaultInputLanguage: useCustomInputLanguage ? inputLanguage : nil,
+            defaultInputLanguage: (useCustomInputLanguage && !autoDetectInputLanguage) ? inputLanguage : nil,
+            autoDetectInputLanguage: useCustomInputLanguage && autoDetectInputLanguage,
             outputArabizi: outputArabizi,
             transcriptionProviderOverride: transcriptionProviderOverride,
             translationProviderOverride: translationProviderOverride,
             formattingProviderOverride: formattingProviderOverride,
             aiProviderOverride: aiProviderOverride,
+            wordAutocompleteSettings: WordAutocompleteSettings(source: wordAutocompleteSource),
+            sentencePredictionSettings: SentencePredictionSettings(
+                enabled: sentencePredictionsEnabled,
+                quickActions: contextQuickActions
+            ),
             isActive: context.isActive,
             appAssignment: appAssignment,
             isPreset: context.isPreset,

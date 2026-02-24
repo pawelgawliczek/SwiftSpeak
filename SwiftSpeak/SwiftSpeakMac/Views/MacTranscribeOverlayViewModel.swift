@@ -287,10 +287,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             activeContext = context
             macLog("Auto-selected context '\(context.name)' for '\(bundleId)'", category: "Transcribe")
 
-            // Apply context's default input language (only if context has one)
-            if let contextLanguage = context.defaultInputLanguage {
-                inputLanguage = contextLanguage
-            }
+            // Apply context's language override
+            applyContextLanguage(context)
             return
         }
 
@@ -300,10 +298,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             activeContext = lastUsedContext
             macLog("Auto-selected last used context '\(lastUsedContext.name)' for '\(bundleId)' (from \(matchingContexts.count) options)", category: "Transcribe")
 
-            // Apply context's default input language
-            if let contextLanguage = lastUsedContext.defaultInputLanguage {
-                inputLanguage = contextLanguage
-            }
+            // Apply context's language override
+            applyContextLanguage(lastUsedContext)
             return
         }
 
@@ -312,10 +308,8 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         activeContext = context
         macLog("Auto-selected first matching context '\(context.name)' for '\(bundleId)' (from \(matchingContexts.count) options)", category: "Transcribe")
 
-        // Apply context's default input language
-        if let contextLanguage = context.defaultInputLanguage {
-            inputLanguage = contextLanguage
-        }
+        // Apply context's language override
+        applyContextLanguage(context)
     }
 
     // MARK: - Recording Control
@@ -914,6 +908,10 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
                 for: selectedProvider
             ) else {
                 // Log detailed config info for debugging
+                if selectedProvider.isLocalProvider {
+                    macLog("Local provider \(selectedProvider.displayName) not ready", category: "Transcribe", level: .error)
+                    throw TranscriptionError.providerNotConfigured
+                }
                 if let config = settings.getAIProviderConfig(for: selectedProvider) {
                     macLog("Provider \(selectedProvider.displayName) config exists but failed to create:", category: "Transcribe", level: .error)
                     macLog("  - apiKey empty: \(config.apiKey.isEmpty)", category: "Transcribe", level: .error)
@@ -1145,6 +1143,15 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
             Your API key is invalid or expired.
 
             Fix: Get a new API key from your provider's console and update it in SwiftSpeak Settings.
+            """
+        }
+
+        // Local provider not configured
+        if case TranscriptionError.providerNotConfigured = error {
+            return """
+            \(provider.displayName) is not ready.
+
+            Go to Settings → Local Models and check that \(provider.displayName) is installed and enabled.
             """
         }
 
@@ -1438,11 +1445,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
 
         // Apply context's language override
-        if let ctx = activeContext, let lang = ctx.defaultInputLanguage {
-            inputLanguage = lang
-        } else {
-            inputLanguage = settings.selectedDictationLanguage
-        }
+        applyContextLanguage(activeContext)
     }
 
     /// Cycle to previous context: nil -> contextN -> ... -> context1 -> nil
@@ -1474,11 +1477,7 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         }
 
         // Apply context's language override
-        if let ctx = activeContext, let lang = ctx.defaultInputLanguage {
-            inputLanguage = lang
-        } else {
-            inputLanguage = settings.selectedDictationLanguage
-        }
+        applyContextLanguage(activeContext)
     }
 
     func clearContext() {
@@ -1497,8 +1496,21 @@ final class MacTranscribeOverlayViewModel: ObservableObject {
         macLog("Pre-selected context '\(context.name)' via hotkey", category: "Transcribe")
 
         // Apply context's language override
-        if let lang = context.defaultInputLanguage {
+        applyContextLanguage(context)
+    }
+
+    /// Apply a context's language override to inputLanguage
+    private func applyContextLanguage(_ context: ConversationContext?) {
+        guard let ctx = context else {
+            inputLanguage = settings.selectedDictationLanguage
+            return
+        }
+        if ctx.autoDetectInputLanguage {
+            inputLanguage = nil
+        } else if let lang = ctx.defaultInputLanguage {
             inputLanguage = lang
+        } else {
+            inputLanguage = settings.selectedDictationLanguage
         }
     }
 

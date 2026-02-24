@@ -223,7 +223,11 @@ struct ShareImportView: View {
                                     .font(.subheadline.weight(.medium))
                                     .foregroundStyle(.primary)
 
-                                if let language = context.defaultInputLanguage {
+                                if context.autoDetectInputLanguage {
+                                    Text("Language: Auto-detect")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                } else if let language = context.defaultInputLanguage {
                                     Text("Language: \(language.displayName)")
                                         .font(.caption)
                                         .foregroundStyle(.tertiary)

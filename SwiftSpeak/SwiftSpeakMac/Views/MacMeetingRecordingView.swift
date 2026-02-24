@@ -772,7 +772,9 @@ struct MacMeetingRecordingView: View {
     /// Includes language, vocabulary, jargon, and other context-specific settings
     private func applyContextSettings(_ context: ConversationContext) {
         // Set language from context
-        if let language = context.defaultInputLanguage {
+        if context.autoDetectInputLanguage {
+            orchestrator.settings.language = nil
+        } else if let language = context.defaultInputLanguage {
             orchestrator.settings.language = language.rawValue
         }
 
@@ -787,7 +789,8 @@ struct MacMeetingRecordingView: View {
         // Set context ID for the meeting
         orchestrator.settings.contextId = context.id
 
-        macLog("Applied context settings: language=\(context.defaultInputLanguage?.rawValue ?? "auto"), vocabulary=\(vocabulary.count) words", category: "Meeting")
+        let langDesc = context.autoDetectInputLanguage ? "auto-detect" : (context.defaultInputLanguage?.rawValue ?? "auto")
+        macLog("Applied context settings: language=\(langDesc), vocabulary=\(vocabulary.count) words", category: "Meeting")
     }
 
     private func audioLevelForBar(_ index: Int) -> CGFloat {

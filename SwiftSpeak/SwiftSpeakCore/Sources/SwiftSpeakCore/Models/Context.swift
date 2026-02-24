@@ -342,6 +342,7 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
 
     // MARK: - Language Settings
     public var defaultInputLanguage: Language?     // Override system dictation language (nil = auto)
+    public var autoDetectInputLanguage: Bool       // Force auto-detect for this context (overrides global)
     public var outputArabizi: Bool?                // Output in Franco-Arabic format (nil = use global)
 
     // MARK: - Provider Overrides (nil = use global default)
@@ -349,6 +350,10 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
     public var translationProviderOverride: ProviderSelection?
     public var formattingProviderOverride: ProviderSelection?  // For Context formatting
     public var aiProviderOverride: ProviderSelection?  // For Power Mode
+
+    // MARK: - Prediction Settings
+    public var wordAutocompleteSettings: WordAutocompleteSettings
+    public var sentencePredictionSettings: SentencePredictionSettings
 
     // MARK: - System
     public var isActive: Bool                      // Currently selected context
@@ -380,11 +385,14 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         autoSendAfterInsert: Bool = false,
         enterKeyBehavior: EnterKeyBehavior = .defaultNewLine,
         defaultInputLanguage: Language? = nil,
+        autoDetectInputLanguage: Bool = false,
         outputArabizi: Bool? = nil,
         transcriptionProviderOverride: ProviderSelection? = nil,
         translationProviderOverride: ProviderSelection? = nil,
         formattingProviderOverride: ProviderSelection? = nil,
         aiProviderOverride: ProviderSelection? = nil,
+        wordAutocompleteSettings: WordAutocompleteSettings = WordAutocompleteSettings(),
+        sentencePredictionSettings: SentencePredictionSettings = SentencePredictionSettings(),
         isActive: Bool = false,
         appAssignment: AppAssignment = AppAssignment(),
         isPreset: Bool = false,
@@ -411,11 +419,14 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         self.autoSendAfterInsert = autoSendAfterInsert
         self.enterKeyBehavior = enterKeyBehavior
         self.defaultInputLanguage = defaultInputLanguage
+        self.autoDetectInputLanguage = autoDetectInputLanguage
         self.outputArabizi = outputArabizi
         self.transcriptionProviderOverride = transcriptionProviderOverride
         self.translationProviderOverride = translationProviderOverride
         self.formattingProviderOverride = formattingProviderOverride
         self.aiProviderOverride = aiProviderOverride
+        self.wordAutocompleteSettings = wordAutocompleteSettings
+        self.sentencePredictionSettings = sentencePredictionSettings
         self.isActive = isActive
         self.appAssignment = appAssignment
         self.isPreset = isPreset
@@ -735,8 +746,9 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         case domainJargon, customJargon, examples, selectedInstructions, customInstructions
         case useGlobalMemory, useContextMemory, contextMemory, memoryLimit, lastMemoryUpdate
         case includeRecentMessages, recentMessagesCount
-        case autoSendAfterInsert, enterKeyBehavior, defaultInputLanguage, outputArabizi
+        case autoSendAfterInsert, enterKeyBehavior, defaultInputLanguage, autoDetectInputLanguage, outputArabizi
         case transcriptionProviderOverride, translationProviderOverride, formattingProviderOverride, aiProviderOverride
+        case wordAutocompleteSettings, sentencePredictionSettings
         case isActive, appAssignment, isPreset, createdAt, updatedAt
         // Legacy
         case systemPrompt  // Migrate to customInstructions
@@ -776,11 +788,14 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         autoSendAfterInsert = try container.decodeIfPresent(Bool.self, forKey: .autoSendAfterInsert) ?? false
         enterKeyBehavior = try container.decodeIfPresent(EnterKeyBehavior.self, forKey: .enterKeyBehavior) ?? .defaultNewLine
         defaultInputLanguage = try container.decodeIfPresent(Language.self, forKey: .defaultInputLanguage)
+        autoDetectInputLanguage = try container.decodeIfPresent(Bool.self, forKey: .autoDetectInputLanguage) ?? false
         outputArabizi = try container.decodeIfPresent(Bool.self, forKey: .outputArabizi)
         transcriptionProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .transcriptionProviderOverride)
         translationProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .translationProviderOverride)
         formattingProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .formattingProviderOverride)
         aiProviderOverride = try container.decodeIfPresent(ProviderSelection.self, forKey: .aiProviderOverride)
+        wordAutocompleteSettings = try container.decodeIfPresent(WordAutocompleteSettings.self, forKey: .wordAutocompleteSettings) ?? WordAutocompleteSettings()
+        sentencePredictionSettings = try container.decodeIfPresent(SentencePredictionSettings.self, forKey: .sentencePredictionSettings) ?? SentencePredictionSettings()
         isActive = try container.decodeIfPresent(Bool.self, forKey: .isActive) ?? false
         appAssignment = try container.decodeIfPresent(AppAssignment.self, forKey: .appAssignment) ?? AppAssignment()
         isPreset = try container.decodeIfPresent(Bool.self, forKey: .isPreset) ?? false
@@ -811,11 +826,14 @@ public struct ConversationContext: Codable, Identifiable, Equatable, Hashable {
         try container.encode(autoSendAfterInsert, forKey: .autoSendAfterInsert)
         try container.encode(enterKeyBehavior, forKey: .enterKeyBehavior)
         try container.encodeIfPresent(defaultInputLanguage, forKey: .defaultInputLanguage)
+        try container.encode(autoDetectInputLanguage, forKey: .autoDetectInputLanguage)
         try container.encodeIfPresent(outputArabizi, forKey: .outputArabizi)
         try container.encodeIfPresent(transcriptionProviderOverride, forKey: .transcriptionProviderOverride)
         try container.encodeIfPresent(translationProviderOverride, forKey: .translationProviderOverride)
         try container.encodeIfPresent(formattingProviderOverride, forKey: .formattingProviderOverride)
         try container.encodeIfPresent(aiProviderOverride, forKey: .aiProviderOverride)
+        try container.encode(wordAutocompleteSettings, forKey: .wordAutocompleteSettings)
+        try container.encode(sentencePredictionSettings, forKey: .sentencePredictionSettings)
         try container.encode(isActive, forKey: .isActive)
         try container.encode(appAssignment, forKey: .appAssignment)
         try container.encode(isPreset, forKey: .isPreset)

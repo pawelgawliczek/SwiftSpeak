@@ -54,9 +54,6 @@ class SharedSettings: ObservableObject {
         static let keyboardProgrammableAction = "icloud_keyboard_programmableAction"
         static let keyboardShowProgrammableNextToReturn = "icloud_keyboard_showProgrammableNextToReturn"
         static let keyboardReturnProgrammableAction = "icloud_keyboard_returnProgrammableAction"
-        // Inline AI Prediction Settings
-        static let keyboardInlinePredictionEnabled = "icloud_keyboard_inlinePredictionEnabled"
-        static let keyboardInlinePredictionOnSpace = "icloud_keyboard_inlinePredictionOnSpace"
         // Streaming settings
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
         // Hidden contexts
@@ -140,9 +137,15 @@ class SharedSettings: ObservableObject {
     /// Effective transcription language: context override > global setting > auto-detect
     /// Use this for all transcription requests to respect per-context language settings
     var effectiveTranscriptionLanguage: Language? {
-        // Check if active context has a custom input language
-        if let contextLanguage = activeContext?.defaultInputLanguage {
-            return contextLanguage
+        if let context = activeContext {
+            // Context explicitly set to auto-detect
+            if context.autoDetectInputLanguage {
+                return nil
+            }
+            // Context has a specific language override
+            if let contextLanguage = context.defaultInputLanguage {
+                return contextLanguage
+            }
         }
         // Fall back to global setting (nil = auto-detect)
         return selectedDictationLanguage
@@ -225,12 +228,19 @@ class SharedSettings: ObservableObject {
         didSet {
             if let id = activeContextId {
                 defaults?.set(id.uuidString, forKey: Constants.Keys.activeContextId)
-                // Find context name for logging
-                let contextName = contexts.first(where: { $0.id == id })?.name ?? ConversationContext.presets.first(where: { $0.id == id })?.name ?? "unknown"
+                // Find context for logging and prediction settings sync
+                let context = contexts.first(where: { $0.id == id }) ?? ConversationContext.presets.first(where: { $0.id == id })
+                let contextName = context?.name ?? "unknown"
                 appLog("activeContextId didSet: changed to '\(contextName)' (id: \(id.uuidString.prefix(8))...)", category: "Context", level: .debug)
+
+                // Sync prediction settings for keyboard extension
+                syncPredictionSettingsToAppGroups(context: context)
             } else {
                 defaults?.removeObject(forKey: Constants.Keys.activeContextId)
                 appLog("activeContextId didSet: cleared to nil", category: "Context", level: .debug)
+
+                // Clear prediction settings (use defaults)
+                syncPredictionSettingsToAppGroups(context: nil)
             }
         }
     }
@@ -522,32 +532,19 @@ class SharedSettings: ObservableObject {
         }
     }
 
-    /// Enable inline AI predictions (ghost text preview after space)
-    @Published var keyboardInlinePredictionEnabled: Bool = false {
-        didSet {
-            defaults?.set(keyboardInlinePredictionEnabled, forKey: "keyboardInlinePredictionEnabled")
-            syncToiCloud()
-        }
-    }
+    // MARK: - Autocomplete Suggestions (Keyboard) - LEGACY
+    // NOTE: These local properties are LEGACY. Use iCloud-synced quickSuggestionsEnabled
+    // and quickActions instead. These are kept for backwards compatibility only.
+    // Will be removed in a future cleanup.
 
-    /// Trigger inline predictions on space press
-    @Published var keyboardInlinePredictionOnSpace: Bool = true {
-        didSet {
-            defaults?.set(keyboardInlinePredictionOnSpace, forKey: "keyboardInlinePredictionOnSpace")
-            syncToiCloud()
-        }
-    }
-
-    // MARK: - Autocomplete Suggestions (Keyboard)
-
-    /// Whether autocomplete suggestions are enabled in keyboard
+    /// LEGACY: Use quickSuggestionsEnabled instead (iCloud synced)
     @Published var keyboardQuickSuggestionsEnabled: Bool = false {
         didSet {
             defaults?.set(keyboardQuickSuggestionsEnabled, forKey: "keyboardQuickSuggestionsEnabled")
         }
     }
 
-    /// Quick actions for generating autocomplete suggestions from screen context
+    /// LEGACY: Use quickActions instead (iCloud synced)
     @Published var keyboardQuickActions: [QuickAction] = [] {
         didSet {
             saveKeyboardQuickActions()
@@ -591,15 +588,6 @@ class SharedSettings: ObservableObject {
            let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw),
            returnAction != keyboardReturnProgrammableAction {
             keyboardReturnProgrammableAction = returnAction
-        }
-        // Inline AI Prediction settings
-        if let inlineEnabled = defaults?.object(forKey: "keyboardInlinePredictionEnabled") as? Bool,
-           inlineEnabled != keyboardInlinePredictionEnabled {
-            keyboardInlinePredictionEnabled = inlineEnabled
-        }
-        if let inlineOnSpace = defaults?.object(forKey: "keyboardInlinePredictionOnSpace") as? Bool,
-           inlineOnSpace != keyboardInlinePredictionOnSpace {
-            keyboardInlinePredictionOnSpace = inlineOnSpace
         }
     }
 
@@ -1028,14 +1016,6 @@ class SharedSettings: ObservableObject {
             keyboardReturnProgrammableAction = returnAction
         }
 
-        // Load inline AI prediction settings
-        if let inlineEnabled = iCloud?.object(forKey: iCloudKeys.keyboardInlinePredictionEnabled) as? Bool {
-            keyboardInlinePredictionEnabled = inlineEnabled
-        }
-        if let inlineOnSpace = iCloud?.object(forKey: iCloudKeys.keyboardInlinePredictionOnSpace) as? Bool {
-            keyboardInlinePredictionOnSpace = inlineOnSpace
-        }
-
         // Load streaming settings
         if let streamingEnabled = iCloud?.object(forKey: iCloudKeys.transcriptionStreamingEnabled) as? Bool {
             transcriptionStreamingEnabled = streamingEnabled
@@ -1136,10 +1116,6 @@ class SharedSettings: ObservableObject {
         iCloud?.set(keyboardProgrammableAction.rawValue, forKey: iCloudKeys.keyboardProgrammableAction)
         iCloud?.set(keyboardShowProgrammableNextToReturn, forKey: iCloudKeys.keyboardShowProgrammableNextToReturn)
         iCloud?.set(keyboardReturnProgrammableAction.rawValue, forKey: iCloudKeys.keyboardReturnProgrammableAction)
-
-        // Sync inline AI prediction settings
-        iCloud?.set(keyboardInlinePredictionEnabled, forKey: iCloudKeys.keyboardInlinePredictionEnabled)
-        iCloud?.set(keyboardInlinePredictionOnSpace, forKey: iCloudKeys.keyboardInlinePredictionOnSpace)
 
         // Sync streaming settings
         iCloud?.set(transcriptionStreamingEnabled, forKey: iCloudKeys.transcriptionStreamingEnabled)
@@ -1339,14 +1315,6 @@ class SharedSettings: ObservableObject {
         if let returnActionRaw = defaults?.string(forKey: Constants.Keys.keyboardReturnProgrammableAction),
            let returnAction = ProgrammableButtonAction(rawValue: returnActionRaw) {
             keyboardReturnProgrammableAction = returnAction
-        }
-
-        // Load inline AI prediction settings
-        if defaults?.object(forKey: "keyboardInlinePredictionEnabled") != nil {
-            keyboardInlinePredictionEnabled = defaults?.bool(forKey: "keyboardInlinePredictionEnabled") ?? false
-        }
-        if defaults?.object(forKey: "keyboardInlinePredictionOnSpace") != nil {
-            keyboardInlinePredictionOnSpace = defaults?.bool(forKey: "keyboardInlinePredictionOnSpace") ?? true
         }
 
         // Load Autocomplete Suggestions settings
@@ -1806,6 +1774,36 @@ class SharedSettings: ObservableObject {
         syncToiCloud()
     }
 
+    /// Sync prediction settings for the keyboard extension via App Groups
+    /// Called when active context changes
+    private func syncPredictionSettingsToAppGroups(context: ConversationContext?) {
+        guard let defaults = defaults else { return }
+
+        if let context = context {
+            // Sync word autocomplete source
+            defaults.set(context.wordAutocompleteSettings.source.rawValue, forKey: Constants.Keys.activeContextWordAutocompleteSource)
+
+            // Sync sentence predictions enabled
+            defaults.set(context.sentencePredictionSettings.enabled, forKey: Constants.Keys.activeContextSentencePredictionsEnabled)
+
+            // Sync Quick Actions (nil = use global)
+            if let quickActions = context.sentencePredictionSettings.quickActions,
+               let data = try? JSONEncoder().encode(quickActions) {
+                defaults.set(data, forKey: Constants.Keys.activeContextQuickActions)
+            } else {
+                defaults.removeObject(forKey: Constants.Keys.activeContextQuickActions)
+            }
+
+            appLog("syncPredictionSettingsToAppGroups: source=\(context.wordAutocompleteSettings.source.rawValue), sentencePredictions=\(context.sentencePredictionSettings.enabled)", category: "Context", level: .debug)
+        } else {
+            // Clear context-specific settings (keyboard will use defaults)
+            defaults.set(WordAutocompleteSource.system.rawValue, forKey: Constants.Keys.activeContextWordAutocompleteSource)
+            defaults.set(true, forKey: Constants.Keys.activeContextSentencePredictionsEnabled)
+            defaults.removeObject(forKey: Constants.Keys.activeContextQuickActions)
+            appLog("syncPredictionSettingsToAppGroups: cleared (using defaults)", category: "Context", level: .debug)
+        }
+    }
+
     func addContext(_ context: ConversationContext) {
         contexts.append(context)
     }
@@ -1969,6 +1967,27 @@ class SharedSettings: ObservableObject {
     /// Get enabled quick actions sorted by order
     var configuredQuickActions: [QuickAction] {
         quickActions.filter { $0.isEnabled }.sorted { $0.order < $1.order }
+    }
+
+    /// Refresh Quick Actions from iCloud (call before predictions to ensure latest data)
+    func refreshQuickActionsFromiCloud() {
+        guard let iCloud = iCloud else { return }
+        _ = iCloud.synchronize()  // Force pull latest from iCloud
+
+        if let data = iCloud.data(forKey: iCloudKeys.quickActions),
+           let loadedActions = try? JSONDecoder().decode([QuickAction].self, from: data) {
+            if loadedActions != quickActions {
+                quickActions = loadedActions
+                appLog("refreshQuickActionsFromiCloud: Updated \(loadedActions.count) quick actions from iCloud", category: "iCloud")
+            }
+        }
+
+        if iCloud.object(forKey: iCloudKeys.quickSuggestionsEnabled) != nil {
+            let newValue = iCloud.bool(forKey: iCloudKeys.quickSuggestionsEnabled)
+            if newValue != quickSuggestionsEnabled {
+                quickSuggestionsEnabled = newValue
+            }
+        }
     }
 
     // MARK: - Obsidian Vaults Methods
@@ -2507,6 +2526,15 @@ class SharedSettings: ObservableObject {
         whisperKitConfig.status == .ready && whisperKitConfig.isEnabled
     }
 
+    /// Parakeet MLX is not available on iOS (macOS only)
+    var parakeetMLXConfig: ParakeetMLXSettings {
+        get { .notAvailable }
+        set { /* No-op on iOS */ }
+    }
+
+    /// Parakeet MLX is never ready on iOS
+    var isParakeetMLXReady: Bool { false }
+
     /// Whether Apple Intelligence is ready to use
     var isAppleIntelligenceReady: Bool {
         appleIntelligenceConfig.isAvailable && appleIntelligenceConfig.isEnabled
@@ -2781,10 +2809,12 @@ extension SharedSettings: ContextProviderManager {
 extension SharedSettings: LocalModelSettingsProvider {
     // Protocol requirements are already implemented in SharedSettings:
     // - whisperKitConfig: WhisperKitSettings
+    // - parakeetMLXConfig: ParakeetMLXSettings (stub - not available on iOS)
     // - appleIntelligenceConfig: AppleIntelligenceConfig
     // - appleTranslationConfig: AppleTranslationConfig
     // - selfHostedLLMConfig: LocalProviderConfig?
     // - isWhisperKitReady: Bool
+    // - isParakeetMLXReady: Bool (always false on iOS)
     // - isAppleIntelligenceReady: Bool
     // - hasLocalTranslation: Bool
     // - localModelStorageBytes: Int

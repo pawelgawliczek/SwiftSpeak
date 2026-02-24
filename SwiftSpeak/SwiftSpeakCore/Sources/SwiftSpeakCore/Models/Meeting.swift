@@ -241,7 +241,9 @@ public struct MeetingSettings: Codable, Equatable, Hashable, Sendable {
             contextId = context.id
             wordBoost = context.transcriptionVocabulary
             // Set language from context if specified
-            if let inputLanguage = context.defaultInputLanguage {
+            if context.autoDetectInputLanguage {
+                language = nil
+            } else if let inputLanguage = context.defaultInputLanguage {
                 language = inputLanguage.rawValue
             }
         } else {
