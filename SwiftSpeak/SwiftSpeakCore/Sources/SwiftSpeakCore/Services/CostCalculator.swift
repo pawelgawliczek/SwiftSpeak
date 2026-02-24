@@ -49,6 +49,7 @@ public struct BaseCostCalculator: CostCalculatorProtocol {
         case .local: costPerMinute = 0            // Free (on-device)
         case .whisperKit: costPerMinute = 0       // Free (on-device WhisperKit)
         case .appleSpeech: costPerMinute = 0      // Free (on-device Apple SFSpeechRecognizer)
+        case .parakeetMLX: costPerMinute = 0      // Free (on-device Parakeet MLX)
         default: costPerMinute = 0.006
         }
         return costPerMinute * (durationSeconds / 60.0)
@@ -82,7 +83,7 @@ public struct BaseCostCalculator: CostCalculatorProtocol {
         case .google:
             // gemini-1.5-flash rates
             rates = (0.075, 0.30)
-        case .local, .whisperKit, .appleSpeech:
+        case .local, .whisperKit, .appleSpeech, .parakeetMLX:
             // Free (on-device)
             rates = (0, 0)
         default:
@@ -236,6 +237,7 @@ public extension AIProvider {
         case .local: return "whisperkit"
         case .whisperKit: return "whisperkit"
         case .appleSpeech: return "on-device"
+        case .parakeetMLX: return "parakeet-tdt"
         default: return "default"
         }
     }

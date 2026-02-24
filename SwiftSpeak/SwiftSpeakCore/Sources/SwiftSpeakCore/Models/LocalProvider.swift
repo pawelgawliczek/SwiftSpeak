@@ -317,6 +317,54 @@ public struct WhisperKitSettings: Codable, Equatable {
     }
 }
 
+// MARK: - Parakeet MLX (macOS only)
+
+/// Output format for Parakeet MLX transcription
+public enum ParakeetOutputFormat: String, Codable, CaseIterable {
+    case text = "txt"
+    case json = "json"
+
+    public var displayName: String {
+        switch self {
+        case .text: return "Plain Text"
+        case .json: return "JSON"
+        }
+    }
+}
+
+/// Configuration for Parakeet MLX on-device transcription (macOS only)
+/// Uses the parakeet-mlx Python package via CLI
+public struct ParakeetMLXSettings: Codable, Equatable {
+    public var isEnabled: Bool
+    public var status: LocalModelStatus
+    public var modelId: String
+    public var outputFormat: ParakeetOutputFormat
+    public var errorMessage: String?
+
+    public init(
+        isEnabled: Bool = false,
+        status: LocalModelStatus = .notConfigured,
+        modelId: String = "mlx-community/parakeet-tdt-0.6b-v3",
+        outputFormat: ParakeetOutputFormat = .text,
+        errorMessage: String? = nil
+    ) {
+        self.isEnabled = isEnabled
+        self.status = status
+        self.modelId = modelId
+        self.outputFormat = outputFormat
+        self.errorMessage = errorMessage
+    }
+
+    public static var `default`: ParakeetMLXSettings {
+        ParakeetMLXSettings()
+    }
+
+    /// Default as not available (for iOS where parakeet-mlx cannot run)
+    public static var notAvailable: ParakeetMLXSettings {
+        ParakeetMLXSettings(status: .notAvailable)
+    }
+}
+
 // MARK: - Phase 10: Apple Intelligence
 
 /// Configuration for Apple Intelligence on-device text processing

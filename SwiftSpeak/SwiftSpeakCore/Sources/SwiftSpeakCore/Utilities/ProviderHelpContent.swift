@@ -103,6 +103,8 @@ public struct ProviderHelpDatabase {
             return appleSpeechGuide
         case .whisperKit:
             return whisperKitGuide
+        case .parakeetMLX:
+            return parakeetMLXGuide
         }
     }
 
@@ -586,6 +588,46 @@ public struct ProviderHelpDatabase {
         apiKeyURL: nil, // No API key needed
         pricingURL: nil,
         documentationURL: URL(string: "https://github.com/argmaxinc/WhisperKit")
+    )
+
+    public static let parakeetMLXGuide = ProviderSetupGuide(
+        provider: .parakeetMLX,
+        steps: [
+            SetupStep(
+                number: 1,
+                title: "Install parakeet-mlx",
+                description: "Run: pip install parakeet-mlx (requires Python 3.10+)"
+            ),
+            SetupStep(
+                number: 2,
+                title: "Go to Settings → Local Models",
+                description: "Open the Local Models section in SwiftSpeak settings"
+            ),
+            SetupStep(
+                number: 3,
+                title: "Check Installation",
+                description: "Click 'Check Installation' to verify parakeet-mlx is detected"
+            ),
+            SetupStep(
+                number: 4,
+                title: "Enable and transcribe",
+                description: "Toggle on for transcription. Model auto-downloads on first use."
+            )
+        ],
+        tips: [
+            "100% free - no API costs ever",
+            "Complete privacy - all processing on device",
+            "Works offline after first model download",
+            "NVIDIA Parakeet TDT v3 - 600M params, 25 European languages",
+            "macOS only - requires Apple Silicon"
+        ],
+        estimatedCost: "Free (on-device)",
+        freeCredits: "Always free",
+        bestFor: ["Privacy", "Offline Use", "Accuracy", "macOS"],
+        websiteURL: URL(string: "https://github.com/NVIDIA/NeMo"),
+        apiKeyURL: nil,
+        pricingURL: nil,
+        documentationURL: URL(string: "https://pypi.org/project/parakeet-mlx/")
     )
 }
 

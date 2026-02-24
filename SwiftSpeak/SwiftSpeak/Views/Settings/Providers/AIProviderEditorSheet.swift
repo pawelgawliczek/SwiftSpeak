@@ -949,6 +949,9 @@ struct AIProviderEditorSheet: View {
         case .whisperKit:
             // WhisperKit uses on-device models, selection happens in Local Models settings
             return (config.provider.availableSTTModels, [])
+        case .parakeetMLX:
+            // Parakeet MLX uses on-device models, selection happens in Local Models settings (macOS only)
+            return (config.provider.availableSTTModels, [])
         }
     }
 

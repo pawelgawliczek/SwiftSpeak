@@ -22,12 +22,18 @@ public protocol LocalModelSettingsProvider: ObservableObject {
     /// Apple Translation on-device translation configuration
     var appleTranslationConfig: AppleTranslationConfig { get set }
 
+    /// Parakeet MLX on-device transcription configuration (macOS only)
+    var parakeetMLXConfig: ParakeetMLXSettings { get set }
+
     /// Self-hosted LLM configuration (Ollama, LM Studio)
     /// Returns the LocalProviderConfig if configured, nil otherwise
     var selfHostedLLMConfig: LocalProviderConfig? { get }
 
     /// Whether WhisperKit is ready for transcription
     var isWhisperKitReady: Bool { get }
+
+    /// Whether Parakeet MLX is ready for transcription
+    var isParakeetMLXReady: Bool { get }
 
     /// Whether Apple Intelligence is ready for formatting
     var isAppleIntelligenceReady: Bool { get }

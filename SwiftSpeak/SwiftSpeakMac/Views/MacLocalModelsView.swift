@@ -56,6 +56,17 @@ struct MacLocalModelsView: View {
                     }
                 )
 
+                // Parakeet MLX Card (macOS only)
+                ParakeetCard(
+                    settings: settings,
+                    onCheckInstallation: {
+                        checkParakeetInstallation()
+                    },
+                    onReset: {
+                        resetParakeetConfig()
+                    }
+                )
+
                 // Apple Intelligence Card
                 AppleIntelligenceCard(settings: settings)
 
@@ -101,6 +112,40 @@ struct MacLocalModelsView: View {
             Text("Self-Hosted LLM Setup")
                 .frame(width: 400, height: 400)
         }
+    }
+
+    // MARK: - Parakeet MLX Actions
+
+    private func checkParakeetInstallation() {
+        var config = settings.parakeetMLXConfig
+        config.status = .downloading  // Reuse as "checking" state
+        config.errorMessage = nil
+        settings.parakeetMLXConfig = config
+
+        Task { @MainActor in
+            let result = await ParakeetTranscriptionService.checkInstallation()
+
+            var config = settings.parakeetMLXConfig
+            if result.installed {
+                config.status = .ready
+                config.errorMessage = nil
+                macLog("Parakeet MLX found at: \(result.path ?? "module")", category: "LocalModels")
+            } else {
+                config.status = .error
+                config.errorMessage = result.error
+                macLog("Parakeet MLX not found: \(result.error ?? "unknown")", category: "LocalModels", level: .warning)
+            }
+            settings.parakeetMLXConfig = config
+        }
+    }
+
+    private func resetParakeetConfig() {
+        var config = settings.parakeetMLXConfig
+        config.status = .notConfigured
+        config.isEnabled = false
+        config.errorMessage = nil
+        settings.parakeetMLXConfig = config
+        ProviderFactory.clearParakeetCache()
     }
 
     // MARK: - WhisperKit Actions

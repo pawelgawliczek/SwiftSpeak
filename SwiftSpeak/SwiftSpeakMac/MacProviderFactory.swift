@@ -18,6 +18,9 @@ struct ProviderFactory {
     private static var cachedWhisperKitService: WhisperKitTranscriptionService?
     private static var cachedWhisperKitModel: String?
 
+    // Cache Parakeet service to avoid re-checking installation
+    private static var cachedParakeetService: ParakeetTranscriptionService?
+
     init(settings: MacSettings) {
         self.settings = settings
     }
@@ -30,6 +33,9 @@ struct ProviderFactory {
         case .whisperKit, .local:
             // WhisperKit on-device transcription (uses whisperKitConfig, not AIProviderConfig)
             return createWhisperKitProvider()
+        case .parakeetMLX:
+            // Parakeet MLX on-device transcription (macOS only)
+            return createParakeetProvider()
         case .appleSpeech:
             // On-device Apple Speech Recognition
             return SwiftSpeakCore.AppleSpeechTranscriptionService()
@@ -267,6 +273,34 @@ struct ProviderFactory {
         cachedWhisperKitService = nil
         cachedWhisperKitModel = nil
         macLog("WhisperKit cache cleared", category: "ProviderFactory", level: .info)
+    }
+
+    // MARK: - Parakeet MLX Provider
+
+    /// Create Parakeet MLX transcription provider (cached)
+    private func createParakeetProvider() -> TranscriptionProvider? {
+        guard settings.parakeetMLXConfig.status == .ready else {
+            macLog("Parakeet MLX not ready (status: \(settings.parakeetMLXConfig.status))", category: "ProviderFactory", level: .error)
+            return nil
+        }
+
+        // Return cached service if available
+        if let cached = Self.cachedParakeetService {
+            macLog("Using cached Parakeet MLX service", category: "ProviderFactory", level: .debug)
+            return cached
+        }
+
+        // Create new service and cache it
+        macLog("Creating new Parakeet MLX service (model: \(settings.parakeetMLXConfig.modelId))", category: "ProviderFactory", level: .info)
+        let service = ParakeetTranscriptionService(config: settings.parakeetMLXConfig)
+        Self.cachedParakeetService = service
+        return service
+    }
+
+    /// Clear the cached Parakeet service
+    static func clearParakeetCache() {
+        cachedParakeetService = nil
+        macLog("Parakeet cache cleared", category: "ProviderFactory", level: .info)
     }
 
     /// Preload WhisperKit model in background (call when recording starts)

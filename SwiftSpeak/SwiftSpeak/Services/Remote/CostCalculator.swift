@@ -343,6 +343,7 @@ struct CostCalculator {
         case .local: costPerMinute = 0              // Free (on-device WhisperKit)
         case .whisperKit: costPerMinute = 0         // Free (on-device WhisperKit)
         case .appleSpeech: costPerMinute = 0        // Free (on-device Apple SFSpeechRecognizer)
+        case .parakeetMLX: costPerMinute = 0        // Free (on-device Parakeet MLX)
         default: costPerMinute = 0.006
         }
         return costPerMinute * (durationSeconds / 60.0)
@@ -354,7 +355,7 @@ struct CostCalculator {
         case .openAI: rates = (0.15, 0.60)  // gpt-4o-mini
         case .anthropic: rates = (0.80, 4.00)  // claude-3-5-haiku
         case .google: rates = (0.075, 0.30)  // gemini-1.5-flash
-        case .local, .whisperKit, .appleSpeech: rates = (0, 0)  // Free (on-device)
+        case .local, .whisperKit, .appleSpeech, .parakeetMLX: rates = (0, 0)  // Free (on-device)
         default: rates = (0.15, 0.60)
         }
 

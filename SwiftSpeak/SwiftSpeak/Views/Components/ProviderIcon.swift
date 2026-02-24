@@ -322,6 +322,7 @@ extension AIProvider {
         case .local: return nil  // Use SF Symbol
         case .appleSpeech: return nil  // Uses SF Symbol
         case .whisperKit: return nil  // Uses SF Symbol
+        case .parakeetMLX: return nil  // Uses SF Symbol
         }
     }
 
@@ -339,6 +340,7 @@ extension AIProvider {
         case .azure: return "cloud.fill"
         case .appleSpeech: return "apple.logo"
         case .whisperKit: return "mic.fill"
+        case .parakeetMLX: return "bird"
         }
     }
 
@@ -356,6 +358,7 @@ extension AIProvider {
         case .azure: return Color(red: 0.0, green: 0.47, blue: 0.84)  // Azure blue
         case .appleSpeech: return Color.gray  // Apple's neutral color
         case .whisperKit: return Color.green  // On-device WhisperKit
+        case .parakeetMLX: return Color.orange  // On-device Parakeet MLX
         }
     }
 }

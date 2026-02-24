@@ -36,6 +36,9 @@ struct ProviderFactory {
         case .whisperKit, .local:
             // WhisperKit on-device transcription (uses whisperKitConfig, not AIProviderConfig)
             return createWhisperKitProvider()
+        case .parakeetMLX:
+            // Parakeet MLX is macOS-only, not available on iOS
+            return nil
         case .appleSpeech:
             // On-device Apple Speech Recognition (SFSpeechRecognizer)
             return SwiftSpeakCore.AppleSpeechTranscriptionService()
@@ -75,7 +78,7 @@ struct ProviderFactory {
             // These providers don't support transcription
             return nil
 
-        case .local, .appleSpeech, .whisperKit:
+        case .local, .appleSpeech, .whisperKit, .parakeetMLX:
             // Already handled above
             return nil
         }
@@ -198,7 +201,7 @@ struct ProviderFactory {
             // Phase 10f: Apple Translation on-device
             return createAppleTranslationProvider()
 
-        case .assemblyAI, .deepgram, .elevenLabs, .appleSpeech, .whisperKit:
+        case .assemblyAI, .deepgram, .elevenLabs, .appleSpeech, .whisperKit, .parakeetMLX:
             // These providers don't support translation
             return nil
         }
@@ -265,7 +268,7 @@ struct ProviderFactory {
             // Phase 10f: Apple Intelligence on-device formatting
             return createAppleIntelligenceProvider()
 
-        case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure, .appleSpeech, .whisperKit:
+        case .assemblyAI, .deepgram, .elevenLabs, .deepL, .azure, .appleSpeech, .whisperKit, .parakeetMLX:
             // These providers don't support power mode
             return nil
         }

@@ -25,6 +25,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     case azure = "azure"
     case appleSpeech = "applespeech"  // On-device SFSpeechRecognizer
     case whisperKit = "whisperkit"  // On-device WhisperKit transcription
+    case parakeetMLX = "parakeetMLX"  // On-device Parakeet TDT v3 transcription (macOS only)
 
     public var id: String { rawValue }
 
@@ -41,6 +42,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .azure: return "Azure Translator"
         case .appleSpeech: return "Apple Speech"
         case .whisperKit: return "WhisperKit"
+        case .parakeetMLX: return "Parakeet MLX"
         }
     }
 
@@ -57,6 +59,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .azure: return "Azure"
         case .appleSpeech: return "Apple"
         case .whisperKit: return "WhisperKit"
+        case .parakeetMLX: return "Parakeet"
         }
     }
 
@@ -73,6 +76,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .azure: return "cloud.fill"
         case .appleSpeech: return "apple.logo"
         case .whisperKit: return "mic.fill"
+        case .parakeetMLX: return "bird"
         }
     }
 
@@ -89,24 +93,25 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .azure: return "Microsoft Azure Translator for 100+ languages"
         case .appleSpeech: return "On-device speech recognition using Apple's Speech framework"
         case .whisperKit: return "On-device Whisper transcription using CoreML"
+        case .parakeetMLX: return "On-device Parakeet TDT v3 transcription via MLX (macOS only)"
         }
     }
 
     /// Whether this provider requires an API key (cloud providers)
     public var requiresAPIKey: Bool {
-        self != .local && self != .appleSpeech && self != .whisperKit
+        self != .local && self != .appleSpeech && self != .whisperKit && self != .parakeetMLX
     }
 
     /// Whether this is a local/self-hosted provider
     public var isLocalProvider: Bool {
-        self == .local || self == .appleSpeech || self == .whisperKit
+        self == .local || self == .appleSpeech || self == .whisperKit || self == .parakeetMLX
     }
 
     // MARK: - Capability Support
 
     public var supportsTranscription: Bool {
         switch self {
-        case .openAI, .elevenLabs, .deepgram, .local, .assemblyAI, .google, .appleSpeech, .whisperKit: return true
+        case .openAI, .elevenLabs, .deepgram, .local, .assemblyAI, .google, .appleSpeech, .whisperKit, .parakeetMLX: return true
         case .anthropic, .deepL, .azure: return false
         }
     }
@@ -114,14 +119,14 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     public var supportsTranslation: Bool {
         switch self {
         case .openAI, .anthropic, .google, .local, .deepL, .azure: return true
-        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech, .whisperKit: return false
+        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech, .whisperKit, .parakeetMLX: return false
         }
     }
 
     public var supportsPowerMode: Bool {
         switch self {
         case .openAI, .anthropic, .google, .local: return true
-        case .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech, .whisperKit: return false
+        case .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech, .whisperKit, .parakeetMLX: return false
         }
     }
 
@@ -155,6 +160,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return ["default", "latest_long", "latest_short", "command_and_search", "telephony"]
         case .appleSpeech: return ["on-device"]
         case .whisperKit: return [] // Model selected via WhisperKitSettings
+        case .parakeetMLX: return [] // Model selected via ParakeetMLXSettings
         case .anthropic, .deepL, .azure: return []
         }
     }
@@ -169,6 +175,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .google: return "default"  // Safest - supports all languages
         case .appleSpeech: return "on-device"
         case .whisperKit: return nil // Model selected via WhisperKitSettings
+        case .parakeetMLX: return nil // Model selected via ParakeetMLXSettings
         case .anthropic, .deepL, .azure: return nil
         }
     }
@@ -177,7 +184,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     public var supportsStreamingTranscription: Bool {
         switch self {
         case .openAI, .deepgram, .assemblyAI, .google, .appleSpeech: return true
-        case .elevenLabs, .local, .anthropic, .deepL, .azure, .whisperKit: return false
+        case .elevenLabs, .local, .anthropic, .deepL, .azure, .whisperKit, .parakeetMLX: return false
         }
     }
 
@@ -190,7 +197,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return ["best", "nano"]  // All AssemblyAI models support streaming
         case .google: return ["default", "latest_long", "latest_short"]  // Google Cloud STT streaming models
         case .appleSpeech: return ["on-device"]  // Apple Speech streaming via SFSpeechAudioBufferRecognitionRequest
-        case .elevenLabs, .local, .anthropic, .deepL, .azure, .whisperKit: return []
+        case .elevenLabs, .local, .anthropic, .deepL, .azure, .whisperKit, .parakeetMLX: return []
         }
     }
 
@@ -210,7 +217,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .local: return [] // Models are fetched dynamically from the local server
         case .deepL: return ["default"]  // DeepL doesn't have model selection
         case .azure: return ["default"]  // Azure Translator doesn't have model selection
-        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech, .whisperKit: return []
+        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech, .whisperKit, .parakeetMLX: return []
         }
     }
 
@@ -222,7 +229,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .local: return nil // Must be selected after connecting
         case .deepL: return "default"
         case .azure: return "default"
-        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech, .whisperKit: return nil
+        case .elevenLabs, .deepgram, .assemblyAI, .appleSpeech, .whisperKit, .parakeetMLX: return nil
         }
     }
 
@@ -239,7 +246,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .assemblyAI: return URL(string: "https://www.assemblyai.com/app/account")
         case .deepL: return URL(string: "https://www.deepl.com/account/summary")
         case .azure: return URL(string: "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/TextTranslation")
-        case .appleSpeech, .whisperKit: return nil  // No API key needed - on-device
+        case .appleSpeech, .whisperKit, .parakeetMLX: return nil  // No API key needed - on-device
         }
     }
 
@@ -362,6 +369,18 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
 
             Works offline with no API costs.
             """
+        case .parakeetMLX:
+            return """
+            Parakeet MLX runs NVIDIA's Parakeet TDT v3 model locally on your Mac.
+
+            1. Install Python 3.10+ if not already installed
+            2. Run: pip install parakeet-mlx
+            3. Go to Settings → Local Models
+            4. Click "Check Installation" to verify
+            5. Enable for transcription
+
+            Supports 25 European languages. macOS only (Apple Silicon).
+            """
         }
     }
 
@@ -371,7 +390,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         case .elevenLabs: return 0.0
         case .deepgram: return 0.0043
         case .assemblyAI: return 0.00025  // $0.00025/second = $0.015/minute (universal model)
-        case .anthropic, .google, .local, .deepL, .azure, .appleSpeech, .whisperKit: return 0.0  // Per-character pricing doesn't translate to per-minute
+        case .anthropic, .google, .local, .deepL, .azure, .appleSpeech, .whisperKit, .parakeetMLX: return 0.0  // Per-character pricing doesn't translate to per-minute
         }
     }
 
@@ -379,7 +398,7 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
     public var requiresPowerTier: Bool {
         switch self {
         case .local: return true
-        case .openAI, .anthropic, .google, .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech, .whisperKit: return false
+        case .openAI, .anthropic, .google, .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech, .whisperKit, .parakeetMLX: return false
         }
     }
 

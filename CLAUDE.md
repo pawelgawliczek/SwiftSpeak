@@ -47,13 +47,13 @@ This file provides guidance to Claude Code when working with this repository.
 | 0 | UI/UX Prototype | All screens with mock data, navigation, animations |
 | 1 | Core Transcription | Provider protocols, audio recording, OpenAI services |
 | 2 | Templates & Translation | Translation, auto-return, custom templates |
-| 3 | Multi-Provider Support | 9 providers: OpenAI, Anthropic, Gemini, AssemblyAI, Deepgram, Google, DeepL, Azure |
+| 3 | Multi-Provider Support | 10 providers: OpenAI, Anthropic, Gemini, AssemblyAI, Deepgram, Google, DeepL, Azure, Parakeet MLX |
 | 3A | Provider Help | ProviderHelpSheet, LanguageSupportView, SmartLanguagePicker |
 | 4 | Power Mode Backend | Contexts, 3-tier memory, RAG, webhooks, LLM streaming |
 | 6 | Security | Keychain, biometrics, data retention |
 | 7 | Subscription | RevenueCat integration, feature gating |
 | 9 | Remote Config | Firebase, cost tracking, analytics |
-| 10 | Privacy Mode | Local providers (WhisperKit, Apple Intelligence) |
+| 10 | Privacy Mode | Local providers (WhisperKit, Apple Intelligence, Parakeet MLX) |
 | 11 | Orchestration | Security hardening, retry policies, circuit breakers |
 | 12 | SwiftLink | Background dictation, Edit Mode |
 
