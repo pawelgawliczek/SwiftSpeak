@@ -10,6 +10,10 @@
 </p>
 
 <p align="center">
+  <b>iOS</b> &bull; <b>iPadOS</b> &bull; <b>macOS</b>
+</p>
+
+<p align="center">
   <a href="https://pawelgawliczek.cloud/apps/swiftspeak">Project Page</a> &bull;
   <a href="https://pawelgawliczek.cloud/apps/swiftspeak/privacy">Privacy Policy</a> &bull;
   <a href="https://pawelgawliczek.cloud/contact">Contact</a>
