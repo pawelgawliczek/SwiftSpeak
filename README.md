@@ -25,6 +25,7 @@ On macOS, a menu bar app with a global hotkey handles everything in one step.
 - **Power Modes** - Voice-activated AI agents with document RAG, webhooks, and version history
 - **100+ languages** - Transcription and autocorrect across 13 keyboard languages
 - **Privacy Mode** - Force local-only processing with WhisperKit, Apple Intelligence, or Apple Translation
+- **Meeting recording** - Record and transcribe meetings with AI-generated summaries and action items
 - **Cost analytics** - Built-in dashboard tracking spend by provider and category
 - **BYOK (Bring Your Own Key)** - Use your own API keys, no middleman markup
 
