@@ -1,10 +1,44 @@
-# SwiftSpeak
+<p align="center">
+  <img src=".github/images/swiftspeak-logo.png" alt="SwiftSpeak" width="128" height="128">
+</p>
 
-Voice-to-text for iOS and macOS, done well. Hotkeys, keyboard extension, AI formatting on the fly.
+<h1 align="center">SwiftSpeak</h1>
+
+<p align="center">
+  Voice-to-text for iOS and macOS, done well.<br>
+  Hotkeys, keyboard extension, AI formatting on the fly.
+</p>
+
+<p align="center">
+  <a href="https://pawelgawliczek.cloud/apps/swiftspeak">Project Page</a> &bull;
+  <a href="https://pawelgawliczek.cloud/apps/swiftspeak/privacy">Privacy Policy</a> &bull;
+  <a href="https://pawelgawliczek.cloud/contact">Contact</a>
+</p>
+
+---
 
 SwiftSpeak transforms raw dictation into formatted, contextually appropriate text. Instead of dumping unformatted speech into your apps, it learns how you write and adapts output to match your style and context.
 
-**[Learn more on the project page](https://pawelgawliczek.cloud/apps/swiftspeak)**
+## Screenshots
+
+<p align="center">
+  <img src=".github/images/swiftspeak-main-app.png" alt="Main App" width="200">
+  <img src=".github/images/swiftspeak-keyboard.png" alt="Keyboard" width="200">
+  <img src=".github/images/swiftspeak-keyboard-modes.png" alt="Quick Modes" width="200">
+  <img src=".github/images/swiftspeak-settings.png" alt="Settings" width="200">
+</p>
+
+<p align="center">
+  <img src=".github/images/swiftspeak-context-editor.png" alt="Context Editor" width="200">
+  <img src=".github/images/swiftspeak-context-memory.png" alt="Memory" width="200">
+  <img src=".github/images/swiftspeak-powermode-editor.png" alt="Power Mode Editor" width="200">
+  <img src=".github/images/swiftspeak-powermode-rag.png" alt="Power Mode RAG" width="200">
+</p>
+
+<p align="center">
+  <img src=".github/images/swiftspeak-cost-analytics.png" alt="Cost Analytics" width="200">
+  <img src=".github/images/swiftspeak-cost-breakdown.png" alt="Cost Breakdown" width="200">
+</p>
 
 ## How It Works
 
@@ -177,4 +211,4 @@ xcodebuild test \
 
 ## License
 
-This project is open source. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE) for details.
