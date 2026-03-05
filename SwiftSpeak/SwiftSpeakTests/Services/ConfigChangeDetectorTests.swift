@@ -457,7 +457,7 @@ struct ConfigChangeTests {
             .languageQualityImproved(provider: .openAI, language: .english, capability: "Transcription", oldTier: .limited, newTier: .excellent),
             .pricingIncrease(provider: .openAI, model: "whisper-1", oldCost: 0.006, newCost: 0.010),
             .pricingDecrease(provider: .openAI, model: "whisper-1", oldCost: 0.010, newCost: 0.006),
-            .newModel(provider: .openAI, model: ModelRemoteConfig(id: "new-model", name: "New Model", isDefault: nil, tier: nil), capability: "Transcription"),
+            .newModel(provider: .openAI, model: ModelRemoteConfig(id: "new-model", name: "New Model", isDefault: nil), capability: "Transcription"),
             .statusChange(provider: .openAI, oldStatus: .operational, newStatus: .degraded)
         ]
 
@@ -487,7 +487,7 @@ struct ConfigChangeTests {
 
     @Test("New model has correct category")
     func testNewModelCategory() {
-        let model = ModelRemoteConfig(id: "id", name: "Name", isDefault: nil, tier: nil)
+        let model = ModelRemoteConfig(id: "id", name: "Name", isDefault: nil)
         let change = ConfigChange.newModel(provider: .openAI, model: model, capability: "Test")
         #expect(change.category == .models)
     }
@@ -507,7 +507,7 @@ struct ConfigChangeTests {
             .languageQualityImproved(provider: .openAI, language: .english, capability: "Test", oldTier: .limited, newTier: .excellent),
             .pricingIncrease(provider: .openAI, model: "model", oldCost: 1, newCost: 2),
             .pricingDecrease(provider: .openAI, model: "model", oldCost: 2, newCost: 1),
-            .newModel(provider: .openAI, model: ModelRemoteConfig(id: "id", name: "Name", isDefault: nil, tier: nil), capability: "Test"),
+            .newModel(provider: .openAI, model: ModelRemoteConfig(id: "id", name: "Name", isDefault: nil), capability: "Test"),
             .statusChange(provider: .openAI, oldStatus: .operational, newStatus: .degraded)
         ]
 
@@ -525,7 +525,7 @@ struct ConfigChangeTests {
             .languageQualityImproved(provider: .openAI, language: .english, capability: "Test", oldTier: .limited, newTier: .excellent),
             .pricingIncrease(provider: .openAI, model: "model", oldCost: 1, newCost: 2),
             .pricingDecrease(provider: .openAI, model: "model", oldCost: 2, newCost: 1),
-            .newModel(provider: .openAI, model: ModelRemoteConfig(id: "id", name: "New Model", isDefault: nil, tier: nil), capability: "Test"),
+            .newModel(provider: .openAI, model: ModelRemoteConfig(id: "id", name: "New Model", isDefault: nil), capability: "Test"),
             .statusChange(provider: .openAI, oldStatus: .operational, newStatus: .degraded)
         ]
 
@@ -551,7 +551,7 @@ struct ConfigChangeTests {
 
     @Test("New model is positive")
     func testNewModelIsPositive() {
-        let model = ModelRemoteConfig(id: "id", name: "Name", isDefault: nil, tier: nil)
+        let model = ModelRemoteConfig(id: "id", name: "Name", isDefault: nil)
         let change = ConfigChange.newModel(provider: .openAI, model: model, capability: "Test")
         #expect(change.isPositive == true)
     }
