@@ -150,7 +150,7 @@ struct ConfigUpdateSheet: View {
             .newLanguage(provider: .openAI, language: .polish, capability: "Transcription", quality: .excellent),
             .languageQualityImproved(provider: .deepgram, language: .japanese, capability: "Transcription", oldTier: .good, newTier: .excellent),
             .pricingDecrease(provider: .openAI, model: "gpt-4o", oldCost: 0.0035, newCost: 0.0025),
-            .newModel(provider: .anthropic, model: ModelRemoteConfig(id: "claude-3-5-haiku", name: "Claude 3.5 Haiku", isDefault: false, tier: nil), capability: "Power Mode"),
+            .newModel(provider: .anthropic, model: ModelRemoteConfig(id: "claude-3-5-haiku", name: "Claude 3.5 Haiku", isDefault: false), capability: "Power Mode"),
             .statusChange(provider: .deepgram, oldStatus: .degraded, newStatus: .operational)
         ],
         isPresented: .constant(true)
