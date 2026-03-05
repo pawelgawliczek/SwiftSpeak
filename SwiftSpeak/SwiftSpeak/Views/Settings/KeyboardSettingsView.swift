@@ -154,71 +154,29 @@ struct KeyboardSettingsView: View {
 
     private var autocompleteSuggestionsSection: some View {
         Section {
-            if settings.subscriptionTier != .free {
-                // Enable toggle
-                Toggle(isOn: $settings.quickSuggestionsEnabled) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Autocomplete Suggestions")
-                            .font(.callout)
-                        Text("Generate AI response suggestions from screen context")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+            // Enable toggle
+            Toggle(isOn: $settings.quickSuggestionsEnabled) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Autocomplete Suggestions")
+                        .font(.callout)
+                    Text("Generate AI response suggestions from screen context")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .tint(AppTheme.accent)
-                .listRowBackground(rowBackground)
+            }
+            .tint(AppTheme.accent)
+            .listRowBackground(rowBackground)
 
-                // Quick Actions Editor (when enabled) - uses iCloud-synced quickActions
-                if settings.quickSuggestionsEnabled {
-                    QuickActionsEditor(actions: $settings.quickActions)
-                        .listRowBackground(rowBackground)
-                        .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
-                }
-            } else {
-                // Locked state (Free tier)
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("Autocomplete Suggestions")
-                                .font(.callout)
-                            Image(systemName: "lock.fill")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        }
-                        Text("Generate AI response suggestions from screen context")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                }
-                .listRowBackground(rowBackground)
-
-                HStack {
-                    Spacer()
-                    VStack(spacing: 6) {
-                        Image(systemName: "sparkles")
-                            .font(.title2)
-                            .foregroundStyle(.orange.opacity(0.6))
-                        Text("Requires Pro or Power subscription")
-                            .font(.caption)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .padding(.vertical, 12)
-                    Spacer()
-                }
-                .listRowBackground(rowBackground)
+            // Quick Actions Editor (when enabled) - uses iCloud-synced quickActions
+            if settings.quickSuggestionsEnabled {
+                QuickActionsEditor(actions: $settings.quickActions)
+                    .listRowBackground(rowBackground)
+                    .listRowInsets(EdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16))
             }
         } header: {
-            HStack {
-                Text("AI Suggestions")
-                if settings.subscriptionTier == .free {
-                    Image(systemName: "lock.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-            }
+            Text("AI Suggestions")
         } footer: {
-            if settings.subscriptionTier != .free && settings.quickSuggestionsEnabled {
+            if settings.quickSuggestionsEnabled {
                 Text("Configure which response types to generate based on screen context. Synced with macOS via iCloud.")
             }
         }

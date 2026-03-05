@@ -8,29 +8,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Subscription Tier
-enum SubscriptionTier: String, Codable, CaseIterable {
-    case free = "free"
-    case pro = "pro"
-    case power = "power"
-
-    var displayName: String {
-        switch self {
-        case .free: return "Free"
-        case .pro: return "Pro"
-        case .power: return "Power"
-        }
-    }
-
-    var price: String {
-        switch self {
-        case .free: return "$0"
-        case .pro: return "$4.99/mo"
-        case .power: return "$9.99/mo"
-        }
-    }
-}
-
 // MARK: - STT Provider
 enum STTProvider: String, Codable, CaseIterable, Identifiable {
     case openAI = "openai"

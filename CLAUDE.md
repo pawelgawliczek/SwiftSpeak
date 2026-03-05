@@ -51,7 +51,6 @@ This file provides guidance to Claude Code when working with this repository.
 | 3A | Provider Help | ProviderHelpSheet, LanguageSupportView, SmartLanguagePicker |
 | 4 | Power Mode Backend | Contexts, 3-tier memory, RAG, webhooks, LLM streaming |
 | 6 | Security | Keychain, biometrics, data retention |
-| 7 | Subscription | RevenueCat integration, feature gating |
 | 9 | Remote Config | Firebase, cost tracking, analytics |
 | 10 | Privacy Mode | Local providers (WhisperKit, Apple Intelligence, Parakeet MLX) |
 | 11 | Orchestration | Security hardening, retry policies, circuit breakers |
@@ -71,8 +70,6 @@ This file provides guidance to Claude Code when working with this repository.
 
 | Task | Priority |
 |------|----------|
-| App Store Connect subscription config | Medium |
-| RevenueCat production API key | High |
 | macOS shared services (iCloud sync) | Medium |
 | WebSocket real-time transcription (4g) | Low |
 
@@ -132,18 +129,6 @@ SwiftSpeak/
 ```
 
 Full file tree: [docs/FILE_STRUCTURE.md](SwiftSpeak/docs/FILE_STRUCTURE.md)
-
----
-
-## Business Model (BYOK)
-
-Users pay for app features + their own API costs. 40-70% cheaper than hosted competitors.
-
-| Tier | Features |
-|------|----------|
-| **Free** | Basic transcription, 1 provider, 3 templates |
-| **Pro** | Unlimited, multi-provider, translation, custom templates |
-| **Power** | Power Modes, AI agents, RAG, web search |
 
 ---
 

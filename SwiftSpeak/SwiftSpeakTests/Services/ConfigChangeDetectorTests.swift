@@ -52,14 +52,12 @@ private enum TestDataFactory {
     static func makeModelConfig(
         id: String,
         name: String,
-        isDefault: Bool? = nil,
-        tier: String? = nil
+        isDefault: Bool? = nil
     ) -> ModelRemoteConfig {
         ModelRemoteConfig(
             id: id,
             name: name,
-            isDefault: isDefault,
-            tier: tier
+            isDefault: isDefault
         )
     }
 
@@ -664,18 +662,11 @@ struct RemoteConfigModelTests {
         #expect(supported.contains(.spanish))
     }
 
-    @Test("ModelRemoteConfig tier properties work")
-    func testModelTierProperties() {
-        let powerModel = TestDataFactory.makeModelConfig(id: "1", name: "Power", tier: "power")
-        let proModel = TestDataFactory.makeModelConfig(id: "2", name: "Pro", tier: "pro")
-        let freeModel = TestDataFactory.makeModelConfig(id: "3", name: "Free", tier: nil)
-
-        #expect(powerModel.isPowerTier == true)
-        #expect(powerModel.isProTier == false)
-        #expect(proModel.isProTier == true)
-        #expect(proModel.isPowerTier == false)
-        #expect(freeModel.isPowerTier == false)
-        #expect(freeModel.isProTier == false)
+    @Test("ModelRemoteConfig properties work")
+    func testModelProperties() {
+        let model = TestDataFactory.makeModelConfig(id: "1", name: "Test Model")
+        #expect(model.id == "1")
+        #expect(model.name == "Test Model")
     }
 
     @Test("PricingRemoteConfig estimatedCostPerMinute works for minute-based")

@@ -14,8 +14,7 @@ struct OnboardingView: View {
     @State private var isFullAccessEnabled = false
     @Binding var isComplete: Bool
 
-    private let totalPages = 6
-    @State private var showPaywall = false
+    private let totalPages = 5
 
     // Persist current page to survive app backgrounding
     @AppStorage("onboardingCurrentPage") private var currentPage = 0
@@ -70,16 +69,8 @@ struct OnboardingView: View {
                     APIKeyScreen(onContinue: nextPage)
                         .tag(3)
 
-                    OnboardingUpsellScreen(
-                        onStartTrial: {
-                            showPaywall = true
-                        },
-                        onContinueFree: nextPage
-                    )
-                    .tag(4)
-
                     AllSetScreen(onComplete: completeOnboarding)
-                        .tag(5)
+                        .tag(4)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .animation(AppTheme.smoothSpring, value: currentPage)
@@ -95,15 +86,6 @@ struct OnboardingView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
             // Also check when app becomes active (returning from Settings)
             checkKeyboardStatus()
-        }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-                .onDisappear {
-                    // After paywall dismissed, continue to AllSetScreen
-                    if settings.subscriptionTier != .free {
-                        nextPage()
-                    }
-                }
         }
     }
 

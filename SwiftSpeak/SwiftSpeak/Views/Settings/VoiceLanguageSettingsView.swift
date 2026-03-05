@@ -11,7 +11,6 @@ import SwiftSpeakCore
 struct VoiceLanguageSettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
-    @State private var showPaywall = false
     @StateObject private var audioDeviceManager = AudioDeviceManager()
 
     private var backgroundColor: Color {
@@ -44,9 +43,6 @@ struct VoiceLanguageSettingsView: View {
         }
         .navigationTitle("Voice & Language")
         .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
     }
 
     // MARK: - Microphone Section
@@ -152,64 +148,24 @@ struct VoiceLanguageSettingsView: View {
 
     private var translationSection: some View {
         Section {
-            if settings.subscriptionTier != .free {
-                NavigationLink {
-                    LanguagePickerView(
-                        selectedLanguage: $settings.selectedTargetLanguage,
-                        outputArabizi: $settings.outputArabizi
-                    )
-                } label: {
-                    SettingsRow(
-                        icon: "globe",
-                        iconColor: .purple,
-                        title: "Translation Language",
-                        subtitle: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTargetLanguage.displayName)"
-                    )
-                }
-                .listRowBackground(rowBackground)
-            } else {
-                // Locked state for free users
-                Button(action: {
-                    showPaywall = true
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "globe")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(Color.secondary.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text("Translation Language")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-
-                                TierBadge(tier: .pro)
-                            }
-
-                            Text("Translate to 50+ languages")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .listRowBackground(rowBackground)
+            NavigationLink {
+                LanguagePickerView(
+                    selectedLanguage: $settings.selectedTargetLanguage,
+                    outputArabizi: $settings.outputArabizi
+                )
+            } label: {
+                SettingsRow(
+                    icon: "globe",
+                    iconColor: .purple,
+                    title: "Translation Language",
+                    subtitle: "\(settings.selectedTargetLanguage.flag) \(settings.selectedTargetLanguage.displayName)"
+                )
             }
+            .listRowBackground(rowBackground)
         } header: {
             Text("Translation")
         } footer: {
-            if settings.subscriptionTier == .free {
-                Text("Upgrade to Pro to translate your transcriptions to 50+ languages.")
-            } else {
-                Text("Your transcriptions will be translated to this language when translation is enabled.")
-            }
+            Text("Your transcriptions will be translated to this language when translation is enabled.")
         }
     }
 
@@ -245,24 +201,9 @@ struct VoiceLanguageSettingsView: View {
     }
 }
 
-#Preview("Voice & Language - Free") {
+#Preview("Voice & Language") {
     NavigationStack {
         VoiceLanguageSettingsView()
-            .environmentObject({
-                let settings = SharedSettings.shared
-                settings.subscriptionTier = .free
-                return settings
-            }())
-    }
-}
-
-#Preview("Voice & Language - Pro") {
-    NavigationStack {
-        VoiceLanguageSettingsView()
-            .environmentObject({
-                let settings = SharedSettings.shared
-                settings.subscriptionTier = .pro
-                return settings
-            }())
+            .environmentObject(SharedSettings.shared)
     }
 }

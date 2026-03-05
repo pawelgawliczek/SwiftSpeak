@@ -53,8 +53,6 @@ class MacSettings: ObservableObject {
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
         // Hidden contexts
         static let hiddenContextIds = "icloud_hiddenContextIds"
-        // Subscription tier
-        static let subscriptionTier = "icloud_subscriptionTier"
         // Quick Actions (autocomplete suggestions)
         static let quickActions = "icloud_quickActions"
         static let quickSuggestionsEnabled = "icloud_quickSuggestionsEnabled"
@@ -202,12 +200,7 @@ class MacSettings: ObservableObject {
         }
     }
 
-    @Published var subscriptionTier: SubscriptionTier = .free {
-        didSet {
-            defaults?.set(subscriptionTier.rawValue, forKey: "subscriptionTier")
-            syncToiCloud()
-        }
-    }
+
 
     @Published var customTemplates: [CustomTemplate] = [] {
         didSet {
@@ -1062,12 +1055,6 @@ class MacSettings: ObservableObject {
             hiddenContextIds = Set(hiddenStrings.compactMap { UUID(uuidString: $0) })
         }
 
-        // Load subscription tier
-        if let tierRaw = iCloud?.string(forKey: iCloudKeys.subscriptionTier),
-           let tier = SubscriptionTier(rawValue: tierRaw) {
-            subscriptionTier = tier
-            macLog("loadFromiCloud: Loaded subscription tier: \(tier.displayName)", category: "iCloud")
-        }
     }
 
     private func syncToiCloud() {
@@ -1163,9 +1150,6 @@ class MacSettings: ObservableObject {
         let hiddenContextStrings = hiddenContextIds.map { $0.uuidString }
         iCloud?.set(hiddenContextStrings, forKey: iCloudKeys.hiddenContextIds)
 
-        // Sync subscription tier
-        iCloud?.set(subscriptionTier.rawValue, forKey: iCloudKeys.subscriptionTier)
-
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
 
@@ -1233,12 +1217,6 @@ class MacSettings: ObservableObject {
         }
 
         isTranslationEnabled = defaults?.bool(forKey: "isTranslationEnabled") ?? false
-
-        // Load tier
-        if let tierRaw = defaults?.string(forKey: "subscriptionTier"),
-           let tier = SubscriptionTier(rawValue: tierRaw) {
-            subscriptionTier = tier
-        }
 
         // Load contexts and power modes
         loadContexts()

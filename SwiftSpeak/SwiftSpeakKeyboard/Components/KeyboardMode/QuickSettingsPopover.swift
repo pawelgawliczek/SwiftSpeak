@@ -223,11 +223,6 @@ struct QuickSettingsPopover: View {
 
                     // SECTION 4: System Info
                     SettingsSection(title: "System") {
-                        InfoRow(
-                            title: "Subscription",
-                            value: settings.subscriptionTier.capitalized
-                        )
-
                         if settings.swiftLinkActive {
                             InfoRow(
                                 title: "SwiftLink",

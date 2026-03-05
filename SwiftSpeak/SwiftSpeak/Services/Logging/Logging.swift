@@ -20,9 +20,6 @@ extension Logger {
 
     // MARK: - App Loggers (Main App)
 
-    /// Logs for subscription-related events
-    static let subscription = Logger(subsystem: subsystem, category: "Subscription")
-
     /// Logs for audio recording and session management
     static let audio = Logger(subsystem: subsystem, category: "Audio")
 

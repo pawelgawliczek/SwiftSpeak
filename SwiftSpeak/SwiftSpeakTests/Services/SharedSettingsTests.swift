@@ -71,7 +71,6 @@ struct SharedSettingsTests {
         #expect(settings.selectedTargetLanguage == .spanish)
         #expect(settings.isTranslationEnabled == false)
         #expect(settings.autoReturnEnabled == true)
-        #expect(settings.subscriptionTier == .free)
         #expect(settings.biometricProtectionEnabled == false)
         #expect(settings.dataRetentionPeriod == .never)
         #expect(settings.forcePrivacyMode == false)
@@ -92,8 +91,6 @@ struct SharedSettingsTests {
         settings1.selectedTargetLanguage = .french
         settings1.isTranslationEnabled = true
         settings1.autoReturnEnabled = false
-        settings1.subscriptionTier = .pro
-
         // Create second instance with same defaults - should load saved values
         let settings2 = SharedSettings(keychainManager: mockKeychain, defaults: mockDefaults)
 
@@ -102,7 +99,6 @@ struct SharedSettingsTests {
         #expect(settings2.selectedTargetLanguage == .french)
         #expect(settings2.isTranslationEnabled == true)
         #expect(settings2.autoReturnEnabled == false)
-        #expect(settings2.subscriptionTier == .pro)
     }
 
     // MARK: - AI Provider Tests

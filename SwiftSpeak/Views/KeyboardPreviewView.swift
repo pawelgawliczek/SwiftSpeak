@@ -39,7 +39,7 @@ struct KeyboardPreviewView: View {
                 ModernKeyboardPreview(
                     selectedMode: $selectedMode,
                     selectedLanguage: $selectedLanguage,
-                    isPro: settings.subscriptionTier != .free
+                    isPro: true
                 )
             }
         }

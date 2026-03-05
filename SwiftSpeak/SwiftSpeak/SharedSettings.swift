@@ -58,8 +58,6 @@ class SharedSettings: ObservableObject {
         static let transcriptionStreamingEnabled = "icloud_transcriptionStreamingEnabled"
         // Hidden contexts
         static let hiddenContextIds = "icloud_hiddenContextIds"
-        // Subscription tier
-        static let subscriptionTier = "icloud_subscriptionTier"
         // Quick Actions (Autocomplete Suggestions)
         static let quickSuggestionsEnabled = "icloud_quickSuggestionsEnabled"
         static let quickActions = "icloud_quickActions"
@@ -197,13 +195,6 @@ class SharedSettings: ObservableObject {
     @Published var audioQuality: AudioQualityMode = .auto {
         didSet {
             defaults?.set(audioQuality.rawValue, forKey: "audioQuality")
-        }
-    }
-
-    @Published var subscriptionTier: SubscriptionTier = .free {
-        didSet {
-            defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
-            syncToiCloud()
         }
     }
 
@@ -1039,12 +1030,6 @@ class SharedSettings: ObservableObject {
             }
         }
 
-        // Load subscription tier
-        if let tierRaw = iCloud?.string(forKey: iCloudKeys.subscriptionTier),
-           let tier = SubscriptionTier(rawValue: tierRaw) {
-            subscriptionTier = tier
-            appLog("loadFromiCloud: Loaded subscription tier: \(tier.displayName)", category: "iCloud")
-        }
     }
 
     private func syncToiCloud() {
@@ -1133,9 +1118,6 @@ class SharedSettings: ObservableObject {
         } else {
             iCloud?.removeObject(forKey: iCloudKeys.historyMemory)
         }
-
-        // Sync subscription tier
-        iCloud?.set(subscriptionTier.rawValue, forKey: iCloudKeys.subscriptionTier)
 
         // Set sync timestamp
         iCloud?.set(Date().timeIntervalSince1970, forKey: iCloudKeys.lastSyncTimestamp)
@@ -1232,11 +1214,6 @@ class SharedSettings: ObservableObject {
             audioQuality = quality
         }
 
-        // Load subscription tier
-        if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier),
-           let tier = SubscriptionTier(rawValue: tierRaw) {
-            subscriptionTier = tier
-        }
 
         // Load custom templates
         loadCustomTemplates()

@@ -35,14 +35,14 @@ struct AppTheme {
         endPoint: .bottomTrailing
     )
 
-    /// Pro tier gradient
+    /// Purple-pink gradient
     static let proGradient = LinearGradient(
         colors: [Color.purple, Color.pink],
         startPoint: .topLeading,
         endPoint: .bottomTrailing
     )
 
-    /// Power tier gradient (vibrant gold/orange)
+    /// Gold/orange gradient
     static let powerGradient = LinearGradient(
         colors: [Color.orange, Color.yellow],
         startPoint: .topLeading,

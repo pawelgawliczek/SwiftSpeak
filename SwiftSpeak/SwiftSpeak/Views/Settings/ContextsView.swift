@@ -33,12 +33,6 @@ struct ContextsListContent: View {
     @State private var navigateToDetail: ConversationContext?
     @State private var showingDeleteConfirmation = false
     @State private var contextToDelete: ConversationContext?
-    @State private var showPaywall = false
-
-    /// Whether the user can create custom contexts (Pro+ tier)
-    private var canCreateCustomContexts: Bool {
-        settings.subscriptionTier != .free
-    }
 
     /// All contexts: presets + user's custom contexts
     private var allContexts: [ConversationContext] {
@@ -82,16 +76,10 @@ struct ContextsListContent: View {
 
                 // Custom contexts (Pro feature)
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("CUSTOM")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
-
-                        if !canCreateCustomContexts {
-                            TierBadge.pro
-                        }
-                    }
-                    .padding(.horizontal, 20)
+                    Text("CUSTOM")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
 
                     if settings.contexts.filter({ !$0.isPreset }).isEmpty {
                         // Empty state for custom contexts
@@ -103,12 +91,6 @@ struct ContextsListContent: View {
                             Text("No custom contexts")
                                 .font(.subheadline)
                                 .foregroundStyle(.secondary)
-
-                            if !canCreateCustomContexts {
-                                Text("Upgrade to Pro to create your own")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
-                            }
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
@@ -148,21 +130,14 @@ struct ContextsListContent: View {
             }
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: {
-                    if canCreateCustomContexts {
-                        showingNewEditor = true
-                    } else {
-                        showPaywall = true
-                    }
+                    showingNewEditor = true
                 }) {
                     Image(systemName: "plus")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(canCreateCustomContexts ? AppTheme.accent : .secondary)
+                        .foregroundStyle(AppTheme.accent)
                 }
             }
         }
@@ -318,31 +293,18 @@ struct ContextsListContent: View {
 
     private var createNewButton: some View {
         Button(action: {
-            if canCreateCustomContexts {
-                showingNewEditor = true
-            } else {
-                showPaywall = true
-            }
+            showingNewEditor = true
         }) {
             HStack(spacing: 8) {
-                Image(systemName: canCreateCustomContexts ? "plus" : "lock.fill")
+                Image(systemName: "plus")
                     .font(.body.weight(.semibold))
                 Text("Create Custom Context")
                     .font(.callout.weight(.semibold))
-                if !canCreateCustomContexts {
-                    Text("PRO")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(AppTheme.accent)
-                        .clipShape(Capsule())
-                }
             }
-            .foregroundStyle(canCreateCustomContexts ? AppTheme.accent : .secondary)
+            .foregroundStyle(AppTheme.accent)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background((canCreateCustomContexts ? AppTheme.accent : Color.secondary).opacity(0.15))
+            .background(AppTheme.accent.opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
         }
     }

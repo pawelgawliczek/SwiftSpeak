@@ -251,13 +251,6 @@ struct AssemblyAIProviderInfoTests {
         #expect(cost == 0.00025)
     }
 
-    @Test func providerDoesNotRequirePowerTier() {
-        #expect(AIProvider.assemblyAI.requiresPowerTier == false)
-    }
-
-    @Test func providerMinimumTierIsFree() {
-        #expect(AIProvider.assemblyAI.minimumTier == .free)
-    }
 }
 
 // MARK: - Constants Tests

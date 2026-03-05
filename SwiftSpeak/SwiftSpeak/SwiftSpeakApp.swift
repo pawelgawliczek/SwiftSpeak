@@ -7,7 +7,6 @@
 
 import FirebaseCore
 import SwiftUI
-import SwiftSpeakCore
 
 @main
 struct SwiftSpeakApp: App {
@@ -30,9 +29,6 @@ struct SwiftSpeakApp: App {
         _ = SwiftLinkSessionManager.shared
         appLog("SwiftLink manager initialized (session active: \(SwiftLinkSessionManager.shared.isSessionActive))", category: "Startup")
 
-        // Configure subscription service (mock mode for now)
-        // TODO: Add your RevenueCat API key to Constants.swift and pass it here
-        SubscriptionService.shared.configure()
     }
 
     var body: some Scene {

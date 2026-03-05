@@ -2399,11 +2399,6 @@ class KeyboardViewModel: ObservableObject {
 
         lastTranscription = defaults?.string(forKey: Constants.Keys.lastTranscription)
 
-        if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier) {
-            isPro = tierRaw == "pro" || tierRaw == "power"
-            isPower = tierRaw == "power"
-        }
-
         loadAIProviders(from: defaults)
         loadCustomTemplates(from: defaults)
 

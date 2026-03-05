@@ -76,15 +76,13 @@ struct ProviderStatusDashboard: View {
                     isConfigured: translationProvider != nil
                 )
 
-                if settings.subscriptionTier == .power {
-                    StatusRow(
-                        icon: "bolt.fill",
-                        iconColor: .orange,
-                        title: "Power Mode",
-                        provider: powerModeProvider,
-                        isConfigured: powerModeProvider != nil
-                    )
-                }
+                StatusRow(
+                    icon: "bolt.fill",
+                    iconColor: .orange,
+                    title: "Power Mode",
+                    provider: powerModeProvider,
+                    isConfigured: powerModeProvider != nil
+                )
             }
 
             // Action buttons
@@ -223,26 +221,9 @@ struct ProviderStatusBadge: View {
 
 // MARK: - Preview
 
-#Preview("Status Dashboard - Partial Setup") {
+#Preview("Status Dashboard") {
     VStack {
-        ProviderStatusDashboard(settings: {
-            let settings = SharedSettings.shared
-            settings.subscriptionTier = .pro
-            return settings
-        }())
-    }
-    .padding()
-    .background(AppTheme.darkBase)
-    .preferredColorScheme(.dark)
-}
-
-#Preview("Status Dashboard - Power Tier") {
-    VStack {
-        ProviderStatusDashboard(settings: {
-            let settings = SharedSettings.shared
-            settings.subscriptionTier = .power
-            return settings
-        }())
+        ProviderStatusDashboard(settings: SharedSettings.shared)
     }
     .padding()
     .background(AppTheme.darkBase)

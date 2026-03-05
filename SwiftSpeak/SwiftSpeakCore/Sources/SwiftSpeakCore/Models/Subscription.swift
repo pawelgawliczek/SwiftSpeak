@@ -2,35 +2,12 @@
 //  Subscription.swift
 //  SwiftSpeak
 //
-//  Subscription tier and data retention models
+//  Data retention models
 //
 //  SHARED: This file is used by both SwiftSpeak and SwiftSpeakKeyboard targets
 //
 
 import Foundation
-
-// MARK: - Subscription Tier
-public enum SubscriptionTier: String, Codable, CaseIterable {
-    case free = "free"
-    case pro = "pro"
-    case power = "power"
-
-    public var displayName: String {
-        switch self {
-        case .free: return "Free"
-        case .pro: return "Pro"
-        case .power: return "Power"
-        }
-    }
-
-    public var price: String {
-        switch self {
-        case .free: return "$0"
-        case .pro: return "$6.99/mo"
-        case .power: return "$12.99/mo"
-        }
-    }
-}
 
 // MARK: - Data Retention
 

@@ -51,9 +51,6 @@ SwiftSpeak/
 │   │   │   ├── RemoteConfigManager.swift
 │   │   │   ├── ConfigChangeDetector.swift
 │   │   │   └── CostCalculator.swift
-│   │   ├── Subscription/
-│   │   │   ├── SubscriptionService.swift
-│   │   │   └── SubscriptionError.swift
 │   │   ├── Providers/
 │   │   │   ├── OpenAI/
 │   │   │   │   ├── OpenAITranscriptionService.swift
@@ -143,7 +140,6 @@ SwiftSpeak/
 │   │   │   ├── HowItWorksScreen.swift
 │   │   │   ├── KeyboardSetupScreen.swift
 │   │   │   ├── APIKeyScreen.swift
-│   │   │   ├── OnboardingUpsellScreen.swift
 │   │   │   └── AllSetScreen.swift
 │   │   ├── PowerMode/
 │   │   │   ├── PowerModeListView.swift
@@ -173,13 +169,10 @@ SwiftSpeak/
 │   │   │   ├── LockedView.swift
 │   │   │   ├── ConfigUpdateSheet.swift
 │   │   │   ├── ContextQuickSwitcher.swift
-│   │   │   ├── FeatureGateOverlay.swift
 │   │   │   ├── KeyboardActionOverlay.swift
 │   │   │   ├── PrivacyModeIndicator.swift
 │   │   │   ├── RAGPrivacyWarning.swift
 │   │   │   ├── SwiftLinkQuickStartSheet.swift
-│   │   │   ├── TierBadge.swift
-│   │   │   ├── UpgradePromptBanner.swift
 │   │   │   └── ObsidianActionSheet.swift
 │   │   ├── Settings/
 │   │   │   ├── ContextsView.swift
@@ -219,8 +212,7 @@ SwiftSpeak/
 │   │   │   │   ├── LocalModelRow.swift
 │   │   │   │   └── AddLocalModelSheet.swift
 │   │   │   └── Components/
-│   │   │       ├── SettingsRow.swift
-│   │   │       └── SubscriptionCard.swift
+│   │   │       └── SettingsRow.swift
 │   │   ├── History/
 │   │   │   └── HistoryFilterSheet.swift
 │   │   ├── ContentView.swift
@@ -228,7 +220,6 @@ SwiftSpeak/
 │   │   ├── SettingsView.swift
 │   │   ├── HistoryView.swift
 │   │   ├── CostAnalyticsView.swift
-│   │   ├── PaywallView.swift
 │   │   ├── KeyboardPreviewView.swift
 │   │   ├── ProviderComparisonView.swift
 │   │   └── LanguageSupportView.swift
@@ -251,7 +242,6 @@ SwiftSpeak/
 │       │   ├── Processing.swift
 │       │   ├── ProviderSelection.swift
 │       │   ├── RAG.swift
-│       │   ├── Subscription.swift
 │       │   ├── Transcription.swift
 │       │   ├── Vocabulary.swift
 │       │   └── Webhook.swift

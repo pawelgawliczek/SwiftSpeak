@@ -40,7 +40,7 @@ struct KeyboardPreviewView: View {
                 ModernKeyboardPreview(
                     selectedMode: $selectedMode,
                     selectedLanguage: $selectedLanguage,
-                    isPro: settings.subscriptionTier != .free,
+                    isPro: true,
                     contexts: settings.contexts,
                     activeContext: settings.activeContext,
                     onContextChange: { context in

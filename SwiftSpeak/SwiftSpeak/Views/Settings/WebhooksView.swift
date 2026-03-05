@@ -16,12 +16,6 @@ struct WebhooksView: View {
 
     @State private var showingEditor = false
     @State private var editingWebhook: Webhook?
-    @State private var showPaywall = false
-
-    /// Whether the user has access to Webhooks (Power tier only)
-    private var hasWebhooksAccess: Bool {
-        settings.subscriptionTier == .power
-    }
 
     var body: some View {
         ScrollView {
@@ -55,19 +49,6 @@ struct WebhooksView: View {
             .padding(16)
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
-        .overlay {
-            if !hasWebhooksAccess {
-                FeatureGateOverlay(
-                    requiredTier: .power,
-                    featureName: "Webhooks",
-                    featureDescription: "Connect Power Modes to external services like Slack, Notion, Make, or Zapier",
-                    onUpgrade: { showPaywall = true }
-                )
-            }
-        }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
         .navigationTitle("Webhooks")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {

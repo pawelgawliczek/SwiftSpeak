@@ -132,17 +132,6 @@ struct ModelRemoteConfig: Codable, Identifiable, Equatable {
     let id: String
     let name: String
     let isDefault: Bool?
-    let tier: String?  // "power" for premium-tier-only models
-
-    /// Whether this model requires Power subscription tier
-    var isPowerTier: Bool {
-        tier == "power"
-    }
-
-    /// Whether this model requires Pro subscription tier
-    var isProTier: Bool {
-        tier == "pro"
-    }
 }
 
 // MARK: - Pricing Configuration

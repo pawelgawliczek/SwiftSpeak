@@ -5,7 +5,7 @@
 //  REFACTORED: This file has been split into smaller, focused model files.
 //  See the Models/ directory for individual model files:
 //
-//  - Subscription.swift (SubscriptionTier, DataRetentionPeriod)
+//  - Subscription.swift (DataRetentionPeriod)
 //  - AIProvider.swift (AIProvider, AzureRegion, ProviderUsageCategory)
 //  - AIProviderConfig.swift (AIProviderConfig, LocalProviderType, LocalProviderConfig)
 //  - Language.swift (Language)

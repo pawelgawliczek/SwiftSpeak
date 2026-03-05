@@ -10,9 +10,7 @@ import SwiftSpeakCore
 
 struct AddAIProviderSheet: View {
     let availableProviders: [AIProvider]
-    let currentTier: SubscriptionTier
     let onSelect: (AIProvider) -> Void
-    let onShowPaywall: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) var colorScheme
 
@@ -27,33 +25,6 @@ struct AddAIProviderSheet: View {
 
     private var rowBackground: Color {
         colorScheme == .dark ? Color.white.opacity(0.05) : Color.white
-    }
-
-    /// Check if a provider is locked for the current subscription tier
-    private func isProviderLocked(_ provider: AIProvider) -> Bool {
-        // Power tier providers require Power subscription
-        if provider.requiresPowerTier && currentTier != .power {
-            return true
-        }
-
-        // For free tier: only OpenAI and Google are accessible
-        // All other cloud providers require Pro or higher
-        if currentTier == .free && provider != .openAI && provider != .google {
-            return true
-        }
-
-        return false
-    }
-
-    /// Get the required tier badge text for a locked provider
-    private func requiredTierBadge(_ provider: AIProvider) -> String? {
-        if provider.requiresPowerTier && currentTier != .power {
-            return "POWER"
-        }
-        if currentTier == .free && provider != .openAI && provider != .google {
-            return "PRO"
-        }
-        return nil
     }
 
     private var filteredProviders: [AIProvider] {
@@ -108,37 +79,18 @@ struct AddAIProviderSheet: View {
 
                     Section {
                         ForEach(filteredProviders) { provider in
-                            let isLocked = isProviderLocked(provider)
-
                             Button(action: {
                                 HapticManager.selection()
-                                if isLocked {
-                                    dismiss()
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        onShowPaywall()
-                                    }
-                                } else {
-                                    onSelect(provider)
-                                }
+                                onSelect(provider)
                             }) {
                                 HStack(spacing: 12) {
-                                    ProviderIcon(provider, size: .large, style: .filled, isDisabled: isLocked)
+                                    ProviderIcon(provider, size: .large, style: .filled)
 
                                     VStack(alignment: .leading, spacing: 4) {
                                         HStack(spacing: 6) {
                                             Text(provider.displayName)
                                                 .font(.callout.weight(.medium))
-                                                .foregroundStyle(isLocked ? .secondary : .primary)
-
-                                            if let badge = requiredTierBadge(provider) {
-                                                Text(badge)
-                                                    .font(.caption2.weight(.bold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.horizontal, 6)
-                                                    .padding(.vertical, 2)
-                                                    .background(badge == "POWER" ? Color.orange : AppTheme.accent)
-                                                    .clipShape(Capsule())
-                                            }
+                                                .foregroundStyle(.primary)
                                         }
 
                                         Text(provider.description)
@@ -153,7 +105,7 @@ struct AddAIProviderSheet: View {
                                                     Image(systemName: category.icon)
                                                         .font(.caption2)
                                                 }
-                                                .foregroundStyle(isLocked ? .secondary : categoryColor(for: category))
+                                                .foregroundStyle(categoryColor(for: category))
                                             }
                                         }
                                     }
@@ -165,13 +117,8 @@ struct AddAIProviderSheet: View {
                                         LanguageSupportBadge(level: level)
                                     }
 
-                                    if isLocked {
-                                        Image(systemName: "lock.fill")
-                                            .foregroundStyle(.secondary)
-                                    } else {
-                                        Image(systemName: "plus.circle.fill")
-                                            .foregroundStyle(AppTheme.accent)
-                                    }
+                                    Image(systemName: "plus.circle.fill")
+                                        .foregroundStyle(AppTheme.accent)
                                 }
                             }
                             .listRowBackground(rowBackground)
@@ -519,8 +466,6 @@ struct LanguageFilterPicker: View {
 #Preview("Add AI Provider Sheet") {
     AddAIProviderSheet(
         availableProviders: AIProvider.allCases,
-        currentTier: .pro,
-        onSelect: { _ in },
-        onShowPaywall: { }
+        onSelect: { _ in }
     )
 }

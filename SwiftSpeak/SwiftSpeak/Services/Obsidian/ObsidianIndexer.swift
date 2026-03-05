@@ -379,7 +379,7 @@ final class ObsidianIndexer {
 
     private func hashContent(_ content: String) -> String {
         let data = Data(content.utf8)
-        let hash = Insecure.MD5.hash(data: data)
+        let hash = SHA256.hash(data: data)
         return hash.map { String(format: "%02hhx", $0) }.joined()
     }
 

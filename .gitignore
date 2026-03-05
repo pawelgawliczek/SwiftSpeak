@@ -46,8 +46,11 @@ Carthage/Build/
 *.xcconfig
 secrets/
 .env
+GoogleService-Info.plist
+
+# Large dictionary source files
+SwiftSpeak/SwiftSpeakKeyboard/Resources/Dictionaries/sources/
 
 # External Dependencies
-RevenueCat/
 WhisperKit-Package/
 .swiftpm/

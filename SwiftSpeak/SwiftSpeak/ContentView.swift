@@ -902,27 +902,11 @@ struct HomeView: View {
 
     @State private var showContextPicker = false
     @State private var showDefaultsSettings = false
-    @State private var showPaywall = false
     @State private var providerToSetup: AIProvider? = nil
     @State private var showTranslationPicker = false
     // NOTE: Using settings.isTranslationEnabled directly instead of local state
     // This ensures translation state is synced via iCloud between iOS and macOS
     @State private var showSwiftLinkQuickStart = false
-
-    /// Whether the user has access to Pro features (contexts, modes, translation)
-    private var hasProAccess: Bool {
-        settings.subscriptionTier != .free
-    }
-
-    /// Whether the user has access to translation (Pro+ tier)
-    private var hasTranslationAccess: Bool {
-        settings.subscriptionTier != .free
-    }
-
-    /// Whether user has Power tier (for Power Modes)
-    private var hasPowerAccess: Bool {
-        settings.subscriptionTier == .power
-    }
 
     private var backgroundColor: Color {
         colorScheme == .dark ? AppTheme.darkBase : AppTheme.lightBase
@@ -963,15 +947,10 @@ struct HomeView: View {
                                 HomeArchButton(
                                     icon: "⚡️",
                                     label: "Power",
-                                    isLocked: !hasPowerAccess,
                                     accentColor: .orange
                                 ) {
-                                    if hasPowerAccess {
-                                        HapticManager.lightTap()
-                                        // Navigate to Power tab handled by tab bar
-                                    } else {
-                                        showPaywall = true
-                                    }
+                                    HapticManager.lightTap()
+                                    // Navigate to Power tab handled by tab bar
                                 }
                                 .offset(y: -100)
 
@@ -980,15 +959,10 @@ struct HomeView: View {
                                     icon: settings.isTranslationEnabled ? settings.selectedTargetLanguage.flag : "🌐",
                                     label: settings.isTranslationEnabled ? settings.selectedTargetLanguage.displayName : "Translate",
                                     isActive: settings.isTranslationEnabled,
-                                    isLocked: !hasTranslationAccess,
                                     accentColor: .pink
                                 ) {
-                                    if hasTranslationAccess {
-                                        HapticManager.lightTap()
-                                        showTranslationPicker = true
-                                    } else {
-                                        showPaywall = true
-                                    }
+                                    HapticManager.lightTap()
+                                    showTranslationPicker = true
                                 }
                                 .offset(x: -100, y: -50)
 
@@ -1008,15 +982,10 @@ struct HomeView: View {
                                 HomeArchButton(
                                     icon: "🎙️",
                                     label: "Meeting",
-                                    isLocked: !hasPowerAccess,
                                     accentColor: .blue
                                 ) {
-                                    if hasPowerAccess {
-                                        HapticManager.lightTap()
-                                        showMeetingRecording = true
-                                    } else {
-                                        showPaywall = true
-                                    }
+                                    HapticManager.lightTap()
+                                    showMeetingRecording = true
                                 }
                                 .offset(x: 100, y: 50)
 
@@ -1109,9 +1078,6 @@ struct HomeView: View {
                     },
                     onDelete: nil
                 )
-            }
-            .sheet(isPresented: $showPaywall) {
-                PaywallView()
             }
             .sheet(isPresented: $showSwiftLinkQuickStart) {
                 SwiftLinkQuickStartSheet()
@@ -1222,7 +1188,6 @@ struct SwiftLinkHomeCard: View {
 // MARK: - Context Selector (Beautiful Dropdown)
 struct ContextSelector: View {
     let activeContext: ConversationContext?
-    var isLocked: Bool = false
     let onTap: () -> Void
     @Environment(\.colorScheme) var colorScheme
 
@@ -1231,7 +1196,6 @@ struct ContextSelector: View {
     }
 
     private var contextColor: Color {
-        if isLocked { return .secondary }
         if let context = activeContext {
             return context.color.color
         }
@@ -1247,11 +1211,7 @@ struct ContextSelector: View {
                         .stroke(contextColor.opacity(0.3), lineWidth: 2)
                         .frame(width: 32, height: 32)
 
-                    if isLocked {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    } else if let context = activeContext {
+                    if let context = activeContext {
                         Text(context.icon)
                             .font(.system(size: 16))
                     } else {
@@ -1262,11 +1222,11 @@ struct ContextSelector: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isLocked ? "Unlock Contexts" : (activeContext?.name ?? "No Context"))
+                    Text(activeContext?.name ?? "No Context")
                         .font(.callout.weight(.medium))
-                        .foregroundStyle(isLocked ? .secondary : .primary)
+                        .foregroundStyle(.primary)
 
-                    Text(isLocked ? "Upgrade to Pro" : (activeContext?.description ?? "Tap to select"))
+                    Text(activeContext?.description ?? "Tap to select")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -1274,7 +1234,7 @@ struct ContextSelector: View {
 
                 Spacer()
 
-                Image(systemName: isLocked ? "lock.fill" : "chevron.down")
+                Image(systemName: "chevron.down")
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
             }
@@ -1285,7 +1245,7 @@ struct ContextSelector: View {
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(activeContext != nil && !isLocked ? contextColor.opacity(0.3) : Color.clear, lineWidth: 1)
+                    .stroke(activeContext != nil ? contextColor.opacity(0.3) : Color.clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -1988,7 +1948,6 @@ struct SetupRequiredView: View {
 struct HomeCompactButton: View {
     let icon: String
     let title: String
-    var isLocked: Bool = false
     var accentColor: Color = .purple
     let action: () -> Void
 
@@ -2003,22 +1962,16 @@ struct HomeCompactButton: View {
             VStack(spacing: 6) {
                 ZStack {
                     Circle()
-                        .fill(isLocked ? Color.secondary.opacity(0.3) : accentColor.opacity(0.2))
+                        .fill(accentColor.opacity(0.2))
                         .frame(width: 48, height: 48)
 
-                    if isLocked {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 18))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text(icon)
-                            .font(.system(size: 22))
-                    }
+                    Text(icon)
+                        .font(.system(size: 22))
                 }
 
                 Text(title)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(isLocked ? .secondary : .primary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
             .frame(width: 80)
@@ -2050,7 +2003,6 @@ struct HomeArchButton: View {
     let icon: String
     let label: String
     var isActive: Bool = false
-    var isLocked: Bool = false
     var accentColor: Color = .white
 
     let action: () -> Void
@@ -2075,24 +2027,16 @@ struct HomeArchButton: View {
                     if icon.count <= 2 {
                         Text(icon)
                             .font(.system(size: 22))
-                            .opacity(isLocked ? 0.4 : 1.0)
                     } else {
                         Image(systemName: icon)
                             .font(.system(size: 18, weight: .medium))
-                            .foregroundStyle(isLocked ? .secondary : .primary)
-                    }
-
-                    if isLocked {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 8))
-                            .foregroundStyle(.secondary)
-                            .offset(x: 16, y: 16)
+                            .foregroundStyle(.primary)
                     }
                 }
 
                 Text(label)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(isLocked ? .secondary : .primary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
             }
         }
@@ -2319,7 +2263,6 @@ struct HomeSecondaryButton: View {
     let icon: String
     let title: String
     let color: Color
-    var isLocked: Bool = false
     let action: () -> Void
 
     @Environment(\.colorScheme) var colorScheme
@@ -2333,16 +2276,12 @@ struct HomeSecondaryButton: View {
             HStack(spacing: 8) {
                 Image(systemName: icon)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(isLocked ? .secondary : color)
+                    .foregroundStyle(color)
 
                 Text(title)
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(isLocked ? .secondary : .primary)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
-
-                if isLocked {
-                    TierBadge.pro
-                }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)

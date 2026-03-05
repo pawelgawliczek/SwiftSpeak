@@ -10,162 +10,35 @@ A custom iOS keyboard app for voice transcription, translation, and AI formattin
 
 ---
 
-## Business Model (V1: Bring Your Own Key)
+## Business Model: Bring Your Own Key (BYOK)
 
-Users provide their own API keys. Subscription unlocks features.
+Users provide their own API keys for AI services.
 Supports cloud APIs (OpenAI, Anthropic, Google) AND local LLMs (Ollama, LM Studio, OpenAI-compatible).
 
-**Key Value Proposition:** Users pay for app features (subscription) + their own API costs (BYOK).
-This is **40-70% cheaper** than hosted competitors like Wispr Flow or Otter.ai.
-
-### Free Tier - $0
-- Basic transcription only
-- 1 provider (OpenAI Whisper)
-- 3 predefined templates (Email, Formal, Casual)
-- Limited to X transcriptions/day
-
-### Pro Tier - $6.99/month, $59.99/year, $99 lifetime
-- **Unlimited transcriptions**
-- Multiple providers (OpenAI, ElevenLabs, Deepgram)
-- Translation feature
-- Unlimited custom templates
-
-### Power Tier - $12.99/month, $99.99/year, $199 lifetime
-- Everything in Pro
-- **Power Modes** - Voice-activated AI agents with capabilities
-- AI can ask clarifying questions (quick-tap UI)
-- Web search capability
-- Bash/Computer use capability
-- Code execution capability
-- Full-screen workspace with refinement mode
-- Version history navigation
-- **Local AI Support** - Ollama, LM Studio, and any OpenAI-compatible server
-
----
-
-## Competitive Analysis & Pricing Strategy
-
-### Why BYOK Model Works
-
-Users pay OpenAI directly for API usage:
-- Whisper transcription: $0.006/min ($0.36/hour)
-- GPT-4o-mini formatting: ~$0.0001/request
-
-**Typical monthly API costs for users:**
-
-| Usage Level | Transcriptions | API Cost |
-|-------------|----------------|----------|
-| Light | 50 × 30sec | ~$0.15 |
-| Moderate | 150 × 30sec | ~$0.45 |
-| Heavy | 400 × 1min | ~$1.20 |
-| Power User | 500+ × 1min | ~$3.00 |
-
-### Total Cost vs Competitors
-
-**Moderate user (150 transcriptions/month):**
-
-| App | Monthly Cost | SwiftSpeak Saves |
-|-----|--------------|------------------|
-| **SwiftSpeak Pro** | **$7.44** ($6.99 + $0.45 API) | — |
-| **SwiftSpeak Power** | **$13.44** ($12.99 + $0.45 API) | — |
-| Otter.ai Pro | $8.33-16.99 | 11-56% |
-| Wispr Flow | $12-15 | 38-50% |
-| Otter.ai Business | $20-30 | 63-75% |
-
-**Heavy user (400 transcriptions/month):**
-
-| App | Monthly Cost | SwiftSpeak Saves |
-|-----|--------------|------------------|
-| **SwiftSpeak Pro** | **$8.19** ($6.99 + $1.20 API) | — |
-| **SwiftSpeak Power** | **$14.19** ($12.99 + $1.20 API) | — |
-| Otter.ai Pro | $16.99 | 52% |
-| Wispr Flow | $12-15 | 5-32% (Pro tier) |
-| Otter.ai Business | $20-30 | 53-73% |
-
-### Competitive Positioning
-
-```
-Price Scale (Monthly)
-$0        $5        $10        $15        $20        $25        $30
-|---------|---------|---------|---------|---------|---------|
-   Whisper    SwiftSpeak   SwiftSpeak    Wispr      Otter
-   Memos      Pro          Power         Flow       Business
-   $4.99      $6.99        $12.99        $12-15     $20-30
-```
-
-### Feature Comparison
-
-| Feature | SwiftSpeak Pro ($6.99) | Wispr Flow ($12-15) | Otter.ai Pro ($8.33) |
-|---------|------------------------|---------------------|----------------------|
-| iOS Keyboard | ✅ | ✅ | ❌ |
-| Unlimited transcriptions | ✅ | ✅ | ❌ (1,200 min cap) |
-| AI formatting modes | ✅ | ✅ | ❌ |
-| Translation | ✅ | ✅ | ❌ |
-| Multi-provider choice | ✅ | ❌ | ❌ |
-| Local LLM (Ollama) | ✅ | ❌ | ❌ |
-| Transparent API costs | ✅ | ❌ | ❌ |
-| Lifetime option | ✅ $99 | ❌ | ❌ |
-
-| Feature | SwiftSpeak Power ($12.99) | Wispr Flow ($12-15) |
-|---------|---------------------------|---------------------|
-| Voice AI agents | ✅ | ❌ |
-| Web search capability | ✅ | ❌ |
-| Code execution | ✅ | ❌ |
-| Custom Power Modes | ✅ | ❌ |
-| Lifetime option | ✅ $199 | ❌ |
-
-### Lifetime Value Proposition
-
-| App | Lifetime Price | Break-even vs Monthly |
-|-----|----------------|----------------------|
-| **SwiftSpeak Pro** | **$99** | 14 months |
-| **SwiftSpeak Power** | **$199** | 15 months |
-| Superwhisper | $249 | — |
-| Wispr Flow | ❌ None | — |
-| Otter.ai | ❌ None | — |
-
-### Key Marketing Messages
-
-1. **"Wispr Flow features at half the price"** - Power tier matches Wispr at $12.99 but adds AI agents
-2. **"No minute caps, ever"** - Unlike Otter (1,200 min) or Whisper Memos (15 min limit)
-3. **"Pay once, use forever"** - $99/$199 lifetime attracts subscription-averse users
-4. **"Your keys, your control"** - Transparency, no vendor lock-in, Ollama for $0 costs
-5. **"See exactly what you pay"** - No hidden markups on API usage
-
----
-
-## Future: Hosted Option (V2+)
-
-For users who don't want to manage API keys:
-- SwiftSpeak handles all API calls
-- Words-based pricing (like Wispr Flow)
-- Premium subscription tier
+**Key Value Proposition:** Users control their own API costs. This is **40-70% cheaper** than hosted competitors like Wispr Flow or Otter.ai.
 
 ---
 
 ## Core Features
 
-### 1. Transcribe Button (Free)
+### 1. Transcribe Button
 - Tap → app opens → auto-records → Whisper transcription → auto-return
 - Language auto-detection
 
-### 2. Translate Button (Pro)
+### 2. Translate Button
 - Tap → app opens → record → Whisper → LLM translation → auto-return
 - Source language: auto-detect or manual selection
 - Target language: dropdown selection
 
 ### 3. Formatting Modes (Dropdown)
-**Free modes:**
 - Raw (no processing)
 - Email (professional email format)
 - Formal (official/business tone)
 - Casual (friendly, conversational)
-
-**Pro features:**
 - Custom templates with user-defined prompts (NOT YET IMPLEMENTED)
 - Template editor in settings (NOT YET IMPLEMENTED)
 
-### 4. Power Modes (Power Tier)
+### 4. Power Modes
 - Voice-activated AI workflows with capabilities
 - Web search, bash/computer use, code execution
 - Full-screen workspace with refinement and version history
@@ -341,7 +214,7 @@ AIProviderConfig(
 | ElevenLabs | ✅ | ❌ | ❌ | scribe_v1 (2.5 hrs/month free) - UI only |
 | **Local AI** | ✅ | ✅ | ✅ | Models fetched dynamically from server |
 
-### Local AI Provider Types (Power Tier Only)
+### Local AI Provider Types
 
 | Type | Description | Default Endpoint | API Format |
 |------|-------------|------------------|------------|
@@ -522,7 +395,6 @@ SwiftSpeak/
 │   │   ├── RecordingView.swift          # Recording UI with 7 waveform types
 │   │   ├── SettingsView.swift           # Multi-provider management
 │   │   ├── HistoryView.swift            # Past transcriptions with search
-│   │   ├── PaywallView.swift            # Pro/Power subscription prompt
 │   │   └── PowerMode/
 │   │       ├── PowerModeListView.swift      # Browse/manage modes
 │   │       ├── PowerModeEditorView.swift    # Create/edit modes
@@ -972,7 +844,7 @@ extension View {
 ## Settings View (As Implemented)
 
 ### Sections:
-1. **Account** - Subscription status, upgrade button
+1. **Account** - App info
 2. **AI Models** - Unified AI provider management (see Provider Editor below)
 3. **Translation** - Target language selection
 4. **Vocabulary** - Custom word replacements (NOT YET FUNCTIONAL)
@@ -988,7 +860,7 @@ The unified provider editor allows:
 - **Setup instructions** - Provider-specific help with links to API key pages
 
 ### Local AI Provider Editor:
-For local AI providers (Power Tier only):
+For local AI providers:
 - **Provider type selection** - Ollama, LM Studio, or Other OpenAI-compatible
 - **Server URL configuration** - IP:port, hostname.local, or VPN IP
 - **Optional API token** - Bearer token authentication for secured servers
@@ -997,15 +869,6 @@ For local AI providers (Power Tier only):
 - **Timeout selection** - 5s, 10s, 20s, 30s, or 60s request timeout (Advanced)
 
 ---
-
-## Paywall View (As Implemented)
-
-- Toggle between Monthly/Yearly/Lifetime billing
-- Pro tier card ($6.99/mo, $59.99/yr, or $99 lifetime)
-- Power tier card ($12.99/mo, $99.99/yr, or $199 lifetime)
-- Features comparison section
-- Success overlay animation after purchase
-- **Value messaging**: "Save 40-70% vs Wispr Flow"
 
 ---
 
@@ -1022,7 +885,6 @@ All screens functional with mock data, full navigation, polished animations.
 5. ✅ Settings screens - multi-provider management
 6. ✅ Power Mode workspace - execution, refinement, version history
 7. ✅ Power Mode editor - create/edit with icon picker
-8. ✅ Paywall screens - Pro and Power tier
 9. ✅ History view - search, multi-select, reprocess
 10. ✅ 4-tab main navigation
 
@@ -1108,7 +970,7 @@ All screens functional with mock data, full navigation, polished animations.
 | `SwiftSpeakTests/Services/AssemblyAITranscriptionServiceTests.swift` | Upload, polling, error handling |
 | `SwiftSpeakTests/Services/DeepgramTranscriptionServiceTests.swift` | Model selection, language codes |
 | `SwiftSpeakTests/Services/GoogleSTTServiceTests.swift` | Project ID validation, base64 |
-| `SwiftSpeakTests/Services/DeepLTranslationServiceTests.swift` | Language codes, free tier |
+| `SwiftSpeakTests/Services/DeepLTranslationServiceTests.swift` | Language codes |
 | `SwiftSpeakTests/Services/GoogleTranslationServiceTests.swift` | API key auth, response parsing |
 | `SwiftSpeakTests/Services/AzureTranslatorServiceTests.swift` | Region validation, headers |
 | `SwiftSpeakTests/Services/AnthropicServiceTests.swift` | Version header, message format |
@@ -1344,10 +1206,7 @@ Real-time transcription as user speaks:
 **Note:** NO biometric lock on app launch or recording flow - must remain frictionless for core UX. Session-based auth means once authenticated, access is granted for 5 minutes.
 
 ### Phase 7: Monetization & Polish
-1. [ ] StoreKit 2 / RevenueCat subscription integration
-2. [ ] Paywall logic (Free/Pro/Power limits)
-3. [ ] Usage tracking (free tier limits)
-4. [ ] Error handling & offline states
+1. [ ] Error handling & offline states
 5. [ ] App Store submission
 
 ### Phase 8: Community Features (OPTIONAL/V2)
@@ -1477,7 +1336,7 @@ The config includes full capability definitions so providers can add/remove feat
           "models": [
             { "id": "gpt-4o", "name": "GPT-4o", "default": true },
             { "id": "gpt-4o-mini", "name": "GPT-4o Mini" },
-            { "id": "o1", "name": "o1 (Reasoning)", "tier": "power" }
+            { "id": "o1", "name": "o1 (Reasoning)" }
           ],
           "features": ["streaming", "functionCalling", "vision", "webSearch"]
         },
@@ -1517,7 +1376,7 @@ The config includes full capability definitions so providers can add/remove feat
           "models": [
             { "id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "default": true },
             { "id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku" },
-            { "id": "claude-3-opus-latest", "name": "Claude 3 Opus", "tier": "power" }
+            { "id": "claude-3-opus-latest", "name": "Claude 3 Opus" }
           ],
           "features": ["streaming", "functionCalling", "vision", "computerUse"]
         },
@@ -1582,7 +1441,6 @@ The config includes full capability definitions so providers can add/remove feat
         "gemini-1.5-pro": { "inputPerMToken": 1.25, "outputPerMToken": 5.00 },
         "gemini-1.5-flash": { "inputPerMToken": 0.075, "outputPerMToken": 0.30 }
       },
-      "freeCredits": "Free tier available",
       "apiKeyUrl": "https://aistudio.google.com/apikey",
       "docsUrl": "https://ai.google.dev/docs"
     },
@@ -1706,7 +1564,6 @@ The config includes full capability definitions so providers can add/remove feat
         "scribe_v1": { "unit": "minute", "cost": 0.00 }
       },
       "freeCredits": "2.5 hours/month free, then $0.003/min",
-      "notes": "Free tier includes 2.5 hours of transcription per month",
       "apiKeyUrl": "https://elevenlabs.io/app/settings/api-keys",
       "docsUrl": "https://elevenlabs.io/docs/api-reference"
     },
@@ -1773,13 +1630,12 @@ The config includes full capability definitions so providers can add/remove feat
 | Field | Purpose |
 |-------|---------|
 | `capabilities.<type>.enabled` | Whether this provider supports this capability (can change!) |
-| `capabilities.<type>.models[]` | Available models with id, name, default flag, and tier |
+| `capabilities.<type>.models[]` | Available models with id, name, and default flag |
 | `capabilities.<type>.languages[]` | Supported language codes (can be updated remotely) |
 | `capabilities.<type>.features[]` | Special features: streaming, vision, functionCalling, etc. |
 | `capabilities.<type>.requiresProjectId` | Provider needs additional config (e.g., Google) |
 | `capabilities.<type>.requiresRegion` | Provider needs region (e.g., Azure) |
 | `pricing.<modelId>` | Cost per unit for each model |
-| `freeCredits` | Info about free tier |
 | `apiKeyUrl` | Direct link to get API key |
 | `featureFlags` | App-wide feature toggles (can disable features remotely) |
 | `announcements` | In-app notifications about new features/providers |
@@ -2060,7 +1916,7 @@ PROVIDER_DATA = {
                 "models": [
                     {"id": "gpt-4o", "name": "GPT-4o", "default": True},
                     {"id": "gpt-4o-mini", "name": "GPT-4o Mini"},
-                    {"id": "o1", "name": "o1 (Reasoning)", "tier": "power"}
+                    {"id": "o1", "name": "o1 (Reasoning)"}
                 ],
                 "features": ["streaming", "functionCalling", "vision", "webSearch"]
             },
@@ -2097,7 +1953,7 @@ PROVIDER_DATA = {
                 "models": [
                     {"id": "claude-3-5-sonnet-latest", "name": "Claude 3.5 Sonnet", "default": True},
                     {"id": "claude-3-5-haiku-latest", "name": "Claude 3.5 Haiku"},
-                    {"id": "claude-3-opus-latest", "name": "Claude 3 Opus", "tier": "power"}
+                    {"id": "claude-3-opus-latest", "name": "Claude 3 Opus"}
                 ],
                 "features": ["streaming", "functionCalling", "vision", "computerUse"]
             },
@@ -2601,7 +2457,6 @@ Typical 30-second dictation: ~$0.003 + $0.0002 = **$0.0032**
 
 | Model | Purpose |
 |-------|---------|
-| `SubscriptionTier` | free, pro, power |
 | `FormattingMode` | raw, email, formal, casual |
 | `Language` | 13 languages with flags |
 | `TranscriptionRecord` | History item |

@@ -64,7 +64,6 @@ keyboardLog("Keyboard appeared", category: "Lifecycle")
 |----------|-------|
 | `Transcription` | Recording, transcription, formatting, translation |
 | `Navigation` | URL scheme handling, view transitions |
-| `Subscription` | RevenueCat configuration, tier changes |
 | `Audio` | Audio session management |
 | `RAG` | Document processing, vector search |
 | `Lifecycle` | Keyboard load/appear |

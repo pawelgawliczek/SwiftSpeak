@@ -13,7 +13,6 @@ struct SettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
     @ObservedObject private var swiftLinkManager = SwiftLinkSessionManager.shared
-    @State private var showPaywall = false
     @State private var showResetAllConfirmation = false
 
     private var backgroundColor: Color {
@@ -52,10 +51,8 @@ struct SettingsView: View {
         if cloudCount > 0 {
             parts.append("\(cloudCount) provider\(cloudCount == 1 ? "" : "s")")
         }
-        if settings.subscriptionTier == .power {
-            if settings.whisperKitConfig.status == .ready {
-                parts.append("WhisperKit")
-            }
+        if settings.whisperKitConfig.status == .ready {
+            parts.append("WhisperKit")
         }
         return parts.isEmpty ? "Configure AI providers" : parts.joined(separator: " + ")
     }
@@ -131,15 +128,6 @@ struct SettingsView: View {
                 backgroundColor.ignoresSafeArea()
 
                 List {
-                    // Subscription Card
-                    Section {
-                        SubscriptionCard(tier: settings.subscriptionTier) {
-                            showPaywall = true
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets())
-                    }
-
                     // SwiftLink Hero Section
                     swiftLinkHeroSection
 
@@ -158,9 +146,6 @@ struct SettingsView: View {
                 .scrollContentBackground(.hidden)
             }
             .navigationTitle("Settings")
-            .sheet(isPresented: $showPaywall) {
-                PaywallView()
-            }
             .onAppear {
                 // Reload keyboard settings from App Groups to pick up changes from keyboard extension
                 settings.reloadKeyboardSettings()
@@ -414,21 +399,6 @@ struct SettingsView: View {
             }
             .listRowBackground(rowBackground)
 
-            // Subscription Override
-            Picker(selection: $settings.subscriptionTier) {
-                ForEach(SubscriptionTier.allCases, id: \.self) { tier in
-                    Text(tier.displayName).tag(tier)
-                }
-            } label: {
-                SettingsRow(
-                    icon: "crown.fill",
-                    iconColor: .yellow,
-                    title: "Subscription (Debug)",
-                    subtitle: nil
-                )
-            }
-            .listRowBackground(rowBackground)
-
             // Add mock transcriptions
             Button(action: addMockTranscriptions) {
                 SettingsRow(
@@ -635,36 +605,16 @@ struct SwiftLinkStatusCard: View {
     }
 }
 
-// MARK: - Preview Helper
+// MARK: - Previews
 
-struct SettingsPreviewWrapper: View {
-    let tier: SubscriptionTier
-    let colorScheme: ColorScheme
-
-    @StateObject private var settings = SharedSettings.shared
-
-    var body: some View {
-        SettingsView()
-            .environmentObject(settings)
-            .preferredColorScheme(colorScheme)
-            .onAppear {
-                settings.subscriptionTier = tier
-            }
-    }
+#Preview("Dark") {
+    SettingsView()
+        .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.dark)
 }
 
-#Preview("Free - Dark") {
-    SettingsPreviewWrapper(tier: .free, colorScheme: .dark)
-}
-
-#Preview("Free - Light") {
-    SettingsPreviewWrapper(tier: .free, colorScheme: .light)
-}
-
-#Preview("Pro - Dark") {
-    SettingsPreviewWrapper(tier: .pro, colorScheme: .dark)
-}
-
-#Preview("Power - Dark") {
-    SettingsPreviewWrapper(tier: .power, colorScheme: .dark)
+#Preview("Light") {
+    SettingsView()
+        .environmentObject(SharedSettings.shared)
+        .preferredColorScheme(.light)
 }

@@ -236,7 +236,7 @@ public struct ObsidianNoteMetadata: Codable, Identifiable, Sendable {
     public let id: UUID                         // Note identifier
     public let relativePath: String             // Path relative to vault root
     public let title: String                    // Note title (from # heading or filename)
-    public let contentHash: String              // MD5 hash for change detection
+    public let contentHash: String              // SHA-256 hash for change detection
     public let lastModified: Date               // File modification date
     public let chunkCount: Int                  // Number of chunks in this note
     public let chunkStartIndex: Int             // Starting index in embedding batches

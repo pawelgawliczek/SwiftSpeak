@@ -12,7 +12,6 @@ struct TranscriptionAISettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
 
-    @State private var showPaywall = false
     @State private var showAddAIProvider = false
     @State private var showAddLocalModel = false
     @State private var showAppleTranslationSetup = false
@@ -147,20 +146,13 @@ struct TranscriptionAISettingsView: View {
         }
         .navigationTitle("Transcription & AI")
         .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
         .sheet(isPresented: $showAddAIProvider) {
             AddAIProviderSheet(
                 availableProviders: settings.availableProvidersToAdd,
-                currentTier: settings.subscriptionTier,
                 onSelect: { provider in
                     showAddAIProvider = false
                     isAddingNewAIProvider = true
                     editingAIProviderConfig = AIProviderConfig(provider: provider)
-                },
-                onShowPaywall: {
-                    showPaywall = true
                 }
             )
         }
@@ -218,50 +210,6 @@ struct TranscriptionAISettingsView: View {
 
     private var cloudModelsSection: some View {
         Section {
-            if settings.subscriptionTier == .free {
-                // Free tier: Show OpenAI and Gemini directly
-                let hasConfiguredProvider = settings.configuredAIProviders.contains {
-                    ($0.provider == .openAI || $0.provider == .google) && !$0.apiKey.isEmpty
-                }
-                let configuredProvider = settings.configuredAIProviders.first {
-                    ($0.provider == .openAI || $0.provider == .google) && !$0.apiKey.isEmpty
-                }?.provider
-
-                // OpenAI row
-                FreeProviderRow(
-                    provider: .openAI,
-                    existingConfig: settings.getAIProviderConfig(for: .openAI),
-                    isDisabled: hasConfiguredProvider && configuredProvider != .openAI,
-                    colorScheme: colorScheme,
-                    onTap: {
-                        if hasConfiguredProvider && configuredProvider != .openAI {
-                            showPaywall = true
-                        } else {
-                            isAddingNewAIProvider = settings.getAIProviderConfig(for: .openAI) == nil
-                            editingAIProviderConfig = settings.getAIProviderConfig(for: .openAI) ?? AIProviderConfig(provider: .openAI)
-                        }
-                    }
-                )
-                .listRowBackground(rowBackground)
-
-                // Gemini row
-                FreeProviderRow(
-                    provider: .google,
-                    existingConfig: settings.getAIProviderConfig(for: .google),
-                    isDisabled: hasConfiguredProvider && configuredProvider != .google,
-                    colorScheme: colorScheme,
-                    onTap: {
-                        if hasConfiguredProvider && configuredProvider != .google {
-                            showPaywall = true
-                        } else {
-                            isAddingNewAIProvider = settings.getAIProviderConfig(for: .google) == nil
-                            editingAIProviderConfig = settings.getAIProviderConfig(for: .google) ?? AIProviderConfig(provider: .google)
-                        }
-                    }
-                )
-                .listRowBackground(rowBackground)
-            } else {
-                // Pro/Power tier: Show all configured providers + Add button
                 ForEach(settings.configuredAIProviders) { config in
                     ConfiguredAIProviderRow(
                         config: config,
@@ -298,15 +246,10 @@ struct TranscriptionAISettingsView: View {
                     }
                     .listRowBackground(rowBackground)
                 }
-            }
         } header: {
             Text("Cloud Models")
         } footer: {
-            if settings.subscriptionTier == .free {
-                Text("Free tier includes one provider. Upgrade to Pro for multiple providers.")
-            } else {
-                Text("Cloud AI providers require internet and API keys. You only pay for what you use.")
-            }
+            Text("Cloud AI providers require internet and API keys. You only pay for what you use.")
         }
     }
 
@@ -576,24 +519,9 @@ struct TranscriptionAISettingsView: View {
     }
 }
 
-#Preview("Transcription & AI - Free") {
+#Preview("Transcription & AI") {
     NavigationStack {
         TranscriptionAISettingsView()
-            .environmentObject({
-                let settings = SharedSettings.shared
-                settings.subscriptionTier = .free
-                return settings
-            }())
-    }
-}
-
-#Preview("Transcription & AI - Power") {
-    NavigationStack {
-        TranscriptionAISettingsView()
-            .environmentObject({
-                let settings = SharedSettings.shared
-                settings.subscriptionTier = .power
-                return settings
-            }())
+            .environmentObject(SharedSettings.shared)
     }
 }

@@ -38,7 +38,6 @@ enum Constants {
         static let autoReturnEnabled = "autoReturnEnabled"
         static let lastTranscription = "lastTranscription"
         static let transcriptionHistory = "transcriptionHistory"
-        static let subscriptionTier = "subscriptionTier"
         static let vocabulary = "vocabulary"
         static let customTemplates = "customTemplates"
 
@@ -173,25 +172,7 @@ enum Constants {
         static let azureTranslator = "https://api.cognitive.microsofttranslator.com/translate"
     }
 
-    // MARK: - Subscription Product IDs
-    enum Products {
-        static let proMonthly = "com.swiftspeak.pro.monthly"
-        static let proYearly = "com.swiftspeak.pro.yearly"
-        static let powerMonthly = "com.swiftspeak.power.monthly"
-        static let powerYearly = "com.swiftspeak.power.yearly"
-    }
-
-    // MARK: - RevenueCat
-    enum RevenueCat {
-        // Test API key - replace with production key before App Store release
-        static let apiKey = "YOUR_REVENUECAT_API_KEY"
-
-        // Entitlement identifiers (configure in RevenueCat dashboard)
-        static let proEntitlement = "pro"
-        static let powerEntitlement = "power"
-    }
-
-    // MARK: - URL Scheme Hosts (Phase 12)
+    // MARK: - URL Scheme Hosts
     enum URLHosts {
         static let record = "record"
         static let edit = "edit"

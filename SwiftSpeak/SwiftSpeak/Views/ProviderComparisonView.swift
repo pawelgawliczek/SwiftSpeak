@@ -262,15 +262,6 @@ private struct ProviderComparisonRow: View {
                                 .font(.caption)
                         }
 
-                        if provider.requiresPowerTier {
-                            Text("POWER")
-                                .font(.caption2.weight(.bold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1)
-                                .background(Color.orange)
-                                .clipShape(Capsule())
-                        }
                     }
 
                     // Capabilities

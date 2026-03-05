@@ -31,12 +31,6 @@ struct MemoryView: View {
     @State private var editingMemoryContent: String = ""
     @State private var editingTitle: String = ""
     @State private var showingClearConfirmation = false
-    @State private var showPaywall = false
-
-    /// Whether the user has access to Memory (Power tier only)
-    private var hasMemoryAccess: Bool {
-        settings.subscriptionTier == .power
-    }
 
     var body: some View {
         ScrollView {
@@ -69,19 +63,6 @@ struct MemoryView: View {
             .padding(16)
         }
         .background(AppTheme.darkBase.ignoresSafeArea())
-        .overlay {
-            if !hasMemoryAccess {
-                FeatureGateOverlay(
-                    requiredTier: .power,
-                    featureName: "Memory",
-                    featureDescription: "AI remembers your preferences, past conversations, and workflow patterns across sessions",
-                    onUpgrade: { showPaywall = true }
-                )
-            }
-        }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
         .navigationTitle("Memory")
         .navigationBarTitleDisplayMode(.large)
         .sheet(isPresented: $showingEditor) {

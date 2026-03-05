@@ -24,7 +24,6 @@
 		838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117402F014001009B3FD9 /* SwiftSpeakCore */; };
 		838749822F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117412F014002009B3FD9 /* SwiftSpeakCore */; };
 		838749832F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117422F014003009B3FD9 /* SwiftSpeakCore */; };
-		83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */ = {isa = PBXBuildFile; productRef = 83E117202F012F3B009B3FD9 /* RevenueCat */; };
 		83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = 83E1172D2F013425009B3FD9 /* WhisperKit */; };
 		83E118BC2F018978009B3FD9 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = 83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */; };
 		83ED792E2EFE4D8F00880604 /* SwiftSpeakKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 83ED79272EFE4D8F00880604 /* SwiftSpeakKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -347,7 +346,6 @@
 				838749812F0A6AB1007EF8D6 /* SwiftSpeakCore in Frameworks */,
 				83E118BC2F018978009B3FD9 /* FirebaseRemoteConfig in Frameworks */,
 				83E1172E2F013425009B3FD9 /* WhisperKit in Frameworks */,
-				83E117212F012F3B009B3FD9 /* RevenueCat in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -611,7 +609,6 @@
 			);
 			name = SwiftSpeak;
 			packageProductDependencies = (
-				83E117202F012F3B009B3FD9 /* RevenueCat */,
 				83E1172D2F013425009B3FD9 /* WhisperKit */,
 				83E118BB2F018978009B3FD9 /* FirebaseRemoteConfig */,
 				83E117402F014001009B3FD9 /* SwiftSpeakCore */,
@@ -748,7 +745,6 @@
 			mainGroup = 83ED790C2EFE4CB900880604;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				83E1171F2F012F3B009B3FD9 /* XCLocalSwiftPackageReference "../RevenueCat" */,
 				83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */,
 				83E1173F2F014000009B3FD9 /* XCLocalSwiftPackageReference "SwiftSpeakCore" */,
 				83E118BA2F018978009B3FD9 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
@@ -1881,10 +1877,6 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		83E1171F2F012F3B009B3FD9 /* XCLocalSwiftPackageReference "../RevenueCat" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../RevenueCat;
-		};
 		83E1172C2F013425009B3FD9 /* XCLocalSwiftPackageReference "../WhisperKit-Package" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "../WhisperKit-Package";
@@ -1916,10 +1908,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 83E1173F2F014000009B3FD9 /* XCLocalSwiftPackageReference "SwiftSpeakCore" */;
 			productName = SwiftSpeakCore;
-		};
-		83E117202F012F3B009B3FD9 /* RevenueCat */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = RevenueCat;
 		};
 		83E1172D2F013425009B3FD9 /* WhisperKit */ = {
 			isa = XCSwiftPackageProductDependency;

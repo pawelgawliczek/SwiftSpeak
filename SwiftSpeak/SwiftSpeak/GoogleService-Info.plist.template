@@ -5,15 +5,15 @@
 	<key>API_KEY</key>
 	<string>YOUR_FIREBASE_API_KEY</string>
 	<key>GCM_SENDER_ID</key>
-	<string>665300603890</string>
+	<string>YOUR_GCM_SENDER_ID</string>
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>pawelgawliczek.SwiftSpeak</string>
+	<string>YOUR_BUNDLE_ID</string>
 	<key>PROJECT_ID</key>
-	<string>swiftspeak-845e0</string>
+	<string>YOUR_PROJECT_ID</string>
 	<key>STORAGE_BUCKET</key>
-	<string>swiftspeak-845e0.firebasestorage.app</string>
+	<string>YOUR_STORAGE_BUCKET</string>
 	<key>IS_ADS_ENABLED</key>
 	<false></false>
 	<key>IS_ANALYTICS_ENABLED</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:665300603890:ios:77e05d9c870a4f3148d16b</string>
+	<string>YOUR_GOOGLE_APP_ID</string>
 </dict>
 </plist>

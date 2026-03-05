@@ -68,10 +68,6 @@ class SharedSettings: ObservableObject {
         }
     }
 
-    @Published var subscriptionTier: SubscriptionTier = .free {
-        didSet {
-            defaults?.set(subscriptionTier.rawValue, forKey: Constants.Keys.subscriptionTier)
-        }
     }
 
     // MARK: - Non-Published Properties (computed from UserDefaults)
@@ -178,11 +174,6 @@ class SharedSettings: ObservableObject {
             selectedTranslationProvider = translationProvider
         }
 
-        // Load subscription tier
-        if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier),
-           let tier = SubscriptionTier(rawValue: tierRaw) {
-            subscriptionTier = tier
-        }
 
         // Load configured STT providers
         loadConfiguredSTTProviders()

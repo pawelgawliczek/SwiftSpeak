@@ -34,12 +34,6 @@ struct PowerModeListContent: View {
     @State private var showingArchived = false
     @State private var navigateToHistory: PowerMode?
     @State private var navigateToDetail: PowerMode?
-    @State private var showPaywall = false
-
-    /// Whether the user has access to Power Modes
-    private var hasPowerAccess: Bool {
-        settings.subscriptionTier == .power
-    }
 
     var body: some View {
         ScrollView {
@@ -94,31 +88,14 @@ struct PowerModeListContent: View {
         .scrollIndicators(.visible)
         .contentMargins(.bottom, 20, for: .scrollIndicators)
         .background(AppTheme.darkBase.ignoresSafeArea())
-        .overlay {
-            if !hasPowerAccess {
-                FeatureGateOverlay(
-                    requiredTier: .power,
-                    featureName: "Power Modes",
-                    featureDescription: "AI-powered voice workflows for research, email drafting, and creative writing",
-                    onUpgrade: { showPaywall = true }
-                )
-            }
-        }
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button(action: {
-                    if hasPowerAccess {
-                        showingEditor = true
-                    } else {
-                        showPaywall = true
-                    }
+                    showingEditor = true
                 }) {
                     Image(systemName: "plus")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(hasPowerAccess ? AppTheme.powerAccent : .secondary)
+                        .foregroundStyle(AppTheme.powerAccent)
                 }
             }
         }
@@ -276,31 +253,18 @@ struct PowerModeListContent: View {
 
     private var createNewButton: some View {
         Button(action: {
-            if hasPowerAccess {
-                showingEditor = true
-            } else {
-                showPaywall = true
-            }
+            showingEditor = true
         }) {
             HStack(spacing: 8) {
-                Image(systemName: hasPowerAccess ? "plus" : "lock.fill")
+                Image(systemName: "plus")
                     .font(.body.weight(.semibold))
                 Text("Create New Mode")
                     .font(.callout.weight(.semibold))
-                if !hasPowerAccess {
-                    Text("POWER")
-                        .font(.caption2.weight(.bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Color.orange)
-                        .clipShape(Capsule())
-                }
             }
-            .foregroundStyle(hasPowerAccess ? AppTheme.powerAccent : .secondary)
+            .foregroundStyle(AppTheme.powerAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background((hasPowerAccess ? AppTheme.powerAccent : Color.secondary).opacity(0.15))
+            .background(AppTheme.powerAccent.opacity(0.15))
             .clipShape(RoundedRectangle(cornerRadius: AppTheme.cornerRadiusMedium, style: .continuous))
         }
     }

@@ -11,7 +11,6 @@ import SwiftSpeakCore
 struct BehaviorSettingsView: View {
     @EnvironmentObject var settings: SharedSettings
     @Environment(\.colorScheme) var colorScheme
-    @State private var showPaywall = false
     @State private var showAdvanced = false
 
     private var backgroundColor: Color {
@@ -53,9 +52,6 @@ struct BehaviorSettingsView: View {
         }
         .navigationTitle("Power Mode")
         .navigationBarTitleDisplayMode(.large)
-        .sheet(isPresented: $showPaywall) {
-            PaywallView()
-        }
     }
 
     // MARK: - Streaming Section
@@ -106,61 +102,21 @@ struct BehaviorSettingsView: View {
 
     private var integrationsSection: some View {
         Section {
-            if settings.subscriptionTier == .power {
-                NavigationLink {
-                    WebhooksView()
-                } label: {
-                    SettingsRow(
-                        icon: "link",
-                        iconColor: .cyan,
-                        title: "Webhooks",
-                        subtitle: webhooksSubtitle
-                    )
-                }
-                .listRowBackground(rowBackground)
-            } else {
-                // Locked state for non-Power users
-                Button(action: {
-                    showPaywall = true
-                }) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "link")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(Color.secondary.opacity(0.15))
-                            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            HStack(spacing: 6) {
-                                Text("Webhooks")
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-
-                                TierBadge(tier: .power)
-                            }
-
-                            Text("Connect to Slack, Notion, Make, Zapier")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
-
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .listRowBackground(rowBackground)
+            NavigationLink {
+                WebhooksView()
+            } label: {
+                SettingsRow(
+                    icon: "link",
+                    iconColor: .cyan,
+                    title: "Webhooks",
+                    subtitle: webhooksSubtitle
+                )
             }
+            .listRowBackground(rowBackground)
         } header: {
             Text("Integrations")
         } footer: {
-            if settings.subscriptionTier == .power {
-                Text("Send transcriptions to external services automatically.")
-            } else {
-                Text("Upgrade to Power to automate workflows with webhooks.")
-            }
+            Text("Send transcriptions to external services automatically.")
         }
     }
 
@@ -202,24 +158,9 @@ struct BehaviorSettingsView: View {
     }
 }
 
-#Preview("Behavior - Free") {
+#Preview("Behavior") {
     NavigationStack {
         BehaviorSettingsView()
-            .environmentObject({
-                let settings = SharedSettings.shared
-                settings.subscriptionTier = .free
-                return settings
-            }())
-    }
-}
-
-#Preview("Behavior - Power") {
-    NavigationStack {
-        BehaviorSettingsView()
-            .environmentObject({
-                let settings = SharedSettings.shared
-                settings.subscriptionTier = .power
-                return settings
-            }())
+            .environmentObject(SharedSettings.shared)
     }
 }

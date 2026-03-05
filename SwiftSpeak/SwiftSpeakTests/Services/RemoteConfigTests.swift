@@ -237,7 +237,7 @@ struct RemoteConfigTests {
         #expect(whisper?.isDefault == true)
     }
 
-    @Test func powerTierModelIdentified() async throws {
+    @Test func powerModeModelExists() async throws {
         let config = try loadBundledConfig()
         guard let openAI = config.providers["openAI"],
               let powerMode = openAI.powerMode,
@@ -248,7 +248,6 @@ struct RemoteConfigTests {
 
         let o1Model = models.first { $0.id == "o1" }
         #expect(o1Model != nil)
-        #expect(o1Model?.isPowerTier == true)
     }
 
     // MARK: - Provider Supports Tests

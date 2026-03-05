@@ -394,18 +394,6 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable {
         }
     }
 
-    /// Whether this provider requires Power subscription tier
-    public var requiresPowerTier: Bool {
-        switch self {
-        case .local: return true
-        case .openAI, .anthropic, .google, .elevenLabs, .deepgram, .assemblyAI, .deepL, .azure, .appleSpeech, .whisperKit, .parakeetMLX: return false
-        }
-    }
-
-    /// Minimum subscription tier required for this provider
-    public var minimumTier: SubscriptionTier {
-        requiresPowerTier ? .power : .free
-    }
 }
 
 // MARK: - Azure Region

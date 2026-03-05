@@ -148,9 +148,6 @@ struct KeyboardSettings {
     /// Active context name (display only)
     var activeContextName: String?
 
-    /// Subscription tier (display only)
-    var subscriptionTier: String = "free"
-
     /// SwiftLink status (display only)
     var swiftLinkActive: Bool = false
 
@@ -207,11 +204,6 @@ struct KeyboardSettings {
         // Provider info (read-only)
         settings.loadProviderInfo(from: defaults)
         settings.loadActiveContext(from: defaults)
-
-        // Subscription tier
-        if let tierRaw = defaults?.string(forKey: Constants.Keys.subscriptionTier) {
-            settings.subscriptionTier = tierRaw
-        }
 
         // SwiftLink status
         settings.swiftLinkActive = (defaults?.object(forKey: Constants.Keys.swiftLinkSessionActive) as? Bool) ?? false
