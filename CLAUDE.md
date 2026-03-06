@@ -196,6 +196,11 @@ When encountering duplicate or legacy code:
 **Current Legacy Files:**
 - `MemoryUpdateCoordinator.swift` → Replaced by `MemoryUpdateScheduler.swift`
 
+### Git Commits
+
+- **NEVER** add `Co-Authored-By` lines to commit messages
+- Keep commit messages concise (1-2 sentences)
+
 ### Testing Strategy
 
 - **Unit Tests:** Swift Testing framework (@Test, #expect)

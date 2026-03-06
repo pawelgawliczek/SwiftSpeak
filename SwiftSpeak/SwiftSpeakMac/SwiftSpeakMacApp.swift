@@ -8,6 +8,7 @@
 //
 
 import AppKit
+import AVFoundation
 import UserNotifications
 import ApplicationServices
 import SwiftSpeakCore
@@ -29,6 +30,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         // Request accessibility permission (required for window context capture)
         requestAccessibilityPermission()
+
+        // Request microphone permission upfront so the app appears in System Settings > Microphone
+        requestMicrophonePermission()
 
         // Request Automation permission for System Events (triggers prompt on first run)
         requestAutomationPermission()
@@ -123,6 +127,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+    }
+
+    /// Request microphone permission at launch so the system dialog appears
+    /// and the app gets registered in System Settings > Privacy & Security > Microphone
+    private func requestMicrophonePermission() {
+        let status = AVCaptureDevice.authorizationStatus(for: .audio)
+        switch status {
+        case .authorized:
+            print("[APP] Microphone permission: granted")
+        case .notDetermined:
+            print("[APP] Microphone permission: requesting...")
+            AVCaptureDevice.requestAccess(for: .audio) { granted in
+                print("[APP] Microphone permission: \(granted ? "granted" : "denied")")
+            }
+        case .denied:
+            print("[APP] Microphone permission: denied - user must enable in System Settings")
+        case .restricted:
+            print("[APP] Microphone permission: restricted")
+        @unknown default:
+            break
+        }
     }
 
     /// Request Automation permission for System Events - triggers system prompt
