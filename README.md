@@ -216,3 +216,5 @@ xcodebuild test \
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.
+
+![](https://analytics.pawelgawliczek.cloud/p/swiftspeak)
